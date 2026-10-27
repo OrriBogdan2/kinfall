@@ -13,6 +13,7 @@ var trauma := 0.0
 var zoom := 1.0
 var zoom_to := 1.0
 var lead := 1.0
+var kick := 0.0               # a quick zoom-in punch on big moments
 
 func _ready() -> void:
 	fov = 28.0
@@ -23,6 +24,9 @@ func _ready() -> void:
 func snap(p: Vector3) -> void:
 	focus = p
 	_apply(Vector3.ZERO)
+
+func punch(a: float) -> void:
+	kick = maxf(kick, a)
 
 func add_trauma(a: float) -> void:
 	trauma = minf(1.0, trauma + a * float(Save.d["settings"].get("shake", 1.0)))
@@ -51,7 +55,9 @@ func follow(p: Vector3, delta: float, mouse_lead := true) -> void:
 	Sfx.listener = focus
 
 func _apply(shake: Vector3) -> void:
-	position = focus + Vector3(0, HEIGHT * zoom, BACK * zoom) + shake
+	kick = maxf(0.0, kick - get_process_delta_time() * 0.5)
+	var z := zoom * (1.0 - kick)
+	position = focus + Vector3(0, HEIGHT * z, BACK * z) + shake
 	look_at(focus + shake, Vector3.UP)
 
 ## Where the mouse points on the horizontal plane at height y.

@@ -3,7 +3,7 @@ extends Node
 
 const NAMES := ["smg", "rifle", "thump", "boom", "hit", "crit", "kill", "knock", "hurt", "dash", "jump", "land", "grab",
 	"throw", "kinhit", "skill", "kin_happy", "kin_unsure", "kin_alert", "recall", "pickup", "catch", "warn", "portal",
-	"revive", "click", "reload", "shield", "cloak", "heal", "fall", "plant", "harvest", "ping", "glide", "build", "unlock", "whoosh"]
+	"revive", "click", "reload", "shield", "cloak", "heal", "fall", "plant", "harvest", "ping", "glide", "build", "unlock", "whoosh", "step0", "step1", "step2", "hover"]
 const POOL := 24
 
 var streams := {}
@@ -14,7 +14,24 @@ var hear_range := 22.0
 var last_played := {}
 var rng := RandomNumberGenerator.new()
 
+var music: Array[AudioStreamPlayer] = []   # two players so tracks can crossfade
+var music_i := 0
+var music_name := ""
+var amb: AudioStreamPlayer
+var amb_name := ""
+var music_bus := 0
+
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	AudioServer.add_bus()
+	music_bus = AudioServer.bus_count - 1
+	AudioServer.set_bus_name(music_bus, "Music")
+	AudioServer.set_bus_send(music_bus, "Master")
+	for i in 2:
+		var mp := AudioStreamPlayer.new(); mp.bus = "Music"; mp.volume_db = -80.0
+		add_child(mp); music.append(mp)
+	amb = AudioStreamPlayer.new(); amb.bus = "Music"; amb.volume_db = -80.0
+	add_child(amb)
 	for n in NAMES:
 		var s = load("res://audio/%s.wav" % n)
 		if s:
@@ -27,6 +44,56 @@ func _ready() -> void:
 
 func set_volume(v: float) -> void:
 	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(v, 0.001)))
+
+func set_music_volume(v: float) -> void:
+	AudioServer.set_bus_volume_db(music_bus, linear_to_db(maxf(v, 0.001)))
+
+func _loop_stream(path: String) -> AudioStream:
+	var st = load(path)
+	if st is AudioStreamOggVorbis:
+		st.loop = true
+	return st
+
+## Crossfades to another music track ("home", "match", "title"), or to silence with "".
+func play_music(name: String, fade := 1.5) -> void:
+	if name == music_name:
+		return
+	music_name = name
+	var old := music[music_i]
+	music_i = 1 - music_i
+	var nw := music[music_i]
+	var tw := create_tween().set_parallel(true)
+	tw.tween_property(old, "volume_db", -80.0, fade).set_trans(Tween.TRANS_SINE)
+	if name != "":
+		nw.stream = _loop_stream("res://audio/music_%s.ogg" % name)
+		nw.volume_db = -40.0
+		nw.play()
+		tw.tween_property(nw, "volume_db", -9.0, fade).set_trans(Tween.TRANS_SINE)
+
+func play_ambience(name: String) -> void:
+	if name == amb_name:
+		return
+	amb_name = name
+	if name == "":
+		create_tween().tween_property(amb, "volume_db", -80.0, 1.0)
+		return
+	amb.stream = _loop_stream("res://audio/amb_%s.ogg" % name)
+	amb.volume_db = -40.0
+	amb.play()
+	create_tween().tween_property(amb, "volume_db", -14.0, 2.0)
+
+## Muffles the music for a moment, e.g. under a big slow-motion beat.
+func duck(seconds: float) -> void:
+	var p := music[music_i]
+	var tw := create_tween()
+	tw.tween_property(p, "volume_db", -22.0, 0.08)
+	tw.tween_interval(seconds)
+	tw.tween_property(p, "volume_db", -9.0, 0.6)
+
+var _step_i := 0
+func step(pos = null, vol := -16.0) -> void:
+	_step_i = (_step_i + 1) % 3
+	play("step%d" % _step_i, pos, vol, 0.12)
 
 ## pos: world position, or null for UI sounds. Repeats of one sound within 30ms are merged.
 func play(sname: String, pos = null, vol_db := 0.0, pitch_var := 0.07, pitch := 1.0) -> void:

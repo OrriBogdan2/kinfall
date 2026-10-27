@@ -41,6 +41,8 @@ var bubbles: Array = []     # {ent, text, t, cat}
 var interact := {}          # what F would do right now for the local player
 var paused := false
 var slowmo := 0.0
+var slow_k := 0.35
+var killcam_text := ""
 var hitstop := 0.0
 var aim_line: MeshInstance3D
 var aim_ring: MeshInstance3D
@@ -75,6 +77,8 @@ func start(o: Dictionary) -> void:
 	tier = clampi(int(o.get("tier", 0)), 0, Data.TIERS.size() - 1)
 	T = Data.TIERS[tier]
 	_build_env()
+	Sfx.play_music("match")
+	Sfx.play_ambience("match")
 	world = World.new()
 	world.name = "World"
 	world.biome = T["biome"].duplicate()
@@ -487,6 +491,13 @@ func knock(h: Hunter, by: Ent, _o: Dictionary) -> void:
 	var credit: Ent = by
 	if by is Kin and by.owner_h:
 		credit = by.owner_h
+	if h == player:
+		# getting knocked hits hard: slow time, flash red, pull the camera in
+		_slow(0.55, 0.3)
+		cam.punch(0.12)
+		if hud: hud.flash(Color("ff3a2a"), 0.3)
+		Sfx.duck(0.6)
+		killcam_text = ("Knocked down by %s" % credit.pname) if credit is Hunter and credit != h else "You're down"
 	if credit is Hunter and credit != h:
 		credit.knocks += 1
 		add_feed("%s knocked %s" % [credit.pname, h.pname])
@@ -510,10 +521,32 @@ func freeze_frame(t: float) -> void:
 	hitstop = maxf(hitstop, t)
 
 func _reward_moment(at: Vector3) -> void:
-	slowmo = 0.16
+	_slow(0.22, 0.35)
 	freeze_frame(0.07)
 	cam.add_trauma(0.35)
+	cam.punch(0.08)
+	if hud: hud.flash(Color.WHITE, 0.25)
+	fx.ring(at, 3.0, Color(1, 0.95, 0.8, 0.9), 0.35)
+	fx.burst(at + Vector3(0, 1.0, 0), Color("ffd23f"), 26, 6.0, 0.6, 6.0, 1.2)
+	Sfx.duck(0.25)
 	sfx("kill", null, -2.0)
+
+func _slow(t: float, k: float) -> void:
+	if net_on:
+		return
+	slowmo = maxf(slowmo, t)
+	slow_k = minf(slow_k, k) if slowmo > 0.0 and slow_k < 0.35 else k
+
+## A hero's ultimate going off: punch the camera for the one who used it.
+func ult_moment(h: Hunter) -> void:
+	var col: Color = Data.HEROES[h.hero]["color"]
+	fx.ring(h.pos, 4.5, Color(col, 0.9), 0.45)
+	fx.burst(h.pos + Vector3(0, 1.2, 0), col, 30, 6.0, 0.6, 2.0, 1.3)
+	if h == player:
+		cam.punch(0.1)
+		cam.add_trauma(0.3)
+		if hud: hud.flash(col, 0.22)
+		freeze_frame(0.05)
 
 func _check_team(team: int) -> void:
 	var members: Array = hunters.filter(func(x): return x.team == team and not x.out and not x.extracted)
@@ -582,6 +615,19 @@ func eliminate(h: Hunter, by: Ent, why: String) -> void:
 	if h == player:
 		result = {"extracted": false, "why": why}
 		_end_soon(2.2)
+		if why != "abyss":
+			_slow(0.8, 0.3)
+		killcam_text = ("Taken out by %s" % credit.pname) if credit is Hunter and credit != h else ("You fell" if why == "abyss" else "You're out")
+	elif credit == player and player and not player.out:
+		# taking out the last rival squad gets the big moment
+		var rivals := hunters.any(func(x): return x.team != player.team and not x.out and not x.extracted)
+		if not rivals:
+			_slow(1.0, 0.22)
+			cam.punch(0.16)
+			if hud:
+				hud.flash(Color("ffd23f"), 0.3)
+				hud.toast("Last squad down", Color("ffd23f"))
+			Sfx.duck(1.0)
 	_check_last()
 
 func _check_last() -> void:
@@ -873,7 +919,7 @@ func _process(delta: float) -> void:
 	var d := minf(delta, 0.1)
 	if slowmo > 0.0:
 		slowmo -= d
-		d *= 0.35
+		d *= slow_k
 	_gather_input()
 	acc += d
 	var steps := 0
@@ -894,9 +940,20 @@ func _process(delta: float) -> void:
 				mi.look_at(mi.global_position + Vector3(v.x, 0, v.y), Vector3.UP)
 				var r: float = s["r"]
 				mi.scale = Vector3(r * 2.0, r * 2.0, r * 2.0 + v.length() * 0.025)
-	if player and not player.out:
+	if player and not player.out and not player.downed:
 		cam.zoom_to = 1.45 if player.dropping else 1.0
 		cam.follow(player.prev.lerp(player.pos, alpha), delta, true)
+	elif player and (player.downed or player.out):
+		# death camera: frame you and whoever got you
+		var foc := player.prev.lerp(player.pos, alpha)
+		if player.pos.y < -2.0:
+			foc = cam.focus
+		var killer: Ent = player.last_hit_by
+		if killer is Kin and killer.owner_h: killer = killer.owner_h
+		if killer is Hunter and killer != player and not killer.out and killer.flat_dist(player) < 16.0:
+			foc = foc.lerp(killer.pos, 0.5 if player.downed else 0.85)
+		cam.zoom_to = 0.8
+		cam.follow(foc, delta, false)
 	elif player:
 		cam.follow(cam.focus, delta, false)
 	_update_aim(alpha)

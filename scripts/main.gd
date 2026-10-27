@@ -57,6 +57,8 @@ func _ready() -> void:
 		show_screen("match", opts)
 	elif "--tutorial" in args:
 		show_screen("match", {"tutorial": true, "teams": 1, "squad": 1, "tier": 0, "length": 1500.0, "tut_test": "--tut-test" in args})
+	elif args.is_empty() or "--title" in args:
+		show_screen("title", {})
 	elif Save.d["roster"].is_empty():
 		show_screen("hatch", {})
 	else:
@@ -97,6 +99,10 @@ func show_screen(screen: String, opts: Dictionary) -> void:
 			var scr = L.new()
 			scr.setup(opts)
 			current = _layer(scr)
+		"title":
+			var Tt = load("res://scripts/ui/title.gd")
+			current = Tt.new()
+			add_child(current)
 		"hatch":
 			var Hx = load("res://scripts/ui/hatch.gd")
 			current = Hx.new()

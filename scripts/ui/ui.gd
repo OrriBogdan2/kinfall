@@ -72,7 +72,28 @@ static func button(text: String, cb: Callable, minw := 0.0) -> Button:
 	b.pressed.connect(func(): Sfx.play("click"); cb.call())
 	if minw > 0.0:
 		b.custom_minimum_size.x = minw
+	# a little lift and tick on hover
+	b.resized.connect(func(): b.pivot_offset = b.size * 0.5)
+	b.mouse_entered.connect(func():
+		if b.disabled: return
+		Sfx.play("hover", null, -12.0, 0.05)
+		var tw := b.create_tween()
+		tw.tween_property(b, "scale", Vector2(1.035, 1.035), 0.08).set_trans(Tween.TRANS_SINE))
+	b.mouse_exited.connect(func():
+		var tw := b.create_tween()
+		tw.tween_property(b, "scale", Vector2.ONE, 0.1).set_trans(Tween.TRANS_SINE))
 	return b
+
+## Fades and scales a panel in, so menus open instead of just appearing.
+static func pop_in(c: Control, delay := 0.0) -> void:
+	c.modulate.a = 0.0
+	c.scale = Vector2(0.94, 0.94)
+	var set_pivot := func(): c.pivot_offset = c.size * 0.5
+	c.resized.connect(set_pivot)
+	set_pivot.call()
+	var tw := c.create_tween().set_parallel(true)
+	tw.tween_property(c, "modulate:a", 1.0, 0.16).set_delay(delay)
+	tw.tween_property(c, "scale", Vector2.ONE, 0.26).set_delay(delay).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 
 static func card(col := CARD, pad := 14, rad := 12) -> PanelContainer:
 	var p := PanelContainer.new()

@@ -25,6 +25,8 @@ var cam_to := Vector3(0, 3.6, 6.4)
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	Sfx.play_music("title")
+	Sfx.play_ambience("home")
 	var env := WorldEnvironment.new()
 	var e := Environment.new()
 	e.background_mode = Environment.BG_COLOR

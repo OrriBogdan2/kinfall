@@ -109,7 +109,7 @@ static func use_r(h: Hunter) -> void:
 	h.ult = 0.0
 	var tc: Color = Data.HEROES[h.hero]["color"]
 	m.sfx("skill", h.pos, 0.0, 0.8)
-	m.fx.ring(h.pos, 2.4, Color(tc, 0.9), 0.4)
+	m.ult_moment(h)
 	if h == m.player and m.hud:
 		m.hud.toast(Data.ABIL[r_id(h)]["name"], tc)
 	match r_id(h):

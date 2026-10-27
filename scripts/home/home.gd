@@ -37,9 +37,21 @@ var lots := {}                 # building id -> {node, built}
 var bridges := {}              # isle id -> {tiles, node, built, label}
 var gh_plots: Array = []
 var building_now := false
+# ---- day, night and weather
+const DAY_LEN := 300.0          # seconds for a full day at home
+var env_res: Environment
+var sun_l: DirectionalLight3D
+var lamps: Array = []           # OmniLight3D
+var day_t := 0.3                # 0..1, 0.25 is morning, 0.5 noon, 0.75 dusk
+var rain: CPUParticles3D
+var raining := false
+var rain_k := 0.0
+var weather_t := 40.0
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	Sfx.play_music("home")
+	Sfx.play_ambience("home")
 	var dbg := OS.get_cmdline_user_args()
 	if "--evo-test" in dbg:
 		var ek := Save.active_kin()
@@ -113,6 +125,8 @@ func _ready() -> void:
 		var f := Models.fence(fp[2]); f.position = fp[0]; f.rotation.y = fp[1]; add_child(f)
 	for lp in [Vector3(36.2, 0, 30.0), Vector3(39.6, 0, 35.5), Vector3(34.5, 0, 34.2), Vector3(41.0, 0, 30.0), Vector3(26.0, 0, 29.2), Vector3(51.2, 0, 36.6)]:
 		var l := Models.lamp(); l.position = lp; add_child(l)
+		for ch in l.get_children():
+			if ch is OmniLight3D: lamps.append(ch)
 	for fb in [Vector3(35.6, 0, 28.6), Vector3(40.4, 0, 28.6), Vector3(39.6, 0, 37.4)]:
 		var fbed := Models.flower_bed(drng); fbed.position = fb; add_child(fbed)
 	var sign_post := Models.signpost(["Expeditions"]); sign_post.position = Vector3(39.8, 0, 38.2); sign_post.rotation.y = -0.3; add_child(sign_post)
@@ -141,6 +155,10 @@ func _ready() -> void:
 			var cb := a.substr(17)
 			Save.d["buildings"].append(cb)
 			get_tree().create_timer(0.3).timeout.connect(func(): _construct(cb))
+		if a == "--home-night": day_t = 0.97
+		if a == "--home-noon": day_t = 0.5
+		if a == "--home-rain":
+			raining = true; rain_k = 1.0; rain.emitting = true; weather_t = 999.0
 		if a.begins_with("--open="):
 			var which := a.substr(7)
 			get_tree().create_timer(0.2).timeout.connect(func():
@@ -151,6 +169,14 @@ func _ready() -> void:
 			var xy := a.substr(10).split(",")
 			ppos = Vector3(float(xy[0]), 0, float(xy[1])); player.position = ppos; cam.snap(ppos)
 	_spawn_kin()
+	if "--hero-lineup" in dbg:
+		var hi := 0
+		for hid in Data.HEROES:
+			var hm := Models.hunter(Data.HEROES[hid]["cls"], Data.TEAM_COLORS[0], Data.HEROES[hid]["weapon"], hid)
+			hm.position = Vector3(34.0 + (hi % 5) * 1.9, 0, 31.5 + (hi / 5) * 2.2)
+			hm.rotation.y = PI * 0.85
+			add_child(hm)
+			hi += 1
 	if "--kin-lineup" in dbg:
 		var lr := RandomNumberGenerator.new(); lr.seed = 11
 		var sps: Array = Data.KIN.keys()
@@ -313,6 +339,7 @@ func _build_env() -> void:
 	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.environment = e
 	add_child(env)
+	env_res = e
 	var sun := DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-50, -30, 0)
 	sun.light_color = Color("ffe9cf")
@@ -321,6 +348,22 @@ func _build_env() -> void:
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	sun.directional_shadow_max_distance = 45.0
 	add_child(sun)
+	sun_l = sun
+	# the day picks up where you left it, based on the clock
+	day_t = fmod(Time.get_unix_time_from_system() / DAY_LEN, 1.0)
+	rain = CPUParticles3D.new()
+	rain.amount = 260; rain.lifetime = 0.9; rain.emitting = false
+	var dm := BoxMesh.new(); dm.size = Vector3(0.025, 0.4, 0.025)
+	var rm := StandardMaterial3D.new(); rm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	rm.albedo_color = Color(0.75, 0.82, 1.0, 0.45); rm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	dm.material = rm
+	rain.mesh = dm
+	rain.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	rain.emission_box_extents = Vector3(16, 0.5, 12)
+	rain.direction = Vector3(0.15, -1, 0); rain.spread = 3.0
+	rain.gravity = Vector3(0, -30, 0)
+	rain.initial_velocity_min = 14.0; rain.initial_velocity_max = 18.0
+	add_child(rain)
 
 func _build_plots() -> void:
 	for n in plots:
@@ -380,11 +423,45 @@ func _spawn_kin() -> void:
 		lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED; lbl.no_depth_test = true
 		lbl.position.y = 1.15; lbl.visible = false
 		n.add_child(lbl)
-		kins.append({"rec": rec, "node": n, "pos": at, "vel": Vector3.ZERO, "goal": Vector3.INF, "t": randf() * 3.0, "emote": lbl, "emote_t": 0.0, "hop": randf() * 6.0})
+		var kd := {"rec": rec, "node": n, "pos": at, "vel": Vector3.ZERO, "goal": Vector3.INF, "t": randf() * 3.0, "emote": lbl, "emote_t": 0.0, "hop": randf() * 6.0}
+		var ri2: int = Save.d["roster"].find(rec)
+		if isl == 0 and ri2 >= 0 and ri2 < 6:
+			kd["bed"] = Vector3(33.4 + (ri2 % 3) * 1.1, 0, 27.6 + (ri2 / 3) * 1.1)
+		kins.append(kd)
 
 # ------------------------------------------------------------------ loop
+## Sun, sky, lamps and the occasional rain shower.
+func _update_sky(d: float) -> void:
+	day_t = fmod(day_t + d / DAY_LEN, 1.0)
+	var sun_h := sin((day_t - 0.25) * TAU)            # 1 at noon, -1 at midnight
+	var light := clampf(sun_h * 1.6 + 0.35, 0.0, 1.0)  # how much daylight
+	var dusk := clampf(1.0 - absf(sun_h) * 3.0, 0.0, 1.0)
+	weather_t -= d
+	if weather_t <= 0.0:
+		raining = not raining and randf() < 0.45
+		weather_t = randf_range(50.0, 110.0) if raining else randf_range(70.0, 160.0)
+		rain.emitting = raining
+		Sfx.play_ambience("rain" if raining else "home")
+	rain_k = move_toward(rain_k, 1.0 if raining else 0.0, d * 0.3)
+	rain.position = Vector3(ppos.x, 12.0, ppos.z)
+	var day_col := Color("ffe9cf").lerp(Color("ff9a6a"), dusk * 0.8)
+	sun_l.light_color = day_col.lerp(Color("8fa6e0"), 1.0 - light)
+	sun_l.light_energy = lerpf(0.1, 0.9, light) * (1.0 - rain_k * 0.35)
+	sun_l.rotation_degrees = Vector3(lerpf(-28.0, -62.0, maxf(sun_h, 0.0)), -30.0 + day_t * 80.0, 0)
+	env_res.ambient_light_color = Color("c4cbe6").lerp(Color("5a6aa8"), 1.0 - light).lerp(Color("ffc9a8"), dusk * 0.35)
+	env_res.ambient_light_energy = lerpf(0.2, 0.45, light) * (1.0 - rain_k * 0.2)
+	env_res.adjustment_enabled = true
+	env_res.adjustment_brightness = lerpf(0.72, 1.0, light) * (1.0 - rain_k * 0.08)
+	env_res.adjustment_saturation = lerpf(0.7, 1.0, light) * (1.0 - rain_k * 0.15)
+	env_res.background_color = Color("1a2236").lerp(Color("0b0e1a"), 1.0 - light)
+	var lamp_on := clampf(1.2 - light * 1.6, 0.0, 1.0)
+	for l in lamps:
+		l.light_energy = 0.25 + lamp_on * 2.2
+		l.omni_range = 4.0 + lamp_on * 3.5
+
 func _process(delta: float) -> void:
 	var d := minf(delta, 0.05)
+	_update_sky(d)
 	_move_player(d)
 	_move_kin(d)
 	cam.follow(ppos, d, panel_open == "")
@@ -408,7 +485,10 @@ func _move_player(d: float) -> void:
 	if hv.length() > 0.3:
 		pface = lerp_angle(pface, atan2(-hv.x, -hv.y), minf(1.0, d * 14.0))
 	player.rotation.y = pface
+	var ph0 := walk_ph
 	walk_ph += d * hv.length() * 2.2
+	if hv.length() > 1.0 and int(walk_ph / PI) != int(ph0 / PI):
+		Sfx.step(null, -20.0)
 	var legs: Node3D = player.get_node("Rig/Legs")
 	var sw := sin(walk_ph) * clampf(hv.length() / 4.0, 0.0, 1.0) * 0.6
 	legs.get_node("LegL").rotation.x = sw
@@ -423,10 +503,34 @@ func _move_kin(d: float) -> void:
 		var pos: Vector3 = k["pos"]
 		var rec: Dictionary = k["rec"]
 		var trust := float(rec["trust"])
-		if k["t"] <= 0.0:
+		var here := world.island_of(pos.x, pos.z)
+		# playing tag: chase a friend, then it's their turn
+		var other = k.get("chase", null)
+		if other != null:
+			k["chase_t"] = float(k.get("chase_t", 0.0)) - d
+			k["goal"] = other["pos"]
+			if Vector2(other["pos"].x - pos.x, other["pos"].z - pos.z).length() < 0.7 or k["chase_t"] <= 0.0:
+				k.erase("chase")
+				k["t"] = randf_range(1.5, 3.0)
+				if k["chase_t"] > 0.0:
+					_emote(k, "♪"); _emote(other, "!")
+					Sfx.play("kin_happy", other["pos"], -14.0, 0.15, 1.2)
+					if not other.get("busy", false) and randf() < 0.7:
+						other["chase"] = k; other["chase_t"] = 4.0
+				k["goal"] = world.random_ground(maxi(here, 0))
+		if k["t"] <= 0.0 and not k.has("chase"):
 			k["t"] = randf_range(2.0, 5.0)
-			var here := world.island_of(pos.x, pos.z)
-			if randf() < 0.25 + trust / 300.0 and world.island_of(ppos.x, ppos.z) == here:
+			var night := sin((day_t - 0.25) * TAU) < -0.2
+			var friends: Array = kins.filter(func(o): return o != k and not o.get("busy", false) and world.island_of(o["pos"].x, o["pos"].z) == here)
+			if night and randf() < 0.6:
+				# at night they head for bed and doze
+				k["goal"] = k.get("bed", world.random_ground(maxi(here, 0)))
+				if randf() < 0.5: _emote(k, "z")
+			elif friends.size() > 0 and randf() < 0.22:
+				var f: Dictionary = friends[randi() % friends.size()]
+				k["chase"] = f; k["chase_t"] = 4.0
+				_emote(k, "★")
+			elif randf() < 0.25 + trust / 300.0 and world.island_of(ppos.x, ppos.z) == here:
 				# kin that trust you like to be near you
 				k["goal"] = ppos + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))
 			else:
@@ -438,7 +542,7 @@ func _move_kin(d: float) -> void:
 		if goal != Vector3.INF:
 			var to := Vector2(goal.x - pos.x, goal.z - pos.z)
 			if to.length() > 0.4:
-				wish = to.normalized() * 2.4
+				wish = to.normalized() * (3.6 if k.has("chase") else 2.4)
 		var hv := Vector2(k["vel"].x, k["vel"].z)
 		hv += (wish - hv) * (1.0 - exp(-8.0 * d))
 		var nx := pos.x + hv.x * d
@@ -596,6 +700,7 @@ func _treat_name(t: String) -> String:
 	return t
 
 func _new_panel(title_txt: String, width := 520.0) -> VBoxContainer:
+	var prev := panel_open
 	_close_panel()
 	var p := PanelContainer.new()
 	p.custom_minimum_size = Vector2(width, 0)
@@ -610,6 +715,9 @@ func _new_panel(title_txt: String, width := 520.0) -> VBoxContainer:
 	v.add_child(head)
 	panel_host.add_child(p)
 	panel_open = title_txt
+	if prev != title_txt:
+		UI.pop_in(p)
+		Sfx.play("whoosh", null, -10.0)
 	return v
 
 func _close_panel() -> void:
@@ -1354,12 +1462,12 @@ func _open_settings() -> void:
 	ne.text_changed.connect(func(t): Save.d["name"] = t.strip_edges() if t.strip_edges() != "" else "Hunter")
 	name_row.add_child(ne)
 	v.add_child(name_row)
-	for s in [["volume", "Volume"], ["shake", "Screen shake"], ["cam_lead", "Camera lean toward cursor"]]:
+	for s in [["volume", "Volume"], ["music", "Music"], ["shake", "Screen shake"], ["cam_lead", "Camera lean toward cursor"]]:
 		var r := UI.hbox(8)
 		var l := UI.label(s[1], 15); l.custom_minimum_size.x = 200
 		r.add_child(l)
-		var sl := HSlider.new(); sl.min_value = 0.0; sl.max_value = 1.5 if s[0] != "volume" else 1.0; sl.step = 0.05
-		sl.value = float(st.get(s[0], 1.0)); sl.custom_minimum_size.x = 200
+		var sl := HSlider.new(); sl.min_value = 0.0; sl.max_value = 1.0 if s[0] in ["volume", "music"] else 1.5; sl.step = 0.05
+		sl.value = float(st.get(s[0], 0.7 if s[0] == "music" else 1.0)); sl.custom_minimum_size.x = 200
 		var key: String = s[0]
 		sl.value_changed.connect(func(val):
 			st[key] = val
@@ -1369,6 +1477,7 @@ func _open_settings() -> void:
 	v.add_child(UI.label("In a match: WASD move · LMB fire · Shift dash · Space jump (hold to glide) · RMB throw or call back your kin · Q kin skill · E hero ability · R ultimate · F catch, revive, open · 1 tonic · Tab scores · Esc pause. Reloading is automatic.", 13, UI.MUTED))
 	var row := UI.hbox(8)
 	row.add_child(UI.button("Save", func(): Save.save_game(); _close_panel()))
+	row.add_child(UI.button("Main menu", func(): Save.save_game(); Game.goto("title")))
 	row.add_child(UI.button("Start over", func():
 		Save.reset()
 		Game.goto("hatch")))

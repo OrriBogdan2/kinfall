@@ -17,6 +17,7 @@ func _ready() -> void:
 	_setup_input()
 	RenderingServer.set_default_clear_color(Color("10131f"))
 	Sfx.set_volume(float(Save.d["settings"].get("volume", 0.8)))
+	Sfx.set_music_volume(float(Save.d["settings"].get("music", 0.7)))
 
 func _key(action: String, keys: Array, mouse := -1) -> void:
 	if not InputMap.has_action(action):

@@ -75,6 +75,7 @@ def knock(f):
     return mix(lp(noise(.07), .3) * env(int(SR*.07), .0005, .02, 6), sweep(f, f * .6, .07, 'tri') * env(int(SR*.07), .0005, .03, 6) * .8)
 S['build'] = np.concatenate([knock(420), np.zeros(int(SR*.09)), knock(380), np.zeros(int(SR*.09)), knock(460)])
 S['unlock'] = np.concatenate([chirp(523, .1), chirp(659, .1), chirp(784, .1), chirp(1047, .16), chirp(1319, .3)])
+d = .03; S['hover'] = sweep(2400, 2000, d, 'sine') * env(int(SR*d), .001, .012, 4) * .35
 d = .16; S['whoosh'] = hp(noise(d), .3) * env(int(SR*d), .04, .06, 3) * .5
 for k, v in S.items(): save(k, v)
 print(len(S), 'sounds')

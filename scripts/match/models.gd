@@ -80,7 +80,10 @@ static func flat_quad(size: float) -> PlaneMesh:
 # ---------------------------------------------------------------- hunters
 static func hunter(cls: String, team_col: Color, weapon: String, hero := "") -> Node3D:
 	var root := Node3D.new()
-	var body_col := team_col.lerp(Color("3a3f52"), 0.35)
+	var look0: String = hero if hero != "" else {"light": "veil", "medium": "sage", "heavy": "bastion"}.get(cls, "sage")
+	var hero_col: Color = Data.HEROES[look0]["color"] if Data.HEROES.has(look0) else team_col
+	# each hero has its own outfit colour; the team shows in the ring at their feet and the trim
+	var body_col := team_col.lerp(hero_col, 0.45).lerp(Color("3a3f52"), 0.3)
 	var mats: Array = []
 	var m_body := toon(body_col); mats.append(m_body)
 	var m_skin := toon(Color("f1c9a0")); mats.append(m_skin)
@@ -149,6 +152,36 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "") -> 
 			part(torso, hr, toon(hc, false, 1.2), Vector3(0, 1.26, 0), Vector3.ONE, Vector3.ZERO, "Halo")
 			part(torso, sphere(0.17), m_acc, Vector3(-0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
 			part(torso, sphere(0.17), m_acc, Vector3(0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
+	# outfit pieces that give each hero its own silhouette
+	var m_trim := toon(hero_col.darkened(0.15)); mats.append(m_trim)
+	part(torso, cyl(0.255, 0.255, 0.07, 18), m_trim, Vector3(0, 0.08, 0))   # belt
+	match look:
+		"veil":
+			part(torso, box(0.1, 0.42, 0.03), m_acc, Vector3(-0.12, 0.4, 0.27), Vector3.ONE, Vector3(0.35, 0, -0.25))
+		"nyx":
+			for sx in [-1.0, 1.0]:
+				part(torso, box(0.05, 0.26, 0.03), toon(Color("e8e0ff")), Vector3(0.16 * sx, 0.12, 0.26), Vector3.ONE, Vector3(0.5, 0, 0.6 * sx))   # back daggers
+		"kestrel":
+			part(torso, box(0.06, 0.62, 0.05), m_trim, Vector3(0.0, 0.36, -0.2), Vector3.ONE, Vector3(0, 0, 0.75))   # strap
+			part(torso, cyl(0.07, 0.07, 0.55, 10), toon(Color("7a5236")), Vector3(-0.14, 0.5, 0.28), Vector3.ONE, Vector3(0.2, 0, 0.3))   # quiver
+		"sage":
+			part(torso, box(0.2, 0.18, 0.1), toon(Color("8a5a35")), Vector3(0.22, 0.12, 0.12), Vector3.ONE, Vector3(0, 0.5, 0))   # satchel
+			part(torso, sphere(0.07, 8), toon(Color("9ee2a0"), false, 0.5), Vector3(0.24, 0.24, 0.14))
+		"marlow":
+			part(torso, box(0.42, 0.06, 0.05), toon(Color("5a4636")), Vector3(0, 0.3, -0.22), Vector3.ONE, Vector3(0, 0, -0.6))   # harness
+		"pyra":
+			for sx in [-1.0, 1.0]:
+				part(torso, cyl(0.08, 0.08, 0.42, 12), toon(Color("ff7a5a")), Vector3(0.1 * sx, 0.42, 0.3))   # fuel tanks
+				part(torso, cyl(0.05, 0.03, 0.08, 10), toon(Color("ffd23f"), false, 0.8), Vector3(0.1 * sx, 0.18, 0.3))
+		"bastion":
+			part(torso, cyl(0.3, 0.3, 0.06, 20), m_trim, Vector3(0, 0.38, 0.33), Vector3.ONE, Vector3(PI / 2, 0, 0))   # shield on the back
+			part(torso, cyl(0.12, 0.12, 0.07, 14), m_acc, Vector3(0, 0.38, 0.36), Vector3.ONE, Vector3(PI / 2, 0, 0))
+		"tusk":
+			part(torso, box(0.5, 0.1, 0.42), m_trim, Vector3(0, 0.05, 0))   # heavy belt
+			part(torso, sphere(0.08, 8), toon(Color("f3eee2")), Vector3(0, 0.06, -0.22))
+		"halo":
+			var gen := TorusMesh.new(); gen.inner_radius = 0.12; gen.outer_radius = 0.18
+			part(torso, gen, toon(hero_col, false, 0.9), Vector3(0, 0.4, 0.33), Vector3.ONE, Vector3(PI / 2, 0, 0))   # dome generator
 	var gun := Node3D.new(); gun.name = "Gun"; gun.position = Vector3(0.22, 0.32, -0.18); torso.add_child(gun)
 	# arms reach from the shoulders to the gun
 	var arm_r := part(torso, capsule(0.07, 0.42), m_body, Vector3(0.24, 0.48, -0.08), Vector3.ONE, Vector3(1.2, 0, 0.15), "ArmR")

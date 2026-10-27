@@ -6,10 +6,13 @@ func _ready() -> void:
 	theme = UI.theme()
 
 func show_result(r: Dictionary) -> void:
+	Sfx.play_music("title")
+	Sfx.play_ambience("")
 	var s := Game.apply_result(r)
 	var bg := ColorRect.new(); bg.color = UI.BG; bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(bg)
 	var center := CenterContainer.new(); center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(center)
 	var panel := PanelContainer.new(); panel.custom_minimum_size = Vector2(560, 0); center.add_child(panel)
+	UI.pop_in(panel, 0.1)
 	var v := UI.vbox(12); panel.add_child(v)
 	var won: bool = r.get("extracted", false)
 	v.add_child(UI.title("You made it out" if won else _lost_title(r.get("why", "")), 40, UI.TEAL if won else UI.BAD))

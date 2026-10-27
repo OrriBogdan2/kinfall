@@ -569,7 +569,10 @@ func render(delta: float, alpha: float) -> void:
 	var legs: Node3D = rig.get_node("Legs")
 	var hv := Vector2(vel.x, vel.z)
 	var spd := hv.length()
+	var ph0 := walk_ph
 	walk_ph += delta * spd * 2.2
+	if grounded and spd > 1.0 and int(walk_ph / PI) != int(ph0 / PI) and not downed:
+		Sfx.step(pos, -14.0 if is_local() else -20.0)
 	var sw := sin(walk_ph) * clampf(spd / 5.0, 0.0, 1.0) * 0.6 if grounded else 0.35
 	legs.get_node("LegL").rotation.x = sw
 	legs.get_node("LegR").rotation.x = -sw
@@ -640,6 +643,10 @@ func render(delta: float, alpha: float) -> void:
 		var ek := 1.0 - pow(1.0 - glide_k, 3.0)
 		gl.scale = Vector3(ek * (1.0 + sin(m.time * 9.0) * 0.02), ek, ek)
 		gl.rotation.x = 0.35 * ek - 0.1
+	var halo := torso.get_node_or_null("Halo")
+	if halo:
+		halo.rotation.y += delta * 2.0
+		halo.position.y = 1.26 + sin(m.time * 3.0) * 0.03
 	var gun: Node3D = torso.get_node("Gun")
 	gun.position.z = -0.18 + recoil * 0.08
 	gun.visible = not downed

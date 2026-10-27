@@ -35,6 +35,7 @@ func setup(match_node: Match) -> void:
 
 func _process(delta: float) -> void:
 	hit_t = maxf(0.0, hit_t - delta)
+	flash_t = maxf(0.0, flash_t - delta * 4.0)
 	hurt_t = maxf(0.0, hurt_t - delta)
 	for t in toasts.duplicate():
 		t["t"] += delta
@@ -47,6 +48,13 @@ func _process(delta: float) -> void:
 func hitmarker(crit: bool) -> void:
 	hit_t = 0.14
 	hit_crit = crit
+
+var flash_t := 0.0
+var flash_col := Color.WHITE
+## A full-screen flash for big moments.
+func flash(col: Color, strength := 0.35) -> void:
+	flash_col = Color(col, strength)
+	flash_t = 1.0
 
 func hurt_flash(d: float) -> void:
 	hurt_t = clampf(0.25 + d / 60.0, 0.25, 0.6)
@@ -150,6 +158,10 @@ func _draw_all() -> void:
 		for i in 5:
 			var inset := i * 16.0
 			c.draw_rect(Rect2(Vector2(inset, inset), sz - Vector2(inset, inset) * 2.0), Color(0.75, 0.05, 0.05, (0.09 - i * 0.016) * (0.6 + pulse * 0.4)), false, 16.0)
+	if flash_t > 0.0:
+		c.draw_rect(Rect2(Vector2.ZERO, sz), Color(flash_col, flash_col.a * flash_t))
+	if p and (p.out or p.downed) and m.killcam_text != "":
+		_ctext(Vector2(sz.x * 0.5, sz.y * 0.22), m.killcam_text, 22, Color("ff9a8a"), big)
 	_draw_top(sz)
 	_draw_feed(sz)
 	_draw_minimap(sz)
