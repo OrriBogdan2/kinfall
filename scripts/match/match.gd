@@ -27,6 +27,7 @@ var tut_kills := 0
 var tut_flag := false
 var tut_down_t := 0.0
 var tut_wait := 0.0
+var tut_throws0 := 0
 var portals: Array = []     # {pos, open_at, open, node}
 var time := 0.0
 var acc := 0.0
@@ -476,9 +477,18 @@ func on_damage(target: Ent, by: Ent, d: float, o: Dictionary) -> void:
 		if hud: hud.hurt_flash(d)
 	fx.burst(target.pos + Vector3(0, 0.8, 0), Color("fff2d0") if not crit else Color("ffd23f"), 6 if d < 10 else 12, 3.5, 0.3, 8.0, 0.7)
 
+## Cancels anything a hero had queued up: ability sequences, a charging Ram, a beam windup.
+func cancel_abilities(h: Hunter) -> void:
+	h.acts.clear()
+	h.charge = {}
+	if h.acts_tele:
+		fx.end_telegraph(h.acts_tele)
+		h.acts_tele = null
+
 func knock(h: Hunter, by: Ent, _o: Dictionary) -> void:
 	if h.downed or h.out:
 		return
+	cancel_abilities(h)
 	if by is Hunter and by.hero == "nyx" and by.team != h.team:
 		by.sig_cd = 0.0
 	h.downed = true
@@ -534,8 +544,8 @@ func _reward_moment(at: Vector3) -> void:
 func _slow(t: float, k: float) -> void:
 	if net_on:
 		return
+	slow_k = k if slowmo <= 0.0 else minf(slow_k, k)
 	slowmo = maxf(slowmo, t)
-	slow_k = minf(slow_k, k) if slowmo > 0.0 and slow_k < 0.35 else k
 
 ## A hero's ultimate going off: punch the camera for the one who used it.
 func ult_moment(h: Hunter) -> void:
@@ -549,6 +559,8 @@ func ult_moment(h: Hunter) -> void:
 		freeze_frame(0.05)
 
 func _check_team(team: int) -> void:
+	if opts.get("tutorial", false):
+		return
 	var members: Array = hunters.filter(func(x): return x.team == team and not x.out and not x.extracted)
 	if members.is_empty():
 		return
@@ -579,6 +591,7 @@ func revive_hunter(h: Hunter, by: Ent) -> void:
 func eliminate(h: Hunter, by: Ent, why: String) -> void:
 	if h.out:
 		return
+	cancel_abilities(h)
 	h.out = true
 	h.downed = false
 	if net_on and not h.remote:
@@ -1024,7 +1037,7 @@ func step(dt: float) -> void:
 			_player_throw()
 		if pending_input["skill"]:
 			pending_input["skill"] = false
-			if player.kin and not player.downed:
+			if player.kin and not player.downed and not player.dropping:
 				player.kin.command_skill(_ground_aim(player))
 	for h in hunters:
 		if h.ctrl == "bot" and not h.remote and not h.out and not h.extracted:
@@ -1065,7 +1078,7 @@ func _ground_aim(h: Hunter) -> Vector3:
 
 func _player_throw() -> void:
 	var k: Kin = player.kin
-	if k == null or player.downed:
+	if k == null or player.downed or player.dropping:
 		return
 	if k.state == "shoulder":
 		k.throw_to(_ground_aim(player))
@@ -1120,7 +1133,7 @@ func _update_pads(dt: float) -> void:
 
 func _update_interact(dt: float) -> void:
 	for h in hunters:
-		if h.out or h.extracted or h.downed:
+		if h.out or h.extracted or h.downed or h.dropping:
 			continue
 		var want: bool = h.inp.get("interact", false)
 		var best := {}
@@ -1155,7 +1168,7 @@ func _update_interact(dt: float) -> void:
 			"revive":
 				var o: Hunter = best["ent"]
 				if o.remote:
-					_rev_out[o.nid] = float(_rev_out.get(o.nid, 0.0)) + dt / Data.MATCH["revive_time"]
+					_rev_out[o.nid] = float(_rev_out.get(o.nid, 0.0)) + dt / Data.MATCH["revive_time"] * (1.3 if h.hero == "sage" else 1.0)
 					o.revive += dt / Data.MATCH["revive_time"] * (1.3 if h.hero == "sage" else 1.0)
 				else:
 					o.revive += dt / Data.MATCH["revive_time"] * (1.3 if h.hero == "sage" else 1.0)
@@ -1279,7 +1292,7 @@ func _update_tutorial(dt: float) -> void:
 			tut_flag = tut_flag or player.gliding
 			done = tut_flag and player.grounded
 		4: done = tut_kills >= 2
-		5: done = player.kin == null or player.kin.state != "shoulder"
+		5: done = player.kin == null or player.kin.st_throws > tut_throws0
 		6: done = tut_flag
 		7: done = false
 	if tut_wait > 0.0:
@@ -1303,8 +1316,10 @@ func _tut_enter(step_i: int) -> void:
 				var at := _tut_spot(5.5, k * 0.6)
 				if at != Vector3.INF: spawn_mob("skitter", at)
 		5:
-			if player.kin and player.kin.state != "shoulder":
-				player.kin.state = "returning"
+			if player.kin:
+				tut_throws0 = player.kin.st_throws
+				if player.kin.state in ["active", "flying"]:
+					player.kin.recall()
 			var at := _tut_spot(5.0, 0.0)
 			if at != Vector3.INF: spawn_mob("spitter", at)
 		6:
@@ -1490,6 +1505,7 @@ func _update_portals(dt: float) -> void:
 
 func _extract(h: Hunter) -> void:
 	h.extracted = true
+	cancel_abilities(h)
 	if net_on and not h.remote:
 		net_event(["ext", h.nid])
 	sfx("portal", h.pos, 0.0, 1.3)
@@ -1621,10 +1637,10 @@ func _spawn_net_hunters(spots: Array, names: Array) -> void:
 			if world.is_void(at.x, at.z) or world.is_block(at.x, at.z):
 				at = base
 			at.y = world.ground_at(at.x, at.z)
-			var cls: String = ["light", "medium", "heavy"][randi_range(0, 2)]
-			var h := make_hunter(next_id("b"), t, cls, names.pop_back() if names.size() > 0 else "Bot", "bot", bot_kin_record(), at)
+			var h := make_hunter(next_id("b"), t, "", names.pop_back() if names.size() > 0 else "Bot", "bot", bot_kin_record(), at, bot_kit())
 			h.ai = bot_brain.new_mind(rng, float(opts.get("bot_skill", 0.6)))
 			h.tonics = 1
+			_start_drop(h, at)
 
 ## A hit on something another game owns goes to its owner.
 func net_send_hit(target: Ent, dmg: float, by: Ent, o: Dictionary) -> bool:
@@ -1647,6 +1663,7 @@ func _flags(h: Hunter) -> int:
 	if h.fortify_t > 0.0: f |= 64
 	if h.reload_t > 0.0: f |= 128
 	if h.gliding: f |= 256
+	if h.dropping: f |= 512
 	return f
 
 const KIN_STATES := ["shoulder", "flying", "flying_home", "active", "returning", "fainted", "reviving", "wild", "dazed"]
@@ -1764,6 +1781,7 @@ func _net_apply(e: Ent, it: Array) -> void:
 			h.grounded = f & 32 != 0
 			h.fortify_t = 0.3 if f & 64 != 0 else 0.0
 			h.gliding = f & 256 != 0
+			h.dropping = f & 512 != 0
 			h.down_hp = it[12]; h.revive = maxf(h.revive if h.revive > float(it[13]) and _rev_out.has(h.nid) else 0.0, float(it[13]))
 			h.shield = it[17]; h.extract_prog = it[18]
 			h.kills = int(it[19]); h.knocks = int(it[20]); h.dmg_done = float(it[21])
@@ -1833,6 +1851,8 @@ func _net_ev(x, from: String) -> void:
 				if by == player:
 					player.knocks += 1
 					_reward_moment(who.pos)
+					if player.hero == "nyx":
+						player.sig_cd = 0.0
 				_check_team(player.team if player else -9)
 		"out":
 			who = ents_by_id.get(String(x[1]), null)

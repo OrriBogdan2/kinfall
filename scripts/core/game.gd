@@ -140,7 +140,7 @@ func apply_result(r: Dictionary) -> Dictionary:
 	# kin who stayed home rest in the cottages and train in the yard
 	var rest := (2.0 if Save.has_building("cottage") else 0.0) + (2.0 if Save.has_building("cottage2") else 0.0)
 	for hk in d["roster"]:
-		if hk == k:
+		if hk == k or out["caught"].has(hk):
 			continue
 		if rest > 0.0:
 			hk["trust"] = clampf(float(hk["trust"]) + rest, 0.0, 100.0)

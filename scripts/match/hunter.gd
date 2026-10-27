@@ -332,7 +332,8 @@ func sim(dt: float) -> void:
 		return
 	if not downed and not dropping:
 		ult = minf(1.0, ult + dt / 110.0 * (1.3 if perk == "overcharge" else 1.0))
-	Abil.tick(self, dt)
+	if not downed:
+		Abil.tick(self, dt)
 	# reload by itself once you stop shooting for a moment
 	idle_fire += dt
 	if idle_fire > 1.3 and ammo < int(wpn["mag"]) and reload_t <= 0.0 and not inp["fire"]:

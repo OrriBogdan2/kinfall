@@ -466,7 +466,7 @@ func _process(delta: float) -> void:
 	_move_kin(d)
 	cam.follow(ppos, d, panel_open == "")
 	_find_interact()
-	if panel_open == "" and Input.is_action_just_pressed("interact") and not interact.is_empty():
+	if panel_open == "" and not building_now and Input.is_action_just_pressed("interact") and not interact.is_empty():
 		_use(interact)
 
 func _move_player(d: float) -> void:
@@ -615,7 +615,9 @@ func _label_for(it: Dictionary) -> String:
 			if d["crop"] == "": return "Plant something"
 			var cd: Dictionary = Data.CROPS[d["crop"]]
 			if int(d["stage"]) >= int(cd["grow"]): return "Harvest the %s" % cd["name"]
-			return "%s: ready in %d more match%s" % [cd["name"], int(cd["grow"]) - int(d["stage"]), "" if int(cd["grow"]) - int(d["stage"]) == 1 else "es"]
+			var left := int(cd["grow"]) - int(d["stage"])
+			if it["arr"] == "gh_plots": left = int(ceil(left / 2.0))
+			return "%s: ready in %d more match%s" % [cd["name"], left, "" if left == 1 else "es"]
 		"pot": return "Cook"
 		"stall": return "Shop"
 		"portal": return "Start an expedition"
@@ -1173,6 +1175,9 @@ func _play_evolutions() -> void:
 		get_tree().create_timer(0.4 + i * 0.22).timeout.connect(func(): fx.burst(at + Vector3(0, 0.5, 0), tint, 6, 2.0, 0.4, -2.0))
 	tw.tween_callback(func():
 		# swap in the grown model
+		if not is_instance_valid(n):
+			building_now = false
+			return
 		var nn := Models.kin(rec["species"], rec)
 		nn.position = at
 		nn.rotation = n.rotation
@@ -1471,7 +1476,8 @@ func _open_settings() -> void:
 		var key: String = s[0]
 		sl.value_changed.connect(func(val):
 			st[key] = val
-			if key == "volume": Sfx.set_volume(val))
+			if key == "volume": Sfx.set_volume(val)
+			if key == "music": Sfx.set_music_volume(val))
 		r.add_child(sl)
 		v.add_child(r)
 	v.add_child(UI.label("In a match: WASD move · LMB fire · Shift dash · Space jump (hold to glide) · RMB throw or call back your kin · Q kin skill · E hero ability · R ultimate · F catch, revive, open · 1 tonic · Tab scores · Esc pause. Reloading is automatic.", 13, UI.MUTED))
