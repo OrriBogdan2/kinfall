@@ -33,43 +33,66 @@ var chat_busy := false
 var emote_labels: Array = []
 var pet_done := {}
 
+var lots := {}                 # building id -> {node, built}
+var bridges := {}              # isle id -> {tiles, node, built, label}
+var gh_plots: Array = []
+var building_now := false
+
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	var dbg := OS.get_cmdline_user_args()
+	if "--home-all" in dbg:
+		Save.d["bridges"] = Data.ISLES.keys()
+		Save.d["buildings"] = Data.BUILDINGS.keys()
 	_build_env()
 	world = World.new(); add_child(world)
 	world.make_home(4242)
-	var c := Vector2(world.w / 2.0, world.h / 2.0)   # (15, 13)
 	var path_col := Color("9c7a52")
-	# the house up north, a path from its door down to the portal, branches to the market and the farm
-	spots["house"] = Vector3(15.0, 0, 7.5)
-	world.set_block_rect(13, 6, 17, 8)
-	spots["portal"] = Vector3(15.0, 0, 20.0)
-	world.paint_path(Vector2i(14, 9), Vector2i(14, 19), path_col)
-	world.paint_path(Vector2i(8, 14), Vector2i(14, 14), path_col)
-	world.paint_path(Vector2i(15, 12), Vector2i(19, 12), path_col)
-	spots["stall"] = Vector3(7.5, 0, 13.0)
-	world.set_block_rect(6, 12, 8, 13)
-	spots["pot"] = Vector3(19.5, 0, 8.5)
-	world.set_block_rect(19, 8, 19, 8)
-	# farm soil inside a fence
-	for z in range(11, 19):
-		for x in range(20, 25):
+	# your house up north, a path from its door down to the portal, branches to the market, the farm and the bridges
+	spots["house"] = Vector3(38.0, 0, 26.5)
+	world.set_block_rect(36, 25, 40, 27)
+	spots["portal"] = Vector3(38.0, 0, 39.0)
+	world.paint_path(Vector2i(37, 28), Vector2i(37, 38), path_col)
+	world.paint_path(Vector2i(39, 31), Vector2i(42, 31), path_col, false)
+	world.paint_path(Vector2i(24, 30), Vector2i(36, 30), path_col, false)
+	world.paint_path(Vector2i(39, 38), Vector2i(50, 38), path_col, false)
+	world.paint_path(Vector2i(44, 21), Vector2i(44, 28), path_col, false)
+	world.paint_path(Vector2i(28, 31), Vector2i(28, 34), path_col, false)
+	spots["stall"] = Vector3(30.5, 0, 33.0)
+	world.set_block_rect(29, 32, 31, 33)
+	spots["pot"] = Vector3(42.5, 0, 27.5)
+	world.set_block_rect(42, 27, 42, 27)
+	for z in range(30, 38):
+		for x in range(43, 48):
 			world.paint_tile(x, z, Color("6b4a33"))
-	world.set_block_rect(9, 17, 11, 19)   # pond
-	world.add_trees_on_rim(12)
-	# keep the portal approach and the farm clear of rim trees and rocks
-	for z in range(17, world.h):
-		for x in range(12, 19):
-			if world.inb(x, z) and world.kind[world.idx(x, z)] == World.T_BLOCK and not world.no_deco.has(world.idx(x, z)):
-				world.kind[world.idx(x, z)] = World.T_GROUND
-	for z in range(9, 20):
-		for x in range(19, 26):
-			if world.inb(x, z) and world.kind[world.idx(x, z)] == World.T_BLOCK and not world.no_deco.has(world.idx(x, z)):
-				world.kind[world.idx(x, z)] = World.T_GROUND
+	world.set_block_rect(32, 36, 34, 38)   # pond
+	# a few trees around the rim of every island, kept away from paths, lots and bridges
+	world.add_trees_on_rim(34)
+	var keep_clear: Array = [[36, 34, 40, 44], [42, 28, 50, 40], [41, 20, 47, 26], [22, 28, 28, 32], [53, 36, 66, 43]]
+	for b in Data.BUILDINGS:
+		var rc: Array = Data.BUILDINGS[b]["rect"]
+		keep_clear.append([rc[0] - 1, rc[1] - 1, rc[2] + 1, rc[3] + 2])
+	for k in Data.ISLES:
+		var rc: Array = Data.ISLES[k]["bridge"]
+		keep_clear.append([rc[0] - 2, rc[1] - 2, rc[2] + 2, rc[3] + 2])
+	for rc in keep_clear:
+		for z in range(rc[1], rc[3] + 1):
+			for x in range(rc[0], rc[2] + 1):
+				if world.inb(x, z) and world.kind[world.idx(x, z)] == World.T_BLOCK and not world.no_deco.has(world.idx(x, z)):
+					world.kind[world.idx(x, z)] = World.T_GROUND
+	# bridges: work out which tiles they cover before any are opened
+	for k in Data.ISLES:
+		bridges[k] = {"tiles": world.bridge_tiles(Data.ISLES[k]["bridge"]), "built": Save.has_bridge(k)}
+		if bridges[k]["built"]:
+			world.open_bridge(bridges[k]["tiles"])
+	for b in Data.BUILDINGS:
+		if Save.has_building(b):
+			var rc: Array = Data.BUILDINGS[b]["rect"]
+			world.set_block_rect(rc[0], rc[1], rc[2], rc[3])
 	world.build_meshes()
 	fx = Fx.new(); add_child(fx)
 	cam = CamRig.new(); add_child(cam)
-	cam.zoom_to = 0.72; cam.zoom = 0.72; cam.lead = 0.2
+	cam.zoom_to = 0.8; cam.zoom = 0.8; cam.lead = 0.2
 	var house := Models.house(); house.position = spots["house"]; add_child(house)
 	var pot := Models.cauldron(); pot.position = spots["pot"]; add_child(pot)
 	var stall := Models.stall(); stall.position = spots["stall"]; stall.rotation.y = PI * 0.5; add_child(stall)
@@ -77,25 +100,41 @@ func _ready() -> void:
 	portal.get_node("Disc").visible = true
 	(portal.get_node("Beam") as CPUParticles3D).emitting = true
 	var drng := RandomNumberGenerator.new(); drng.seed = 77
-	var pond := Models.pond(1.9, 1.5); pond.position = Vector3(10.5, 0, 18.5); add_child(pond)
-	for fp in [[Vector3(22.4, 0, 10.4), 0.0, 5.0], [Vector3(22.4, 0, 18.6), 0.0, 5.0], [Vector3(24.8, 0, 14.5), PI / 2, 8.0], [Vector3(19.4, 0, 16.6), PI / 2, 4.0]]:
+	var pond := Models.pond(1.9, 1.5); pond.position = Vector3(33.5, 0, 37.5); add_child(pond)
+	for fp in [[Vector3(45.4, 0, 29.4), 0.0, 5.0], [Vector3(45.4, 0, 37.6), 0.0, 5.0], [Vector3(47.8, 0, 33.5), PI / 2, 8.0], [Vector3(42.4, 0, 35.6), PI / 2, 4.0]]:
 		var f := Models.fence(fp[2]); f.position = fp[0]; f.rotation.y = fp[1]; add_child(f)
-	for lp in [Vector3(13.2, 0, 11.0), Vector3(16.6, 0, 16.5), Vector3(11.5, 0, 15.2), Vector3(18.0, 0, 11.0)]:
+	for lp in [Vector3(36.2, 0, 30.0), Vector3(39.6, 0, 35.5), Vector3(34.5, 0, 34.2), Vector3(41.0, 0, 30.0), Vector3(26.0, 0, 29.2), Vector3(51.2, 0, 36.6)]:
 		var l := Models.lamp(); l.position = lp; add_child(l)
-	for fb in [Vector3(12.6, 0, 9.6), Vector3(17.4, 0, 9.6), Vector3(16.6, 0, 18.4)]:
-		var b := Models.flower_bed(drng); b.position = fb; add_child(b)
-	var sign_post := Models.signpost(["Expeditions"]); sign_post.position = Vector3(16.8, 0, 19.2); sign_post.rotation.y = -0.3; add_child(sign_post)
+	for fb in [Vector3(35.6, 0, 28.6), Vector3(40.4, 0, 28.6), Vector3(39.6, 0, 37.4)]:
+		var fbed := Models.flower_bed(drng); fbed.position = fb; add_child(fbed)
+	var sign_post := Models.signpost(["Expeditions"]); sign_post.position = Vector3(39.8, 0, 38.2); sign_post.rotation.y = -0.3; add_child(sign_post)
 	var roster: Array = Save.d["roster"]
 	for i in mini(roster.size(), 6):
 		var bed := Models.kin_bed(Data.KIN[roster[i]["species"]]["color"])
-		bed.position = Vector3(10.4 + (i % 3) * 1.1, 0, 8.4 + (i / 3) * 1.1)
+		bed.position = Vector3(33.4 + (i % 3) * 1.1, 0, 27.6 + (i / 3) * 1.1)
 		add_child(bed)
-	_build_plots(c)
+	_build_lots()
+	_build_bridges()
+	_build_plots()
 	player = Models.hunter(Save.d.get("cls", "medium"), Data.TEAM_COLORS[0], Data.CLASSES[Save.d.get("cls", "medium")]["weapon"])
 	add_child(player)
-	ppos = Vector3(15.0, 0, 15.5)
+	ppos = Vector3(38.0, 0, 34.5)
 	player.position = ppos
 	cam.snap(ppos)
+	for a in dbg:
+		if a.begins_with("--home-zoom="):
+			cam.zoom_to = float(a.substr(12)); cam.zoom = cam.zoom_to
+		if a.begins_with("--home-build="):
+			var bk := a.substr(13)
+			Save.d["bridges"].append(bk)
+			get_tree().create_timer(0.3).timeout.connect(func(): _build_bridge_now(bk))
+		if a.begins_with("--home-construct="):
+			var cb := a.substr(17)
+			Save.d["buildings"].append(cb)
+			get_tree().create_timer(0.3).timeout.connect(func(): _construct(cb))
+		if a.begins_with("--home-at="):
+			var xy := a.substr(10).split(",")
+			ppos = Vector3(float(xy[0]), 0, float(xy[1])); player.position = ppos; cam.snap(ppos)
 	_spawn_kin()
 	_build_ui()
 	_refresh_top()
@@ -105,6 +144,132 @@ func _ready() -> void:
 	var ak := Save.active_kin()
 	if Bridge.ai_ok and not ak.is_empty() and int(ak.get("matches", 0)) % 3 == 0:
 		Bridge.refresh_lines(ak)
+
+func _rect_center(rc: Array) -> Vector3:
+	return Vector3((rc[0] + rc[2] + 1) * 0.5, 0, (rc[1] + rc[3] + 1) * 0.5)
+
+func _isle_open(isle: String) -> bool:
+	return isle == "main" or Save.has_bridge(isle)
+
+# ---- buildings and building sites
+func _build_lots() -> void:
+	for b in Data.BUILDINGS:
+		var bd: Dictionary = Data.BUILDINGS[b]
+		var rc: Array = bd["rect"]
+		var at := _rect_center(rc)
+		var holder := Node3D.new(); holder.position = at; add_child(holder)
+		var built := Save.has_building(b)
+		var n: Node3D
+		if built:
+			n = Models.building(b)
+		else:
+			n = Models.lot(rc[2] - rc[0] + 1.0, rc[3] - rc[1] + 1.0, bd["name"], "%d gems" % int(bd["cost"]))
+		holder.add_child(n)
+		lots[b] = {"node": holder, "built": built, "at": at, "door": at + Vector3(0, 0, (rc[3] - rc[1] + 1) * 0.5 + 1.1)}
+
+func _build_bridges() -> void:
+	for k in Data.ISLES:
+		var isd: Dictionary = Data.ISLES[k]
+		var br: Dictionary = bridges[k]
+		var node := Node3D.new(); add_child(node)
+		br["node"] = node
+		var sg := Models.signpost([isd["name"]]); sg.position = Vector3(isd["sign"].x, 0, isd["sign"].y); add_child(sg)
+		br["sign"] = sg
+		if br["built"]:
+			_lay_planks(k, false)
+		else:
+			_bridge_stub(k)
+		var lbl := Label3D.new()
+		lbl.font = UI.big; lbl.font_size = 64; lbl.pixel_size = 0.012; lbl.outline_size = 16
+		lbl.outline_modulate = Color(0.05, 0.04, 0.08, 0.9)
+		lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+		lbl.text = "%s\n%d gems to bridge" % [isd["name"], int(isd["cost"])]
+		lbl.modulate = UI.GOLD
+		lbl.position = Vector3(isd["c"].x, 3.2, isd["c"].y)
+		lbl.visible = not br["built"]
+		add_child(lbl)
+		br["label"] = lbl
+
+func _bridge_axis(k: String) -> Dictionary:
+	var rc: Array = Data.ISLES[k]["bridge"]
+	var horiz: bool = rc[2] - rc[0] > rc[3] - rc[1]
+	return {"horiz": horiz, "width": (rc[3] - rc[1] + 1.0) if horiz else (rc[2] - rc[0] + 1.0),
+		"mid": (rc[1] + rc[3] + 1) * 0.5 if horiz else (rc[0] + rc[2] + 1) * 0.5}
+
+## Plank positions along the bridge, ordered from the home island outward.
+func _plank_spots(k: String) -> Array:
+	var ax := _bridge_axis(k)
+	var along := {}
+	for t in bridges[k]["tiles"]:
+		along[t.x if ax["horiz"] else t.y] = true
+	var out: Array = []
+	for a in along.keys():
+		for half in [0.25, 0.75]:
+			var u: float = a + half
+			out.append(Vector3(u, -0.07, ax["mid"]) if ax["horiz"] else Vector3(ax["mid"], -0.07, u))
+	var mc := Vector3(38, 0, 32)
+	out.sort_custom(func(p, q): return Vector2(p.x - mc.x, p.z - mc.z).length() < Vector2(q.x - mc.x, q.z - mc.z).length())
+	return out
+
+func _bridge_stub(k: String) -> void:
+	var spots_l := _plank_spots(k)
+	if spots_l.is_empty():
+		return
+	var node: Node3D = bridges[k]["node"]
+	var ax := _bridge_axis(k)
+	var p0: Vector3 = spots_l[0]
+	var side := Vector3(0, 0, 1) if ax["horiz"] else Vector3(1, 0, 0)
+	for sgn in [-1.0, 1.0]:
+		var post := Models.part(node, Models.box(0.16, 1.2, 0.16), Models.toon(Color("7a5a3c")), p0 + side * sgn * (ax["width"] * 0.5) + Vector3(0, 0.6, 0))
+		post.name = "Post"
+	var rng := RandomNumberGenerator.new(); rng.seed = 5
+	for i in 2:
+		var pl := Models.plank(rng, ax["width"] + 0.1)
+		pl.position = p0 + Vector3(0, 0.07, 0)
+		if ax["horiz"]: pl.rotation.y += PI / 2
+		node.add_child(pl)
+
+func _lay_planks(k: String, animate: bool) -> void:
+	var node: Node3D = bridges[k]["node"]
+	for c in node.get_children():
+		c.queue_free()
+	var ax := _bridge_axis(k)
+	var rng := RandomNumberGenerator.new(); rng.seed = k.hash()
+	var sp := _plank_spots(k)
+	var side := Vector3(0, 0, 1) if ax["horiz"] else Vector3(1, 0, 0)
+	var rope := Models.toon(Color("e8d8b0"), false)
+	var post_m := Models.toon(Color("7a5a3c"))
+	for i in sp.size():
+		var p: Vector3 = sp[i]
+		var pl := Models.plank(rng, ax["width"] + 0.1)
+		pl.position = p
+		if ax["horiz"]: pl.rotation.y += PI / 2
+		node.add_child(pl)
+		var extra: Array = [pl]
+		if i % 4 == 0 or i == sp.size() - 1:
+			for sgn in [-1.0, 1.0]:
+				extra.append(Models.part(node, Models.box(0.12, 0.9, 0.12), post_m, p + side * sgn * (ax["width"] * 0.5 + 0.05) + Vector3(0, 0.4, 0)))
+		if i < sp.size() - 1:
+			var q: Vector3 = sp[i + 1]
+			for sgn in [-1.0, 1.0]:
+				var a: Vector3 = p + side * sgn * (ax["width"] * 0.5 + 0.05) + Vector3(0, 0.75, 0)
+				var b: Vector3 = q + side * sgn * (ax["width"] * 0.5 + 0.05) + Vector3(0, 0.75, 0)
+				var r := Models.part(node, Models.box(0.04, 0.04, a.distance_to(b) + 0.02), rope, (a + b) * 0.5)
+				r.look_at_from_position((a + b) * 0.5, b, Vector3.UP)
+				extra.append(r)
+		if animate:
+			for e in extra:
+				var tgt: Vector3 = e.position
+				e.position = tgt + Vector3(0, -2.5, 0)
+				e.scale = Vector3.ONE * 0.2
+				var tw := create_tween().set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+				tw.tween_interval(i * 0.06)
+				tw.tween_property(e, "position", tgt, 0.3)
+				tw.parallel().tween_property(e, "scale", Vector3.ONE, 0.3)
+			if i % 3 == 0:
+				get_tree().create_timer(i * 0.06 + 0.25).timeout.connect(func():
+					Sfx.play("build", null, -6.0, 0.12)
+					fx.dust(p, 6))
 
 func _build_env() -> void:
 	var env := WorldEnvironment.new()
@@ -128,28 +293,39 @@ func _build_env() -> void:
 	sun.directional_shadow_max_distance = 45.0
 	add_child(sun)
 
-func _build_plots(c: Vector2) -> void:
+func _build_plots() -> void:
 	for n in plots:
 		n.queue_free()
 	plots.clear()
+	for n in gh_plots:
+		n.queue_free()
+	gh_plots.clear()
 	var cap := int(Save.d["plot_cap"])
 	while Save.d["plots"].size() < cap:
 		Save.d["plots"].append({"crop": "", "stage": 0})
 	for i in cap:
-		var col := i % 2
-		var row := i / 2
 		var p := Models.plot()
-		p.position = Vector3(21.2 + col * 2.2, 0, 11.8 + row * 2.0)
+		p.position = Vector3(44.2 + (i % 2) * 2.2, 0, 30.8 + (i / 2) * 2.0)
 		add_child(p)
 		plots.append(p)
-		_refresh_plot(i)
+		_refresh_plot("plots", i)
+	if Save.has_building("greenhouse"):
+		for i in 4:
+			var p := Models.plot()
+			p.position = Vector3(57.5 + i * 2.2, 0, 40.4)
+			add_child(p)
+			gh_plots.append(p)
+			_refresh_plot("gh_plots", i)
 
-func _refresh_plot(i: int) -> void:
-	var p: Node3D = plots[i]
+func _plot_node(arr: String, i: int) -> Node3D:
+	return plots[i] if arr == "plots" else gh_plots[i]
+
+func _refresh_plot(arr: String, i: int) -> void:
+	var p: Node3D = _plot_node(arr, i)
 	var holder: Node3D = p.get_node("Crop")
 	for ch in holder.get_children():
 		ch.queue_free()
-	var d: Dictionary = Save.d["plots"][i]
+	var d: Dictionary = Save.d[arr][i]
 	if d["crop"] != "":
 		var cd: Dictionary = Data.CROPS[d["crop"]]
 		holder.add_child(Models.crop(int(d["stage"]), int(cd["grow"]), cd["color"]))
@@ -158,10 +334,17 @@ func _spawn_kin() -> void:
 	for k in kins:
 		k["node"].queue_free()
 	kins.clear()
+	var open_isles: Array = [0]
+	for i in world.islands.size():
+		if i > 0 and _isle_open(world.islands[i]["id"]):
+			open_isles.append(i)
+	var ri := 0
 	for rec in Save.d["roster"]:
 		var n := Models.kin(rec["species"])
 		add_child(n)
-		var at := world.random_ground()
+		var isl: int = 0 if rec["uid"] == Save.d.get("active", "") else open_isles[ri % open_isles.size()]
+		ri += 1
+		var at := world.random_ground(isl)
 		n.position = at
 		var lbl := Label3D.new()
 		lbl.font = UI.big; lbl.font_size = 40; lbl.pixel_size = 0.01; lbl.outline_size = 10
@@ -211,11 +394,12 @@ func _move_kin(d: float) -> void:
 		var trust := float(rec["trust"])
 		if k["t"] <= 0.0:
 			k["t"] = randf_range(2.0, 5.0)
-			if randf() < 0.25 + trust / 300.0:
+			var here := world.island_of(pos.x, pos.z)
+			if randf() < 0.25 + trust / 300.0 and world.island_of(ppos.x, ppos.z) == here:
 				# kin that trust you like to be near you
 				k["goal"] = ppos + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))
 			else:
-				k["goal"] = world.random_ground()
+				k["goal"] = world.random_ground(maxi(here, 0))
 			if randf() < 0.3:
 				_emote(k, "♥" if trust > 65.0 else ("?" if trust < 30.0 else "★"))
 		var wish := Vector2.ZERO
@@ -256,17 +440,31 @@ func _find_interact() -> void:
 	var p2 := Vector2(ppos.x, ppos.z)
 	for i in plots.size():
 		var d := p2.distance_to(Vector2(plots[i].position.x, plots[i].position.z))
-		if d < bd: bd = d; best = {"kind": "plot", "i": i}
+		if d < bd: bd = d; best = {"kind": "plot", "arr": "plots", "i": i}
+	for i in gh_plots.size():
+		var d := p2.distance_to(Vector2(gh_plots[i].position.x, gh_plots[i].position.z))
+		if d < bd: bd = d; best = {"kind": "plot", "arr": "gh_plots", "i": i}
 	for nm in ["pot", "stall", "portal", "house"]:
 		var sp: Vector3 = spots[nm]
 		var reach := 2.6 if nm in ["house", "portal"] else 1.9
 		var d := p2.distance_to(Vector2(sp.x, sp.z + (2.0 if nm == "house" else 0.0)))
 		if d < reach and d < bd + 0.6: bd = d; best = {"kind": nm}
+	for b in lots:
+		var l: Dictionary = lots[b]
+		var dp: Vector3 = l["door"] if l["built"] else l["at"]
+		var d := p2.distance_to(Vector2(dp.x, dp.z))
+		if d < (1.8 if l["built"] else 2.4) and d < bd + 0.4: bd = d; best = {"kind": "lot", "b": b}
+	for k in bridges:
+		if bridges[k]["built"]:
+			continue
+		var sg: Vector2 = Data.ISLES[k]["sign"]
+		var d := p2.distance_to(sg)
+		if d < 2.4 and d < bd + 0.4: bd = d; best = {"kind": "bridge", "isle": k}
 	for k in kins:
 		var d := p2.distance_to(Vector2(k["pos"].x, k["pos"].z))
 		if d < bd: bd = d; best = {"kind": "kin", "k": k}
 	interact = best
-	if panel_open != "" or best.is_empty():
+	if panel_open != "" or best.is_empty() or building_now:
 		prompt_box.visible = false
 		return
 	prompt_box.visible = true
@@ -278,7 +476,7 @@ func _find_interact() -> void:
 func _label_for(it: Dictionary) -> String:
 	match it["kind"]:
 		"plot":
-			var d: Dictionary = Save.d["plots"][it["i"]]
+			var d: Dictionary = Save.d[it["arr"]][it["i"]]
 			if d["crop"] == "": return "Plant something"
 			var cd: Dictionary = Data.CROPS[d["crop"]]
 			if int(d["stage"]) >= int(cd["grow"]): return "Harvest the %s" % cd["name"]
@@ -287,6 +485,11 @@ func _label_for(it: Dictionary) -> String:
 		"stall": return "Shop"
 		"portal": return "Start an expedition"
 		"house": return "Go inside"
+		"lot":
+			var bd: Dictionary = Data.BUILDINGS[it["b"]]
+			if lots[it["b"]]["built"]: return _building_verb(it["b"])
+			return "Build a %s" % bd["name"]
+		"bridge": return "Build a bridge to %s" % Data.ISLES[it["isle"]]["name"]
 		"kin":
 			var rec: Dictionary = it["k"]["rec"]
 			return "Spend time with %s" % rec["name"]
@@ -295,7 +498,9 @@ func _label_for(it: Dictionary) -> String:
 func _use(it: Dictionary) -> void:
 	Sfx.play("click")
 	match it["kind"]:
-		"plot": _open_plot(it["i"])
+		"plot": _open_plot(it["arr"], it["i"])
+		"lot": _open_lot(it["b"])
+		"bridge": _open_bridge(it["isle"])
 		"pot": _open_kitchen()
 		"stall": _open_shop()
 		"portal": _open_expedition()
@@ -303,6 +508,9 @@ func _use(it: Dictionary) -> void:
 		"kin": _open_kin(it["k"]["rec"])
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and panel_open == "":
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP: cam.zoom_to = clampf(cam.zoom_to - 0.08, 0.55, 1.6)
+		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: cam.zoom_to = clampf(cam.zoom_to + 0.08, 0.55, 1.6)
 	if event.is_action_pressed("menu"):
 		if panel_open != "":
 			_close_panel()
@@ -330,7 +538,7 @@ func _build_ui() -> void:
 	prompt_box.add_child(prompt_lbl)
 	root_ui.add_child(prompt_box)
 	var hint_box := UI.card(Color(0.06, 0.07, 0.1, 0.7), 8, 10)
-	hint = UI.label("WASD walk   ·   F use what's in front of you   ·   Esc settings", 14, UI.INK)
+	hint = UI.label("WASD walk   ·   F use what's in front of you   ·   Scroll to zoom   ·   Esc settings", 14, UI.INK)
 	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hint_box.add_child(hint)
 	hint_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -391,21 +599,24 @@ func _open_welcome() -> void:
 		_close_panel(), 200))
 
 # ---- farm
-func _open_plot(i: int) -> void:
-	var d: Dictionary = Save.d["plots"][i]
+func _open_plot(arr: String, i: int) -> void:
+	var d: Dictionary = Save.d[arr][i]
+	var pn: Node3D = _plot_node(arr, i)
 	if d["crop"] != "":
 		var cd: Dictionary = Data.CROPS[d["crop"]]
 		if int(d["stage"]) >= int(cd["grow"]):
 			Save.d["crops"][d["crop"]] = int(Save.d["crops"].get(d["crop"], 0)) + 2
-			fx.burst(plots[i].position + Vector3(0, 0.6, 0), cd["color"], 18, 3.0)
+			fx.burst(pn.position + Vector3(0, 0.6, 0), cd["color"], 18, 3.0)
 			Sfx.play("harvest")
 			d["crop"] = ""; d["stage"] = 0
-			_refresh_plot(i)
+			_refresh_plot(arr, i)
 			Save.save_game()
 			_refresh_top()
 			return
 		var v := _new_panel(cd["name"], 440)
-		v.add_child(UI.label("Growing. Ready in %d more match%s." % [int(cd["grow"]) - int(d["stage"]), "" if int(cd["grow"]) - int(d["stage"]) == 1 else "es"], 16))
+		var left := int(cd["grow"]) - int(d["stage"])
+		if arr == "gh_plots": left = int(ceil(left / 2.0))
+		v.add_child(UI.label("Growing. Ready in %d more match%s." % [left, "" if left == 1 else "es"], 16))
 		v.add_child(UI.label(cd["desc"], 15, UI.MUTED))
 		return
 	var v := _new_panel("Plant a seed", 480)
@@ -425,8 +636,8 @@ func _open_plot(i: int) -> void:
 			Save.d["seeds"][sk] = int(Save.d["seeds"][sk]) - 1
 			d["crop"] = sk; d["stage"] = 0
 			Sfx.play("plant")
-			fx.dust(plots[i].position, 10)
-			_refresh_plot(i)
+			fx.dust(pn.position, 10)
+			_refresh_plot(arr, i)
 			Save.save_game()
 			_close_panel()))
 		v.add_child(row)
@@ -476,7 +687,7 @@ func _open_shop() -> void:
 	if int(Save.d["plot_cap"]) < 8:
 		_shop_row(v, "Two more plots", "Grow more at once.", 120 + 80 * (int(Save.d["plot_cap"]) - 4), func():
 			Save.d["plot_cap"] = int(Save.d["plot_cap"]) + 2
-			_build_plots(Vector2(world.w / 2.0, world.h / 2.0)))
+			_build_plots())
 
 func _shop_row(v: VBoxContainer, name_txt: String, desc: String, price: int, on_buy: Callable) -> void:
 	var row := UI.hbox(10)
@@ -745,6 +956,157 @@ func _start_match() -> void:
 	o["tier"] = exp_tier
 	Game.start_match(o)
 
+# ---- buildings and bridges
+func _building_verb(b: String) -> String:
+	match b:
+		"hall": return "Look at your trophies"
+		"cottage", "cottage2": return "Peek into the %s" % Data.BUILDINGS[b]["name"]
+	return "Visit the %s" % Data.BUILDINGS[b]["name"]
+
+func _open_lot(b: String) -> void:
+	var bd: Dictionary = Data.BUILDINGS[b]
+	if lots[b]["built"]:
+		if b == "hall":
+			_open_hall()
+			return
+		var v := _new_panel(bd["name"], 480)
+		v.add_child(UI.label(bd["desc"], 16))
+		if b in ["cottage", "cottage2"]:
+			var resting: Array = []
+			for rec in Save.d["roster"]:
+				if rec["uid"] != Save.d.get("active", ""): resting.append(rec["name"])
+			v.add_child(UI.label(("Resting here: " + ", ".join(resting)) if resting.size() > 0 else "Nobody's resting here right now. Kin who aren't your partner sleep here.", 15, UI.MUTED))
+		return
+	var v := _new_panel("Build a %s" % bd["name"], 500)
+	v.add_child(UI.label(bd["desc"], 16))
+	var cost := int(bd["cost"])
+	v.add_child(UI.label("Costs %d gems. You have %d." % [cost, int(Save.d["gems"])], 15, UI.GOLD if int(Save.d["gems"]) >= cost else UI.BAD))
+	var btn := UI.button("Build it", func():
+		if int(Save.d["gems"]) < cost or Save.has_building(b): return
+		Save.d["gems"] = int(Save.d["gems"]) - cost
+		Save.d["buildings"].append(b)
+		Save.save_game()
+		_close_panel()
+		_construct(b), 200)
+	btn.disabled = int(Save.d["gems"]) < cost
+	v.add_child(btn)
+
+## Builds a building on its lot: the site packs away and the building pops up with dust and hammering.
+func _construct(b: String) -> void:
+	building_now = true
+	var l: Dictionary = lots[b]
+	var holder: Node3D = l["node"]
+	var rc: Array = Data.BUILDINGS[b]["rect"]
+	world.set_block_rect(rc[0], rc[1], rc[2], rc[3])
+	# step the player out of the footprint if needed
+	if world.is_block(ppos.x, ppos.z):
+		ppos = l["door"]
+	for c in holder.get_children():
+		var tw0 := create_tween()
+		tw0.tween_property(c, "scale", Vector3(1, 0.01, 1), 0.25)
+		tw0.tween_callback(c.queue_free)
+	var n := Models.building(b)
+	holder.add_child(n)
+	var body: Node3D = n.get_node("Body")
+	body.scale = Vector3(0.6, 0.0, 0.6)
+	var tw := create_tween()
+	tw.tween_interval(0.3)
+	tw.tween_property(body, "scale", Vector3(1.0, 0.45, 1.0), 0.35).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(body, "scale", Vector3(1.0, 0.8, 1.0), 0.35).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(body, "scale", Vector3(1.0, 1.0, 1.0), 0.45).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	for i in 5:
+		get_tree().create_timer(0.3 + i * 0.24).timeout.connect(func():
+			Sfx.play("build", null, -3.0, 0.15)
+			fx.dust(l["at"] + Vector3(randf_range(-1.4, 1.4), 0, randf_range(-1.0, 1.0)), 10))
+	get_tree().create_timer(1.55).timeout.connect(func():
+		Sfx.play("unlock")
+		fx.burst(l["at"] + Vector3(0, 2.6, 0), UI.GOLD, 26, 6.0, 0.8, 8.0, 1.2)
+		fx.ring(l["at"], 4.0, Color(UI.GOLD, 0.9), 0.5)
+		l["built"] = true
+		building_now = false
+		if b == "greenhouse": _build_plots()
+		_toast("%s built" % Data.BUILDINGS[b]["name"]))
+	cam.zoom_to = 0.95
+
+func _open_bridge(k: String) -> void:
+	var isd: Dictionary = Data.ISLES[k]
+	var v := _new_panel("Bridge to %s" % isd["name"], 520)
+	v.add_child(UI.label(isd["desc"], 16))
+	var ex := int(Save.d.get("extracts", 0))
+	var cost := int(isd["cost"])
+	var need := int(isd["need"])
+	if ex < need:
+		v.add_child(UI.label("Make it out of %d more expedition%s to get the materials." % [need - ex, "" if need - ex == 1 else "s"], 15, UI.BAD))
+		return
+	v.add_child(UI.label("Costs %d gems. You have %d." % [cost, int(Save.d["gems"])], 15, UI.GOLD if int(Save.d["gems"]) >= cost else UI.BAD))
+	var btn := UI.button("Build the bridge", func():
+		if int(Save.d["gems"]) < cost or Save.has_bridge(k): return
+		Save.d["gems"] = int(Save.d["gems"]) - cost
+		Save.d["bridges"].append(k)
+		Save.save_game()
+		_close_panel()
+		_build_bridge_now(k), 220)
+	btn.disabled = int(Save.d["gems"]) < cost
+	v.add_child(btn)
+
+func _build_bridge_now(k: String) -> void:
+	building_now = true
+	var br: Dictionary = bridges[k]
+	br["built"] = true
+	_lay_planks(k, true)
+	var n: int = _plank_spots(k).size()
+	cam.zoom_to = 1.15
+	get_tree().create_timer(n * 0.06 + 0.4).timeout.connect(func():
+		world.open_bridge(br["tiles"])
+		Sfx.play("unlock")
+		var far: Vector3 = _plank_spots(k)[n - 1]
+		fx.burst(far + Vector3(0, 1.0, 0), UI.GOLD, 24, 5.0, 0.8)
+		var lbl: Label3D = br["label"]
+		var tw := create_tween()
+		tw.tween_property(lbl, "modulate:a", 0.0, 0.6)
+		tw.tween_callback(func(): lbl.visible = false)
+		building_now = false
+		_spawn_kin()
+		_toast("%s is open" % Data.ISLES[k]["name"]))
+
+func _toast(txt: String) -> void:
+	var c := UI.card(Color(0.06, 0.07, 0.1, 0.9), 12, 18)
+	var l := UI.label(txt, 22, UI.GOLD, UI.big)
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	c.add_child(l)
+	root_ui.add_child(c)
+	c.reset_size()
+	var vp := get_viewport().get_visible_rect().size
+	c.position = Vector2((vp.x - c.size.x) * 0.5, 90)
+	c.modulate.a = 0.0
+	var tw := create_tween()
+	tw.tween_property(c, "modulate:a", 1.0, 0.2)
+	tw.parallel().tween_property(c, "position:y", 110.0, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_interval(2.2)
+	tw.tween_property(c, "modulate:a", 0.0, 0.4)
+	tw.tween_callback(c.queue_free)
+
+func _open_hall() -> void:
+	var v := _new_panel("Trophy Hall", 560)
+	var st: Dictionary = Save.d.get("stats", {})
+	var grid := GridContainer.new(); grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 30); grid.add_theme_constant_override("v_separation", 6)
+	for row in [["Expeditions", int(Save.d["matches"])], ["Made it out", int(Save.d.get("extracts", 0))],
+			["Hunters knocked out", int(st.get("knocks", 0))], ["Best match, kills", int(st.get("best_kills", 0))],
+			["Most gems carried home", int(st.get("best_gems", 0))], ["Kin brought home", int(st.get("caught", 0))]]:
+		grid.add_child(UI.label(row[0], 16, UI.MUTED))
+		grid.add_child(UI.label(str(row[1]), 18, UI.GOLD, UI.big))
+	v.add_child(grid)
+	v.add_child(UI.label("Your kin", 13, UI.MUTED))
+	var kr := HFlowContainer.new()
+	kr.add_theme_constant_override("h_separation", 8)
+	for rec in Save.d["roster"]:
+		var sp: Dictionary = Data.KIN[rec["species"]]
+		var c := UI.card(UI.CARD, 6, 10)
+		c.add_child(UI.label("%s · %s · lv %d" % [rec["name"], sp["name"], int(rec["level"])], 14, sp["color"]))
+		kr.add_child(c)
+	v.add_child(kr)
+
 # ---- house
 func _open_house() -> void:
 	var v := _new_panel("Your house", 620)
@@ -794,7 +1156,7 @@ func _open_settings() -> void:
 			if key == "volume": Sfx.set_volume(val))
 		r.add_child(sl)
 		v.add_child(r)
-	v.add_child(UI.label("In a match: WASD move · LMB fire · Shift dash · Space jump · RMB throw or call back your kin · Q kin skill · E class ability · F catch, revive, open · 1 tonic · Tab scores · Esc pause", 13, UI.MUTED))
+	v.add_child(UI.label("In a match: WASD move · LMB fire · Shift dash · Space jump (hold to glide) · RMB throw or call back your kin · Q kin skill · E class ability · F catch, revive, open · 1 tonic · Tab scores · Esc pause", 13, UI.MUTED))
 	var row := UI.hbox(8)
 	row.add_child(UI.button("Save", func(): Save.save_game(); _close_panel()))
 	row.add_child(UI.button("Start over", func():

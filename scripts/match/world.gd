@@ -306,7 +306,7 @@ func build_meshes() -> void:
 	for z in h:
 		for x in w:
 			var i := idx(x, z)
-			if kind[i] == T_VOID:
+			if kind[i] == T_VOID or bridge.has(i):
 				continue
 			var y := level[i] * LEVEL
 			var cols := []
@@ -328,7 +328,7 @@ func build_meshes() -> void:
 			for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 				var nx: int = x + dir.x; var nz: int = z + dir.y
 				var ny := -1.0e9
-				if inb(nx, nz) and kind[idx(nx, nz)] != T_VOID:
+				if inb(nx, nz) and kind[idx(nx, nz)] != T_VOID and not bridge.has(idx(nx, nz)):
 					ny = level[idx(nx, nz)] * LEVEL
 				if ny >= y - 0.001:
 					continue
@@ -417,7 +417,7 @@ func _decorate() -> void:
 	for z in h:
 		for x in w:
 			var i := idx(x, z)
-			if kind[i] != T_GROUND or paint.has(i):
+			if kind[i] != T_GROUND or paint.has(i) or bridge.has(i):
 				continue
 			for _k in 2:
 				if drng.randf() < 0.45:
@@ -433,7 +433,7 @@ func _decorate() -> void:
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	deco.add_child(mmi)
 	var sea := MeshInstance3D.new()
-	var pm := PlaneMesh.new(); pm.size = Vector2(w * 5, h * 5)
+	var pm := PlaneMesh.new(); pm.size = Vector2(maxi(w, h) * 14, maxi(w, h) * 14)
 	sea.mesh = pm
 	var cm := ShaderMaterial.new(); cm.shader = load("res://shaders/clouds.gdshader")
 	if clouds.size() == 2:
@@ -452,25 +452,51 @@ func _decorate() -> void:
 ## The home island: one flat round island with room for the farm, house and portal.
 func make_home(seed_val: int) -> void:
 	rng.seed = seed_val
-	w = 30; h = 26
+	w = 72; h = 50
 	kind.resize(w * h); kind.fill(T_VOID)
 	level.resize(w * h); level.fill(0)
 	island.resize(w * h); island.fill(-1)
 	depth.resize(w * h); depth.fill(0.0)
 	islands.clear(); pads.clear(); spawns.clear(); portal_spots.clear(); chest_spots.clear(); camp_spots.clear(); wild_spots.clear()
+	bridge.clear()
 	var shape := FastNoiseLite.new(); shape.seed = seed_val; shape.frequency = 0.12
-	var c := Vector2(w / 2.0, h / 2.0)
-	var cells: Array = []
-	for z in h:
-		for x in w:
-			var d := Vector2((x + 0.5 - c.x) / 12.0, (z + 0.5 - c.y) / 10.0).length()
-			if d + shape.get_noise_2d(x, z) * 0.18 < 1.0 and x > 0 and z > 0 and x < w - 1 and z < h - 1:
-				var i := idx(x, z)
-				kind[i] = T_GROUND
-				island[i] = 0
-				depth[i] = -(2.5 + (1.0 - d) * 5.0 + rng.randf() * 1.2)
-				cells.append(Vector2i(x, z))
-	islands.append({"c": c, "r": 13.0, "base": 0, "cells": cells})
+	var defs: Array = [["main", Vector2(38, 32), Vector2(14, 11)]]
+	for k in Data.ISLES:
+		defs.append([k, Data.ISLES[k]["c"], Data.ISLES[k]["r"]])
+	for di in defs.size():
+		var c: Vector2 = defs[di][1]; var rr: Vector2 = defs[di][2]
+		var cells: Array = []
+		for z in range(maxi(1, int(c.y - rr.y - 2)), mini(h - 1, int(c.y + rr.y + 2))):
+			for x in range(maxi(1, int(c.x - rr.x - 2)), mini(w - 1, int(c.x + rr.x + 2))):
+				var d := Vector2((x + 0.5 - c.x) / rr.x, (z + 0.5 - c.y) / rr.y).length()
+				if d + shape.get_noise_2d(x, z) * 0.14 < 1.0:
+					var i := idx(x, z)
+					kind[i] = T_GROUND
+					island[i] = di
+					depth[i] = -(2.0 + (1.0 - d) * (5.0 if di == 0 else 3.6) + rng.randf() * 1.0)
+					cells.append(Vector2i(x, z))
+		islands.append({"id": defs[di][0], "c": c, "r": rr.x, "base": 0, "cells": cells})
+
+## Walkable plank tiles over the void between home islands. They are drawn separately.
+var bridge := {}
+
+func bridge_tiles(rect: Array) -> Array:
+	var out: Array = []
+	for z in range(int(rect[1]), int(rect[3]) + 1):
+		for x in range(int(rect[0]), int(rect[2]) + 1):
+			if inb(x, z) and (kind[idx(x, z)] == T_VOID or bridge.has(idx(x, z))):
+				out.append(Vector2i(x, z))
+	return out
+
+func open_bridge(tiles: Array) -> void:
+	for t in tiles:
+		var i := idx(t.x, t.y)
+		kind[i] = T_GROUND
+		bridge[i] = true
+
+func island_id(x: float, z: float) -> String:
+	var i := island_of(x, z)
+	return islands[i]["id"] if i >= 0 and i < islands.size() else ""
 
 func set_block_rect(x0: int, z0: int, x1: int, z1: int) -> void:
 	for z in range(z0, z1 + 1):
@@ -494,12 +520,14 @@ func paint_tile(x: int, z: int, col: Color) -> void:
 		paint[idx(x, z)] = col
 
 ## A dirt path between two tile positions, one tile wide with a little wobble.
-func paint_path(a: Vector2i, b: Vector2i, col: Color) -> void:
+func paint_path(a: Vector2i, b: Vector2i, col: Color, wide := true) -> void:
 	var n := maxi(absi(b.x - a.x), absi(b.y - a.y)) + 1
 	for i in n:
 		var t := float(i) / maxf(1.0, n - 1)
 		var x := int(round(lerpf(a.x, b.x, t))); var z := int(round(lerpf(a.y, b.y, t)))
 		paint_tile(x, z, col)
+		if not wide:
+			continue
 		if absi(b.x - a.x) > absi(b.y - a.y):
 			paint_tile(x, z + 1, col)
 		else:

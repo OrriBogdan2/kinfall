@@ -225,6 +225,8 @@ func _spawn_hunters() -> void:
 					player.ai = bot_brain.new_mind(rng, 0.7)
 				player.teleport(at)
 				player.tonics = int(Save.d["items"].get("tonic", 0))
+				if Save.has_building("workshop"):
+					player.glide_max = Hunter.GLIDE_TIME * 1.5
 				if player.kin:
 					_apply_treat(player.kin)
 				continue
@@ -479,6 +481,7 @@ func eliminate(h: Hunter, by: Ent, why: String) -> void:
 			drop("seed", h.pos + Vector3(0, 0.5, 0), int(h.seeds[s]), s)
 		for rec in h.caught:
 			spawn_wild(rec, h.pos, true)
+	h.lost_gems = h.gems
 	h.gems = 0; h.seeds = {}; h.caught = []
 	if h.kin:
 		if h.ctrl == "bot" and not world.is_void(h.pos.x, h.pos.z) and h.kin.state != "fainted":
@@ -811,6 +814,7 @@ func _gather_input() -> void:
 	if paused:
 		player.inp["move"] = Vector2.ZERO
 	player.inp["interact"] = Input.is_action_pressed("interact")
+	player.inp["glide"] = Input.is_action_pressed("jump") and not paused
 	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["kin_skill", "skill"]]:
 		if Input.is_action_just_pressed(a[0]):
 			pending_input[a[1]] = true
@@ -825,6 +829,11 @@ func step(dt: float) -> void:
 	if over:
 		return
 	time += dt
+	if opts.get("glide_demo", false) and player:
+		if time < 0.05:
+			player.teleport(player.pos + Vector3(0, 6, 0)); player.grounded = false
+		player.inp["glide"] = true
+		player.inp["move"] = Vector2(1, 0.3).normalized()
 	if player and not player.out:
 		for k in ["dash", "jump", "sig", "reload", "tonic"]:
 			if pending_input[k]:
@@ -1091,6 +1100,7 @@ func _finish() -> void:
 	r["tier"] = tier
 	if player:
 		r["gems"] = player.gems
+		r["lost_gems"] = player.lost_gems
 		r["seeds"] = player.seeds.duplicate()
 		r["caught"] = player.caught.duplicate(true)
 		r["kills"] = player.kills
@@ -1144,6 +1154,8 @@ func _spawn_net_hunters(spots: Array, names: Array) -> void:
 			var rec: Dictionary = Save.active_kin()
 			player = make_hunter("P" + peer, t, String(r["cls"]), String(r["name"]), "local", rec, at)
 			player.tonics = int(Save.d["items"].get("tonic", 0))
+			if Save.has_building("workshop"):
+				player.glide_max = Hunter.GLIDE_TIME * 1.5
 			if player.kin:
 				_apply_treat(player.kin)
 		else:
@@ -1188,6 +1200,7 @@ func _flags(h: Hunter) -> int:
 	if h.grounded: f |= 32
 	if h.fortify_t > 0.0: f |= 64
 	if h.reload_t > 0.0: f |= 128
+	if h.gliding: f |= 256
 	return f
 
 const KIN_STATES := ["shoulder", "flying", "flying_home", "active", "returning", "fainted", "reviving", "wild", "dazed"]
@@ -1304,6 +1317,7 @@ func _net_apply(e: Ent, it: Array) -> void:
 			h.roll_t = 0.05 if f & 16 != 0 else 0.0
 			h.grounded = f & 32 != 0
 			h.fortify_t = 0.3 if f & 64 != 0 else 0.0
+			h.gliding = f & 256 != 0
 			h.down_hp = it[12]; h.revive = maxf(h.revive if h.revive > float(it[13]) and _rev_out.has(h.nid) else 0.0, float(it[13]))
 			h.shield = it[17]; h.extract_prog = it[18]
 			h.kills = int(it[19]); h.knocks = int(it[20]); h.dmg_done = float(it[21])
@@ -1485,7 +1499,7 @@ func _tips() -> void:
 	_tip_t += get_process_delta_time()
 	if _tip_t < 1.0:
 		return
-	_tip("move", "WASD to move, aim with the mouse, hold left click to shoot. Shift dashes, Space jumps.")
+	_tip("move", "WASD to move, aim with the mouse, hold left click to shoot. Shift dashes, Space jumps. Hold Space in the air to glide.")
 	var k: Kin = player.kin
 	if k == null:
 		return

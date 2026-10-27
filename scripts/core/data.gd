@@ -131,6 +131,34 @@ const TIERS := [
 		"sky": Color("0d0b10"), "ambient": Color("d0a0a0"), "sun": Color("ffb090"), "clouds": [Color(0.07, 0.03, 0.04), Color(0.3, 0.12, 0.12)]},
 ]
 
+## Home islands beyond the first one. Build a bridge to reach them. Rects are in home grid tiles.
+const ISLES := {
+	"orchard": {"name": "Orchard Isle", "cost": 100, "need": 1, "c": Vector2(60, 38), "r": Vector2(6.8, 5.6),
+		"bridge": [46, 38, 56, 39], "sign": Vector2(49.5, 36.8), "desc": "A sunny isle with room for a greenhouse."},
+	"meadow": {"name": "Kin Meadow", "cost": 140, "need": 2, "c": Vector2(12, 30), "r": Vector2(7.2, 6.2),
+		"bridge": [17, 30, 26, 31], "sign": Vector2(25.2, 29.0), "desc": "Open fields where kin love to play. Room for a cottage and a training yard."},
+	"summit": {"name": "Lookout Peak", "cost": 220, "need": 4, "c": Vector2(45, 9), "r": Vector2(7.6, 5.6),
+		"bridge": [44, 12, 45, 24], "sign": Vector2(46.8, 23.6), "desc": "A high rock for a vault and a trophy hall."},
+}
+
+## Buildings you can buy for your islands. "rect" is the tile footprint [x0, z0, x1, z1].
+const BUILDINGS := {
+	"workshop": {"name": "Workshop", "isle": "main", "cost": 90, "rect": [28, 26, 30, 28],
+		"desc": "Tune your glider. You glide 50% longer on expeditions."},
+	"cottage": {"name": "Kin Cottage", "isle": "main", "cost": 110, "rect": [27, 35, 29, 36],
+		"desc": "Kin who stay home rest here and gain 2 trust after every expedition."},
+	"greenhouse": {"name": "Greenhouse", "isle": "orchard", "cost": 150, "rect": [58, 34, 61, 36],
+		"desc": "Four more plots. Crops planted here grow twice as fast."},
+	"cottage2": {"name": "Meadow Cottage", "isle": "meadow", "cost": 140, "rect": [8, 26, 10, 27],
+		"desc": "Kin who stay home gain 2 more trust after every expedition."},
+	"dojo": {"name": "Training Yard", "isle": "meadow", "cost": 180, "rect": [11, 32, 14, 34],
+		"desc": "Kin who stay home gain 40 XP after every expedition."},
+	"vault": {"name": "Vault", "isle": "summit", "cost": 220, "rect": [41, 7, 43, 8],
+		"desc": "If you go down, you still keep a third of the gems you were carrying."},
+	"hall": {"name": "Trophy Hall", "isle": "summit", "cost": 120, "rect": [47, 6, 49, 8],
+		"desc": "Keeps your records and every kin you've brought home."},
+}
+
 const MATCH := {
 	"length": 360.0,       # seconds until the islands fall
 	"portal_open": 150.0,  # first exit portals open this many seconds in

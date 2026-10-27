@@ -52,6 +52,8 @@ func show_result(r: Dictionary) -> void:
 		v.add_child(UI.label("%s was stranded in the Hollow and only just made it home. It trusts you a lot less now." % s["kin"]["name"], 16, UI.BAD))
 	if s.get("kin_home", false):
 		v.add_child(UI.label("%s found its own way home. It trusts you that much." % s["kin"]["name"], 16, UI.GOOD))
+	if int(s.get("vault_gems", 0)) > 0:
+		v.add_child(UI.label("Your vault kept %d of the gems you dropped." % int(s["vault_gems"]), 15, UI.GOLD))
 	if s["crops_ready"] > 0:
 		v.add_child(UI.label("%d crop%s ready to harvest on your farm." % [s["crops_ready"], "s" if s["crops_ready"] > 1 else ""], 15, UI.GOOD))
 	v.add_child(UI.spacer(6))

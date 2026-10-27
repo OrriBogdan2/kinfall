@@ -30,6 +30,10 @@ func fresh() -> Dictionary:
 		"extracts": 0,
 		"settings": {"volume": 0.8, "shake": 1.0, "cam_lead": 1.0},
 		"tutorial": {},
+		"buildings": [],
+		"bridges": [],
+		"gh_plots": _empty_plots(4),
+		"stats": {"kills": 0, "best_kills": 0, "best_gems": 0, "caught": 0, "knocks": 0},
 	}
 
 func _empty_plots(n: int) -> Array:
@@ -98,6 +102,12 @@ func remember(k: Dictionary, kind: String, text: String, trust_delta := 0.0) -> 
 	while mem.size() > MAX_MEMORY:
 		mem.pop_front()
 	k["trust"] = clampf(float(k["trust"]) + trust_delta, 0.0, 100.0)
+
+func has_building(b: String) -> bool:
+	return d.get("buildings", []).has(b)
+
+func has_bridge(b: String) -> bool:
+	return d.get("bridges", []).has(b)
 
 func add_item(key: String, n: int) -> void:
 	d["items"][key] = int(d["items"].get(key, 0)) + n

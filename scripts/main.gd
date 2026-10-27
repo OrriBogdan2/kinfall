@@ -11,6 +11,7 @@ func _ready() -> void:
 		if a.begins_with("--seed="): opts["seed"] = int(a.substr(7))
 		if a == "--god": opts["god"] = true
 		if a == "--autoplay": opts["autoplay"] = true
+		if a == "--glide-demo": opts["glide_demo"] = true
 		if a == "--skip-tutorial": Save.d["tutorial"]["home"] = true
 		if a.begins_with("--teams="): opts["teams"] = int(a.substr(8))
 		if a.begins_with("--tier="): opts["tier"] = int(a.substr(7))

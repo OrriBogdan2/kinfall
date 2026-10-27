@@ -8,6 +8,9 @@ const DASH_TIME := 0.17
 const DASH_REGEN := 2.2
 const LEDGE_REACH := 3.4
 const LEDGE_CD := 5.0
+const GLIDE_FALL := 2.3
+const GLIDE_SPEED := 7.4
+const GLIDE_TIME := 3.2
 
 var pname := "Hunter"
 var cls := "medium"
@@ -16,7 +19,7 @@ var wid := "repeater"
 var wpn: Dictionary = {}
 var ctrl := "bot"             # local | bot | remote
 var inp := {"move": Vector2.ZERO, "aim": Vector3.ZERO, "fire": false, "dash": false, "jump": false,
-	"throw": false, "skill": false, "sig": false, "interact": false, "reload": false, "tonic": false}
+	"throw": false, "skill": false, "sig": false, "interact": false, "reload": false, "tonic": false, "glide": false}
 var base_speed := 5.4
 var ammo := 12
 var reload_t := 0.0
@@ -49,6 +52,7 @@ var extracted := false
 var extract_prog := 0.0
 var kin: Ent = null
 var gems := 0
+var lost_gems := 0
 var seeds := {}
 var caught: Array = []        # kin records caught this match
 var kills := 0
@@ -61,6 +65,12 @@ var regen_wait := 0.0
 var land_t := 0.0
 var ghost_t := 0.0
 var step_t := 0.0
+var gliding := false
+var glide_fuel := 1.0
+var glide_max := GLIDE_TIME
+var glide_cd := 0.0
+var glide_k := 0.0             # how far the glider is unfolded, for the model
+var wind_t := 0.0
 
 func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, name_txt: String, control: String) -> void:
 	setup(match_node, id)
@@ -125,6 +135,10 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 			m.fx.number(pos + Vector3(0, 1.6, 0), a, Color("cfe8ff"), false)
 			return 0.0
 	regen_wait = 4.0
+	if gliding and d > 0.0:
+		gliding = false
+		glide_cd = 0.8
+		m.fx.burst(pos + Vector3(0, 1.6, 0), Color("f3eee2"), 10, 3.0, 0.4, 8.0)
 	if extract_prog > 0.0:
 		extract_prog = 0.0
 	return d
@@ -169,7 +183,7 @@ func do_dash() -> void:
 	m.fx.dash_trail(self)
 
 func can_fire() -> bool:
-	return not (reload_t > 0.0 or roll_t > 0.0 or downed or out or stun_t > 0.0 or grap.size() > 0)
+	return not (reload_t > 0.0 or roll_t > 0.0 or downed or out or stun_t > 0.0 or grap.size() > 0 or gliding)
 
 func fire() -> void:
 	if not can_fire() or fire_cd > 0.0:
@@ -268,7 +282,7 @@ func sim(dt: float) -> void:
 	if out or extracted:
 		return
 	tick_status(dt)
-	for k in ["inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t"]:
+	for k in ["inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd"]:
 		set(k, maxf(0.0, get(k) - dt))
 	if shield_t > 0.0:
 		shield_t -= dt
@@ -346,13 +360,21 @@ func _physics(dt: float) -> void:
 			hv = roll_dir * spd * 1.1
 	elif fly_t > 0.0:
 		fly_t -= dt
+	elif gliding:
+		var gw := mv * GLIDE_SPEED
+		if mv.length() < 0.1:
+			gw = hv.normalized() * minf(cur, GLIDE_SPEED * 0.6) if cur > 0.1 else Vector2.ZERO
+		hv += (gw - hv) * (1.0 - exp(-3.2 * dt))
 	else:
 		var wish := mv * spd
 		var over := cur > spd * 1.15
 		var k := (2.6 if over else 16.0) if grounded else (1.5 if over else 3.5)
 		hv += (wish - hv) * (1.0 - exp(-k * dt))
 	vel.x = hv.x; vel.z = hv.y
-	if not grounded:
+	_update_glide(dt)
+	if gliding:
+		vel.y = lerpf(vel.y, -GLIDE_FALL, 1.0 - exp(-7.0 * dt))
+	elif not grounded:
 		vel.y -= GRAV * (1.3 if vel.y < 0.0 and fly_t <= 0.0 else 1.0) * dt
 	var guard := grounded and roll_t <= 0.0 and hv.length() <= spd * 1.25
 	# horizontal with walls; mantle onto ledges you run or fall into
@@ -381,6 +403,9 @@ func _physics(dt: float) -> void:
 			vel.y = 0.0
 			grounded = true
 			fly_t = 0.0
+			if gliding:
+				gliding = false
+				m.fx.dust(pos, 5)
 			if fv < -11.0 or cur > spd * 1.3:
 				m.fx.dust(pos, 6)
 				squash = 0.35
@@ -396,9 +421,28 @@ func _physics(dt: float) -> void:
 	if pos.y < -14.0:
 		fall_out()
 
+## Hold jump while falling to open the glider. It folds when you land, run out, dash, or get hit.
+func _update_glide(dt: float) -> void:
+	if grounded:
+		glide_fuel = minf(1.0, glide_fuel + dt / 1.2)
+	var can: bool = not grounded and roll_t <= 0.0 and fly_t <= 0.0 and glide_cd <= 0.0 and not downed and stun_t <= 0.0 \
+		and m.time - kb_t > 0.6 and glide_fuel > 0.0
+	var want: bool = inp.get("glide", false)
+	if gliding:
+		if not want or not can:
+			gliding = false
+			if glide_fuel <= 0.0:
+				glide_cd = 0.5
+		else:
+			glide_fuel = maxf(0.0, glide_fuel - dt / glide_max)
+	elif want and can and vel.y < 0.0 and glide_fuel > 0.15:
+		gliding = true
+		m.sfx("glide", pos, -4.0)
+		m.fx.burst(pos + Vector3(0, 1.7, 0), Color("f3eee2"), 8, 2.0, 0.35, 0.0)
+
 # ledge grab: slip or get nudged off an edge and a grapple pulls you back. Big knockbacks still kill.
 func _try_ledge_grab() -> void:
-	if grounded or fly_t > 0.0 or grap.size() > 0 or vel.y >= 0.0 or stun_t > 0.0 or downed or grap_cd > 0.0 or not over_void():
+	if gliding or grounded or fly_t > 0.0 or grap.size() > 0 or vel.y >= 0.0 or stun_t > 0.0 or downed or grap_cd > 0.0 or not over_void():
 		return
 	if m.time - kb_t < 1.2 and Vector2(vel.x, vel.z).length() > 9.5:
 		return
@@ -490,6 +534,16 @@ func render(delta: float, alpha: float) -> void:
 		if ghost_t <= 0.0 and model.visible:
 			ghost_t = 0.028
 			m.fx.ghost(position, face, tc, float(cdat["scale"]))
+	elif gliding:
+		# hang under the glider, legs trailing
+		torso.rotation.x = -0.35
+		torso.rotation.z = -lean_s * 1.6
+		legs.get_node("LegL").rotation.x = 0.5 + sin(m.time * 6.0) * 0.12
+		legs.get_node("LegR").rotation.x = 0.7 - sin(m.time * 6.0) * 0.12
+		wind_t -= delta
+		if wind_t <= 0.0:
+			wind_t = 0.09
+			m.fx.burst(pos + Vector3(randf_range(-0.8, 0.8), 1.9, randf_range(-0.4, 0.4)), Color(1, 1, 1, 0.5), 2, 1.0, 0.4, -1.0, 0.7, Vector3(-vel.x, 0, -vel.z).normalized(), 20.0)
 	elif not grounded and pad.is_empty():
 		# tuck the legs in the air
 		legs.get_node("LegL").rotation.x = -0.6
@@ -511,6 +565,13 @@ func render(delta: float, alpha: float) -> void:
 	else:
 		rig.rotation.x = lerpf(rig.rotation.x, 0.0, delta * 10.0)
 		rig.position.y = 0.0
+	glide_k = move_toward(glide_k, 1.0 if gliding else 0.0, delta * (7.0 if gliding else 9.0))
+	var gl: Node3D = torso.get_node("Glider")
+	gl.visible = glide_k > 0.02
+	if gl.visible:
+		var ek := 1.0 - pow(1.0 - glide_k, 3.0)
+		gl.scale = Vector3(ek * (1.0 + sin(m.time * 9.0) * 0.02), ek, ek)
+		gl.rotation.x = 0.35 * ek - 0.1
 	var gun: Node3D = torso.get_node("Gun")
 	gun.position.z = -0.18 + recoil * 0.08
 	gun.visible = not downed

@@ -73,7 +73,7 @@ func _build_pause() -> void:
 	var t := Label.new(); t.text = "Paused"; t.add_theme_font_override("font", big); t.add_theme_font_size_override("font_size", 36); t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(t)
 	var keys := Label.new()
-	keys.text = "WASD move · LMB fire · Shift dash · Space jump\nRMB throw / call back your kin · Q kin skill\nE class ability · F catch, revive, open · 1 tonic · Tab scores"
+	keys.text = "WASD move · LMB fire · Shift dash · Space jump, hold to glide\nRMB throw / call back your kin · Q kin skill\nE class ability · F catch, revive, open · 1 tonic · Tab scores"
 	keys.add_theme_color_override("font_color", MUTED); keys.add_theme_font_size_override("font_size", 14)
 	keys.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(keys)
@@ -510,3 +510,9 @@ func _draw_overhead(p: Hunter) -> void:
 	if p.reload_t > 0.0:
 		var rf := 1.0 - p.reload_t / float(p.wpn["reload"])
 		c.draw_rect(Rect2(sp + Vector2(-w * 0.5, 21), Vector2(w * rf, 2)), Color("ffe7a8"))
+	# glider cloth left, shown while gliding or recharging
+	if p.gliding or p.glide_fuel < 0.999:
+		var gr := Rect2(sp + Vector2(-w * 0.5, -8), Vector2(w, 3))
+		c.draw_rect(gr.grow(1.0), Color(0.04, 0.04, 0.06, 0.6))
+		var gcol := Color("f3eee2") if p.glide_fuel > 0.25 else Color("ff9a7a")
+		c.draw_rect(Rect2(gr.position, Vector2(w * p.glide_fuel, 3)), gcol if p.gliding else Color(gcol, 0.5))

@@ -113,9 +113,15 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 	if a.has("dash_dir"):
 		inp["move"] = a["dash_dir"]
 		a.erase("dash_dir")
-	# recover if knocked off: jump toward the nearest ground
-	if not h.grounded and h.over_void() and h.vel.y < 0.0 and h.coyote > 0.0:
-		inp["jump"] = true
+	# recover if knocked off: jump toward the nearest ground, then glide back to it
+	inp["glide"] = false
+	if not h.grounded and h.over_void():
+		if h.vel.y < 0.0 and h.coyote > 0.0:
+			inp["jump"] = true
+		var back := _nearest_ground(m, h)
+		if back != Vector2.ZERO:
+			inp["move"] = back
+			inp["glide"] = h.ai["skill"] > 0.35
 	# unstick
 	if Vector2(h.pos.x - a["last_pos"].x, h.pos.z - a["last_pos"].z).length() < 0.03 and move.length() > 0.5:
 		a["stuck"] += dt
@@ -129,6 +135,18 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 	else:
 		a["stuck"] = 0.0
 	a["last_pos"] = h.pos
+
+func _nearest_ground(m: Match, h: Hunter) -> Vector2:
+	var best := Vector2.ZERO; var bd := 1e9
+	for a in 16:
+		var ang := TAU * a / 16.0
+		var dv := Vector2(cos(ang), sin(ang))
+		for r in [2.0, 4.0, 6.0, 9.0, 12.0]:
+			var x: float = h.pos.x + dv.x * r; var z: float = h.pos.z + dv.y * r
+			if not m.world.is_void(x, z) and not m.world.is_block(x, z) and m.world.ground_at(x, z) < h.pos.y + 1.5:
+				if r < bd: bd = r; best = dv
+				break
+	return best
 
 func _safe(m: Match, h: Hunter, d: Vector2, dist: float) -> bool:
 	for k in [0.5, 1.0]:

@@ -128,12 +128,43 @@ func apply_result(r: Dictionary) -> Dictionary:
 			else:
 				Save.remember(k, "stranded", "was stranded in the Hollow for a long time before limping home", -15.0)
 				out["kin_stranded"] = true
-	# crops grow one stage per match
+	# the vault keeps a third of what you were carrying when you go down
+	if not won and Save.has_building("vault") and int(r.get("lost_gems", 0)) > 0:
+		out["vault_gems"] = int(r["lost_gems"]) / 3
+		d["gems"] = int(d["gems"]) + out["vault_gems"]
+	# kin who stayed home rest in the cottages and train in the yard
+	var rest := (2.0 if Save.has_building("cottage") else 0.0) + (2.0 if Save.has_building("cottage2") else 0.0)
+	for hk in d["roster"]:
+		if hk == k:
+			continue
+		if rest > 0.0:
+			hk["trust"] = clampf(float(hk["trust"]) + rest, 0.0, 100.0)
+		if Save.has_building("dojo"):
+			hk["xp"] = int(hk.get("xp", 0)) + 40
+			while int(hk["xp"]) >= 100 * int(hk["level"]):
+				hk["xp"] = int(hk["xp"]) - 100 * int(hk["level"])
+				hk["level"] = int(hk["level"]) + 1
+	# records for the trophy hall
+	var stt: Dictionary = d["stats"]
+	stt["kills"] = int(stt.get("kills", 0)) + int(r.get("kills", 0))
+	stt["knocks"] = int(stt.get("knocks", 0)) + int(r.get("knocks", 0))
+	stt["best_kills"] = maxi(int(stt.get("best_kills", 0)), int(r.get("kills", 0)))
+	if won:
+		stt["best_gems"] = maxi(int(stt.get("best_gems", 0)), int(r.get("gems", 0)))
+		stt["caught"] = int(stt.get("caught", 0)) + r.get("caught", []).size()
+	# crops grow one stage per match, twice as fast in the greenhouse
 	for p in d["plots"]:
 		if p["crop"] != "":
 			p["stage"] = int(p["stage"]) + 1
 			if int(p["stage"]) == int(Data.CROPS[p["crop"]]["grow"]):
 				out["crops_ready"] += 1
+	if Save.has_building("greenhouse"):
+		for p in d["gh_plots"]:
+			if p["crop"] != "":
+				var before_s := int(p["stage"])
+				p["stage"] = mini(before_s + 2, int(Data.CROPS[p["crop"]]["grow"]))
+				if before_s < int(Data.CROPS[p["crop"]]["grow"]) and int(p["stage"]) == int(Data.CROPS[p["crop"]]["grow"]):
+					out["crops_ready"] += 1
 	Save.save_game()
 	return out
 

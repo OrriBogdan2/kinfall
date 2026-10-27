@@ -132,6 +132,17 @@ static func hunter(cls: String, team_col: Color, weapon: String) -> Node3D:
 			part(gun, box(0.08, 0.18, 0.12), m_dark, Vector3(0, -0.15, -0.02))
 	var muzzle := Node3D.new(); muzzle.name = "Muzzle"; muzzle.position = Vector3(0, 0.02, -0.75); gun.add_child(muzzle)
 	var shoulder := Node3D.new(); shoulder.name = "Shoulder"; shoulder.position = Vector3(-0.3, 0.78, 0.04); torso.add_child(shoulder)
+	# a folding cloth glider that pops out above the backpack
+	var glider := Node3D.new(); glider.name = "Glider"; glider.position = Vector3(0, 0.62, 0.12); glider.visible = false
+	torso.add_child(glider)
+	var m_cloth := toon(Color("f3eee2")); var m_frame := toon(Color("5a4636"))
+	part(glider, box(0.86, 0.04, 0.72), m_cloth, Vector3(-0.42, 0.98, 0), Vector3.ONE, Vector3(0, 0, 0.16))
+	part(glider, box(0.86, 0.04, 0.72), m_cloth, Vector3(0.42, 0.98, 0), Vector3.ONE, Vector3(0, 0, -0.16))
+	part(glider, box(0.3, 0.05, 0.74), m_acc, Vector3(-0.66, 0.94, 0), Vector3.ONE, Vector3(0, 0, 0.16))
+	part(glider, box(0.3, 0.05, 0.74), m_acc, Vector3(0.66, 0.94, 0), Vector3.ONE, Vector3(0, 0, -0.16))
+	part(glider, box(1.8, 0.05, 0.06), m_frame, Vector3(0, 1.0, -0.36))
+	part(glider, cyl(0.025, 0.025, 0.9), m_frame, Vector3(-0.22, 0.52, 0), Vector3.ONE, Vector3(0, 0, -0.3))
+	part(glider, cyl(0.025, 0.025, 0.9), m_frame, Vector3(0.22, 0.52, 0), Vector3.ONE, Vector3(0, 0, 0.3))
 	var ring := MeshInstance3D.new(); ring.name = "TeamRing"; ring.mesh = flat_quad(1.0)
 	ring.material_override = ring_mat(team_col, 0.16); ring.position = Vector3(0, 0.04, 0)
 	root.add_child(ring)
@@ -430,3 +441,118 @@ static func signpost(text_lines: Array) -> Node3D:
 	l.position = Vector3(0, 1.25, 0.1)
 	root.add_child(l)
 	return root
+
+# ---------------------------------------------------------------- home buildings
+static func building(id: String) -> Node3D:
+	var root := Node3D.new()
+	var body := Node3D.new(); body.name = "Body"; root.add_child(body)
+	var wood := toon(Color("7a5236")); var stone := toon(Color("9a948c")); var dark := toon(Color("4a4550"))
+	var glass := toon(Color("ffd98a"), false, 0.8)
+	match id:
+		"workshop":
+			part(body, box(3.0, 1.9, 2.4), toon(Color("d9c3a0")), Vector3(0, 0.95, -0.1))
+			var pr := PrismMesh.new(); pr.size = Vector3(3.5, 1.2, 2.8)
+			part(body, pr, toon(Color("4f6a8a")), Vector3(0, 2.5, -0.1))
+			part(body, box(1.3, 1.3, 0.08), dark, Vector3(-0.5, 0.65, 1.12))
+			part(body, box(0.6, 0.5, 0.08), glass, Vector3(0.85, 1.2, 1.12))
+			part(body, box(0.4, 1.4, 0.4), stone, Vector3(1.1, 2.7, -0.6))
+			# anvil and a glider hung up to dry
+			part(body, box(0.5, 0.35, 0.3), dark, Vector3(1.0, 0.18, 1.6))
+			part(body, box(0.7, 0.12, 0.3), dark, Vector3(1.0, 0.42, 1.6))
+			part(body, box(1.6, 0.04, 0.5), toon(Color("f3eee2")), Vector3(-0.3, 1.75, 1.2), Vector3.ONE, Vector3(-0.4, 0, 0))
+			part(body, box(0.3, 0.05, 0.52), toon(Color("ff9a4a")), Vector3(-0.95, 1.76, 1.2), Vector3.ONE, Vector3(-0.4, 0, 0))
+		"cottage", "cottage2":
+			var wall := Color("f3dcc4") if id == "cottage" else Color("dfe8cf")
+			var roof := Color("5a9ab8") if id == "cottage" else Color("c28a3a")
+			part(body, box(2.6, 1.5, 2.0), toon(wall), Vector3(0, 0.75, 0))
+			var pr := PrismMesh.new(); pr.size = Vector3(3.0, 1.3, 2.4)
+			part(body, pr, toon(roof), Vector3(0, 2.15, 0))
+			part(body, cyl(0.38, 0.38, 0.08, 16), wood, Vector3(0, 0.38, 1.02), Vector3(1, 1, 1), Vector3(PI / 2, 0, 0))
+			part(body, cyl(0.25, 0.25, 0.06, 12), glass, Vector3(0.85, 1.0, 1.02), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(body, cyl(0.25, 0.25, 0.06, 12), glass, Vector3(-0.85, 1.0, 1.02), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(body, box(0.7, 0.16, 0.2), wood, Vector3(0.85, 0.66, 1.1))
+			for i in 3:
+				part(body, sphere(0.08, 6), toon([Color("ff8fb0"), Color("ffd35a"), Color("b48cf2")][i], false, 0.2), Vector3(0.62 + i * 0.22, 0.8, 1.12))
+			part(body, sphere(0.2, 8), toon(Color("ffb3c6"), false, 0.5), Vector3(0, 2.9, 0))
+		"greenhouse":
+			var frame := toon(Color("f0f0ea"))
+			var pane := glow_mat(Color(0.7, 0.95, 1.0, 0.22))
+			part(body, box(3.6, 0.2, 2.8), stone, Vector3(0, 0.1, 0))
+			part(body, box(3.4, 1.6, 2.6), pane, Vector3(0, 1.0, 0))
+			var pr := PrismMesh.new(); pr.size = Vector3(3.5, 1.0, 2.7)
+			part(body, pr, pane, Vector3(0, 2.3, 0))
+			for x in [-1.7, -0.57, 0.57, 1.7]:
+				part(body, box(0.08, 1.7, 0.08), frame, Vector3(x, 1.0, 1.3))
+				part(body, box(0.08, 1.7, 0.08), frame, Vector3(x, 1.0, -1.3))
+			part(body, box(3.5, 0.08, 0.08), frame, Vector3(0, 1.8, 1.3))
+			part(body, box(3.5, 0.08, 0.08), frame, Vector3(0, 1.8, -1.3))
+			part(body, box(3.5, 0.08, 0.08), frame, Vector3(0, 2.8, 0))
+			for i in 6:
+				var px := -1.2 + (i % 3) * 1.2; var pz := -0.6 + (i / 3) * 1.2
+				part(body, cyl(0.2, 0.16, 0.3, 8), toon(Color("b4553f")), Vector3(px, 0.35, pz))
+				part(body, sphere(0.3, 8), toon(Color("5aa04a")), Vector3(px, 0.75, pz), Vector3(1, 1.2, 1))
+		"dojo":
+			for side in [[Vector3(0, 0, -1.6), 0.0], [Vector3(0, 0, 1.6), 0.0], [Vector3(-1.9, 0, 0), PI / 2], [Vector3(1.9, 0, 0), PI / 2]]:
+				var f := fence(3.2 if side[1] == 0.0 else 3.2)
+				f.position = side[0]; f.rotation.y = side[1]
+				body.add_child(f)
+			part(body, box(3.6, 0.04, 3.0), toon(Color("c9a77a")), Vector3(0, 0.02, 0))
+			for x in [-0.9, 0.9]:
+				part(body, cyl(0.07, 0.07, 1.3), wood, Vector3(x, 0.65, -0.3))
+				part(body, capsule(0.28, 0.8), toon(Color("d8b98a")), Vector3(x, 1.05, -0.3))
+				part(body, cyl(0.2, 0.2, 0.04, 14), toon(Color("e0607e")), Vector3(x, 1.15, -0.02), Vector3.ONE, Vector3(PI / 2, 0, 0))
+				part(body, cyl(0.08, 0.08, 0.05, 10), toon(Color("f3eee2")), Vector3(x, 1.15, 0.01), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(body, box(1.4, 0.12, 0.4), wood, Vector3(0, 0.4, 1.1))
+			part(body, box(0.1, 0.4, 0.3), wood, Vector3(-0.6, 0.2, 1.1))
+			part(body, box(0.1, 0.4, 0.3), wood, Vector3(0.6, 0.2, 1.1))
+		"vault":
+			part(body, box(3.0, 2.0, 2.2), stone, Vector3(0, 1.0, 0))
+			part(body, box(3.3, 0.3, 2.5), toon(Color("7a746c")), Vector3(0, 2.15, 0))
+			part(body, cyl(0.7, 0.7, 0.12, 24), toon(Color("6a6f7a")), Vector3(0, 0.95, 1.1), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			var t := TorusMesh.new(); t.inner_radius = 0.5; t.outer_radius = 0.66
+			part(body, t, toon(Color("f2c84a"), true, 0.3), Vector3(0, 0.95, 1.17), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(body, box(0.5, 0.08, 0.08), toon(Color("f2c84a")), Vector3(0, 0.95, 1.2))
+			var g := gem(); g.position = Vector3(0, 2.75, 0); g.scale = Vector3.ONE * 1.8; g.name = "Gem"; body.add_child(g)
+		"hall":
+			part(body, box(3.2, 0.3, 2.6), toon(Color("e8e2d6")), Vector3(0, 0.15, 0))
+			part(body, box(3.0, 0.2, 2.4), toon(Color("d8d0c0")), Vector3(0, 0.38, 0))
+			for x in [-1.2, -0.4, 0.4, 1.2]:
+				for z in [-0.9, 0.9]:
+					part(body, cyl(0.15, 0.17, 1.8, 10), toon(Color("f3eee2")), Vector3(x, 1.38, z))
+			part(body, box(3.2, 0.25, 2.6), toon(Color("e8e2d6")), Vector3(0, 2.38, 0))
+			var pr := PrismMesh.new(); pr.size = Vector3(3.4, 0.7, 2.8)
+			part(body, pr, toon(Color("b4553f")), Vector3(0, 2.85, 0))
+			var gold := toon(Color("f2c84a"), true, 0.4)
+			part(body, cyl(0.16, 0.08, 0.2, 10), gold, Vector3(0, 0.6, 0))
+			part(body, cyl(0.25, 0.12, 0.35, 12), gold, Vector3(0, 0.88, 0))
+			part(body, sphere(0.09, 8), gold, Vector3(0.26, 0.95, 0))
+			part(body, sphere(0.09, 8), gold, Vector3(-0.26, 0.95, 0))
+	return root
+
+## An empty building site: corner stakes, a rope line, a stack of planks and a sign.
+static func lot(w: float, d: float, title: String, price: String) -> Node3D:
+	var root := Node3D.new()
+	var wood := toon(Color("a07a52"))
+	var rope := toon(Color("e8d8b0"), false)
+	for c in [Vector2(-1, -1), Vector2(1, -1), Vector2(1, 1), Vector2(-1, 1)]:
+		part(root, box(0.1, 0.5, 0.1), wood, Vector3(c.x * w * 0.5, 0.25, c.y * d * 0.5))
+	part(root, box(w, 0.03, 0.03), rope, Vector3(0, 0.42, -d * 0.5))
+	part(root, box(w, 0.03, 0.03), rope, Vector3(0, 0.42, d * 0.5))
+	part(root, box(0.03, 0.03, d), rope, Vector3(-w * 0.5, 0.42, 0))
+	part(root, box(0.03, 0.03, d), rope, Vector3(w * 0.5, 0.42, 0))
+	for i in 3:
+		part(root, box(1.2, 0.1, 0.24), toon(Color("b08a5c").darkened(i * 0.08)), Vector3(-w * 0.18, 0.06 + i * 0.11, -d * 0.15 + i * 0.03), Vector3.ONE, Vector3(0, i * 0.15, 0))
+	part(root, box(0.5, 0.4, 0.5), toon(Color("8d8a86")), Vector3(w * 0.22, 0.2, -d * 0.2))
+	var s := signpost([title, price])
+	s.position = Vector3(0, 0, d * 0.5 + 0.35)
+	s.name = "Sign"
+	root.add_child(s)
+	return root
+
+## One plank of a bridge, roughly a tile deep and two tiles wide.
+static func plank(rng: RandomNumberGenerator, width: float) -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = box(width, 0.14, 0.42)
+	mi.material_override = toon(Color("a07a52").lerp(Color("7a5a3c"), rng.randf()))
+	mi.rotation.y = rng.randf_range(-0.04, 0.04)
+	return mi
