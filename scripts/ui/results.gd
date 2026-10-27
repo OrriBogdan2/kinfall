@@ -42,6 +42,8 @@ func show_result(r: Dictionary) -> void:
 		kv.add_child(UI.label("%s %s (trust %d)" % [k["name"], mood, int(k["trust"])], 17, UI.INK))
 		if s["levelup"]:
 			kv.add_child(UI.label("%s grew to level %d!" % [k["name"], k["level"]], 16, UI.GOLD))
+		for et in s.get("evo", []):
+			kv.add_child(UI.label(et, 15, Color("c9a0ff")))
 		var mem: Array = k["memory"]
 		for i in range(maxi(0, mem.size() - 3), mem.size()):
 			kv.add_child(UI.label("Remembers: " + String(mem[i]["text"]), 14, UI.MUTED))
@@ -57,7 +59,9 @@ func show_result(r: Dictionary) -> void:
 	if s["crops_ready"] > 0:
 		v.add_child(UI.label("%d crop%s ready to harvest on your farm." % [s["crops_ready"], "s" if s["crops_ready"] > 1 else ""], 15, UI.GOOD))
 	v.add_child(UI.spacer(6))
-	v.add_child(UI.button("Back to the farm", func(): Game.goto("home"), 240))
+	if r.get("tutorial", false):
+		v.add_child(UI.label("That's the basics. Now come see your home.", 16, UI.GOLD))
+	v.add_child(UI.button("Go home" if r.get("tutorial", false) else "Back to the farm", func(): Game.goto("home"), 240))
 
 func _lost_title(why: String) -> String:
 	match why:

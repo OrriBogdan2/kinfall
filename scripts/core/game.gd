@@ -15,6 +15,7 @@ func _ready() -> void:
 		if ff and not ff.fallbacks.has(sym):
 			ff.fallbacks = ff.fallbacks + [sym]
 	_setup_input()
+	RenderingServer.set_default_clear_color(Color("10131f"))
 	Sfx.set_volume(float(Save.d["settings"].get("volume", 0.8)))
 
 func _key(action: String, keys: Array, mouse := -1) -> void:
@@ -107,12 +108,14 @@ func apply_result(r: Dictionary) -> Dictionary:
 			k["traits"]["bravery"] = clampf(float(k["traits"]["bravery"]) + 0.015, 0.05, 0.95)
 		else:
 			Save.remember(k, "lost", "lost a match with you (%s)" % _why(r.get("why", "")), -1.0)
+		Evo.learn(k, r.get("kin_stats", {}))
 		var xp := 40 + (40 if won else 0) + int(r.get("knocks", 0)) * 10
 		k["xp"] = int(k.get("xp", 0)) + xp
 		while int(k["xp"]) >= 100 * int(k["level"]):
 			k["xp"] = int(k["xp"]) - 100 * int(k["level"])
 			k["level"] = int(k["level"]) + 1
 			out["levelup"] = true
+			_evolve(k, out)
 		out["trust_delta"] = float(k["trust"]) - before
 		out["kin"] = k
 		# in the Hollow, a partner that doesn't trust you enough stays behind when you fall
@@ -144,6 +147,7 @@ func apply_result(r: Dictionary) -> Dictionary:
 			while int(hk["xp"]) >= 100 * int(hk["level"]):
 				hk["xp"] = int(hk["xp"]) - 100 * int(hk["level"])
 				hk["level"] = int(hk["level"]) + 1
+				_evolve(hk, out)
 	# records for the trophy hall
 	var stt: Dictionary = d["stats"]
 	stt["kills"] = int(stt.get("kills", 0)) + int(r.get("kills", 0))
@@ -167,6 +171,19 @@ func apply_result(r: Dictionary) -> Dictionary:
 					out["crops_ready"] += 1
 	Save.save_game()
 	return out
+
+## A level up can bring a new form or a mutation. The home island plays it when you get back.
+func _evolve(k: Dictionary, out: Dictionary) -> void:
+	var ev := Evo.on_level(k)
+	if ev.is_empty():
+		return
+	ev["text"] = Evo.describe(ev, k)
+	if not k.has("pending_evo"):
+		k["pending_evo"] = []
+	k["pending_evo"].append(ev)
+	if not out.has("evo"):
+		out["evo"] = []
+	out["evo"].append(ev["text"])
 
 func _why(w: String) -> String:
 	match w:

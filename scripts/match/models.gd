@@ -151,7 +151,7 @@ static func hunter(cls: String, team_col: Color, weapon: String) -> Node3D:
 	return root
 
 # ---------------------------------------------------------------- kin
-static func kin(species: String) -> Node3D:
+static func kin(species: String, rec := {}) -> Node3D:
 	var sp: Dictionary = Data.KIN[species]
 	var root := Node3D.new()
 	var mats: Array = []
@@ -198,6 +198,7 @@ static func kin(species: String) -> Node3D:
 				var a := float(i) / 3.0 * TAU
 				part(body, sphere(0.06, 8), m_w, Vector3(cos(a) * 0.3, 0.72 + sin(a * 2.0) * 0.04, sin(a) * 0.3), Vector3.ONE, Vector3.ZERO, "Orb%d" % i)
 	root.set_meta("mats", mats)
+	Evo.dress(root, rec)
 	return root
 
 # ---------------------------------------------------------------- monsters

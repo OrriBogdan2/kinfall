@@ -19,6 +19,14 @@ var pickups: Array = []     # {pos, vel, kind:"gem"|"seed"|"tonic", v, key, node
 var chests: Array = []      # {pos, open, prog, node, tier}
 var shrines: Array = []     # {pos, used, prog, node}
 var warden_done := false
+# ---- tutorial
+var tut_step := -1
+var tut_text := ""
+var tut_moved := 0.0
+var tut_kills := 0
+var tut_flag := false
+var tut_down_t := 0.0
+var tut_wait := 0.0
 var portals: Array = []     # {pos, open_at, open, node}
 var time := 0.0
 var acc := 0.0
@@ -161,7 +169,7 @@ func _spawn_pads_and_portals() -> void:
 		var n := Models.portal(Color("8fe3c8"))
 		n.position = world.portal_spots[i]
 		add_child(n)
-		portals.append({"pos": world.portal_spots[i], "open_at": open_at + i * 35.0, "open": false, "node": n})
+		portals.append({"pos": world.portal_spots[i], "open_at": (1e9 if opts.get("tutorial", false) else open_at + i * 35.0), "open": false, "node": n})
 
 func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String, kin_rec: Dictionary, at: Vector3) -> Hunter:
 	var h := Hunter.new()
@@ -184,7 +192,8 @@ func bot_kin_record() -> Dictionary:
 	var sp: String = Data.KIN.keys()[rng.randi_range(0, Data.KIN.size() - 1)]
 	var rec := Save.new_kin(sp)
 	rec["trust"] = rng.randf_range(40, 80)
-	rec["level"] = rng.randi_range(1, 4)
+	rec["level"] = rng.randi_range(1, 4 + tier * 3)
+	Evo.simulate(rec, rng)
 	return rec
 
 func _spawn_hunters() -> void:
@@ -209,6 +218,12 @@ func _spawn_hunters() -> void:
 		spots.append(pool[best]); pool.remove_at(best)
 	if spots.is_empty():
 		spots = world.spawns.duplicate()
+	if opts.get("tutorial", false):
+		# start somewhere quiet
+		for sp in world.spawns:
+			var isl := world.island_of(sp.x, sp.z)
+			if isl > 0 and world.islands[isl]["role"] in ["grove", "nest"]:
+				spots = [sp]; break
 	var names: Array = Data.BOT_NAMES.duplicate(); names.shuffle()
 	if net_on:
 		_spawn_net_hunters(spots, names)
@@ -339,6 +354,7 @@ func _spawn_wild() -> void:
 		var sp: String = Data.KIN.keys()[rng.randi_range(0, Data.KIN.size() - 1)]
 		var rec := Save.new_kin(sp)
 		rec["level"] = rng.randi_range(T["kin_lvl"][0], T["kin_lvl"][1])
+		Evo.simulate(rec, rng)
 		spawn_wild(rec, p)
 
 func spawn_wild(rec: Dictionary, at: Vector3, dazed := false) -> Kin:
@@ -570,7 +586,10 @@ func on_fell(e: Ent) -> void:
 			return
 		sfx("fall", e.pos, 0.0)
 		if e == player and S_dev_god():
-			e.teleport(world.spawns[0] if world.spawns.size() > 0 else world.random_ground())
+			var back: Vector3 = e.ai.get("land", world.spawns[0] if world.spawns.size() > 0 else world.random_ground())
+			e.teleport(back)
+			if opts.get("tutorial", false):
+				hud.toast("Careful near the edges", Color("f3eee2"))
 			e.vel = Vector3.ZERO
 			return
 		var by: Ent = e.last_hit_by if time - e.kb_t < 4.0 else null
@@ -583,7 +602,7 @@ func on_fell(e: Ent) -> void:
 		e.dead = true
 
 func S_dev_god() -> bool:
-	return bool(opts.get("god", false))
+	return bool(opts.get("god", false)) or bool(opts.get("tutorial", false))
 
 func on_mob_dead(mb: Mob, by: Ent, _o: Dictionary) -> void:
 	if net_on:
@@ -591,6 +610,8 @@ func on_mob_dead(mb: Mob, by: Ent, _o: Dictionary) -> void:
 	var credit: Ent = by
 	if by is Kin and by.owner_h:
 		credit = by.owner_h
+	if credit == player:
+		tut_kills += 1
 	sfx("kill", mb.pos, -6.0, 1.3)
 	fx.burst(mb.pos + Vector3(0, 0.6, 0), mb.md["color"], 22, 5.0, 0.6)
 	if not world.is_void(mb.pos.x, mb.pos.z):
@@ -920,6 +941,10 @@ func step(dt: float) -> void:
 	_update_interact(dt)
 	_update_portals(dt)
 	_update_events()
+	if opts.get("tutorial", false):
+		if opts.get("tut_test", false):
+			_tut_drive()
+		_update_tutorial(dt)
 	_update_rules(dt)
 	if net_on:
 		_net_rev_t -= dt
@@ -1076,6 +1101,8 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 	if net_on and not from_net:
 		net_event(["chest", chests.find(c), h.nid if h else ""])
 	var t := int(c.get("tier", 0))
+	if h == player:
+		tut_flag = tut_flag or tut_step == 6
 	var lid: Node3D = c["node"].get_node("Body/Lid")
 	lid.rotation.x = -1.1
 	lid.position.y = 0.62
@@ -1118,7 +1145,130 @@ func _use_shrine(h: Hunter, sh: Dictionary, from_net := false) -> void:
 			hud.toast("Blessed: +25% damage for 45s", Color("8fe3c8"))
 
 ## Midway through, the Warden wakes on the heart island and guards it until someone brings it down.
+const TUT := ["Steer with WASD to choose where you land", "Walk around with WASD", "Press Shift to dash",
+	"Press Space to jump. Hold Space in the air to glide", "Hold left click to shoot. Defeat the monsters",
+	"Right click to throw %s at a monster", "Stand by the chest and hold F to open it", "An exit opened. Stand inside it to go home"]
+
+## The first match is a guided one: no rival hunters, gentle damage, and each step waits for you.
+func _update_tutorial(dt: float) -> void:
+	if player == null or player.extracted:
+		return
+	if tut_step < 0:
+		tut_step = 0
+	# getting knocked down here isn't the end: you get back up after a moment
+	if player.downed:
+		tut_down_t += dt
+		if tut_down_t > 3.0:
+			tut_down_t = 0.0
+			revive_hunter(player, null)
+	var kname: String = player.kin.rec.get("name", "your kin") if player.kin else "your kin"
+	var done := false
+	match tut_step:
+		0: done = not player.dropping
+		1:
+			if player.inp["move"].length() > 0.1:
+				tut_moved += Vector2(player.pos.x - player.prev.x, player.pos.z - player.prev.z).length()
+			done = tut_moved > 6.0
+		2: done = player.roll_t > 0.0
+		3:
+			tut_flag = tut_flag or player.gliding
+			done = tut_flag and player.grounded
+		4: done = tut_kills >= 2
+		5: done = player.kin == null or player.kin.state != "shoulder"
+		6: done = tut_flag
+		7: done = false
+	if tut_wait > 0.0:
+		tut_wait -= dt
+		return
+	if done:
+		tut_step += 1
+		tut_flag = false
+		tut_wait = 0.6
+		sfx("pickup", null, -4.0, 1.3)
+		_tut_enter(tut_step)
+	if tut_step < TUT.size():
+		var txt: String = TUT[tut_step]
+		tut_text = txt % kname if txt.contains("%s") else txt
+
+func _tut_enter(step_i: int) -> void:
+	match step_i:
+		4:
+			tut_kills = 0
+			for k in 2:
+				var at := _tut_spot(5.5, k * 0.6)
+				if at != Vector3.INF: spawn_mob("skitter", at)
+		5:
+			if player.kin and player.kin.state != "shoulder":
+				player.kin.state = "returning"
+			var at := _tut_spot(5.0, 0.0)
+			if at != Vector3.INF: spawn_mob("spitter", at)
+		6:
+			var at := _tut_spot(3.5, 1.0)
+			if at != Vector3.INF:
+				var n := Models.chest(1)
+				n.position = at
+				add_child(n)
+				chests.append({"pos": at, "open": false, "prog": 0.0, "node": n, "tier": 1})
+				ping(at, Color("dfe8f2"))
+		7:
+			var at := _tut_spot(5.0, -1.0)
+			if at == Vector3.INF: at = player.pos
+			var n := Models.portal(Color("8fe3c8"))
+			n.position = at
+			add_child(n)
+			portals.append({"pos": at, "open_at": time, "open": false, "node": n})
+			ping(at, Color("8fe3c8"))
+
+var _tut_last := -1
+## Test driver: plays the tutorial by itself so the whole flow can be checked headless.
+func _tut_drive() -> void:
+	if tut_step != _tut_last:
+		print("TUT step ", tut_step, " t=", snapped(time, 0.1))
+		_tut_last = tut_step
+	var p := player
+	p.inp["move"] = Vector2.ZERO
+	p.inp["fire"] = false
+	p.inp["glide"] = false
+	p.inp["interact"] = false
+	var goto := func(at: Vector3):
+		var d := Vector2(at.x - p.pos.x, at.z - p.pos.z)
+		p.inp["move"] = d.normalized() if d.length() > 0.5 else Vector2.ZERO
+	match tut_step:
+		1: p.inp["move"] = Vector2(1, 0) if int(time) % 4 < 2 else Vector2(-1, 0)
+		2: p.inp["dash"] = true
+		3:
+			if p.grounded and not tut_flag: p.inp["jump"] = true
+			p.inp["glide"] = true
+		4, 5:
+			var best: Ent = null; var bd := 1e9
+			for mb in mobs:
+				if not mb.dead and p.flat_dist(mb) < bd: bd = p.flat_dist(mb); best = mb
+			if best:
+				p.inp["aim"] = best.pos + Vector3(0, 0.9, 0)
+				if bd > 4.0: goto.call(best.pos)
+				if tut_step == 4: p.inp["fire"] = true
+				elif p.kin and p.kin.state == "shoulder": p.kin.throw_to(best.pos)
+		6:
+			for c in chests:
+				if not c["open"] and p.flat_dist(c["pos"]) < 12.0:
+					goto.call(c["pos"]); p.inp["interact"] = true; break
+		7:
+			if portals.size() > 0: goto.call(portals[portals.size() - 1]["pos"])
+
+## Open ground a given distance from the player on the same island.
+func _tut_spot(dist: float, ang0: float) -> Vector3:
+	var isl := world.island_of(player.pos.x, player.pos.z)
+	for i in 24:
+		var a := ang0 + i * 0.52
+		for d in [dist, dist * 0.7, dist * 0.5]:
+			var x: float = player.pos.x + cos(a) * d; var z: float = player.pos.z + sin(a) * d
+			if world.island_of(x, z) == isl and not world.is_block(x, z) and world.edge_dist(int(x), int(z), 2) >= 2:
+				return Vector3(floor(x) + 0.5, world.ground_at(x, z), floor(z) + 0.5)
+	return Vector3.INF
+
 func _update_events() -> void:
+	if opts.get("tutorial", false):
+		return
 	if warden_done or time < length * 0.4 or world.heart_spot == Vector3.INF:
 		return
 	warden_done = true
@@ -1210,6 +1360,9 @@ func _finish() -> void:
 	var r := result.duplicate()
 	r["time"] = time
 	r["tier"] = tier
+	if opts.get("tutorial", false):
+		Save.d["tutorial"]["match"] = true
+		r["tutorial"] = true
 	if player:
 		r["gems"] = player.gems
 		r["lost_gems"] = player.lost_gems
@@ -1222,6 +1375,10 @@ func _finish() -> void:
 		if player.kin:
 			r["kin_events"] = player.kin.events.duplicate(true)
 			r["kin_trust"] = player.kin.trust
+			var k: Kin = player.kin
+			r["kin_stats"] = {"hits": k.st_hits, "kos": k.st_kos, "throws": k.st_throws, "skills": k.st_skills,
+				"revives": k.events.filter(func(e): return e["kind"] == "revived").size(), "caught": player.caught.size(),
+				"won": 1 if result.get("extracted", false) else 0}
 	var placed := 1
 	for h in hunters:
 		if h.extracted and h != player:
@@ -1616,7 +1773,7 @@ func _tips() -> void:
 	_tip_t += get_process_delta_time()
 	if _tip_t < 1.0:
 		return
-	if player.dropping:
+	if player.dropping or opts.get("tutorial", false):
 		return
 	_tip("move", "WASD to move, aim with the mouse, hold left click to shoot. Shift dashes, Space jumps. Hold Space in the air to glide.")
 	var k: Kin = player.kin
@@ -1676,6 +1833,9 @@ func _update_aim(alpha: float) -> void:
 		var a := Vector3(at.x + dir.x * 0.6, y, at.z + dir.y * 0.6)
 		var b := Vector3(at.x + dir.x * dist, y, at.z + dir.y * dist)
 		aim_line.global_position = (a + b) * 0.5
+		if a.distance_to(b) < 0.05:
+			aim_line.visible = false
+			return
 		aim_line.look_at(b, Vector3.UP)
 		aim_line.scale = Vector3(1, 1, a.distance_to(b))
 	else:

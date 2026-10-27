@@ -123,6 +123,8 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 	if (inv_t > 0.0 or dropping) and opts.get("src", "") != "fall":
 		return 0.0
 	var d := dmg
+	if ctrl == "local" and m.opts.get("tutorial", false):
+		d *= 0.35
 	if shoulder() == "bedrock":
 		d *= 0.85
 	if downed:

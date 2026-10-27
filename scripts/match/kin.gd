@@ -36,6 +36,11 @@ var angry_at: Ent = null
 var power := 1.0                  # treat bonus
 var events := []                  # things that happened this match, written to memory afterwards
 var lines := {}                   # personalised barks, if the AI wrote any
+var st_hits := 0                  # what it did this match, which shapes how it evolves
+var st_kos := 0
+var st_throws := 0
+var st_skills := 0
+var cd_mult := 1.0
 
 func init_kin(match_node: Node, id: String, species_id: String, record: Dictionary, owner_hunter: Hunter) -> void:
 	setup(match_node, id)
@@ -52,10 +57,15 @@ func init_kin(match_node: Node, id: String, species_id: String, record: Dictiona
 	hp = max_hp
 	dmg = float(sp["dmg"]) * (1.0 + (lvl - 1.0) * 0.06)
 	speed = float(sp["speed"])
-	r = 0.36
+	var em := Evo.mods(rec)
+	max_hp *= em["hp"]; hp = max_hp
+	dmg *= em["dmg"]
+	speed *= em["speed"]
+	cd_mult = em["cd"]
+	r = 0.36 * (1.0 + minf(rec.get("forms", []).size() * 0.08, 0.4))
 	state = "shoulder" if owner_h else "wild"
 	settle = 1.0
-	set_model(Models.kin(species))
+	set_model(Models.kin(species, rec))
 
 func t(k: String) -> float:
 	return float(traits.get(k, 0.5))
@@ -131,6 +141,7 @@ func throw_to(p: Vector3, with_skill := false) -> void:
 	_launch(p)
 
 func _launch(p: Vector3) -> void:
+	st_throws += 1
 	var start := owner_h.pos + Vector3(0, 1.5, 0)
 	var dist := Vector2(p.x - start.x, p.z - start.z).length()
 	var maxd := 9.0
@@ -175,7 +186,8 @@ func command_skill(p: Vector3) -> void:
 # ------------------------------------------------------------------ skills
 func cast(p: Vector3) -> void:
 	var sk: String = sp["skill"]
-	skill_cd = Data.KIN_SKILLS[sk]["cd"]
+	skill_cd = Data.KIN_SKILLS[sk]["cd"] * cd_mult
+	st_skills += 1
 	pend_skill = Vector3.INF
 	m.sfx("skill", pos, 0.0)
 	var foes: Array = m.foes_of(team)
@@ -625,11 +637,11 @@ func render(delta: float, alpha: float) -> void:
 		var sh: Node3D = owner_h.model.get_node("Rig/Torso/Shoulder")
 		global_position = sh.global_position
 		model.rotation.y = owner_h.face
-		model.scale = Vector3.ONE * lerpf(0.75, 0.55, settle)
+		model.scale = Vector3.ONE * lerpf(0.75, 0.55, settle) * minf(float(model.get_meta("evo_scale", 1.0)), 1.2)
 		body.position.y = absf(sin(hop_ph * 0.5)) * 0.03
 		body.rotation.x = 0.0
 		return
-	model.scale = Vector3.ONE * 0.95
+	model.scale = Vector3.ONE * 0.95 * float(model.get_meta("evo_scale", 1.0))
 	model.rotation.y = face
 	var moving := Vector2(vel.x, vel.z).length() > 0.5
 	body.position.y = absf(sin(hop_ph)) * (0.14 if moving else 0.03) + (0.12 if lunge_t > 0.0 else 0.0)

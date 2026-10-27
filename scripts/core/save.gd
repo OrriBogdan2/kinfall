@@ -11,15 +11,14 @@ func _ready() -> void:
 	load_game()
 
 func fresh() -> Dictionary:
-	var starter := new_kin("cindle", "Pip")
-	starter["trust"] = 55.0
+	# a new save has no kin yet: the first thing you do is pick an egg and hatch it
 	return {
 		"v": VERSION,
 		"name": "Hunter",
 		"gems": 60,
 		"cls": "medium",
-		"active": starter["uid"],
-		"roster": [starter],
+		"active": "",
+		"roster": [],
 		"seeds": {"tidebloom": 2, "emberberry": 1},
 		"crops": {},
 		"items": {"tonic": 1},

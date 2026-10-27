@@ -41,6 +41,14 @@ var building_now := false
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	var dbg := OS.get_cmdline_user_args()
+	if "--evo-test" in dbg:
+		var ek := Save.active_kin()
+		ek["level"] = 7
+		ek["forms"] = []; ek["muts"] = []
+		Evo.simulate(ek, RandomNumberGenerator.new())
+		ek["level"] = 8
+		Game._evolve(ek, {})
+		Save.d["tutorial"]["home"] = true
 	if "--home-all" in dbg:
 		Save.d["bridges"] = Data.ISLES.keys()
 		Save.d["buildings"] = Data.BUILDINGS.keys()
@@ -136,10 +144,24 @@ func _ready() -> void:
 			var xy := a.substr(10).split(",")
 			ppos = Vector3(float(xy[0]), 0, float(xy[1])); player.position = ppos; cam.snap(ppos)
 	_spawn_kin()
+	if "--kin-lineup" in dbg:
+		var lr := RandomNumberGenerator.new(); lr.seed = 11
+		var sps: Array = Data.KIN.keys()
+		for i in 12:
+			var rr := Save.new_kin(sps[i % sps.size()])
+			rr["level"] = [1, 4, 8, 12, 16, 22][i / 2]
+			Evo.simulate(rr, lr)
+			var kn := Models.kin(rr["species"], rr)
+			kn.position = Vector3(33.5 + (i % 6) * 1.7, 0, 32.5 + (i / 6) * 1.8)
+			kn.rotation.y = PI * 0.1
+			kn.scale *= 1.3
+			add_child(kn)
 	_build_ui()
 	_refresh_top()
 	if not Save.d["tutorial"].get("home", false):
 		_open_welcome()
+	else:
+		_play_evolutions()
 	# a kin with lines written by Claude keeps them fresh
 	var ak := Save.active_kin()
 	if Bridge.ai_ok and not ak.is_empty() and int(ak.get("matches", 0)) % 3 == 0:
@@ -340,7 +362,7 @@ func _spawn_kin() -> void:
 			open_isles.append(i)
 	var ri := 0
 	for rec in Save.d["roster"]:
-		var n := Models.kin(rec["species"])
+		var n := Models.kin(rec["species"], rec)
 		add_child(n)
 		var isl: int = 0 if rec["uid"] == Save.d.get("active", "") else open_isles[ri % open_isles.size()]
 		ri += 1
@@ -388,6 +410,8 @@ func _move_player(d: float) -> void:
 
 func _move_kin(d: float) -> void:
 	for k in kins:
+		if k.get("busy", false):
+			continue
 		k["t"] -= d
 		var pos: Vector3 = k["pos"]
 		var rec: Dictionary = k["rec"]
@@ -422,7 +446,7 @@ func _move_kin(d: float) -> void:
 		n.rotation.y = lerp_angle(n.rotation.y, face, minf(1.0, d * 8.0))
 		k["hop"] += d * (9.0 if hv.length() > 0.3 else 2.5)
 		n.get_node("Body").position.y = absf(sin(k["hop"])) * (0.14 if hv.length() > 0.3 else 0.03)
-		n.scale = Vector3.ONE * (1.05 if rec["uid"] == Save.d.get("active", "") else 0.9)
+		n.scale = Vector3.ONE * (1.05 if rec["uid"] == Save.d.get("active", "") else 0.9) * float(n.get_meta("evo_scale", 1.0))
 		if k["emote_t"] > 0.0:
 			k["emote_t"] -= d
 			var lbl: Label3D = k["emote"]
@@ -582,11 +606,14 @@ func _new_panel(title_txt: String, width := 520.0) -> VBoxContainer:
 	return v
 
 func _close_panel() -> void:
+	var was := panel_open
 	for ch in panel_host.get_children():
 		ch.queue_free()
 	panel_open = ""
 	chat_input = null
 	_refresh_top()
+	if was.ends_with(" evolved") or was.ends_with(" is changing") or was == "Welcome to your island":
+		_play_evolutions.call_deferred()
 
 func _open_welcome() -> void:
 	var v := _new_panel("Welcome to your island", 560)
@@ -709,7 +736,8 @@ func _shop_row(v: VBoxContainer, name_txt: String, desc: String, price: int, on_
 # ---- kin
 func _open_kin(rec: Dictionary) -> void:
 	var sp: Dictionary = Data.KIN[rec["species"]]
-	var v := _new_panel("%s the %s" % [rec["name"], sp["name"]], 600)
+	Evo.ensure(rec)
+	var v := _new_panel("%s the %s" % [rec["name"], Evo.form_name(rec)], 640)
 	var row := UI.hbox(20)
 	var left := UI.vbox(6); left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left.add_child(UI.label("Level %d %s kin · trust %d" % [int(rec["level"]), String(sp["type"]).capitalize(), int(rec["trust"])], 15, sp["color"]))
@@ -733,6 +761,33 @@ func _open_kin(rec: Dictionary) -> void:
 	right.add_child(UI.label(sh["desc"], 13, UI.MUTED))
 	row.add_child(right)
 	v.add_child(row)
+	# how it's growing
+	var grow := UI.vbox(4)
+	var lead := Evo.leading(rec)
+	var lv := int(rec["level"])
+	var next_form := (lv / 4 + 1) * 4
+	var next_mut := lv + ((2 - lv % 4) + 4) % 4
+	if next_mut == lv: next_mut += 4
+	grow.add_child(UI.label("Growing %s. Next new form at level %d, next mutation at level %d." % [String(Evo.AFF[lead]["name"]).to_lower(), next_form, next_mut], 14, Evo.AFF[lead]["tint"]))
+	var ar := UI.hbox(10)
+	var tot := 0.0
+	for a in Evo.AFF: tot += maxf(0.0, float(rec["aff"][a]))
+	for a in Evo.AFF:
+		var cbox := UI.vbox(2)
+		var al := UI.label(Evo.AFF[a]["name"], 12, UI.MUTED); al.autowrap_mode = TextServer.AUTOWRAP_OFF
+		cbox.add_child(al)
+		cbox.add_child(UI.bar(float(rec["aff"][a]) / maxf(tot, 1.0), Evo.AFF[a]["tint"], 120, 6))
+		ar.add_child(cbox)
+	grow.add_child(ar)
+	var parts: Array = []
+	for mu in rec["muts"]:
+		parts.append(String(Evo.PART_NAMES.get(mu["id"], mu["id"])) + ("" if int(mu["lv"]) == 1 else " (x%d)" % int(mu["lv"])))
+	if rec["forms"].size() > 0 or parts.size() > 0:
+		var path: Array = []
+		for f in rec["forms"]: path.append(Evo.AFF[f]["name"])
+		grow.add_child(UI.label(("Path: " + " > ".join(path) if path.size() > 0 else "") + ("   Has: " + ", ".join(parts) if parts.size() > 0 else ""), 13, UI.MUTED))
+	grow.add_child(UI.label("Food shapes it too: Emberberry fierce, Sunroot steadfast, Mindmint curious, Tidebloom swift.", 12, UI.MUTED))
+	v.add_child(grow)
 	var mem: Array = rec.get("memory", [])
 	if mem.size() > 0:
 		v.add_child(UI.label("Remembers", 13, UI.MUTED))
@@ -755,6 +810,8 @@ func _open_kin(rec: Dictionary) -> void:
 			var crop_k: String = s
 			btns.add_child(UI.button("Feed %s" % Data.CROPS[s]["name"], func():
 				Save.d["crops"][crop_k] = int(Save.d["crops"][crop_k]) - 1
+				for af in Evo.AFF:
+					if Evo.AFF[af]["food"] == crop_k: Evo.add(rec, af, 6.0)
 				Save.remember(rec, "fed", "was fed a %s" % Data.CROPS[crop_k]["name"].to_lower(), 4.0)
 				Sfx.play("kin_happy")
 				Save.save_game()
@@ -956,6 +1013,67 @@ func _start_match() -> void:
 	o["tier"] = exp_tier
 	Game.start_match(o)
 
+# ---- evolution
+## Kin that grew during the last expedition change in front of you when you get home.
+func _play_evolutions() -> void:
+	if building_now or panel_open != "":
+		return
+	var k: Dictionary = {}
+	for kk in kins:
+		if kk["rec"].get("pending_evo", []).size() > 0:
+			k = kk; break
+	if k.is_empty():
+		return
+	building_now = true
+	var rec: Dictionary = k["rec"]
+	var evs: Array = rec["pending_evo"]
+	rec["pending_evo"] = []
+	Save.save_game()
+	var n: Node3D = k["node"]
+	# bring it next to you
+	var at := ppos + Vector3(1.6, 0, 0.6)
+	if world.is_void(at.x, at.z) or world.is_block(at.x, at.z):
+		at = ppos + Vector3(0, 0, 1.4)
+	k["pos"] = at
+	k["goal"] = Vector3.INF
+	k["busy"] = true
+	n.position = at
+	cam.zoom_to = 0.55
+	var big := false
+	for e in evs:
+		if e["kind"] == "form": big = true
+	var tint: Color = Evo.AFF[evs[evs.size() - 1]["aff"]]["tint"]
+	Sfx.play("skill")
+	var tw := create_tween()
+	tw.tween_interval(0.4)
+	tw.tween_property(n, "rotation:y", n.rotation.y + TAU * (3.0 if big else 1.0), 1.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	for i in 6:
+		get_tree().create_timer(0.4 + i * 0.22).timeout.connect(func(): fx.burst(at + Vector3(0, 0.5, 0), tint, 6, 2.0, 0.4, -2.0))
+	tw.tween_callback(func():
+		# swap in the grown model
+		var nn := Models.kin(rec["species"], rec)
+		nn.position = at
+		nn.rotation = n.rotation
+		var lbl: Label3D = k["emote"]
+		n.remove_child(lbl)
+		nn.add_child(lbl)
+		add_child(nn)
+		n.queue_free()
+		k["node"] = nn
+		k["busy"] = false
+		k["t"] = 3.0
+		fx.burst(at + Vector3(0, 0.5, 0), tint, 36, 5.0, 0.8, 4.0, 1.3)
+		fx.ring(at, 3.0, Color(tint, 0.9), 0.5)
+		Sfx.play("unlock")
+		Sfx.play("kin_happy")
+		_emote(k, "★")
+		building_now = false
+		cam.zoom_to = 0.8
+		var v := _new_panel(("%s evolved" if big else "%s is changing") % rec["name"], 520)
+		for e in evs:
+			v.add_child(UI.label(String(e.get("text", Evo.describe(e, rec))), 16, Evo.AFF[e["aff"]]["tint"]))
+		v.add_child(UI.label("How you raise it decides what it grows into next. Feed it, fight beside it, look after it.", 14, UI.MUTED)))
+
 # ---- buildings and bridges
 func _building_verb(b: String) -> String:
 	match b:
@@ -1117,7 +1235,7 @@ func _open_house() -> void:
 		var sp: Dictionary = Data.KIN[rec["species"]]
 		var dot := ColorRect.new(); dot.color = sp["color"]; dot.custom_minimum_size = Vector2(14, 14)
 		h.add_child(dot)
-		var info := UI.label("%s the %s  ·  level %d  ·  trust %d" % [rec["name"], sp["name"], int(rec["level"]), int(rec["trust"])], 15)
+		var info := UI.label("%s the %s  ·  level %d  ·  trust %d" % [rec["name"], Evo.form_name(rec), int(rec["level"]), int(rec["trust"])], 15)
 		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(info)
 		var r: Dictionary = rec
@@ -1161,5 +1279,5 @@ func _open_settings() -> void:
 	row.add_child(UI.button("Save", func(): Save.save_game(); _close_panel()))
 	row.add_child(UI.button("Start over", func():
 		Save.reset()
-		Game.goto("home")))
+		Game.goto("hatch")))
 	v.add_child(row)

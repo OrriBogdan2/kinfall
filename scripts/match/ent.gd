@@ -103,6 +103,12 @@ func hurt(dmg: float, by: Ent, opts := {}) -> float:
 	if opts.get("stun", 0.0) > 0.0:
 		stun_t = maxf(stun_t, float(opts["stun"]))
 	m.on_damage(self, by, d, opts)
+	# kin learn from fighting: count the hits and knockouts they land for their owner
+	if opts.get("src", "") == "kin":
+		var kn = by.kin if by is Hunter and by.kin else (by if by is Kin else null)
+		if kn:
+			kn.st_hits += 1
+			if hp <= 0.0: kn.st_kos += 1
 	if hp <= 0.0:
 		_on_zero(by, opts)
 	return d

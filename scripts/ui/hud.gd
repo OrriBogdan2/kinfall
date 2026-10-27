@@ -257,6 +257,14 @@ func _draw_pings(sz: Vector2) -> void:
 			c.draw_colored_polygon(PackedVector2Array([edge + d * 14, edge - d * 8 + n * 10, edge - d * 8 - n * 10]), col)
 
 func _draw_top(sz: Vector2) -> void:
+	if m.opts.get("tutorial", false):
+		var txt: String = m.tut_text
+		var w := maxf(360.0, big.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x + 60.0)
+		var rr := Rect2(Vector2(sz.x * 0.5 - w * 0.5, 12), Vector2(w, 66))
+		_panel(rr, Color(0.06, 0.07, 0.1, 0.88), 12)
+		_ctext(Vector2(sz.x * 0.5, 34), "TUTORIAL  %d / %d" % [mini(m.tut_step + 1, m.TUT.size()), m.TUT.size()], 12, Color("8fe3c8"))
+		_ctext(Vector2(sz.x * 0.5, 62), txt, 22, Color("f2c84a"), big)
+		return
 	var left := m.length - m.time
 	var first_open := 1e9
 	for p in m.portals:
