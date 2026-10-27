@@ -1,0 +1,363 @@
+class_name Models
+## Builds every character and prop out of simple meshes. Each character returns a Node3D whose
+## meta "mat" holds the ShaderMaterials to flash on hits, and named child nodes for animation.
+
+static var TOON: Shader = preload("res://shaders/toon.gdshader")
+static var OUTLINE: Shader = preload("res://shaders/outline.gdshader")
+static var RING: Shader = preload("res://shaders/ring.gdshader")
+static var GLOW: Shader = preload("res://shaders/glowball.gdshader")
+static var _outline_mat: ShaderMaterial
+
+static func toon(c: Color, outline := true, glow := 0.0) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = TOON
+	m.set_shader_parameter("albedo", c)
+	m.set_shader_parameter("glow", glow)
+	if outline:
+		if _outline_mat == null:
+			_outline_mat = ShaderMaterial.new()
+			_outline_mat.shader = OUTLINE
+		m.next_pass = _outline_mat
+	return m
+
+static func vtoon() -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = TOON
+	m.set_shader_parameter("use_vertex_color", true)
+	m.set_shader_parameter("rim_amount", 0.12)
+	return m
+
+static func ring_mat(c: Color, thickness := 0.14) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = RING
+	m.set_shader_parameter("color", c)
+	m.set_shader_parameter("thickness", thickness)
+	return m
+
+static func glow_mat(c: Color) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = GLOW
+	m.set_shader_parameter("color", c)
+	return m
+
+static func part(parent: Node3D, mesh: Mesh, mat: Material, pos: Vector3, scl := Vector3.ONE, rot := Vector3.ZERO, pname := "") -> MeshInstance3D:
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.material_override = mat
+	mi.position = pos
+	mi.scale = scl
+	mi.rotation = rot
+	if pname != "":
+		mi.name = pname
+	parent.add_child(mi)
+	return mi
+
+static func sphere(r: float, seg := 16) -> SphereMesh:
+	var s := SphereMesh.new()
+	s.radius = r; s.height = r * 2.0; s.radial_segments = seg; s.rings = maxi(6, seg / 2)
+	return s
+
+static func capsule(r: float, h: float) -> CapsuleMesh:
+	var c := CapsuleMesh.new()
+	c.radius = r; c.height = h; c.radial_segments = 14; c.rings = 6
+	return c
+
+static func box(x: float, y: float, z: float) -> BoxMesh:
+	var b := BoxMesh.new()
+	b.size = Vector3(x, y, z)
+	return b
+
+static func cyl(top: float, bottom: float, h: float, seg := 14) -> CylinderMesh:
+	var c := CylinderMesh.new()
+	c.top_radius = top; c.bottom_radius = bottom; c.height = h; c.radial_segments = seg; c.rings = 1
+	return c
+
+static func flat_quad(size: float) -> PlaneMesh:
+	var p := PlaneMesh.new()
+	p.size = Vector2(size, size)
+	return p
+
+# ---------------------------------------------------------------- hunters
+static func hunter(cls: String, team_col: Color, weapon: String) -> Node3D:
+	var root := Node3D.new()
+	var body_col := team_col.lerp(Color("3a3f52"), 0.35)
+	var mats: Array = []
+	var m_body := toon(body_col); mats.append(m_body)
+	var m_skin := toon(Color("f1c9a0")); mats.append(m_skin)
+	var m_dark := toon(Color("2b2a33")); mats.append(m_dark)
+	var m_acc := toon(team_col); mats.append(m_acc)
+	var m_gun := toon(Color("4a4d5c")); mats.append(m_gun)
+	var rig := Node3D.new(); rig.name = "Rig"; root.add_child(rig)
+	var legs := Node3D.new(); legs.name = "Legs"; rig.add_child(legs)
+	part(legs, capsule(0.09, 0.42), m_dark, Vector3(-0.12, 0.22, 0), Vector3.ONE, Vector3.ZERO, "LegL")
+	part(legs, capsule(0.09, 0.42), m_dark, Vector3(0.12, 0.22, 0), Vector3.ONE, Vector3.ZERO, "LegR")
+	var torso := Node3D.new(); torso.name = "Torso"; torso.position = Vector3(0, 0.42, 0); rig.add_child(torso)
+	part(torso, capsule(0.25, 0.72), m_body, Vector3(0, 0.3, 0))
+	part(torso, box(0.3, 0.32, 0.16), m_dark, Vector3(0, 0.36, 0.24))  # backpack
+	part(torso, sphere(0.215), m_skin, Vector3(0, 0.82, 0), Vector3.ONE, Vector3.ZERO, "Head")
+	part(torso, sphere(0.035, 8), m_dark, Vector3(-0.08, 0.84, -0.19))
+	part(torso, sphere(0.035, 8), m_dark, Vector3(0.08, 0.84, -0.19))
+	match cls:
+		"light":
+			part(torso, sphere(0.25), m_acc, Vector3(0, 0.88, 0.04), Vector3(1.0, 0.95, 1.05))  # hood
+			part(torso, cyl(0.2, 0.26, 0.1), m_acc, Vector3(0, 0.58, 0))  # scarf
+			part(torso, box(0.12, 0.34, 0.04), m_acc, Vector3(0.1, 0.42, 0.24), Vector3.ONE, Vector3(0.3, 0, 0.2))
+		"medium":
+			part(torso, cyl(0.34, 0.34, 0.04), m_acc, Vector3(0, 0.98, 0))  # brim
+			part(torso, cyl(0.17, 0.2, 0.2), m_acc, Vector3(0, 1.08, 0))
+			part(torso, cyl(0.205, 0.205, 0.04), m_dark, Vector3(0, 1.01, 0))
+		"heavy":
+			part(torso, sphere(0.26), m_acc, Vector3(0, 0.9, 0.02), Vector3(1.05, 0.85, 1.05))  # helmet
+			part(torso, box(0.34, 0.06, 0.06), m_dark, Vector3(0, 0.83, -0.2))  # visor
+			part(torso, sphere(0.17), m_acc, Vector3(-0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
+			part(torso, sphere(0.17), m_acc, Vector3(0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
+	var gun := Node3D.new(); gun.name = "Gun"; gun.position = Vector3(0.22, 0.32, -0.18); torso.add_child(gun)
+	match weapon:
+		"stinger":
+			part(gun, box(0.1, 0.12, 0.42), m_gun, Vector3(0, 0, -0.12))
+			part(gun, box(0.05, 0.16, 0.08), m_dark, Vector3(0, -0.12, -0.04))
+			part(gun, box(0.06, 0.06, 0.12), m_acc, Vector3(0, 0.08, -0.12))
+		"repeater":
+			part(gun, box(0.09, 0.12, 0.7), m_gun, Vector3(0, 0, -0.24))
+			part(gun, cyl(0.035, 0.035, 0.3), m_dark, Vector3(0, 0.02, -0.66), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(gun, box(0.05, 0.08, 0.16), m_acc, Vector3(0, 0.09, -0.16))
+		"thumper":
+			part(gun, cyl(0.12, 0.12, 0.62), m_gun, Vector3(0, 0, -0.2), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(gun, cyl(0.14, 0.14, 0.08), m_acc, Vector3(0, 0, -0.52), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(gun, box(0.08, 0.18, 0.12), m_dark, Vector3(0, -0.15, -0.02))
+	var muzzle := Node3D.new(); muzzle.name = "Muzzle"; muzzle.position = Vector3(0, 0.02, -0.75); gun.add_child(muzzle)
+	var shoulder := Node3D.new(); shoulder.name = "Shoulder"; shoulder.position = Vector3(-0.3, 0.78, 0.04); torso.add_child(shoulder)
+	var ring := MeshInstance3D.new(); ring.name = "TeamRing"; ring.mesh = flat_quad(1.0)
+	ring.material_override = ring_mat(team_col, 0.16); ring.position = Vector3(0, 0.04, 0)
+	root.add_child(ring)
+	root.set_meta("mats", mats)
+	root.scale = Vector3.ONE * float(Data.CLASSES[cls]["scale"])
+	return root
+
+# ---------------------------------------------------------------- kin
+static func kin(species: String) -> Node3D:
+	var sp: Dictionary = Data.KIN[species]
+	var root := Node3D.new()
+	var mats: Array = []
+	var m_body := toon(sp["color"]); mats.append(m_body)
+	var m_belly := toon(sp["belly"]); mats.append(m_belly)
+	var m_eye := toon(Color("1a1620"), false); mats.append(m_eye)
+	var m_white := toon(Color.WHITE, false, 0.6)
+	var body := Node3D.new(); body.name = "Body"; root.add_child(body)
+	part(body, sphere(0.34), m_body, Vector3(0, 0.34, 0), Vector3(1.05, 0.92, 1.0))
+	part(body, sphere(0.24), m_belly, Vector3(0, 0.3, -0.14), Vector3(1.0, 0.95, 0.7))
+	for sx in [-1.0, 1.0]:
+		part(body, sphere(0.065, 10), m_eye, Vector3(0.12 * sx, 0.44, -0.28))
+		part(body, sphere(0.022, 6), m_white, Vector3(0.12 * sx + 0.02, 0.47, -0.33))
+		part(body, sphere(0.08, 8), m_body, Vector3(0.2 * sx, 0.06, -0.08), Vector3(1, 0.6, 1.2))  # feet
+	part(body, sphere(0.1, 8), m_body, Vector3(0, 0.26, 0.32))  # tail
+	match String(sp["ears"]):
+		"flame":
+			var m_f := toon(Color("ffb347"), true, 0.5); mats.append(m_f)
+			part(body, cyl(0.0, 0.12, 0.3), m_f, Vector3(0, 0.74, 0.02))
+			part(body, cyl(0.0, 0.08, 0.22), m_f, Vector3(-0.13, 0.68, 0.04), Vector3.ONE, Vector3(0, 0, 0.4))
+			part(body, cyl(0.0, 0.08, 0.22), m_f, Vector3(0.13, 0.68, 0.04), Vector3.ONE, Vector3(0, 0, -0.4))
+		"fin":
+			part(body, sphere(0.14), m_belly, Vector3(0, 0.66, 0.06), Vector3(0.35, 1.1, 1.3))
+			part(body, sphere(0.1), m_body, Vector3(-0.3, 0.3, 0.05), Vector3(0.4, 0.8, 1.2))
+			part(body, sphere(0.1), m_body, Vector3(0.3, 0.3, 0.05), Vector3(0.4, 0.8, 1.2))
+		"leaf":
+			var m_l := toon(Color("3e8f3a")); mats.append(m_l)
+			part(body, sphere(0.14), m_l, Vector3(-0.14, 0.68, 0), Vector3(0.5, 1.2, 0.25), Vector3(0, 0, 0.5))
+			part(body, sphere(0.14), m_l, Vector3(0.14, 0.68, 0), Vector3(0.5, 1.2, 0.25), Vector3(0, 0, -0.5))
+		"bolt":
+			var m_b := toon(Color("fff27a"), true, 0.4); mats.append(m_b)
+			part(body, box(0.06, 0.26, 0.06), m_b, Vector3(-0.14, 0.72, 0), Vector3.ONE, Vector3(0, 0, 0.5))
+			part(body, box(0.06, 0.26, 0.06), m_b, Vector3(0.14, 0.72, 0), Vector3.ONE, Vector3(0, 0, -0.5))
+			part(body, box(0.05, 0.16, 0.05), m_b, Vector3(-0.22, 0.86, 0), Vector3.ONE, Vector3(0, 0, -0.4))
+			part(body, box(0.05, 0.16, 0.05), m_b, Vector3(0.22, 0.86, 0), Vector3.ONE, Vector3(0, 0, 0.4))
+		"horn":
+			var m_h := toon(Color("e8e0cc")); mats.append(m_h)
+			part(body, cyl(0.0, 0.07, 0.2), m_h, Vector3(-0.15, 0.66, -0.05), Vector3.ONE, Vector3(-0.2, 0, 0.35))
+			part(body, cyl(0.0, 0.07, 0.2), m_h, Vector3(0.15, 0.66, -0.05), Vector3.ONE, Vector3(-0.2, 0, -0.35))
+			part(body, box(0.18, 0.1, 0.18), m_body, Vector3(0, 0.6, 0.12), Vector3.ONE, Vector3(0.3, 0.4, 0.2))
+		"wisp":
+			var m_w := toon(Color("efe8ff"), false, 0.8); mats.append(m_w)
+			for i in 3:
+				var a := float(i) / 3.0 * TAU
+				part(body, sphere(0.06, 8), m_w, Vector3(cos(a) * 0.3, 0.72 + sin(a * 2.0) * 0.04, sin(a) * 0.3), Vector3.ONE, Vector3.ZERO, "Orb%d" % i)
+	root.set_meta("mats", mats)
+	return root
+
+# ---------------------------------------------------------------- monsters
+static func mob(kind: String) -> Node3D:
+	var md: Dictionary = Data.MOBS[kind]
+	var root := Node3D.new()
+	var mats: Array = []
+	var m := toon(md["color"]); mats.append(m)
+	var m_dark := toon(Color(md["color"]).darkened(0.5)); mats.append(m_dark)
+	var m_eye := toon(Color("ffe25a"), false, 1.2); mats.append(m_eye)
+	var body := Node3D.new(); body.name = "Body"; root.add_child(body)
+	match kind:
+		"skitter":
+			part(body, sphere(0.38), m, Vector3(0, 0.38, 0), Vector3(1.1, 0.75, 1.25))
+			part(body, sphere(0.22), m_dark, Vector3(0, 0.5, 0.18), Vector3(1.2, 0.7, 1.0))
+			for sx in [-1.0, 1.0]:
+				part(body, sphere(0.05, 6), m_eye, Vector3(0.12 * sx, 0.46, -0.38))
+				for i in 3:
+					part(body, box(0.05, 0.05, 0.42), m_dark, Vector3(0.36 * sx, 0.2, -0.18 + i * 0.2), Vector3.ONE, Vector3(0, PI / 2, 0.6 * sx), "Leg%d%d" % [i, int(sx)])
+		"spitter":
+			part(body, cyl(0.1, 0.16, 0.6), m_dark, Vector3(0, 0.3, 0))
+			part(body, sphere(0.36), m, Vector3(0, 0.8, 0), Vector3(1.0, 0.9, 1.0), Vector3.ZERO, "Bulb")
+			part(body, cyl(0.16, 0.2, 0.12), m_eye, Vector3(0, 0.8, -0.3), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			for i in 4:
+				var a := float(i) / 4.0 * TAU + 0.4
+				part(body, sphere(0.2), m, Vector3(cos(a) * 0.32, 0.08, sin(a) * 0.32), Vector3(1.4, 0.25, 0.7), Vector3(0, -a, 0))
+		"brute":
+			part(body, box(1.0, 0.9, 0.8), m, Vector3(0, 0.95, 0))
+			part(body, box(0.55, 0.45, 0.5), m_dark, Vector3(0, 1.55, -0.12), Vector3.ONE, Vector3.ZERO, "Head")
+			part(body, sphere(0.06, 6), m_eye, Vector3(-0.13, 1.6, -0.38))
+			part(body, sphere(0.06, 6), m_eye, Vector3(0.13, 1.6, -0.38))
+			part(body, box(0.34, 0.95, 0.34), m_dark, Vector3(-0.68, 0.8, -0.05), Vector3.ONE, Vector3.ZERO, "ArmL")
+			part(body, box(0.34, 0.95, 0.34), m_dark, Vector3(0.68, 0.8, -0.05), Vector3.ONE, Vector3.ZERO, "ArmR")
+			part(body, box(0.3, 0.5, 0.34), m_dark, Vector3(-0.25, 0.25, 0))
+			part(body, box(0.3, 0.5, 0.34), m_dark, Vector3(0.25, 0.25, 0))
+	root.set_meta("mats", mats)
+	return root
+
+# ---------------------------------------------------------------- props
+static func rock(rng: RandomNumberGenerator, s: float) -> Node3D:
+	var root := Node3D.new()
+	var g := Color("8d8a86").lerp(Color("6f6a73"), rng.randf())
+	var m := toon(g, true)
+	var sm := SphereMesh.new(); sm.radius = 0.5; sm.height = 1.0; sm.radial_segments = 7; sm.rings = 4
+	part(root, sm, m, Vector3(0, 0.45 * s, 0), Vector3(s * rng.randf_range(0.9, 1.15), s * rng.randf_range(0.9, 1.4), s * rng.randf_range(0.9, 1.15)), Vector3(0, rng.randf() * TAU, 0))
+	if rng.randf() < 0.6:
+		part(root, sm, m, Vector3(rng.randf_range(-0.3, 0.3) * s, 0.2 * s, rng.randf_range(-0.3, 0.3) * s), Vector3.ONE * s * 0.55, Vector3(0, rng.randf() * TAU, 0))
+	return root
+
+static func tree(rng: RandomNumberGenerator, leaf: Color) -> Node3D:
+	var root := Node3D.new()
+	var mt := toon(Color("6b4a35"))
+	var ml := toon(leaf.lerp(Color("2f5a3a"), rng.randf() * 0.4))
+	var h := rng.randf_range(1.6, 2.4)
+	part(root, cyl(0.1, 0.15, h * 0.5), mt, Vector3(0, h * 0.25, 0))
+	part(root, cyl(0.0, 0.7, h * 0.55), ml, Vector3(0, h * 0.55, 0))
+	part(root, cyl(0.0, 0.52, h * 0.45), ml, Vector3(0, h * 0.82, 0))
+	return root
+
+static func chest() -> Node3D:
+	var root := Node3D.new()
+	var mw := toon(Color("8a5a35")); var mg := toon(Color("f2c84a"), true, 0.3)
+	part(root, box(0.8, 0.45, 0.55), mw, Vector3(0, 0.23, 0))
+	part(root, box(0.84, 0.18, 0.59), mw, Vector3(0, 0.55, 0), Vector3.ONE, Vector3.ZERO, "Lid")
+	part(root, box(0.14, 0.2, 0.06), mg, Vector3(0, 0.42, -0.3))
+	part(root, box(0.86, 0.06, 0.6), mg, Vector3(0, 0.46, 0))
+	root.set_meta("mats", [mw, mg])
+	return root
+
+static func portal(c: Color) -> Node3D:
+	var root := Node3D.new()
+	var t := TorusMesh.new(); t.inner_radius = 0.95; t.outer_radius = 1.2; t.rings = 24; t.ring_segments = 8
+	var mr := toon(Color("4a4f60"), true)
+	part(root, t, mr, Vector3(0, 1.25, 0), Vector3.ONE, Vector3(PI / 2, 0, 0), "Ring")
+	var disc := part(root, cyl(1.0, 1.0, 0.02, 24), glow_mat(c), Vector3(0, 1.25, 0), Vector3.ONE, Vector3(PI / 2, 0, 0), "Disc")
+	disc.visible = false
+	var base := MeshInstance3D.new(); base.name = "Base"; base.mesh = flat_quad(3.2)
+	base.material_override = ring_mat(c, 0.1); base.position.y = 0.05; root.add_child(base)
+	var beam := CPUParticles3D.new(); beam.name = "Beam"
+	beam.amount = 40; beam.lifetime = 1.6; beam.emitting = false
+	var bm := SphereMesh.new(); bm.radius = 0.07; bm.height = 0.14; bm.radial_segments = 6; bm.rings = 3
+	var pmat := StandardMaterial3D.new(); pmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; pmat.albedo_color = c.lightened(0.3)
+	bm.material = pmat
+	beam.mesh = bm
+	beam.emission_shape = CPUParticles3D.EMISSION_SHAPE_RING
+	beam.emission_ring_axis = Vector3.UP; beam.emission_ring_radius = 1.1; beam.emission_ring_inner_radius = 0.6; beam.emission_ring_height = 0.1
+	beam.direction = Vector3.UP; beam.spread = 8.0; beam.gravity = Vector3(0, 2.5, 0)
+	beam.initial_velocity_min = 1.0; beam.initial_velocity_max = 2.5
+	beam.position = Vector3(0, 0.1, 0)
+	root.add_child(beam)
+	return root
+
+static func jump_pad(c: Color) -> Node3D:
+	var root := Node3D.new()
+	part(root, cyl(0.7, 0.8, 0.14, 20), toon(Color("3f4456")), Vector3(0, 0.07, 0))
+	var top := part(root, cyl(0.55, 0.55, 0.02, 20), toon(c.darkened(0.25), false, 0.45), Vector3(0, 0.15, 0), Vector3.ONE, Vector3.ZERO, "Top")
+	for i in 3:
+		part(root, box(0.3, 0.03, 0.08), toon(Color("e8fff6"), false, 0.6), Vector3(0, 0.18, 0.2 - i * 0.2), Vector3.ONE, Vector3(0, 0, 0), "Chev%d" % i)
+	return root
+
+static func gem() -> Node3D:
+	var root := Node3D.new()
+	var p := PrismMesh.new(); p.size = Vector3(0.28, 0.3, 0.28)
+	var m := toon(Color("7ef0d0"), false, 0.7)
+	part(root, p, m, Vector3(0, 0.15, 0))
+	part(root, p, m, Vector3(0, -0.15, 0), Vector3.ONE, Vector3(PI, 0, 0))
+	return root
+
+static func seed_bag(c: Color) -> Node3D:
+	var root := Node3D.new()
+	part(root, sphere(0.2), toon(Color("c8a26a")), Vector3(0, 0.2, 0), Vector3(1, 1.1, 1))
+	part(root, sphere(0.09), toon(c, false, 0.4), Vector3(0, 0.42, 0))
+	return root
+
+# ---------------------------------------------------------------- home
+static func house() -> Node3D:
+	var root := Node3D.new()
+	var wall := toon(Color("efe2c8")); var roof := toon(Color("b4553f")); var wood := toon(Color("7a5236"))
+	var glass := toon(Color("ffd98a"), false, 0.8)
+	part(root, box(4.2, 2.2, 3.2), wall, Vector3(0, 1.1, 0))
+	var pr := PrismMesh.new(); pr.size = Vector3(4.8, 1.6, 3.6)
+	part(root, pr, roof, Vector3(0, 3.0, 0))
+	part(root, box(0.9, 1.5, 0.1), wood, Vector3(0, 0.75, 1.62))
+	part(root, box(0.8, 0.7, 0.08), glass, Vector3(-1.3, 1.3, 1.62))
+	part(root, box(0.8, 0.7, 0.08), glass, Vector3(1.3, 1.3, 1.62))
+	part(root, box(0.5, 1.2, 0.5), toon(Color("8a8078")), Vector3(1.3, 3.4, -0.6))
+	part(root, box(4.4, 0.25, 3.4), wood, Vector3(0, 0.12, 0))
+	return root
+
+static func plot() -> Node3D:
+	var root := Node3D.new()
+	var soil := toon(Color("6b4a33")); var dark := toon(Color("4e3424"))
+	part(root, box(1.7, 0.2, 1.7), soil, Vector3(0, 0.1, 0))
+	for i in 3:
+		part(root, box(1.5, 0.05, 0.14), dark, Vector3(0, 0.21, -0.5 + i * 0.5))
+	var crop := Node3D.new(); crop.name = "Crop"; root.add_child(crop)
+	return root
+
+static func crop(stage: int, grow: int, col: Color) -> Node3D:
+	var root := Node3D.new()
+	var leaf := toon(Color("5aa04a"))
+	var k := clampf(float(stage) / float(grow), 0.0, 1.0)
+	for i in 3:
+		var x := -0.5 + i * 0.5
+		if stage <= 0:
+			part(root, sphere(0.06, 6), toon(Color("8a6a45")), Vector3(x, 0.25, 0))
+			continue
+		var hgt := 0.15 + k * 0.45
+		part(root, cyl(0.03, 0.04, hgt, 6), leaf, Vector3(x, 0.2 + hgt * 0.5, 0))
+		part(root, sphere(0.12 + k * 0.12, 8), leaf, Vector3(x, 0.22 + hgt, 0), Vector3(1.2, 0.6, 1.2))
+		if stage >= grow:
+			part(root, sphere(0.13, 10), toon(col, true, 0.25), Vector3(x + 0.08, 0.3 + hgt, 0.08))
+	return root
+
+static func cauldron() -> Node3D:
+	var root := Node3D.new()
+	var iron := toon(Color("3a3a44"))
+	part(root, sphere(0.6), iron, Vector3(0, 0.55, 0), Vector3(1, 0.8, 1))
+	var t := TorusMesh.new(); t.inner_radius = 0.45; t.outer_radius = 0.58
+	part(root, t, iron, Vector3(0, 0.9, 0))
+	part(root, cyl(0.47, 0.47, 0.04, 20), toon(Color("7fe0a0"), false, 0.6), Vector3(0, 0.9, 0))
+	for i in 3:
+		var a := i * TAU / 3.0
+		part(root, cyl(0.05, 0.05, 0.4), iron, Vector3(cos(a) * 0.4, 0.15, sin(a) * 0.4))
+	part(root, box(0.5, 0.15, 0.5), toon(Color("ff9a4a"), false, 1.0), Vector3(0, 0.08, 0))
+	return root
+
+static func stall() -> Node3D:
+	var root := Node3D.new()
+	var wood := toon(Color("8a5a35"))
+	part(root, box(2.2, 0.9, 0.9), wood, Vector3(0, 0.45, 0))
+	for x in [-1.0, 1.0]:
+		part(root, cyl(0.06, 0.06, 2.0), wood, Vector3(x, 1.0, -0.35))
+		part(root, cyl(0.06, 0.06, 2.0), wood, Vector3(x, 1.0, 0.35))
+	for i in 4:
+		part(root, box(0.56, 0.08, 1.2), toon(Color("e0607e") if i % 2 == 0 else Color("f3eee2")), Vector3(-0.84 + i * 0.56, 2.05, 0), Vector3.ONE, Vector3(0.25, 0, 0))
+	for i in 3:
+		part(root, sphere(0.14), toon([Color("ff6a4a"), Color("5ab8f0"), Color("f2c84a")][i]), Vector3(-0.6 + i * 0.6, 1.0, 0))
+	return root

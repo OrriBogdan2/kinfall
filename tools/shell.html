@@ -1,0 +1,71 @@
+<title>Kinfall</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<style>
+/* One dark game screen: the canvas fills the frame, a quiet loader sits on top until the engine starts. */
+:root{--void:#0b0f14;--ink:#e9e4d6;--muted:#8d95a3;--ember:#f2a24a;--moss:#7fc28a;--font-ui:"Lilita One","Trebuchet MS",sans-serif;color-scheme:dark}
+html,body{height:100%;background:var(--void);color:var(--ink);overflow:hidden}
+#canvas{display:block;width:100%;height:100%;outline:none;touch-action:none}
+#load{position:fixed;inset:0;display:grid;place-items:center;background:var(--void);padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+#load .box{display:grid;gap:14px;justify-items:center;text-align:center;max-width:440px}
+#load h1{font:400 52px/1 var(--font-ui);letter-spacing:.02em;margin:0;color:var(--ember)}
+#load p{margin:0;color:var(--muted);font:14px/1.5 system-ui,sans-serif}
+#bar{width:min(320px,80vw);height:6px;border-radius:3px;background:#1d2530;overflow:hidden}
+#bar i{display:block;height:100%;width:0;background:var(--moss);transition:width .2s}
+#err{color:#ff9b8a;white-space:pre-wrap;font:13px/1.5 ui-monospace,monospace}
+#phone{display:none}
+@media (max-width:700px),(pointer:coarse){#phone{display:block}}
+@media (prefers-reduced-motion:reduce){#bar i{transition:none}}
+</style>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Lilita+One&display=swap">
+<canvas id="canvas" tabindex="0">Your browser does not support the canvas.</canvas>
+<div id="load"><div class="box"><h1>Kinfall</h1><div id="bar"><i></i></div><p id="msg">Loading the game (about 10MB)</p><p id="phone">Kinfall needs a keyboard and mouse. Open it on a computer to play.</p><div id="err" hidden></div></div></div>
+<script>
+// Files over 15MB can't be published, so the engine ships gzipped and is inflated here.
+(function(){const real=window.fetch.bind(window);
+  window.fetch=async function(input,init){const url=typeof input==='string'?input:input.url;const m=/(?:^|\/)(index\.(wasm|pck))(\?|$)/.exec(url);
+    if(!m)return real(input,init);const r=await real(m[1].replace('.','-')+'.gz.wasm',init);if(!r.ok)return r;
+    const body=r.body.pipeThrough(new DecompressionStream('gzip'));
+    return new Response(body,{status:200,headers:{'Content-Type':m[2]==='wasm'?'application/wasm':'application/octet-stream'}})}})();
+
+// The game calls these through Godot's JavaScriptBridge.
+window.kinBridge=(function(){
+  let samplePromise=null;
+  const getSample=()=>{if(!samplePromise)samplePromise=(window.claude&&window.claude.use)?window.claude.use('sample').catch(()=>null):Promise.resolve(null);return samplePromise};
+  // ---- Claude for kin conversations
+  function ask(payload,cb){(async()=>{try{const s=await getSample();if(!s){cb('');return}
+      const p=JSON.parse(payload);const r=await s(p.messages,{modelTier:p.tier||'quick',cache:false});cb((r&&r.text)||'')}catch(e){cb('')}})()}
+  // ---- online play: the artifact room when available, a BroadcastChannel between tabs otherwise
+  let room=null,match=null,me=Math.random().toString(36).slice(2,10),onMsg=null,onPeers=null,peers=new Map(),bc=null,mine={},bcTimer=null;
+  function deliver(topic,data,from){if(from===me||!onMsg)return;try{onMsg(JSON.stringify({t:topic,d:data,f:from}))}catch(e){}}
+  function emitPeers(){if(!onPeers)return;const arr=[];peers.forEach((v,k)=>arr.push({id:k,p:v}));onPeers(JSON.stringify({me,peers:arr}))}
+  async function netStart(msgCb,peersCb){onMsg=msgCb;onPeers=peersCb;
+    try{const c=window.claude;room=c&&c.use?await c.use('room'):null}catch(e){room=null}
+    if(room){room.onPeers(ch=>{peers=new Map();for(const p of ch.peers){if(p.isMe)me=String(p.peer);const pr=p.presence||{};if(pr.kf)peers.set(String(p.peer),pr)}emitPeers()});
+      for(const t of['start','lobby'])room.on(t,msg=>{if(!msg.isMe)deliver(t,msg.data,String(msg.peer))});
+      return 'room'}
+    bc=new BroadcastChannel('kinfall-net');bc.onmessage=e=>{const m=e.data;if(!m)return;
+      if(m.k==='pres'){peers.set(m.f,Object.assign({},m.d,{seen:Date.now()}));emitPeers()}
+      else if(m.k==='bye'){peers.delete(m.f);emitPeers()}
+      else if(m.k==='msg'&&(!m.room||m.room===(match&&match.name)))deliver(m.t,m.d,m.f)};
+    bcTimer=setInterval(()=>{bc.postMessage({k:'pres',f:me,d:mine});const now=Date.now();let ch=false;peers.forEach((v,k)=>{if(now-v.seen>4000){peers.delete(k);ch=true}});if(ch)emitPeers()},1000);
+    addEventListener('beforeunload',()=>bc&&bc.postMessage({k:'bye',f:me}));
+    return 'tabs'}
+  function presence(json){mine=JSON.parse(json);mine.kf=1;if(room)room.presence(mine).catch(()=>{});else if(bc){bc.postMessage({k:'pres',f:me,d:mine});peers.set(me,Object.assign({},mine,{seen:Date.now()}));emitPeers()}}
+  function emit(topic,json){const d=JSON.parse(json);if(room)room.emit(topic,d).catch(()=>{});else if(bc)bc.postMessage({k:'msg',t:topic,d,f:me})}
+  async function joinMatch(name){leaveMatch();if(room&&room.join){const r=await room.join(name);match={name,r};
+      for(const t of['st','hit','ev'])r.on(t,msg=>{if(!msg.isMe)deliver(t,msg.data,String(msg.peer))})}else{match={name}}return 1}
+  function matchEmit(topic,json){const d=JSON.parse(json);if(match&&match.r)match.r.emit(topic,d).catch(()=>{});else if(bc)bc.postMessage({k:'msg',t:topic,d,f:me,room:match&&match.name})}
+  function leaveMatch(){if(match&&match.r&&match.r.leave)try{match.r.leave()}catch(e){}match=null}
+  function whoami(){return me}
+  return {ask,netStart,presence,emit,joinMatch,matchEmit,leaveMatch,whoami,hasRoom:()=>!!room};
+})();
+</script>
+<script src="index.js"></script>
+<script>
+const GODOT_CONFIG=/*GODOT_CONFIG*/{};
+const engine=new Engine(GODOT_CONFIG);
+(function(){const bar=document.querySelector('#bar i'),err=document.getElementById('err'),load=document.getElementById('load');
+  const fail=e=>{console.error(e);err.hidden=false;err.textContent=(e&&e.message)||String(e);document.getElementById('msg').textContent='The game could not start.'};
+  const missing=Engine.getMissingFeatures({threads:false});if(missing.length){fail('Missing browser features:\n'+missing.join('\n'));return}
+  engine.startGame({onProgress:(c,t)=>{if(c>0&&t>0)bar.style.width=Math.min(100,c/t*100)+'%'}}).then(()=>{load.remove();document.getElementById('canvas').focus()},fail)})();
+</script>

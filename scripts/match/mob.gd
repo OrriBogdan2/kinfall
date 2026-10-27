@@ -1,0 +1,235 @@
+class_name Mob
+extends Ent
+## Monsters. Each attack is telegraphed on the ground before it lands.
+
+var mkind := "skitter"
+var md: Dictionary = {}
+var st := "idle"            # idle | chase | windup | lunge | recover
+var st_t := 0.0
+var tgt: Ent = null
+var camp := Vector3.ZERO
+var atk_dir := Vector2.ZERO
+var atk_at := Vector3.ZERO
+var tele: Node3D = null
+var cd := 0.0
+var wander := Vector3.INF
+var lunge_hit := {}
+var anim := 0.0
+var dmg_mult := 1.0
+
+func init_mob(match_node: Node, id: String, k: String, at: Vector3, tier := 1.0) -> void:
+	setup(match_node, id)
+	kind = "mob"
+	team = -2
+	mkind = k
+	md = Data.MOBS[k]
+	max_hp = float(md["hp"]) * tier
+	hp = max_hp
+	dmg_mult = 1.0 + (tier - 1.0) * 0.6
+	r = md["r"]
+	camp = at
+	cd = randf_range(0.5, 1.5)
+	set_model(Models.mob(k))
+	teleport(at)
+
+func mass() -> float:
+	return 3.0 if mkind == "brute" else 1.0
+
+func _on_zero(by: Ent, opts: Dictionary) -> void:
+	die()
+	_cancel_tele()
+	m.on_mob_dead(self, by, opts)
+
+func _cancel_tele() -> void:
+	if tele:
+		m.fx.end_telegraph(tele)
+		tele = null
+
+func hurt(d: float, by: Ent, opts := {}) -> float:
+	var dealt := super.hurt(d, by, opts)
+	if dealt > 0.0 and by and not dead:
+		var real: Ent = by
+		if by is Kin and by.state != "active" and by.owner_h:
+			real = by.owner_h
+		if tgt == null or randf() < 0.4:
+			tgt = real
+			if st == "idle":
+				st = "chase"
+	return dealt
+
+func _find_target() -> Ent:
+	var best: Ent = null; var bd := 7.5 if st == "idle" else 11.0
+	for h in m.hunters:
+		if not h.targetable():
+			continue
+		var d := flat_dist(h)
+		if d < bd and absf(h.pos.y - pos.y) < 2.5:
+			bd = d; best = h
+	for k in m.kins:
+		if k.is_wild() or k.state != "active":
+			continue
+		var d := flat_dist(k)
+		if d < bd * 0.8:
+			bd = d; best = k
+	return best
+
+func sim(dt: float) -> void:
+	prev = pos
+	if dead:
+		return
+	tick_status(dt)
+	if remote:
+		st_t -= dt
+		net_follow(dt)
+		_net_telegraph()
+		return
+	cd -= dt
+	st_t -= dt
+	var spd: float = md["speed"] * (0.55 if slow_t > 0.0 else 1.0)
+	if root_t > 0.0 or stun_t > 0.0:
+		spd = 0.0
+		if stun_t > 0.0 and st == "windup":
+			# a stun interrupts the attack
+			_cancel_tele(); st = "recover"; st_t = 0.4
+	var wish := Vector2.ZERO
+	match st:
+		"idle":
+			if randf() < dt * 2.0:
+				tgt = _find_target()
+				if tgt:
+					st = "chase"
+			if wander == Vector3.INF or flat_dist(wander) < 0.4 or randf() < dt * 0.2:
+				var a := randf() * TAU
+				var q := camp + Vector3(cos(a), 0, sin(a)) * randf_range(0.5, 3.0)
+				if not m.world.is_void(q.x, q.z) and not m.world.is_block(q.x, q.z):
+					wander = q
+			if wander != Vector3.INF:
+				wish = dir_to(wander) * spd * 0.3
+		"chase":
+			if tgt == null or tgt.dead or not tgt.hittable() or (tgt is Hunter and not tgt.targetable()) or flat_dist(camp) > 13.0:
+				tgt = _find_target()
+				if tgt == null:
+					st = "idle"
+					wish = dir_to(camp) * spd
+			if tgt:
+				var d := flat_dist(tgt)
+				var want: float = md["range"] * (0.85 if mkind != "spitter" else 0.9)
+				if d > want:
+					wish = dir_to(tgt) * spd
+				elif mkind == "spitter" and d < 3.0:
+					wish = -dir_to(tgt) * spd
+				if d <= md["range"] + tgt.r and cd <= 0.0 and m.world.los(pos, tgt.pos, pos.y + 0.8):
+					_begin_attack()
+		"windup":
+			if tgt and mkind != "brute":
+				# track the target a little during the windup, then commit
+				if st_t > float(md["windup"]) * 0.4:
+					atk_dir = atk_dir.slerp(dir_to(tgt), dt * 4.0)
+					if tele:
+						m.fx.aim_telegraph(tele, pos, atk_dir)
+			if tele:
+				m.fx.telegraph_progress(tele, 1.0 - st_t / float(md["windup"]))
+			if st_t <= 0.0:
+				_strike()
+		"lunge":
+			vel.x = atk_dir.x * 12.0; vel.z = atk_dir.y * 12.0
+			for e in m.foes_of(team):
+				if lunge_hit.has(e.nid): continue
+				if flat_dist(e) < e.r + r + 0.3 and absf(e.pos.y - pos.y) < 1.2:
+					lunge_hit[e.nid] = true
+					e.hurt(md["dmg"] * dmg_mult, self, {"kb": atk_dir * 4.0, "src": "mob"})
+			if st_t <= 0.0:
+				st = "recover"; st_t = 0.45
+				vel.x *= 0.2; vel.z *= 0.2
+		"recover":
+			if st_t <= 0.0:
+				st = "chase"
+	if st != "lunge":
+		var hv := Vector2(vel.x, vel.z)
+		var k := 10.0 if hv.length() <= spd * 1.3 else 2.5
+		hv += (wish - hv) * (1.0 - exp(-k * dt))
+		var ahead := Vector2(pos.x, pos.z) + hv.normalized() * (r + 0.3)
+		if grounded and hv.length() <= spd * 1.3 and m.world.is_void(ahead.x, ahead.y):
+			hv = Vector2.ZERO
+		vel.x = hv.x; vel.z = hv.y
+	slide(dt)
+	body_vertical(dt)
+	var look := atk_dir if st in ["windup", "lunge"] else Vector2(vel.x, vel.z)
+	if look.length() > 0.2:
+		face = lerp_angle(face, atan2(-look.x, -look.y), minf(1.0, dt * 10.0))
+
+func _begin_attack() -> void:
+	st = "windup"
+	st_t = md["windup"]
+	atk_dir = dir_to(tgt)
+	match md["attack"]:
+		"lunge":
+			tele = m.fx.telegraph_rect(pos, atk_dir, 2.6, 0.8, Color("ff6a4a"))
+		"spit":
+			tele = m.fx.telegraph_rect(pos, atk_dir, 8.0, 0.45, Color("ffb04a"))
+		"slam":
+			atk_at = pos + Vector3(atk_dir.x, 0, atk_dir.y) * 0.9
+			tele = m.fx.telegraph_circle(atk_at, 2.3, Color("ff4a3a"))
+	m.sfx("warn", pos, -8.0)
+
+func _strike() -> void:
+	_cancel_tele()
+	cd = md["cd"] * randf_range(0.85, 1.15)
+	match md["attack"]:
+		"lunge":
+			st = "lunge"; st_t = 0.2; lunge_hit = {}
+		"spit":
+			st = "recover"; st_t = 0.5
+			m.spawn_shot(self, pos + Vector3(atk_dir.x * 0.6, 0.8, atk_dir.y * 0.6), atk_dir * 11.0, md["dmg"] * dmg_mult, 8.5 / 11.0, 0.22, Color("b6ff6a"), {"mob": true, "kb": 2.0})
+			m.sfx("thump", pos, -8.0, 1.4)
+		"slam":
+			st = "recover"; st_t = 0.8
+			m.fx.ring(atk_at, 2.3, Color("ffb090"), 0.3)
+			m.net_fx(["ring", m._r(atk_at.x), m._r(atk_at.y), m._r(atk_at.z), 2.3, "ffb090"])
+			m.fx.dust(atk_at, 16)
+			m.shake(0.4, atk_at)
+			m.sfx("boom", atk_at, -2.0, 0.8)
+			for e in m.foes_of(team):
+				var to := Vector2(e.pos.x - atk_at.x, e.pos.z - atk_at.z)
+				if to.length() < 2.3 + e.r and absf(e.pos.y - pos.y) < 1.5:
+					e.hurt(md["dmg"] * dmg_mult, self, {"kb": to.normalized() * 7.0, "lift": 5.0, "src": "mob"})
+
+func render(delta: float, alpha: float) -> void:
+	super.render(delta, alpha)
+	visible = not dead
+	if not model:
+		return
+	model.rotation.y = face
+	anim += delta * (10.0 if Vector2(vel.x, vel.z).length() > 0.3 else 2.0)
+	var body: Node3D = model.get_node("Body")
+	var wind := 0.0
+	if st == "windup":
+		wind = 1.0 - st_t / float(md["windup"])
+	match mkind:
+		"skitter":
+			body.position.y = absf(sin(anim)) * 0.06
+			body.rotation.x = wind * 0.35 - (0.3 if st == "lunge" else 0.0)
+		"spitter":
+			var bulb: Node3D = body.get_node("Bulb")
+			bulb.scale = Vector3.ONE * (1.0 + wind * 0.35 + sin(anim) * 0.03)
+		"brute":
+			body.get_node("ArmL").rotation.x = -wind * 2.4
+			body.get_node("ArmR").rotation.x = -wind * 2.4
+			body.position.y = absf(sin(anim * 0.5)) * 0.05
+	var sq := squash
+	body.scale = Vector3(1.0 + sq * 0.3, 1.0 - sq * 0.35, 1.0 + sq * 0.3)
+
+## Telegraphs on proxies follow the host's attack state.
+func _net_telegraph() -> void:
+	if st == "windup":
+		if tele == null:
+			match md["attack"]:
+				"lunge": tele = m.fx.telegraph_rect(pos, atk_dir, 2.6, 0.8, Color("ff6a4a"))
+				"spit": tele = m.fx.telegraph_rect(pos, atk_dir, 8.0, 0.45, Color("ffb04a"))
+				"slam": tele = m.fx.telegraph_circle(pos + Vector3(atk_dir.x, 0, atk_dir.y) * 0.9, 2.3, Color("ff4a3a"))
+		elif md["attack"] != "slam":
+			m.fx.aim_telegraph(tele, pos, atk_dir)
+		if tele:
+			m.fx.telegraph_progress(tele, 1.0 - st_t / float(md["windup"]))
+	elif tele:
+		_cancel_tele()
