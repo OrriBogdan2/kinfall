@@ -33,7 +33,7 @@ func init_mob(match_node: Node, id: String, k: String, at: Vector3, tier := 1.0)
 	teleport(at)
 
 func mass() -> float:
-	return 3.0 if mkind == "brute" else 1.0
+	return 6.0 if mkind == "warden" else (3.0 if mkind == "brute" else 1.0)
 
 func _on_zero(by: Ent, opts: Dictionary) -> void:
 	die()
@@ -121,7 +121,7 @@ func sim(dt: float) -> void:
 				if d <= md["range"] + tgt.r and cd <= 0.0 and m.world.los(pos, tgt.pos, pos.y + 0.8):
 					_begin_attack()
 		"windup":
-			if tgt and mkind != "brute":
+			if tgt and mkind != "brute" and mkind != "warden":
 				# track the target a little during the windup, then commit
 				if st_t > float(md["windup"]) * 0.4:
 					atk_dir = atk_dir.slerp(dir_to(tgt), dt * 4.0)
@@ -169,7 +169,7 @@ func _begin_attack() -> void:
 			tele = m.fx.telegraph_rect(pos, atk_dir, 8.0, 0.45, Color("ffb04a"))
 		"slam":
 			atk_at = pos + Vector3(atk_dir.x, 0, atk_dir.y) * 0.9
-			tele = m.fx.telegraph_circle(atk_at, 2.3, Color("ff4a3a"))
+			tele = m.fx.telegraph_circle(atk_at, float(md.get("slam_r", 2.3)), Color("ff4a3a"))
 	m.sfx("warn", pos, -8.0)
 
 func _strike() -> void:
@@ -184,14 +184,14 @@ func _strike() -> void:
 			m.sfx("thump", pos, -8.0, 1.4)
 		"slam":
 			st = "recover"; st_t = 0.8
-			m.fx.ring(atk_at, 2.3, Color("ffb090"), 0.3)
-			m.net_fx(["ring", m._r(atk_at.x), m._r(atk_at.y), m._r(atk_at.z), 2.3, "ffb090"])
+			m.fx.ring(atk_at, float(md.get("slam_r", 2.3)), Color("ffb090"), 0.3)
+			m.net_fx(["ring", m._r(atk_at.x), m._r(atk_at.y), m._r(atk_at.z), float(md.get("slam_r", 2.3)), "ffb090"])
 			m.fx.dust(atk_at, 16)
 			m.shake(0.4, atk_at)
 			m.sfx("boom", atk_at, -2.0, 0.8)
 			for e in m.foes_of(team):
 				var to := Vector2(e.pos.x - atk_at.x, e.pos.z - atk_at.z)
-				if to.length() < 2.3 + e.r and absf(e.pos.y - pos.y) < 1.5:
+				if to.length() < float(md.get("slam_r", 2.3)) + e.r and absf(e.pos.y - pos.y) < 1.5:
 					e.hurt(md["dmg"] * dmg_mult, self, {"kb": to.normalized() * 7.0, "lift": 5.0, "src": "mob"})
 
 func render(delta: float, alpha: float) -> void:
@@ -212,7 +212,7 @@ func render(delta: float, alpha: float) -> void:
 		"spitter":
 			var bulb: Node3D = body.get_node("Bulb")
 			bulb.scale = Vector3.ONE * (1.0 + wind * 0.35 + sin(anim) * 0.03)
-		"brute":
+		"brute", "warden":
 			body.get_node("ArmL").rotation.x = -wind * 2.4
 			body.get_node("ArmR").rotation.x = -wind * 2.4
 			body.position.y = absf(sin(anim * 0.5)) * 0.05
@@ -226,7 +226,7 @@ func _net_telegraph() -> void:
 			match md["attack"]:
 				"lunge": tele = m.fx.telegraph_rect(pos, atk_dir, 2.6, 0.8, Color("ff6a4a"))
 				"spit": tele = m.fx.telegraph_rect(pos, atk_dir, 8.0, 0.45, Color("ffb04a"))
-				"slam": tele = m.fx.telegraph_circle(pos + Vector3(atk_dir.x, 0, atk_dir.y) * 0.9, 2.3, Color("ff4a3a"))
+				"slam": tele = m.fx.telegraph_circle(pos + Vector3(atk_dir.x, 0, atk_dir.y) * 0.9, float(md.get("slam_r", 2.3)), Color("ff4a3a"))
 		elif md["attack"] != "slam":
 			m.fx.aim_telegraph(tele, pos, atk_dir)
 		if tele:

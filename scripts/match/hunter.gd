@@ -11,6 +11,8 @@ const LEDGE_CD := 5.0
 const GLIDE_FALL := 2.3
 const GLIDE_SPEED := 7.4
 const GLIDE_TIME := 3.2
+const DROP_FALL := 5.0
+const DROP_SPEED := 9.0
 
 var pname := "Hunter"
 var cls := "medium"
@@ -71,6 +73,8 @@ var glide_max := GLIDE_TIME
 var glide_cd := 0.0
 var glide_k := 0.0             # how far the glider is unfolded, for the model
 var wind_t := 0.0
+var dropping := false         # gliding down from the sky at the start of a match
+var bless_t := 0.0
 
 func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, name_txt: String, control: String) -> void:
 	setup(match_node, id)
@@ -105,7 +109,7 @@ func hittable() -> bool:
 	return not dead and not out and not extracted
 
 func targetable() -> bool:
-	return hittable() and not downed and cloak_t <= 0.0
+	return hittable() and not downed and cloak_t <= 0.0 and not dropping
 
 func is_local() -> bool:
 	return ctrl == "local"
@@ -116,7 +120,7 @@ func aim_dir() -> Vector2:
 
 # ------------------------------------------------------------------ damage
 func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
-	if inv_t > 0.0 and opts.get("src", "") != "fall":
+	if (inv_t > 0.0 or dropping) and opts.get("src", "") != "fall":
 		return 0.0
 	var d := dmg
 	if shoulder() == "bedrock":
@@ -282,7 +286,7 @@ func sim(dt: float) -> void:
 	if out or extracted:
 		return
 	tick_status(dt)
-	for k in ["inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd"]:
+	for k in ["inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t"]:
 		set(k, maxf(0.0, get(k) - dt))
 	if shield_t > 0.0:
 		shield_t -= dt
@@ -361,9 +365,10 @@ func _physics(dt: float) -> void:
 	elif fly_t > 0.0:
 		fly_t -= dt
 	elif gliding:
-		var gw := mv * GLIDE_SPEED
+		var gs := DROP_SPEED if dropping else GLIDE_SPEED
+		var gw := mv * gs
 		if mv.length() < 0.1:
-			gw = hv.normalized() * minf(cur, GLIDE_SPEED * 0.6) if cur > 0.1 else Vector2.ZERO
+			gw = hv.normalized() * minf(cur, gs * 0.6) if cur > 0.1 else Vector2.ZERO
 		hv += (gw - hv) * (1.0 - exp(-3.2 * dt))
 	else:
 		var wish := mv * spd
@@ -373,7 +378,7 @@ func _physics(dt: float) -> void:
 	vel.x = hv.x; vel.z = hv.y
 	_update_glide(dt)
 	if gliding:
-		vel.y = lerpf(vel.y, -GLIDE_FALL, 1.0 - exp(-7.0 * dt))
+		vel.y = lerpf(vel.y, -(DROP_FALL if dropping else GLIDE_FALL), 1.0 - exp(-7.0 * dt))
 	elif not grounded:
 		vel.y -= GRAV * (1.3 if vel.y < 0.0 and fly_t <= 0.0 else 1.0) * dt
 	var guard := grounded and roll_t <= 0.0 and hv.length() <= spd * 1.25
@@ -406,6 +411,9 @@ func _physics(dt: float) -> void:
 			if gliding:
 				gliding = false
 				m.fx.dust(pos, 5)
+			if dropping:
+				dropping = false
+				m.on_drop_landed(self)
 			if fv < -11.0 or cur > spd * 1.3:
 				m.fx.dust(pos, 6)
 				squash = 0.35
@@ -423,6 +431,13 @@ func _physics(dt: float) -> void:
 
 ## Hold jump while falling to open the glider. It folds when you land, run out, dash, or get hit.
 func _update_glide(dt: float) -> void:
+	if dropping:
+		# the opening drop: the glider stays open until you land, or until you sink below the islands
+		gliding = not grounded
+		if pos.y < -1.5:
+			dropping = false
+			glide_fuel = 1.0
+		return
 	if grounded:
 		glide_fuel = minf(1.0, glide_fuel + dt / 1.2)
 	var can: bool = not grounded and roll_t <= 0.0 and fly_t <= 0.0 and glide_cd <= 0.0 and not downed and stun_t <= 0.0 \
@@ -535,6 +550,14 @@ func render(delta: float, alpha: float) -> void:
 			ghost_t = 0.028
 			m.fx.ghost(position, face, tc, float(cdat["scale"]))
 	elif gliding:
+		# while dropping in, a ring on the ground shows where you'll land
+		if dropping and is_local():
+			step_t -= delta
+			if step_t <= 0.0:
+				step_t = 0.22
+				var gy: float = m.world.ground_at(pos.x, pos.z)
+				if gy > World.VOID + 1.0:
+					m.fx.ring(Vector3(pos.x, gy, pos.z), 1.1, Color(1, 1, 1, 0.7), 0.25)
 		# hang under the glider, legs trailing
 		torso.rotation.x = -0.35
 		torso.rotation.z = -lean_s * 1.6

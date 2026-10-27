@@ -98,6 +98,8 @@ const MOBS := {
 		"r": 0.55, "gems": 3, "color": Color("4f9e6e"), "attack": "spit"},
 	"brute": {"name": "Brute", "hp": 170.0, "speed": 3.0, "dmg": 24.0, "range": 2.2, "windup": 0.95, "cd": 2.6,
 		"r": 0.9, "gems": 9, "color": Color("8a5a48"), "attack": "slam"},
+	"warden": {"name": "The Warden", "hp": 820.0, "speed": 3.3, "dmg": 30.0, "range": 2.8, "windup": 0.85, "cd": 2.1,
+		"r": 1.3, "gems": 30, "color": Color("5a4a7a"), "attack": "slam", "slam_r": 3.3},
 }
 
 ## Crops grow on the farm while you play matches. Each becomes something for your next match.

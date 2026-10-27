@@ -130,19 +130,18 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 	islands.clear(); pads.clear(); spawns.clear(); portal_spots.clear(); chest_spots.clear(); camp_spots.clear(); wild_spots.clear()
 	var shape := FastNoiseLite.new(); shape.seed = seed_val; shape.frequency = 0.09
 	var terr := FastNoiseLite.new(); terr.seed = seed_val + 7; terr.frequency = 0.07
-	# island centres: one big middle island, the rest around it with gaps between
-	var centers: Array = [{"c": Vector2(w / 2.0, h / 2.0), "r": rng.randf_range(8.5, 10.0)}]
-	var tries := 0
-	while centers.size() < n_islands and tries < 2000:
-		tries += 1
-		var r := rng.randf_range(5.0, 7.8)
-		var c := Vector2(rng.randf_range(r + 2, w - r - 2), rng.randf_range(r + 2, h - r - 2))
-		var ok := true
-		for o in centers:
-			if c.distance_to(o["c"]) < r + o["r"] + rng.randf_range(3.0, 5.5):
-				ok = false; break
-		if ok:
-			centers.append({"c": c, "r": r})
+	# island centres: a big heart island in the middle and a ring of outer islands around it,
+	# evenly spaced by angle so every side of the map has somewhere to land
+	var centers: Array = [{"c": Vector2(w / 2.0, h / 2.0), "r": rng.randf_range(8.5, 9.8)}]
+	var n_outer := n_islands - 1
+	var a0 := rng.randf() * TAU
+	for k in n_outer:
+		var r := rng.randf_range(5.4, 7.2)
+		var ang := a0 + TAU * k / n_outer + rng.randf_range(-0.22, 0.22)
+		var dist: float = centers[0]["r"] + r + rng.randf_range(4.0, 6.0)
+		var c := Vector2(w / 2.0, h / 2.0) + Vector2(cos(ang), sin(ang)) * dist
+		c.x = clampf(c.x, r + 2, w - r - 2); c.y = clampf(c.y, r + 2, h - r - 2)
+		centers.append({"c": c, "r": r})
 	for ii in centers.size():
 		var c: Vector2 = centers[ii]["c"]; var r: float = centers[ii]["r"]
 		var base := 0 if ii == 0 else rng.randi_range(0, 2)
@@ -166,7 +165,18 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 					level[i] = clampi(lv, 0, 4)
 					depth[i] = -(2.2 + (1.0 - d) * 4.5 + rng.randf() * 1.5)
 					cells.append(Vector2i(x, z))
-		islands.append({"c": c, "r": r, "base": base, "cells": cells})
+		islands.append({"c": c, "r": r, "base": base, "cells": cells, "role": "heart" if ii == 0 else ""})
+	var roles: Array = ["camp", "camp", "nest", "nest", "grove", "shrine"]
+	while roles.size() < n_outer: roles.append(["camp", "nest", "grove"][roles.size() % 3])
+	roles = roles.slice(0, n_outer)
+	roles.shuffle()
+	# shuffle with our own rng so maps stay deterministic per seed
+	for k in range(roles.size() - 1, 0, -1):
+		var j := rng.randi_range(0, k)
+		var tmp = roles[k]; roles[k] = roles[j]; roles[j] = tmp
+	for k in n_outer:
+		if k + 1 < islands.size():
+			islands[k + 1]["role"] = roles[k]
 	_place_blockers()
 	_place_pads()
 	_place_spots()
@@ -243,7 +253,52 @@ func _place_pads() -> void:
 		pd["land"] = best
 	pads = pads.filter(func(pd): return pd["land"] != Vector3.INF)
 
+var shrine_spots: Array = []     # Vector3
+var heart_spot := Vector3.INF
+
+## The island's point of interest: the open ground cell nearest its middle.
+func _poi(isl: int) -> Vector3:
+	var c: Vector2 = islands[isl]["c"]
+	var best := Vector2i(-1, -1); var bd := 1e9
+	for cell in islands[isl]["cells"]:
+		if kind[idx(cell.x, cell.y)] == T_VOID or edge_dist(cell.x, cell.y, 3) < 3:
+			continue
+		var d := Vector2(cell.x + 0.5, cell.y + 0.5).distance_to(c)
+		if d < bd: bd = d; best = cell
+	if best.x < 0:
+		return Vector3.INF
+	return Vector3(best.x + 0.5, level[idx(best.x, best.y)] * LEVEL, best.y + 0.5)
+
+func _clear_around(p: Vector3, rad: float) -> void:
+	for z in range(int(p.z - rad - 1), int(p.z + rad + 1)):
+		for x in range(int(p.x - rad - 1), int(p.x + rad + 1)):
+			if inb(x, z) and kind[idx(x, z)] == T_BLOCK and Vector2(x + 0.5 - p.x, z + 0.5 - p.z).length() <= rad:
+				kind[idx(x, z)] = T_GROUND
+
+## Rocks set out in a pattern around a point of interest, as cover.
+func _pillars(p: Vector3, offs: Array) -> void:
+	for o in offs:
+		var x := int(floor(p.x + o.x)); var z := int(floor(p.z + o.y))
+		if inb(x, z) and kind[idx(x, z)] == T_GROUND and edge_dist(x, z, 2) >= 2:
+			kind[idx(x, z)] = T_BLOCK
+
+## A ground cell near p at a given distance, on the same island and not by an edge.
+func _near(p: Vector3, dist: float, ang: float, isl: int, taken: Dictionary) -> Vector3:
+	for t in 16:
+		var a := ang + (t / 2) * 0.45 * (1.0 if t % 2 == 0 else -1.0)
+		for dd in [dist, dist * 0.75, dist * 1.25]:
+			var x := int(floor(p.x + cos(a) * dd)); var z := int(floor(p.z + sin(a) * dd))
+			if not inb(x, z): continue
+			var i := idx(x, z)
+			if kind[i] != T_GROUND or island[i] != isl or edge_dist(x, z, 2) < 2 or _near_block(x, z) or taken.has(Vector2i(x, z)):
+				continue
+			taken[Vector2i(x, z)] = true
+			return Vector3(x + 0.5, level[i] * LEVEL, z + 0.5)
+	return Vector3.INF
+
 func _place_spots() -> void:
+	shrine_spots.clear()
+	heart_spot = Vector3.INF
 	var taken := {}
 	for pd in pads:
 		taken[Vector2i(int(pd["pos"].x), int(pd["pos"].z))] = true
@@ -266,35 +321,88 @@ func _place_spots() -> void:
 			taken[c] = true
 			return Vector3(c.x + 0.5, level[i] * LEVEL, c.y + 0.5)
 		return Vector3.INF
-	# hunters start spread out on the outer islands
-	for ii in range(1, islands.size()):
-		for _k in 2:
-			var p: Vector3 = pick.call(ii, 2, 4)
-			if p != Vector3.INF:
-				spawns.append(p)
-	# exits on three different islands
-	var order := range(islands.size()); order.shuffle()
+	var mid := Vector2(w / 2.0, h / 2.0)
+	for ii in islands.size():
+		var role: String = islands[ii]["role"]
+		var poi := _poi(ii)
+		if poi == Vector3.INF:
+			continue
+		var toward_mid := atan2(mid.y - poi.z, mid.x - poi.x)
+		_clear_around(poi, 2.4)
+		taken[Vector2i(int(poi.x), int(poi.z))] = true
+		match role:
+			"heart":
+				# the vault: the best chest in the middle, ringed by rocks, two guard camps
+				heart_spot = poi
+				chest_spots.append({"pos": poi, "tier": 2})
+				_pillars(poi, [Vector2(3.2, 3.2), Vector2(-3.2, 3.2), Vector2(3.2, -3.2), Vector2(-3.2, -3.2)])
+				for k in 2:
+					var cp := _near(poi, 4.5, a0_of(ii) + PI * k, ii, taken)
+					if cp != Vector3.INF: camp_spots.append({"pos": cp, "island": ii, "kind": "heavy"})
+				var side := _near(poi, 6.0, a0_of(ii) + PI * 0.5, ii, taken)
+				if side != Vector3.INF: chest_spots.append({"pos": side, "tier": 1})
+			"camp":
+				# a rare chest with the monsters standing between it and the middle of the map
+				chest_spots.append({"pos": poi, "tier": 1})
+				var cp := _near(poi, 2.6, toward_mid, ii, taken)
+				if cp != Vector3.INF: camp_spots.append({"pos": cp, "island": ii, "kind": "normal"})
+				_pillars(poi, [Vector2(cos(toward_mid + 1.3), sin(toward_mid + 1.3)) * 2.2, Vector2(cos(toward_mid - 1.3), sin(toward_mid - 1.3)) * 2.2])
+			"nest":
+				# wild kin around a nest, a small guard, a plain chest off to the side
+				for k in 2:
+					var wp := _near(poi, 1.8, toward_mid + PI * k, ii, taken)
+					if wp != Vector3.INF: wild_spots.append(wp)
+				var cp := _near(poi, 3.5, toward_mid + PI * 0.5, ii, taken)
+				if cp != Vector3.INF: camp_spots.append({"pos": cp, "island": ii, "kind": "light"})
+				var ch := _near(poi, 3.5, toward_mid - PI * 0.5, ii, taken)
+				if ch != Vector3.INF: chest_spots.append({"pos": ch, "tier": 0})
+				islands[ii]["nest"] = poi
+			"grove":
+				# quiet: two plain chests and a light camp
+				for k in 2:
+					var ch := _near(poi, 2.8, toward_mid + PI * (0.5 + k), ii, taken)
+					if ch != Vector3.INF: chest_spots.append({"pos": ch, "tier": 0})
+				var cp := _near(poi, 1.0, toward_mid, ii, taken)
+				if cp != Vector3.INF: camp_spots.append({"pos": cp, "island": ii, "kind": "light"})
+				if rng.randf() < 0.5:
+					var wp := _near(poi, 3.5, toward_mid + PI, ii, taken)
+					if wp != Vector3.INF: wild_spots.append(wp)
+			"shrine":
+				shrine_spots.append(poi)
+				_pillars(poi, [Vector2(2.2, 0), Vector2(-2.2, 0), Vector2(0, 2.2), Vector2(0, -2.2)])
+				var ch := _near(poi, 3.6, toward_mid + PI, ii, taken)
+				if ch != Vector3.INF: chest_spots.append({"pos": ch, "tier": 0})
+	# exits on three outer islands spread around the ring
+	var outer: Array = range(1, islands.size())
+	outer.sort_custom(func(x, y): return a0_of(x) < a0_of(y))
+	var step := maxi(1, outer.size() / 3)
+	var off := rng.randi_range(0, outer.size() - 1)
+	var order: Array = []
+	for k in 3:
+		var cand: int = outer[(off + k * step) % outer.size()]
+		if not order.has(cand): order.append(cand)
+	for ii in outer:
+		if not order.has(ii): order.append(ii)
 	for ii in order:
 		if portal_spots.size() >= 3:
 			break
-		var p: Vector3 = pick.call(ii, 3, 7)
+		var p: Vector3 = pick.call(ii, 2, 7)
 		if p != Vector3.INF:
 			portal_spots.append(p)
-	for ii in islands.size():
-		var nchest := 2 if ii == 0 else 1
-		for _k in nchest:
-			var p: Vector3 = pick.call(ii, 2, 7)
+	# hunters land on the outer islands, two spots each near the edge
+	for ii in range(1, islands.size()):
+		var got := 0
+		for _k in 2:
+			var p: Vector3 = pick.call(ii, 2, 4)
+			if p == Vector3.INF:
+				p = pick.call(ii, 1, 6)
 			if p != Vector3.INF:
-				chest_spots.append(p)
-		var ncamp := 3 if ii == 0 else 1
-		for _k in ncamp:
-			var p: Vector3 = pick.call(ii, 2, 7)
-			if p != Vector3.INF:
-				camp_spots.append({"pos": p, "island": ii})
-		if ii > 0 and rng.randf() < 0.75:
-			var p: Vector3 = pick.call(ii, 2, 7)
-			if p != Vector3.INF:
-				wild_spots.append(p)
+				spawns.append(p); got += 1
+
+## Angle of an island around the map centre.
+func a0_of(isl: int) -> float:
+	var c: Vector2 = islands[isl]["c"]
+	return atan2(c.y - h / 2.0, c.x - w / 2.0)
 
 # ------------------------------------------------------------------ meshes
 func build_meshes() -> void:

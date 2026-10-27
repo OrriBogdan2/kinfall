@@ -16,7 +16,9 @@ var kins: Array = []
 var mobs: Array = []
 var shots: Array = []
 var pickups: Array = []     # {pos, vel, kind:"gem"|"seed"|"tonic", v, key, node, t}
-var chests: Array = []      # {pos, open, prog, node}
+var chests: Array = []      # {pos, open, prog, node, tier}
+var shrines: Array = []     # {pos, used, prog, node}
+var warden_done := false
 var portals: Array = []     # {pos, open_at, open, node}
 var time := 0.0
 var acc := 0.0
@@ -89,6 +91,8 @@ func start(o: Dictionary) -> void:
 	hud.name = "Hud"
 	add_child(hud)
 	hud.setup(self)
+	if player and player.dropping:
+		hud.toast("Steer to choose where you land", Color("f3eee2"))
 	if player:
 		cam.snap(player.pos)
 	_build_aim()
@@ -229,11 +233,46 @@ func _spawn_hunters() -> void:
 					player.glide_max = Hunter.GLIDE_TIME * 1.5
 				if player.kin:
 					_apply_treat(player.kin)
+				_start_drop(player, at)
 				continue
 			var cls: String = ["light", "medium", "heavy"][rng.randi_range(0, 2)]
 			var h := make_hunter(next_id("b"), t, cls, names.pop_back() if names.size() > 0 else "Bot", "bot", bot_kin_record(), at)
 			h.ai = bot_brain.new_mind(rng, float(opts.get("bot_skill", 0.6)))
 			h.tonics = 1
+			_start_drop(h, at)
+
+## Every match starts in the sky. Hunters glide down from above their squad's side of the map
+## and steer to wherever they want to land.
+func _start_drop(h: Hunter, at: Vector3) -> void:
+	if opts.get("no_drop", false):
+		return
+	# straight above your squad's landing spot, so letting go of the keys still lands you safely
+	var off := Vector3(rng.randf_range(-1.0, 1.0), 0, rng.randf_range(-1.0, 1.0))
+	if world.is_void(at.x + off.x, at.z + off.z):
+		off = Vector3.ZERO
+	h.teleport(at + off + Vector3(0, 17.0, 0))
+	h.dropping = true
+	h.grounded = false
+	h.gliding = true
+	h.glide_k = 1.0
+	h.ai["land"] = at
+
+func on_drop_landed(h: Hunter) -> void:
+	if world.is_block(h.pos.x, h.pos.z):
+		var best := h.pos; var bd := 1e9
+		for dz in range(-2, 3):
+			for dx in range(-2, 3):
+				var q := Vector3(floor(h.pos.x) + dx + 0.5, 0, floor(h.pos.z) + dz + 0.5)
+				if not world.is_void(q.x, q.z) and not world.is_block(q.x, q.z):
+					var d := Vector2(dx, dz).length()
+					if d < bd: bd = d; best = Vector3(q.x, world.ground_at(q.x, q.z), q.z)
+		h.teleport(best)
+	fx.dust(h.pos, 14)
+	fx.ring(h.pos, 2.2, Color(1, 1, 1, 0.8), 0.3)
+	sfx("land", h.pos, -2.0, 0.8)
+	h.squash = 0.4
+	if h == player:
+		shake(0.25, h.pos)
 
 func _apply_treat(k: Kin) -> void:
 	match String(Save.d.get("treat", "")):
@@ -246,14 +285,17 @@ func _spawn_mobs() -> void:
 		return
 	for c in world.camp_spots:
 		var p: Vector3 = c["pos"]
-		var central: bool = c["island"] == 0
 		var comp: Array
-		if (central and rng.randf() < 0.6) or rng.randf() < 0.15 * tier:
-			comp = ["brute", "skitter", "skitter"]
-		elif rng.randf() < 0.5:
-			comp = ["skitter", "skitter", "spitter"]
-		else:
-			comp = ["spitter", "skitter"]
+		match String(c.get("kind", "normal")):
+			"heavy": comp = ["brute", "spitter", "skitter"]
+			"light": comp = ["skitter", "skitter"] if rng.randf() < 0.6 else ["spitter", "skitter"]
+			_:
+				if rng.randf() < 0.15 * tier + 0.2:
+					comp = ["brute", "skitter", "skitter"]
+				elif rng.randf() < 0.5:
+					comp = ["skitter", "skitter", "spitter"]
+				else:
+					comp = ["spitter", "skitter", "skitter"]
 		for kk in comp:
 			var q := p
 			for _t in 20:
@@ -271,12 +313,24 @@ func spawn_mob(kk: String, at: Vector3) -> Mob:
 	return mb
 
 func _spawn_chests() -> void:
-	for p in world.chest_spots:
-		var n := Models.chest()
+	for cs in world.chest_spots:
+		var p: Vector3 = cs["pos"]
+		var t := int(cs["tier"])
+		var n := Models.chest(t)
 		n.position = p
 		n.rotation.y = rng.randf() * TAU
 		add_child(n)
-		chests.append({"pos": p, "open": false, "prog": 0.0, "node": n})
+		chests.append({"pos": p, "open": false, "prog": 0.0, "node": n, "tier": t})
+	for sp in world.shrine_spots:
+		var n := Models.shrine()
+		n.position = sp
+		add_child(n)
+		shrines.append({"pos": sp, "used": false, "prog": 0.0, "node": n})
+	for isl in world.islands:
+		if isl.has("nest"):
+			var n := Models.nest()
+			n.position = isl["nest"]
+			add_child(n)
 
 func _spawn_wild() -> void:
 	if net_on and not is_host:
@@ -322,8 +376,8 @@ func foes_of(team: int) -> Array:
 				out.append(mb)
 	return out
 
-func dmg_mult(_h: Hunter) -> float:
-	return 1.0
+func dmg_mult(h: Hunter) -> float:
+	return 1.25 if h and h.bless_t > 0.0 else 1.0
 
 func sfx(n: String, p = null, vol := 0.0, pitch := 1.0) -> void:
 	Sfx.play(n, p, vol, 0.07, pitch)
@@ -785,6 +839,7 @@ func _process(delta: float) -> void:
 				var r: float = s["r"]
 				mi.scale = Vector3(r * 2.0, r * 2.0, r * 2.0 + v.length() * 0.025)
 	if player and not player.out:
+		cam.zoom_to = 1.45 if player.dropping else 1.0
 		cam.follow(player.prev.lerp(player.pos, alpha), delta, true)
 	elif player:
 		cam.follow(cam.focus, delta, false)
@@ -864,6 +919,7 @@ func step(dt: float) -> void:
 	_update_pads(dt)
 	_update_interact(dt)
 	_update_portals(dt)
+	_update_events()
 	_update_rules(dt)
 	if net_on:
 		_net_rev_t -= dt
@@ -953,7 +1009,13 @@ func _update_interact(dt: float) -> void:
 		if best.is_empty():
 			for c in chests:
 				if not c["open"] and h.flat_dist(c["pos"]) < 1.6:
-					best = {"kind": "chest", "chest": c, "label": "Hold F to open"}
+					best = {"kind": "chest", "chest": c, "label": ["Hold F to open", "Hold F to open the rare chest", "Hold F to open the vault"][int(c.get("tier", 0))]}
+					break
+		# 4. pray at a shrine
+		if best.is_empty():
+			for sh in shrines:
+				if not sh["used"] and h.flat_dist(sh["pos"]) < 1.8:
+					best = {"kind": "shrine", "shrine": sh, "label": "Hold F to pray: full heal and +25% damage"}
 					break
 		if h == player:
 			interact = best
@@ -976,9 +1038,14 @@ func _update_interact(dt: float) -> void:
 					_catch(h, k)
 			"chest":
 				var c: Dictionary = best["chest"]
-				c["prog"] += dt / 0.7
+				c["prog"] += dt / (0.7 + 0.4 * int(c.get("tier", 0)))
 				if c["prog"] >= 1.0:
 					_open_chest(h, c)
+			"shrine":
+				var sh: Dictionary = best["shrine"]
+				sh["prog"] += dt / 1.2
+				if sh["prog"] >= 1.0:
+					_use_shrine(h, sh)
 
 func _catch(h: Hunter, k: Kin) -> void:
 	if net_on and not is_host:
@@ -1008,19 +1075,64 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 	c["open"] = true
 	if net_on and not from_net:
 		net_event(["chest", chests.find(c), h.nid if h else ""])
-	var lid: Node3D = c["node"].get_node("Lid")
+	var t := int(c.get("tier", 0))
+	var lid: Node3D = c["node"].get_node("Body/Lid")
 	lid.rotation.x = -1.1
 	lid.position.y = 0.62
 	lid.position.z = 0.2
-	sfx("pickup", c["pos"], 0.0, 0.8)
-	fx.burst(c["pos"] + Vector3(0, 0.6, 0), Color("f2c84a"), 20, 4.0, 0.6)
-	for i in randi_range(4, 7):
-		drop("gem", c["pos"] + Vector3(0, 0.8, 0), int(round(3 * float(T["loot"]))))
-	if randf() < 0.65:
+	var beacon: Node3D = c["node"].get_node_or_null("Beacon")
+	if beacon: beacon.visible = false
+	sfx("pickup", c["pos"], 0.0, 0.8 - t * 0.1)
+	var cc: Array = Models.CHEST_COLS[t]
+	fx.burst(c["pos"] + Vector3(0, 0.6, 0), cc[1], 20 + t * 10, 4.0 + t, 0.6)
+	if t >= 1:
+		fx.ring(c["pos"], 2.0 + t, Color(cc[1], 0.9), 0.4)
+	var n_gems: int = [randi_range(4, 6), randi_range(7, 9), randi_range(11, 14)][t]
+	for i in n_gems:
+		drop("gem", c["pos"] + Vector3(0, 0.8, 0), int(round((3 + t) * float(T["loot"]))))
+	var seeds_n: int = [1 if randf() < 0.6 else 0, 1, 2][t]
+	for i in seeds_n:
 		drop("seed", c["pos"] + Vector3(0, 0.8, 0), randi_range(1, 2), Data.CROPS.keys()[randi_range(0, Data.CROPS.size() - 1)])
-	if h and not h.remote and h.tonics < 3 and randf() < 0.4:
+	if h and not h.remote and h.tonics < 3 and randf() < [0.35, 0.7, 1.0][t]:
 		h.tonics += 1
 		if h == player: hud.toast("+1 tonic", Color("8ff0a0"))
+
+func _use_shrine(h: Hunter, sh: Dictionary, from_net := false) -> void:
+	if sh["used"]:
+		return
+	sh["used"] = true
+	if net_on and not from_net:
+		net_event(["shr", shrines.find(sh), h.nid if h else ""])
+	var n: Node3D = sh["node"]
+	n.get_node("Crystal").visible = false
+	n.get_node("Ring").visible = false
+	sfx("heal", sh["pos"], 0.0, 1.2)
+	fx.burst(sh["pos"] + Vector3(0, 1.6, 0), Color("8fe3c8"), 30, 5.0, 0.8, -2.0)
+	fx.ring(sh["pos"], 4.0, Color("8fe3c8"), 0.5)
+	if h and not h.remote:
+		h.hp = h.max_hp
+		h.bless_t = 45.0
+		if h.kin and not h.kin.dead:
+			h.kin.hp = h.kin.max_hp
+		if h == player:
+			hud.toast("Blessed: +25% damage for 45s", Color("8fe3c8"))
+
+## Midway through, the Warden wakes on the heart island and guards it until someone brings it down.
+func _update_events() -> void:
+	if warden_done or time < length * 0.4 or world.heart_spot == Vector3.INF:
+		return
+	warden_done = true
+	if not net_on or is_host:
+		var w := spawn_mob("warden", world.heart_spot + Vector3(0, 0, 1.5))
+		w.st = "idle"
+		if opts.get("watch_heart", false) and player:
+			var wp := world.heart_spot + Vector3(0, 0, 5.0)
+			player.teleport(Vector3(wp.x, world.ground_at(wp.x, wp.z), wp.z))
+	sfx("warn", null, 0.0, 0.6)
+	ping(world.heart_spot, Color("c9a0ff"))
+	if player and not player.out:
+		add_feed("The Warden has woken on the center island")
+		hud.toast("The Warden wakes", Color("c9a0ff"))
 
 func _update_portals(dt: float) -> void:
 	for p in portals:
@@ -1158,6 +1270,7 @@ func _spawn_net_hunters(spots: Array, names: Array) -> void:
 				player.glide_max = Hunter.GLIDE_TIME * 1.5
 			if player.kin:
 				_apply_treat(player.kin)
+			_start_drop(player, at)
 		else:
 			var h := make_hunter("P" + peer, t, String(r["cls"]), String(r["name"]), "remote", krec, at)
 			h.remote = true
@@ -1442,6 +1555,10 @@ func _net_ev(x, from: String) -> void:
 					break
 			if String(x[0]) == "take" and is_host:
 				net_event(["gone", String(x[1])])
+		"shr":
+			var si := int(x[1])
+			if si >= 0 and si < shrines.size():
+				_use_shrine(ents_by_id.get(String(x[2]), null), shrines[si], true)
 		"chest":
 			var i := int(x[1])
 			if i >= 0 and i < chests.size():
@@ -1498,6 +1615,8 @@ func _tips() -> void:
 		return
 	_tip_t += get_process_delta_time()
 	if _tip_t < 1.0:
+		return
+	if player.dropping:
 		return
 	_tip("move", "WASD to move, aim with the mouse, hold left click to shoot. Shift dashes, Space jumps. Hold Space in the air to glide.")
 	var k: Kin = player.kin

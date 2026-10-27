@@ -18,6 +18,12 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 	if h.downed:
 		_crawl(m, h)
 		return
+	if h.dropping:
+		# steer the opening glide toward the chosen landing spot
+		var land: Vector3 = a.get("land", h.pos)
+		var to := Vector2(land.x - h.pos.x, land.z - h.pos.z)
+		inp["move"] = to.normalized() if to.length() > 0.6 else Vector2.ZERO
+		return
 	if a["think"] <= 0.0:
 		a["think"] = randf_range(0.12, 0.3) / (0.6 + a["skill"])
 		_choose(m, h)

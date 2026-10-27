@@ -224,7 +224,14 @@ static func mob(kind: String) -> Node3D:
 			for i in 4:
 				var a := float(i) / 4.0 * TAU + 0.4
 				part(body, sphere(0.2), m, Vector3(cos(a) * 0.32, 0.08, sin(a) * 0.32), Vector3(1.4, 0.25, 0.7), Vector3(0, -a, 0))
-		"brute":
+		"brute", "warden":
+			if kind == "warden":
+				root.scale = Vector3.ONE * 1.5
+				var gold := toon(Color("f2c84a"), true, 0.5); mats.append(gold)
+				for sx in [-1.0, 0.0, 1.0]:
+					part(body, cyl(0.0, 0.09, 0.32, 6), gold, Vector3(0.16 * sx, 1.93, -0.12))
+				part(body, box(0.62, 0.08, 0.56), gold, Vector3(0, 1.8, -0.12))
+				part(body, sphere(0.12, 8), toon(Color("c9a0ff"), false, 1.2), Vector3(0, 1.0, -0.42))
 			part(body, box(1.0, 0.9, 0.8), m, Vector3(0, 0.95, 0))
 			part(body, box(0.55, 0.45, 0.5), m_dark, Vector3(0, 1.55, -0.12), Vector3.ONE, Vector3.ZERO, "Head")
 			part(body, sphere(0.06, 6), m_eye, Vector3(-0.13, 1.6, -0.38))
@@ -257,14 +264,53 @@ static func tree(rng: RandomNumberGenerator, leaf: Color) -> Node3D:
 	part(root, cyl(0.0, 0.52, h * 0.45), ml, Vector3(0, h * 0.82, 0))
 	return root
 
-static func chest() -> Node3D:
+const CHEST_COLS := [[Color("8a5a35"), Color("f2c84a")], [Color("3f6fb0"), Color("dfe8f2")], [Color("6a3fa8"), Color("f2c84a")]]
+
+static func chest(tier := 0) -> Node3D:
 	var root := Node3D.new()
-	var mw := toon(Color("8a5a35")); var mg := toon(Color("f2c84a"), true, 0.3)
-	part(root, box(0.8, 0.45, 0.55), mw, Vector3(0, 0.23, 0))
-	part(root, box(0.84, 0.18, 0.59), mw, Vector3(0, 0.55, 0), Vector3.ONE, Vector3.ZERO, "Lid")
-	part(root, box(0.14, 0.2, 0.06), mg, Vector3(0, 0.42, -0.3))
-	part(root, box(0.86, 0.06, 0.6), mg, Vector3(0, 0.46, 0))
+	var cc: Array = CHEST_COLS[clampi(tier, 0, 2)]
+	var mw := toon(cc[0]); var mg := toon(cc[1], true, 0.3 + tier * 0.25)
+	var body := Node3D.new(); body.name = "Body"; root.add_child(body)
+	part(body, box(0.8, 0.45, 0.55), mw, Vector3(0, 0.23, 0))
+	part(body, box(0.84, 0.18, 0.59), mw, Vector3(0, 0.55, 0), Vector3.ONE, Vector3.ZERO, "Lid")
+	part(body, box(0.14, 0.2, 0.06), mg, Vector3(0, 0.42, -0.3))
+	part(body, box(0.86, 0.06, 0.6), mg, Vector3(0, 0.46, 0))
+	if tier >= 1:
+		for x in [-0.42, 0.42]:
+			part(body, box(0.06, 0.5, 0.6), mg, Vector3(x, 0.3, 0))
+	body.scale = Vector3.ONE * (1.0 + tier * 0.18)
+	if tier >= 1:
+		# a light pillar you can see from other islands
+		var beam := part(root, cyl(0.16, 0.3, 9.0, 10), glow_mat(Color(cc[1] if tier == 1 else Color("c9a0ff"), 0.22)), Vector3(0, 4.5, 0), Vector3.ONE, Vector3.ZERO, "Beacon")
+		beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	root.set_meta("mats", [mw, mg])
+	return root
+
+static func shrine() -> Node3D:
+	var root := Node3D.new()
+	var stone := toon(Color("b8b2a8"))
+	part(root, cyl(0.9, 1.05, 0.3, 8), stone, Vector3(0, 0.15, 0))
+	part(root, cyl(0.55, 0.7, 0.5, 8), stone, Vector3(0, 0.55, 0))
+	var cr := Node3D.new(); cr.name = "Crystal"; cr.position = Vector3(0, 1.6, 0); root.add_child(cr)
+	var pm := PrismMesh.new(); pm.size = Vector3(0.45, 0.6, 0.45)
+	var cm := toon(Color("8fe3c8"), false, 0.9)
+	part(cr, pm, cm, Vector3(0, 0.3, 0))
+	part(cr, pm, cm, Vector3(0, -0.3, 0), Vector3.ONE, Vector3(PI, 0, 0))
+	var base := MeshInstance3D.new(); base.name = "Ring"; base.mesh = flat_quad(3.0)
+	base.material_override = ring_mat(Color("8fe3c8"), 0.08); base.position.y = 0.06
+	root.add_child(base)
+	return root
+
+static func nest() -> Node3D:
+	var root := Node3D.new()
+	var twig := toon(Color("8a6a45"))
+	var t := TorusMesh.new(); t.inner_radius = 0.55; t.outer_radius = 0.95; t.rings = 16; t.ring_segments = 6
+	part(root, t, twig, Vector3(0, 0.15, 0), Vector3(1, 0.7, 1))
+	part(root, cyl(0.6, 0.6, 0.06, 14), toon(Color("c9a77a")), Vector3(0, 0.1, 0))
+	var cols := [Color("ffe8c4"), Color("cfe8ff"), Color("ffd0dc")]
+	for i in 3:
+		var a := TAU * i / 3.0
+		part(root, sphere(0.16, 10), toon(cols[i]), Vector3(cos(a) * 0.25, 0.28, sin(a) * 0.25), Vector3(1, 1.25, 1))
 	return root
 
 static func portal(c: Color) -> Node3D:
