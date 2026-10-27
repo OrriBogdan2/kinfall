@@ -57,7 +57,8 @@ static func label(text: String, size := 16, col := INK, font: Font = null) -> La
 	l.add_theme_color_override("font_color", col)
 	if font:
 		l.add_theme_font_override("font", font)
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# short labels sit on one line; only real sentences wrap (a wrapping label in a row collapses to nothing)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if text.length() > 48 else TextServer.AUTOWRAP_OFF
 	return l
 
 static func title(text: String, size := 34, col := INK) -> Label:

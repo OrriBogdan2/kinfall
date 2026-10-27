@@ -153,6 +153,8 @@ func _draw_all() -> void:
 	_draw_top(sz)
 	_draw_feed(sz)
 	_draw_minimap(sz)
+	if p and not p.out and not p.extracted:
+		_draw_overhead(p)
 	if p:
 		_draw_player(sz, p)
 		_draw_bar(sz, p)
@@ -476,3 +478,35 @@ func _draw_tip(sz: Vector2, t: Dictionary) -> void:
 	var r := Rect2(Vector2(sz.x * 0.5 - w * 0.5, 84), Vector2(w, lines.y + 34))
 	_panel(r, Color(0.98, 0.95, 0.88, 0.94 * a), 12)
 	c.draw_multiline_string(body, r.position + Vector2(20, 28), text, HORIZONTAL_ALIGNMENT_LEFT, w - 40.0, 16, -1, Color(0.1, 0.09, 0.12, a))
+
+var head_hp := 1.0
+
+## Health and stamina (dash charges) right above your hunter, where your eyes already are.
+func _draw_overhead(p: Hunter) -> void:
+	var cam := m.cam
+	var at := p.position + Vector3(0, 2.7 * float(p.cdat["scale"]), 0)
+	if cam.is_position_behind(at) or p.downed:
+		return
+	var sp := cam.unproject_position(at)
+	var w := 76.0
+	var frac := clampf(p.hp / p.max_hp, 0.0, 1.0)
+	head_hp = lerpf(head_hp, frac, 0.08)
+	var hr := Rect2(sp + Vector2(-w * 0.5, 0), Vector2(w, 8))
+	c.draw_rect(hr.grow(2), Color(0.04, 0.04, 0.06, 0.75))
+	c.draw_rect(Rect2(hr.position, Vector2(w * head_hp, 8)), Color("ffd6a0"))
+	c.draw_rect(Rect2(hr.position, Vector2(w * frac, 8)), GOOD if frac > 0.35 else BAD)
+	if p.shield > 0.0:
+		c.draw_rect(Rect2(hr.position + Vector2(0, -4), Vector2(w * clampf(p.shield / 60.0, 0.0, 1.0), 3)), Color("cfe8ff"))
+	# stamina: one segment per dash, the next one filling as it recharges
+	var n := int(p.max_dashes())
+	var gap := 3.0
+	var segw := (w - gap * (n - 1)) / n
+	for i in n:
+		var r := Rect2(sp + Vector2(-w * 0.5 + i * (segw + gap), 12), Vector2(segw, 5))
+		c.draw_rect(r.grow(1.5), Color(0.04, 0.04, 0.06, 0.75))
+		var fill := clampf(p.dashes - i, 0.0, 1.0)
+		var col := Color("bfe6ff") if fill >= 1.0 else Color("5f7f99")
+		c.draw_rect(Rect2(r.position, Vector2(segw * fill, 5)), col)
+	if p.reload_t > 0.0:
+		var rf := 1.0 - p.reload_t / float(p.wpn["reload"])
+		c.draw_rect(Rect2(sp + Vector2(-w * 0.5, 21), Vector2(w * rf, 2)), Color("ffe7a8"))

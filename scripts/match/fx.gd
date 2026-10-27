@@ -84,6 +84,25 @@ func dust(at: Vector3, n := 8) -> void:
 func dash_trail(h) -> void:
 	var c: Color = Data.TEAM_COLORS[h.team % Data.TEAM_COLORS.size()]
 	burst(h.pos + Vector3(0, 0.6, 0), Color(c, 0.7), 12, 1.2, 0.3, 0.0, 1.6)
+	dust(h.pos, 7)
+	ring(h.pos, 1.3, Color(c, 0.8), 0.22)
+
+var ghosts: Array = []
+var _ghost_mesh: Mesh
+
+## A fading after-image of a dashing hunter.
+func ghost(at: Vector3, yaw: float, col: Color, scl: float) -> void:
+	if _ghost_mesh == null:
+		_ghost_mesh = Models.capsule(0.3, 1.25)
+	var mi := MeshInstance3D.new()
+	mi.mesh = _ghost_mesh
+	mi.material_override = Models.glow_mat(Color(col, 0.55))
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	mi.global_position = at + Vector3(0, 0.7 * scl, 0)
+	mi.rotation.y = yaw
+	mi.scale = Vector3(1.0, 1.0, 1.3) * scl
+	ghosts.append({"node": mi, "t": 0.0, "col": col})
 
 func number(at: Vector3, v: float, col: Color, crit: bool, prefix := "") -> void:
 	if v < 0.5:
@@ -207,6 +226,14 @@ func _process(delta: float) -> void:
 		mi.scale = Vector3.ONE * (1.0 + f["t"] / f["dur"])
 		if f["t"] >= f["dur"]:
 			mi.queue_free(); flashes.erase(f)
+	for g in ghosts.duplicate():
+		g["t"] += delta
+		var k: float = g["t"] / 0.26
+		var gm: MeshInstance3D = g["node"]
+		gm.material_override.set_shader_parameter("color", Color(g["col"], 0.55 * (1.0 - k)))
+		gm.scale *= 1.0 - delta * 1.5
+		if k >= 1.0:
+			gm.queue_free(); ghosts.erase(g)
 	for ln in lines.duplicate():
 		ln["t"] += delta
 		if ln["t"] >= ln["dur"]:

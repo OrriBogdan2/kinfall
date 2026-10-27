@@ -59,6 +59,8 @@ var ai: Dictionary = {}
 var muzzle_t := 0.0
 var regen_wait := 0.0
 var land_t := 0.0
+var ghost_t := 0.0
+var step_t := 0.0
 
 func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, name_txt: String, control: String) -> void:
 	setup(match_node, id)
@@ -478,8 +480,30 @@ func render(delta: float, alpha: float) -> void:
 	torso.position.y = 0.42 + bob
 	var sq := squash
 	var stretch := 0.0
+	var tc: Color = Data.TEAM_COLORS[team % Data.TEAM_COLORS.size()]
 	if roll_t > 0.0:
-		stretch = 0.25
+		stretch = 0.3
+		torso.rotation.x = -0.55          # dive forward into the dash
+		legs.get_node("LegL").rotation.x = 0.9
+		legs.get_node("LegR").rotation.x = 0.5
+		ghost_t -= delta
+		if ghost_t <= 0.0 and model.visible:
+			ghost_t = 0.028
+			m.fx.ghost(position, face, tc, float(cdat["scale"]))
+	elif not grounded and pad.is_empty():
+		# tuck the legs in the air
+		legs.get_node("LegL").rotation.x = -0.6
+		legs.get_node("LegR").rotation.x = 0.4
+		stretch = clampf(vel.y / 30.0, -0.1, 0.18)
+	# a flinch when hit
+	if flash_t > 0.0:
+		torso.rotation.x += flash_t * 2.5
+	# little puffs of dust while running
+	if grounded and spd > 4.0 and not downed:
+		step_t -= delta
+		if step_t <= 0.0:
+			step_t = 0.32
+			m.fx.dust(pos, 2)
 	rig.scale = Vector3(1.0 + sq * 0.35 - stretch * 0.3, 1.0 - sq * 0.4 + stretch * 0.15, 1.0 + sq * 0.35 + stretch * 0.5)
 	if downed:
 		rig.rotation.x = lerpf(rig.rotation.x, -1.35, delta * 8.0)

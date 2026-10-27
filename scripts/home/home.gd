@@ -38,29 +38,62 @@ func _ready() -> void:
 	_build_env()
 	world = World.new(); add_child(world)
 	world.make_home(4242)
-	var c := Vector2(world.w / 2.0, world.h / 2.0)
-	spots["house"] = Vector3(c.x, 0, c.y - 6.5)
-	world.set_block_rect(int(c.x) - 2, int(c.y) - 8, int(c.x) + 2, int(c.y) - 5)
-	spots["pot"] = Vector3(c.x + 4.5, 0, c.y - 4.5)
-	world.set_block_rect(int(c.x) + 4, int(c.y) - 5, int(c.x) + 4, int(c.y) - 5)
-	spots["stall"] = Vector3(c.x - 6.5, 0, c.y - 2.0)
-	world.set_block_rect(int(c.x) - 8, int(c.y) - 3, int(c.x) - 6, int(c.y) - 2)
-	spots["portal"] = Vector3(c.x, 0, c.y + 8.0)
-	world.add_trees_on_rim(14)
+	var c := Vector2(world.w / 2.0, world.h / 2.0)   # (15, 13)
+	var path_col := Color("9c7a52")
+	# the house up north, a path from its door down to the portal, branches to the market and the farm
+	spots["house"] = Vector3(15.0, 0, 7.5)
+	world.set_block_rect(13, 6, 17, 8)
+	spots["portal"] = Vector3(15.0, 0, 20.0)
+	world.paint_path(Vector2i(14, 9), Vector2i(14, 19), path_col)
+	world.paint_path(Vector2i(8, 14), Vector2i(14, 14), path_col)
+	world.paint_path(Vector2i(15, 12), Vector2i(19, 12), path_col)
+	spots["stall"] = Vector3(7.5, 0, 13.0)
+	world.set_block_rect(6, 12, 8, 13)
+	spots["pot"] = Vector3(19.5, 0, 8.5)
+	world.set_block_rect(19, 8, 19, 8)
+	# farm soil inside a fence
+	for z in range(11, 19):
+		for x in range(20, 25):
+			world.paint_tile(x, z, Color("6b4a33"))
+	world.set_block_rect(9, 17, 11, 19)   # pond
+	world.add_trees_on_rim(12)
+	# keep the portal approach and the farm clear of rim trees and rocks
+	for z in range(17, world.h):
+		for x in range(12, 19):
+			if world.inb(x, z) and world.kind[world.idx(x, z)] == World.T_BLOCK and not world.no_deco.has(world.idx(x, z)):
+				world.kind[world.idx(x, z)] = World.T_GROUND
+	for z in range(9, 20):
+		for x in range(19, 26):
+			if world.inb(x, z) and world.kind[world.idx(x, z)] == World.T_BLOCK and not world.no_deco.has(world.idx(x, z)):
+				world.kind[world.idx(x, z)] = World.T_GROUND
 	world.build_meshes()
 	fx = Fx.new(); add_child(fx)
 	cam = CamRig.new(); add_child(cam)
-	cam.zoom_to = 0.8; cam.zoom = 0.8; cam.lead = 0.25
+	cam.zoom_to = 0.72; cam.zoom = 0.72; cam.lead = 0.2
 	var house := Models.house(); house.position = spots["house"]; add_child(house)
 	var pot := Models.cauldron(); pot.position = spots["pot"]; add_child(pot)
-	var stall := Models.stall(); stall.position = spots["stall"]; stall.rotation.y = PI * 0.15; add_child(stall)
+	var stall := Models.stall(); stall.position = spots["stall"]; stall.rotation.y = PI * 0.5; add_child(stall)
 	var portal := Models.portal(UI.TEAL); portal.position = spots["portal"]; add_child(portal)
 	portal.get_node("Disc").visible = true
 	(portal.get_node("Beam") as CPUParticles3D).emitting = true
+	var drng := RandomNumberGenerator.new(); drng.seed = 77
+	var pond := Models.pond(1.9, 1.5); pond.position = Vector3(10.5, 0, 18.5); add_child(pond)
+	for fp in [[Vector3(22.4, 0, 10.4), 0.0, 5.0], [Vector3(22.4, 0, 18.6), 0.0, 5.0], [Vector3(24.8, 0, 14.5), PI / 2, 8.0], [Vector3(19.4, 0, 16.6), PI / 2, 4.0]]:
+		var f := Models.fence(fp[2]); f.position = fp[0]; f.rotation.y = fp[1]; add_child(f)
+	for lp in [Vector3(13.2, 0, 11.0), Vector3(16.6, 0, 16.5), Vector3(11.5, 0, 15.2), Vector3(18.0, 0, 11.0)]:
+		var l := Models.lamp(); l.position = lp; add_child(l)
+	for fb in [Vector3(12.6, 0, 9.6), Vector3(17.4, 0, 9.6), Vector3(16.6, 0, 18.4)]:
+		var b := Models.flower_bed(drng); b.position = fb; add_child(b)
+	var sign_post := Models.signpost(["Expeditions"]); sign_post.position = Vector3(16.8, 0, 19.2); sign_post.rotation.y = -0.3; add_child(sign_post)
+	var roster: Array = Save.d["roster"]
+	for i in mini(roster.size(), 6):
+		var bed := Models.kin_bed(Data.KIN[roster[i]["species"]]["color"])
+		bed.position = Vector3(10.4 + (i % 3) * 1.1, 0, 8.4 + (i / 3) * 1.1)
+		add_child(bed)
 	_build_plots(c)
 	player = Models.hunter(Save.d.get("cls", "medium"), Data.TEAM_COLORS[0], Data.CLASSES[Save.d.get("cls", "medium")]["weapon"])
 	add_child(player)
-	ppos = Vector3(c.x, 0, c.y + 4.5)
+	ppos = Vector3(15.0, 0, 15.5)
 	player.position = ppos
 	cam.snap(ppos)
 	_spawn_kin()
@@ -103,10 +136,10 @@ func _build_plots(c: Vector2) -> void:
 	while Save.d["plots"].size() < cap:
 		Save.d["plots"].append({"crop": "", "stage": 0})
 	for i in cap:
-		var col := i % 4
-		var row := i / 4
+		var col := i % 2
+		var row := i / 2
 		var p := Models.plot()
-		p.position = Vector3(c.x - 3.0 + col * 2.0 + 4.0, 0, c.y - 1.0 + row * 2.0)
+		p.position = Vector3(21.2 + col * 2.2, 0, 11.8 + row * 2.0)
 		add_child(p)
 		plots.append(p)
 		_refresh_plot(i)
@@ -238,6 +271,9 @@ func _find_interact() -> void:
 		return
 	prompt_box.visible = true
 	prompt_lbl.text = "F  " + _label_for(best)
+	prompt_box.reset_size()
+	var vp := get_viewport().get_visible_rect().size
+	prompt_box.position = Vector2((vp.x - prompt_box.size.x) * 0.5, vp.y - 110.0)
 
 func _label_for(it: Dictionary) -> String:
 	match it["kind"]:
@@ -250,7 +286,7 @@ func _label_for(it: Dictionary) -> String:
 		"pot": return "Cook"
 		"stall": return "Shop"
 		"portal": return "Start an expedition"
-		"house": return "Settings"
+		"house": return "Go inside"
 		"kin":
 			var rec: Dictionary = it["k"]["rec"]
 			return "Spend time with %s" % rec["name"]
@@ -263,7 +299,7 @@ func _use(it: Dictionary) -> void:
 		"pot": _open_kitchen()
 		"stall": _open_shop()
 		"portal": _open_expedition()
-		"house": _open_settings()
+		"house": _open_house()
 		"kin": _open_kin(it["k"]["rec"])
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -292,9 +328,6 @@ func _build_ui() -> void:
 	prompt_lbl = UI.label("", 18, UI.GOLD, UI.big)
 	prompt_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
 	prompt_box.add_child(prompt_lbl)
-	prompt_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	prompt_box.position = Vector2(-150, -120)
-	prompt_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	root_ui.add_child(prompt_box)
 	var hint_box := UI.card(Color(0.06, 0.07, 0.1, 0.7), 8, 10)
 	hint = UI.label("WASD walk   ·   F use what's in front of you   ·   Esc settings", 14, UI.INK)
@@ -712,12 +745,39 @@ func _start_match() -> void:
 	o["tier"] = exp_tier
 	Game.start_match(o)
 
+# ---- house
+func _open_house() -> void:
+	var v := _new_panel("Your house", 620)
+	v.add_child(UI.label("Your kin. The one you bring on expeditions is your partner.", 15, UI.MUTED))
+	for rec in Save.d["roster"]:
+		var row := UI.card(UI.CARD, 10, 10)
+		var h := UI.hbox(12); row.add_child(h)
+		var sp: Dictionary = Data.KIN[rec["species"]]
+		var dot := ColorRect.new(); dot.color = sp["color"]; dot.custom_minimum_size = Vector2(14, 14)
+		h.add_child(dot)
+		var info := UI.label("%s the %s  ·  level %d  ·  trust %d" % [rec["name"], sp["name"], int(rec["level"]), int(rec["trust"])], 15)
+		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(info)
+		var r: Dictionary = rec
+		if rec["uid"] == Save.d.get("active", ""):
+			h.add_child(UI.label("Partner", 14, UI.GOLD))
+		else:
+			h.add_child(UI.button("Make partner", func():
+				Save.d["active"] = r["uid"]
+				Save.save_game()
+				_open_house()))
+		h.add_child(UI.button("Visit", func(): _open_kin(r)))
+		v.add_child(row)
+	v.add_child(UI.button("Settings", _open_settings, 180))
+
 # ---- settings
 func _open_settings() -> void:
 	var v := _new_panel("Settings", 480)
 	var st: Dictionary = Save.d["settings"]
 	var name_row := UI.hbox(8)
-	name_row.add_child(UI.label("Your name", 15))
+	var nl := UI.label("Your name", 15)
+	nl.custom_minimum_size.x = 200
+	name_row.add_child(nl)
 	var ne := LineEdit.new(); ne.text = Save.d.get("name", "Hunter"); ne.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ne.max_length = 16
 	ne.text_changed.connect(func(t): Save.d["name"] = t.strip_edges() if t.strip_edges() != "" else "Hunter")
 	name_row.add_child(ne)

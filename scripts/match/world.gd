@@ -25,6 +25,7 @@ var chest_spots: Array = []
 var camp_spots: Array = []
 var wild_spots: Array = []
 var no_deco := {}
+var paint := {}          # tile index -> colour for paths and soil, blended at the corners
 var clouds: Array = []
 var biome := {"top": Color("5f8d45"), "top2": Color("4a7538"), "side": Color("8b6d52"), "deep": Color("3a3140"), "leaf": Color("5a9a4f")}
 
@@ -314,6 +315,13 @@ func build_meshes() -> void:
 				var v2 := tn.get_noise_2d(cv.x * 2.1 + 40.0, cv.y * 2.1) * 0.5 + 0.5
 				var col: Color = biome["top"].lerp(biome["top2"], v).lerp(biome["top"].lightened(0.08), v2 * 0.35)
 				col = col.lightened(0.035 * level[i])
+				if not paint.is_empty():
+					var pc := Color(0, 0, 0, 0); var pn := 0
+					for t in [Vector2i(int(cv.x) - 1, int(cv.y) - 1), Vector2i(int(cv.x), int(cv.y) - 1), Vector2i(int(cv.x) - 1, int(cv.y)), Vector2i(int(cv.x), int(cv.y))]:
+						if inb(t.x, t.y) and paint.has(idx(t.x, t.y)):
+							pc += paint[idx(t.x, t.y)]; pn += 1
+					if pn > 0:
+						col = col.lerp(pc / pn, minf(1.0, pn / 2.0) * (0.85 + v2 * 0.15))
 				cols.append(col)
 			_quad4(st, Vector3(x, y, z), Vector3(x + 1, y, z), Vector3(x + 1, y, z + 1), Vector3(x, y, z + 1), Vector3.UP, cols)
 			var bottom := depth[i] + y * 0.3
@@ -409,7 +417,7 @@ func _decorate() -> void:
 	for z in h:
 		for x in w:
 			var i := idx(x, z)
-			if kind[i] != T_GROUND:
+			if kind[i] != T_GROUND or paint.has(i):
 				continue
 			for _k in 2:
 				if drng.randf() < 0.45:
@@ -444,7 +452,7 @@ func _decorate() -> void:
 ## The home island: one flat round island with room for the farm, house and portal.
 func make_home(seed_val: int) -> void:
 	rng.seed = seed_val
-	w = 34; h = 30
+	w = 30; h = 26
 	kind.resize(w * h); kind.fill(T_VOID)
 	level.resize(w * h); level.fill(0)
 	island.resize(w * h); island.fill(-1)
@@ -455,7 +463,7 @@ func make_home(seed_val: int) -> void:
 	var cells: Array = []
 	for z in h:
 		for x in w:
-			var d := Vector2((x + 0.5 - c.x) / 14.0, (z + 0.5 - c.y) / 12.0).length()
+			var d := Vector2((x + 0.5 - c.x) / 12.0, (z + 0.5 - c.y) / 10.0).length()
 			if d + shape.get_noise_2d(x, z) * 0.18 < 1.0 and x > 0 and z > 0 and x < w - 1 and z < h - 1:
 				var i := idx(x, z)
 				kind[i] = T_GROUND
@@ -480,3 +488,19 @@ func add_trees_on_rim(n: int) -> void:
 		if kind[i] == T_GROUND and edge_dist(x, z, 3) == 2:
 			kind[i] = T_BLOCK
 			placed += 1
+
+func paint_tile(x: int, z: int, col: Color) -> void:
+	if inb(x, z) and kind[idx(x, z)] != T_VOID:
+		paint[idx(x, z)] = col
+
+## A dirt path between two tile positions, one tile wide with a little wobble.
+func paint_path(a: Vector2i, b: Vector2i, col: Color) -> void:
+	var n := maxi(absi(b.x - a.x), absi(b.y - a.y)) + 1
+	for i in n:
+		var t := float(i) / maxf(1.0, n - 1)
+		var x := int(round(lerpf(a.x, b.x, t))); var z := int(round(lerpf(a.y, b.y, t)))
+		paint_tile(x, z, col)
+		if absi(b.x - a.x) > absi(b.y - a.y):
+			paint_tile(x, z + 1, col)
+		else:
+			paint_tile(x + 1, z, col)

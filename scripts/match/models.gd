@@ -112,6 +112,11 @@ static func hunter(cls: String, team_col: Color, weapon: String) -> Node3D:
 			part(torso, sphere(0.17), m_acc, Vector3(-0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
 			part(torso, sphere(0.17), m_acc, Vector3(0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
 	var gun := Node3D.new(); gun.name = "Gun"; gun.position = Vector3(0.22, 0.32, -0.18); torso.add_child(gun)
+	# arms reach from the shoulders to the gun
+	var arm_r := part(torso, capsule(0.07, 0.42), m_body, Vector3(0.24, 0.48, -0.08), Vector3.ONE, Vector3(1.2, 0, 0.15), "ArmR")
+	var arm_l := part(torso, capsule(0.07, 0.46), m_body, Vector3(-0.1, 0.46, -0.16), Vector3.ONE, Vector3(1.25, 0, -0.7), "ArmL")
+	part(arm_r, sphere(0.075, 8), m_skin, Vector3(0, -0.23, 0))
+	part(arm_l, sphere(0.075, 8), m_skin, Vector3(0, -0.25, 0))
 	match weapon:
 		"stinger":
 			part(gun, box(0.1, 0.12, 0.42), m_gun, Vector3(0, 0, -0.12))
@@ -360,4 +365,68 @@ static func stall() -> Node3D:
 		part(root, box(0.56, 0.08, 1.2), toon(Color("e0607e") if i % 2 == 0 else Color("f3eee2")), Vector3(-0.84 + i * 0.56, 2.05, 0), Vector3.ONE, Vector3(0.25, 0, 0))
 	for i in 3:
 		part(root, sphere(0.14), toon([Color("ff6a4a"), Color("5ab8f0"), Color("f2c84a")][i]), Vector3(-0.6 + i * 0.6, 1.0, 0))
+	return root
+
+static func fence(length: float) -> Node3D:
+	var root := Node3D.new()
+	var wood := toon(Color("a07a52"))
+	var posts := maxi(2, int(length / 1.0) + 1)
+	for i in posts:
+		var x := -length * 0.5 + length * float(i) / float(posts - 1)
+		part(root, box(0.12, 0.7, 0.12), wood, Vector3(x, 0.35, 0))
+	part(root, box(length, 0.08, 0.06), wood, Vector3(0, 0.5, 0))
+	part(root, box(length, 0.08, 0.06), wood, Vector3(0, 0.25, 0))
+	return root
+
+static func lamp() -> Node3D:
+	var root := Node3D.new()
+	var iron := toon(Color("3a3a44"))
+	part(root, cyl(0.06, 0.08, 1.9), iron, Vector3(0, 0.95, 0))
+	part(root, box(0.3, 0.06, 0.3), iron, Vector3(0, 1.95, 0))
+	part(root, box(0.22, 0.28, 0.22), toon(Color("ffd98a"), false, 1.4), Vector3(0, 2.12, 0))
+	part(root, cyl(0.0, 0.2, 0.18), iron, Vector3(0, 2.34, 0))
+	var l := OmniLight3D.new()
+	l.light_color = Color("ffd9a8"); l.light_energy = 0.55; l.omni_range = 4.0
+	l.position = Vector3(0, 2.1, 0)
+	root.add_child(l)
+	return root
+
+static func pond(rx: float, rz: float) -> Node3D:
+	var root := Node3D.new()
+	var rim := toon(Color("8d8a86"))
+	part(root, cyl(1.0, 1.0, 0.06, 28), toon(Color("3d78a8"), false, 0.12), Vector3(0, 0.03, 0), Vector3(rx, 1, rz))
+	for i in 14:
+		var a := TAU * i / 14.0
+		part(root, sphere(0.2, 6), rim, Vector3(cos(a) * rx, 0.06, sin(a) * rz), Vector3(1.2, 0.6, 1.0))
+	for i in 3:
+		var a := TAU * i / 3.0 + 0.4
+		part(root, cyl(0.18, 0.18, 0.02, 10), toon(Color("5fae4f"), false), Vector3(cos(a) * rx * 0.5, 0.08, sin(a) * rz * 0.45))
+	return root
+
+static func flower_bed(rng: RandomNumberGenerator, n := 7) -> Node3D:
+	var root := Node3D.new()
+	var cols := [Color("ff8fb0"), Color("ffd35a"), Color("b48cf2"), Color("ff7a5a"), Color("ffffff")]
+	for i in n:
+		var p := Vector3(rng.randf_range(-0.7, 0.7), 0, rng.randf_range(-0.35, 0.35))
+		part(root, cyl(0.02, 0.02, 0.3, 4), toon(Color("4f8a3e"), false), p + Vector3(0, 0.15, 0))
+		part(root, sphere(0.08, 6), toon(cols[rng.randi_range(0, cols.size() - 1)], false, 0.2), p + Vector3(0, 0.32, 0))
+	return root
+
+static func kin_bed(c: Color) -> Node3D:
+	var root := Node3D.new()
+	part(root, cyl(0.42, 0.46, 0.14, 16), toon(c.darkened(0.25)), Vector3(0, 0.07, 0))
+	part(root, cyl(0.32, 0.32, 0.06, 16), toon(c.lightened(0.25)), Vector3(0, 0.14, 0))
+	return root
+
+static func signpost(text_lines: Array) -> Node3D:
+	var root := Node3D.new()
+	var wood := toon(Color("8a5a35"))
+	part(root, box(0.12, 1.4, 0.12), wood, Vector3(0, 0.7, 0))
+	part(root, box(1.1, 0.4, 0.08), toon(Color("c49a6a")), Vector3(0, 1.25, 0.05))
+	var l := Label3D.new()
+	l.text = "\n".join(text_lines)
+	l.font = load("res://fonts/LilitaOne-Regular.ttf")
+	l.font_size = 40; l.pixel_size = 0.005; l.modulate = Color("3a2a1a"); l.outline_size = 0
+	l.position = Vector3(0, 1.25, 0.1)
+	root.add_child(l)
 	return root
