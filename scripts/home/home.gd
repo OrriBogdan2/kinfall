@@ -124,7 +124,8 @@ func _ready() -> void:
 	_build_lots()
 	_build_bridges()
 	_build_plots()
-	player = Models.hunter(Save.d.get("cls", "medium"), Data.TEAM_COLORS[0], Data.CLASSES[Save.d.get("cls", "medium")]["weapon"])
+	var hero0 := _hero()
+	player = Models.hunter(Data.HEROES[hero0]["cls"], Data.TEAM_COLORS[0], _weapon(), hero0)
 	add_child(player)
 	ppos = Vector3(38.0, 0, 34.5)
 	player.position = ppos
@@ -140,6 +141,12 @@ func _ready() -> void:
 			var cb := a.substr(17)
 			Save.d["buildings"].append(cb)
 			get_tree().create_timer(0.3).timeout.connect(func(): _construct(cb))
+		if a.begins_with("--open="):
+			var which := a.substr(7)
+			get_tree().create_timer(0.2).timeout.connect(func():
+				if which == "loadout": _open_loadout()
+				elif which == "expedition": _open_expedition()
+				elif which == "kin": _open_kin(Save.active_kin()))
 		if a.begins_with("--home-at="):
 			var xy := a.substr(10).split(",")
 			ppos = Vector3(float(xy[0]), 0, float(xy[1])); player.position = ppos; cam.snap(ppos)
@@ -942,26 +949,33 @@ var exp_cls := ""
 var exp_mode := "solo"
 var exp_tier := 0
 
+func _hero() -> String:
+	var h: String = Save.d.get("hero", "")
+	if not Data.HEROES.has(h):
+		h = {"light": "veil", "medium": "sage", "heavy": "bastion"}.get(Save.d.get("cls", "medium"), "sage")
+	return h
+
+func _weapon() -> String:
+	var hd: Dictionary = Data.HEROES[_hero()]
+	var w: String = Save.d.get("weapon", hd["weapon"])
+	return w if Data.CLASSES[hd["cls"]]["weapons"].has(w) else hd["weapon"]
+
 func _open_expedition() -> void:
-	if exp_cls == "":
-		exp_cls = Save.d.get("cls", "medium")
 	var v := _new_panel("Expedition", 720)
-	v.add_child(UI.label("Choose your hunter", 13, UI.MUTED))
-	var cards := UI.hbox(10)
-	for c in ["light", "medium", "heavy"]:
-		var cd: Dictionary = Data.CLASSES[c]
-		var card := UI.card(UI.CARD, 12, 12)
-		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		if c == exp_cls:
-			UI.set_card_border(card, UI.ACCENT)
-		var cv := UI.vbox(4); card.add_child(cv)
-		cv.add_child(UI.title(cd["name"], 22))
-		cv.add_child(UI.label("%d HP · %d dash%s · %s" % [cd["hp"], cd["dashes"], "es" if cd["dashes"] > 1 else "", Data.WEAPONS[cd["weapon"]]["name"]], 13, UI.MUTED))
-		cv.add_child(UI.label("E: " + String(Data.SIGS[cd["sig"]]["name"]) + ". " + String(Data.SIGS[cd["sig"]]["desc"]), 13))
-		var ck: String = c
-		cv.add_child(UI.button("Selected" if c == exp_cls else "Pick", func(): exp_cls = ck; _open_expedition()))
-		cards.add_child(card)
-	v.add_child(cards)
+	var hero := _hero()
+	var hd: Dictionary = Data.HEROES[hero]
+	var w: String = Save.d.get("weapon", hd["weapon"])
+	if not Data.CLASSES[hd["cls"]]["weapons"].has(w): w = hd["weapon"]
+	var pk: String = Save.d.get("perk", "")
+	var hc := UI.card(UI.CARD, 12, 14)
+	var hrow := UI.hbox(12); hc.add_child(hrow)
+	var hv := UI.vbox(4); hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hv.add_child(UI.title("%s  ·  %s" % [hd["name"], Data.CLASSES[hd["cls"]]["name"]], 24, hd["color"]))
+	hv.add_child(UI.label("%s  ·  E %s  ·  R %s  ·  %s" % [Data.WEAPONS[w]["name"], Data.ABIL[hd["e"]]["name"], Data.ABIL[hd["r"]]["name"],
+		Data.PERKS[pk]["name"] if Data.PERKS.has(pk) else "no perk"], 14, UI.MUTED))
+	hrow.add_child(hv)
+	hrow.add_child(UI.button("Hero and loadout", _open_loadout, 200))
+	v.add_child(hc)
 	var ak := Save.active_kin()
 	if not ak.is_empty():
 		var sp: Dictionary = Data.KIN[ak["species"]]
@@ -1000,11 +1014,11 @@ func _open_expedition() -> void:
 	var go := UI.hbox(10)
 	go.add_child(UI.button("Start expedition", _start_match, 220))
 	if Bridge.net_available():
-		go.add_child(UI.button("Play online with friends", func(): Game.goto("lobby", {"cls": exp_cls, "tier": exp_tier}), 240))
+		go.add_child(UI.button("Play online with friends", func(): Game.goto("lobby", {"cls": Data.HEROES[_hero()]["cls"], "tier": exp_tier}), 240))
 	v.add_child(go)
 
 func _start_match() -> void:
-	Save.d["cls"] = exp_cls
+	Save.d["cls"] = Data.HEROES[_hero()]["cls"]
 	Save.save_game()
 	var o := {"teams": 4, "squad": 1}
 	match exp_mode:
@@ -1225,6 +1239,84 @@ func _open_hall() -> void:
 		kr.add_child(c)
 	v.add_child(kr)
 
+# ---- heroes and loadout
+func _open_loadout() -> void:
+	var v := _new_panel("Hero and loadout", 780)
+	var hero := _hero()
+	var hd: Dictionary = Data.HEROES[hero]
+	var cols := UI.hbox(10)
+	for c in ["light", "medium", "heavy"]:
+		var cd: Dictionary = Data.CLASSES[c]
+		var col := UI.vbox(6); col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var hl := UI.label("%s  ·  %d HP  ·  %d dash%s" % [cd["name"], cd["hp"], cd["dashes"], "es" if cd["dashes"] > 1 else ""], 13, UI.MUTED)
+		hl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		col.add_child(hl)
+		for hid in Data.HEROES:
+			if Data.HEROES[hid]["cls"] != c: continue
+			var hh: Dictionary = Data.HEROES[hid]
+			var hk: String = hid
+			var b := UI.button("%s  ·  %s" % [hh["name"], hh["role"]], func():
+				Save.d["hero"] = hk
+				Save.d["cls"] = Data.HEROES[hk]["cls"]
+				Save.d["weapon"] = Data.HEROES[hk]["weapon"]
+				Save.save_game()
+				_refresh_player_model()
+				_open_loadout())
+			if hid == hero:
+				b.add_theme_color_override("font_color", hh["color"])
+				b.text = "▶ " + b.text
+			col.add_child(b)
+		cols.add_child(col)
+	v.add_child(cols)
+	var det := UI.card(UI.CARD, 12, 14)
+	var dv := UI.vbox(5); det.add_child(dv)
+	dv.add_child(UI.title("%s, %s" % [hd["name"], String(hd["role"]).to_lower()], 22, hd["color"]))
+	dv.add_child(UI.label("Passive: " + String(hd["passive"]), 14))
+	dv.add_child(UI.label("E  %s: %s" % [Data.ABIL[hd["e"]]["name"], Data.ABIL[hd["e"]]["desc"]], 14))
+	dv.add_child(UI.label("R  %s: %s" % [Data.ABIL[hd["r"]]["name"], Data.ABIL[hd["r"]]["desc"]], 14, UI.GOLD))
+	v.add_child(det)
+	v.add_child(UI.label("Weapon", 13, UI.MUTED))
+	var wr := UI.hbox(8)
+	var cur_w: String = Save.d.get("weapon", hd["weapon"])
+	for w in Data.CLASSES[hd["cls"]]["weapons"]:
+		var wd: Dictionary = Data.WEAPONS[w]
+		var wk: String = w
+		var wb := UI.button(("▶ " if w == cur_w else "") + String(wd["name"]), func():
+			Save.d["weapon"] = wk
+			Save.save_game()
+			_refresh_player_model()
+			_open_loadout())
+		wb.tooltip_text = "%d damage, %d per mag, range %d" % [int(wd["dmg"]), int(wd["mag"]), int(wd["range"])]
+		wr.add_child(wb)
+	v.add_child(wr)
+	v.add_child(UI.label("Perk", 13, UI.MUTED))
+	var pr := HFlowContainer.new()
+	pr.add_theme_constant_override("h_separation", 8); pr.add_theme_constant_override("v_separation", 8)
+	var cur_p: String = Save.d.get("perk", "")
+	for pkey in Data.PERKS:
+		var pd: Dictionary = Data.PERKS[pkey]
+		var pk: String = pkey
+		var pb := UI.button(("▶ " if pkey == cur_p else "") + String(pd["name"]), func():
+			Save.d["perk"] = pk
+			Save.save_game()
+			_open_loadout())
+		pb.tooltip_text = pd["desc"]
+		pr.add_child(pb)
+	v.add_child(pr)
+	if Data.PERKS.has(cur_p):
+		v.add_child(UI.label(Data.PERKS[cur_p]["desc"], 14, UI.GOLD))
+	v.add_child(UI.button("Back to the expedition", _open_expedition, 240))
+
+func _refresh_player_model() -> void:
+	var hero := _hero()
+	var at := player.position
+	var rot := player.rotation
+	player.queue_free()
+	var w := _weapon()
+	player = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], w, hero)
+	player.position = at; player.rotation = rot
+	add_child(player)
+
 # ---- house
 func _open_house() -> void:
 	var v := _new_panel("Your house", 620)
@@ -1274,7 +1366,7 @@ func _open_settings() -> void:
 			if key == "volume": Sfx.set_volume(val))
 		r.add_child(sl)
 		v.add_child(r)
-	v.add_child(UI.label("In a match: WASD move · LMB fire · Shift dash · Space jump (hold to glide) · RMB throw or call back your kin · Q kin skill · E class ability · F catch, revive, open · 1 tonic · Tab scores · Esc pause", 13, UI.MUTED))
+	v.add_child(UI.label("In a match: WASD move · LMB fire · Shift dash · Space jump (hold to glide) · RMB throw or call back your kin · Q kin skill · E hero ability · R ultimate · F catch, revive, open · 1 tonic · Tab scores · Esc pause. Reloading is automatic.", 13, UI.MUTED))
 	var row := UI.hbox(8)
 	row.add_child(UI.button("Save", func(): Save.save_game(); _close_panel()))
 	row.add_child(UI.button("Start over", func():

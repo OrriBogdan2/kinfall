@@ -63,7 +63,7 @@ func _refresh_modes() -> void:
 
 func _announce() -> void:
 	var k := Save.active_kin()
-	Net.set_presence({"name": Save.d.get("name", "Hunter"), "cls": opts.get("cls", Save.d.get("cls", "medium")), "ready": is_ready, "lobby": 1,
+	Net.set_presence({"name": Save.d.get("name", "Hunter"), "cls": opts.get("cls", Save.d.get("cls", "medium")), "hero": Save.d.get("hero", ""), "weapon": Save.d.get("weapon", ""), "ready": is_ready, "lobby": 1,
 		"kin": {"species": k.get("species", "cindle"), "level": int(k.get("level", 1)), "name": k.get("name", "Kin"), "traits": k.get("traits", {}), "trust": float(k.get("trust", 50))}})
 
 func _toggle_ready() -> void:
@@ -115,7 +115,7 @@ func _start() -> void:
 		var p: Dictionary = Net.peers.get(id, Net.my_presence)
 		if id == Net.me:
 			p = Net.my_presence
-		roster.append({"peer": id, "team": i / squad, "name": p.get("name", "Hunter"), "cls": p.get("cls", "medium"), "kin": p.get("kin", {})})
+		roster.append({"peer": id, "team": i / squad, "name": p.get("name", "Hunter"), "cls": p.get("cls", "medium"), "hero": p.get("hero", ""), "weapon": p.get("weapon", ""), "kin": p.get("kin", {})})
 	var teams := maxi(4, int(ceil(float(ids.size()) / squad)))
 	var d := {"mid": "%d" % (Time.get_ticks_msec() % 100000000), "seed": randi(), "host": Net.me, "roster": roster, "teams": mini(teams, 6), "squad": squad, "tier": int(opts.get("tier", 0))}
 	Net.lobby_emit("start", d)

@@ -73,7 +73,7 @@ func _build_pause() -> void:
 	var t := Label.new(); t.text = "Paused"; t.add_theme_font_override("font", big); t.add_theme_font_size_override("font_size", 36); t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(t)
 	var keys := Label.new()
-	keys.text = "WASD move · LMB fire · Shift dash · Space jump, hold to glide\nRMB throw / call back your kin · Q kin skill\nE class ability · F catch, revive, open · 1 tonic · Tab scores"
+	keys.text = "WASD move · LMB fire · Shift dash · Space jump, hold to glide\nRMB throw / call back your kin · Q kin skill\nE hero ability · R ultimate · F catch, revive, open · 1 tonic · Tab scores"
 	keys.add_theme_color_override("font_color", MUTED); keys.add_theme_font_size_override("font_size", 14)
 	keys.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(keys)
@@ -325,7 +325,7 @@ func _draw_minimap(sz: Vector2) -> void:
 func _draw_player(sz: Vector2, p: Hunter) -> void:
 	var r := Rect2(Vector2(18, sz.y - 150), Vector2(330, 132))
 	_panel(r, PANEL, 14)
-	var cls_n: String = Data.CLASSES[p.cls]["name"]
+	var cls_n: String = String(Data.HEROES[p.hero]["name"]) + " · " + String(Data.CLASSES[p.cls]["name"])
 	_text(r.position + Vector2(16, 28), p.pname, 20, INK, big)
 	_text(r.position + Vector2(16 + big.get_string_size(p.pname, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + 10, 27), cls_n + " · " + String(p.wpn["name"]), 13, MUTED)
 	var frac := p.hp / p.max_hp
@@ -388,7 +388,7 @@ func _slot(pos: Vector2, key: String, label: String, frac_cd: float, center: Str
 		_ctext(r.position + Vector2(32, 18), sub, 11, col)
 
 func _draw_bar(sz: Vector2, p: Hunter) -> void:
-	var slots := 8
+	var slots := 9
 	var total := slots * 72.0
 	var x := sz.x * 0.5 - total * 0.5 + 40.0
 	var y := sz.y - 86.0
@@ -401,8 +401,16 @@ func _draw_bar(sz: Vector2, p: Hunter) -> void:
 	var dmax := p.max_dashes()
 	_slot(Vector2(x, y), "SHIFT", "Dash", 1.0 - fposmod(p.dashes, 1.0) if p.dashes < dmax else 0.0, str(int(floor(p.dashes))), p.dashes >= 1.0, Color("bfe6ff")); x += 72
 	_slot(Vector2(x, y), "SPACE", "Jump", 0.0, "▲", p.grounded, Color("bfe6ff")); x += 72
-	var sig: Dictionary = Data.SIGS[p.cdat["sig"]]
-	_slot(Vector2(x, y), "E", sig["name"], p.sig_cd / float(sig["cd"]), str(int(ceil(p.sig_cd))) if p.sig_cd > 0.0 else "", p.sig_cd <= 0.0, Color("c9bcff")); x += 72
+	var hc: Color = Data.HEROES[p.hero]["color"]
+	var e_ab: Dictionary = Data.ABIL[Abil.e_id(p)]
+	_slot(Vector2(x, y), "E", e_ab["name"], p.sig_cd / float(e_ab["cd"]), str(int(ceil(p.sig_cd))) if p.sig_cd > 0.0 else "", p.sig_cd <= 0.0, hc); x += 72
+	var r_ab: Dictionary = Data.ABIL[Abil.r_id(p)]
+	var ready_r := p.ult >= 1.0
+	_slot(Vector2(x, y), "R", r_ab["name"], 1.0 - p.ult, "%d%%" % int(p.ult * 100.0) if not ready_r else "★", ready_r, Color("f2c84a")); x += 72
+	if ready_r:
+		var pulse := 0.5 + 0.5 * sin(m.time * 6.0)
+		var rr := Rect2(Vector2(x - 72, y), Vector2(64, 64)).grow(3.0 + pulse * 3.0)
+		c.draw_rect(rr, Color(1.0, 0.82, 0.3, 0.25 + pulse * 0.25), false, 2.0)
 	x += 10
 	if k:
 		var kcol: Color = Data.KIN[k.species]["color"]

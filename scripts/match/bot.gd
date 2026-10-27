@@ -35,6 +35,7 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 		var d := h.flat_dist(tgt)
 		var to := h.dir_to(tgt)
 		var pref: float = {"light": 4.5, "medium": 7.0, "heavy": 5.5}[h.cls]
+		if h.wid == "rail": pref = 11.0
 		if d > pref + 1.5:
 			move = to
 		elif d < pref - 2.0:
@@ -91,7 +92,7 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 			h.kin.recall()
 		if h.hp < h.max_hp * 0.45 and h.tonics > 0:
 			inp["tonic"] = true
-		if h.cls == "medium" and h.sig_cd <= 0.0 and h.hp < h.max_hp * 0.6:
+		if Abil.e_id(h) == "mend" and h.sig_cd <= 0.0 and h.hp < h.max_hp * 0.6:
 			inp["sig"] = true
 	# ---- don't walk off edges (except onto the jump pad we're heading for), and keep off other pads
 	var to_pad: bool = a.has("pad_at") and h.flat_dist(a["pad_at"]) < 2.5
@@ -174,17 +175,40 @@ func _crawl(m: Match, h: Hunter) -> void:
 		mv = Vector2.ZERO
 	h.inp["move"] = mv
 
+## Hero abilities: E when it fits the moment, R once it's charged and worth it.
 func _use_sig(m: Match, h: Hunter, tgt: Ent) -> void:
-	if h.sig_cd > 0.0:
-		return
-	match h.cls:
-		"light":
-			if h.hp < h.max_hp * 0.45: h.inp["sig"] = true
-		"medium":
-			if h.hp < h.max_hp * 0.55 or m.hunters.any(func(o): return o != h and o.team == h.team and o.downed and o.flat_dist(h) < 5.0):
-				h.inp["sig"] = true
-		"heavy":
-			if tgt and h.flat_dist(tgt) < 7.0 and h.hp < h.max_hp * 0.8: h.inp["sig"] = true
+	var d := h.flat_dist(tgt) if tgt else 1e9
+	var to := h.dir_to(tgt) if tgt else Vector2.ZERO
+	var hurt := h.hp < h.max_hp * 0.45
+	if h.sig_cd <= 0.0:
+		var go := false
+		match Abil.e_id(h):
+			"cloak": go = hurt
+			"mend": go = h.hp < h.max_hp * 0.55 or m.hunters.any(func(o): return o != h and o.team == h.team and o.downed and o.flat_dist(h) < 5.0)
+			"fortify": go = d < 7.0 and h.hp < h.max_hp * 0.8
+			"blink": go = d > 3.0 and d < 8.0 and randf() < 0.25 and _safe(m, h, to, minf(d, 6.0))
+			"tether": go = d < 12.0 and tgt is Hunter
+			"hook": go = d > 3.0 and d < 8.5 and (tgt is Hunter or (tgt is Mob and tgt.mkind != "brute" and tgt.mkind != "warden"))
+			"rocketjump":
+				go = (d < 2.4 and randf() < 0.4) or (hurt and randf() < 0.3)
+				if hurt and go:
+					h.inp["aim"] = Vector3(h.pos.x - to.x * 6.0, h.pos.y, h.pos.z - to.y * 6.0)
+			"ram": go = d < 5.5 and d > 1.0 and _safe(m, h, to, d + 1.5)
+			"dome": go = tgt is Hunter and h.hp < h.max_hp * 0.65
+		if go:
+			h.inp["sig"] = true
+	if h.ult >= 1.0 and tgt:
+		var go_r := false
+		match Abil.r_id(h):
+			"vanish": go_r = hurt
+			"sanctuary", "bulwark": go_r = h.hp < h.max_hp * 0.6 and d < 8.0
+			"dance": go_r = d < 8.0
+			"skypierce": go_r = d < 20.0 and m.world.los(h.pos, tgt.pos, h.pos.y + 0.95)
+			"anchor": go_r = d < 9.0 and _safe(m, h, to, d)
+			"barrage", "well": go_r = d < 10.0
+			"quake": go_r = d < 6.0
+		if go_r:
+			h.inp["ult"] = true
 
 func _choose(m: Match, h: Hunter) -> void:
 	var a := h.ai

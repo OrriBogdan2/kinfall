@@ -40,7 +40,8 @@ func _setup_input() -> void:
 	_key("interact", [KEY_F])                 # catch, revive, open
 	_key("dash", [KEY_SHIFT])
 	_key("jump", [KEY_SPACE])
-	_key("reload", [KEY_R])
+	_key("reload", [])                        # reloading is automatic
+	_key("ultimate", [KEY_R])                 # hero ultimate
 	_key("tonic", [KEY_1])
 	_key("scores", [KEY_TAB])
 	_key("menu", [KEY_ESCAPE])

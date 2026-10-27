@@ -47,7 +47,8 @@ var aim_ring: MeshInstance3D
 var muzzle_light: OmniLight3D
 var collapse_warned := false
 var rng := RandomNumberGenerator.new()
-var pending_input := {"dash": false, "jump": false, "sig": false, "reload": false, "tonic": false, "throw": false, "skill": false}
+var pending_input := {"dash": false, "jump": false, "sig": false, "reload": false, "tonic": false, "throw": false, "skill": false, "ult": false}
+var zones: Array = []      # hero areas: dome, sanctuary, well
 var bot_brain := Bot.new()
 var seed_val := 0
 var length := 360.0
@@ -171,9 +172,9 @@ func _spawn_pads_and_portals() -> void:
 		add_child(n)
 		portals.append({"pos": world.portal_spots[i], "open_at": (1e9 if opts.get("tutorial", false) else open_at + i * 35.0), "open": false, "node": n})
 
-func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String, kin_rec: Dictionary, at: Vector3) -> Hunter:
+func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String, kin_rec: Dictionary, at: Vector3, kit := {}) -> Hunter:
 	var h := Hunter.new()
-	h.init_hunter(self, id, team, cls, pname, ctrl)
+	h.init_hunter(self, id, team, cls, pname, ctrl, kit)
 	add_child(h)
 	h.teleport(at)
 	hunters.append(h)
@@ -187,6 +188,17 @@ func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String
 		ents_by_id[k.nid] = k
 		h.kin = k
 	return h
+
+func my_kit() -> Dictionary:
+	return {"hero": Save.d.get("hero", ""), "weapon": Save.d.get("weapon", ""), "perk": Save.d.get("perk", "")}
+
+func bot_kit() -> Dictionary:
+	var heroes: Array = Data.HEROES.keys()
+	var hero: String = heroes[rng.randi_range(0, heroes.size() - 1)]
+	var pool: Array = Data.CLASSES[Data.HEROES[hero]["cls"]]["weapons"]
+	var w: String = Data.HEROES[hero]["weapon"] if rng.randf() < 0.6 else pool[rng.randi_range(0, pool.size() - 1)]
+	var perks: Array = Data.PERKS.keys()
+	return {"hero": hero, "weapon": w, "perk": perks[rng.randi_range(0, perks.size() - 1)]}
 
 func bot_kin_record() -> Dictionary:
 	var sp: String = Data.KIN.keys()[rng.randi_range(0, Data.KIN.size() - 1)]
@@ -239,19 +251,19 @@ func _spawn_hunters() -> void:
 						at = Vector3(q.x, world.ground_at(q.x, q.z), q.z); break
 			if t == 0 and s == 0 and not opts.get("spectate", false):
 				var rec: Dictionary = Save.active_kin()
-				player = make_hunter("p0", 0, Save.d.get("cls", "medium"), Save.d.get("name", "Hunter"), "bot" if opts.get("autoplay", false) else "local", rec, at)
+				player = make_hunter("p0", 0, Save.d.get("cls", "medium"), Save.d.get("name", "Hunter"), "bot" if opts.get("autoplay", false) else "local", rec, at, my_kit())
 				if opts.get("autoplay", false):
 					player.ai = bot_brain.new_mind(rng, 0.7)
 				player.teleport(at)
 				player.tonics = int(Save.d["items"].get("tonic", 0))
 				if Save.has_building("workshop"):
-					player.glide_max = Hunter.GLIDE_TIME * 1.5
+					player.glide_max *= 1.5
 				if player.kin:
 					_apply_treat(player.kin)
 				_start_drop(player, at)
 				continue
-			var cls: String = ["light", "medium", "heavy"][rng.randi_range(0, 2)]
-			var h := make_hunter(next_id("b"), t, cls, names.pop_back() if names.size() > 0 else "Bot", "bot", bot_kin_record(), at)
+			var bk := bot_kit()
+			var h := make_hunter(next_id("b"), t, "", names.pop_back() if names.size() > 0 else "Bot", "bot", bot_kin_record(), at, bk)
 			h.ai = bot_brain.new_mind(rng, float(opts.get("bot_skill", 0.6)))
 			h.tonics = 1
 			_start_drop(h, at)
@@ -442,6 +454,8 @@ func on_damage(target: Ent, by: Ent, d: float, o: Dictionary) -> void:
 		credit = by.owner_h
 	if credit is Hunter and target != credit:
 		credit.dmg_done += d
+		if not credit.remote and target.team != credit.team and src != "burn":
+			credit.ult = minf(1.0, credit.ult + d / 320.0 * (1.3 if credit.perk == "overcharge" else 1.0))
 	var mine := credit == player or (target == player)
 	var col := Color("fff4d6")
 	if crit: col = Color("ffd23f")
@@ -461,6 +475,8 @@ func on_damage(target: Ent, by: Ent, d: float, o: Dictionary) -> void:
 func knock(h: Hunter, by: Ent, _o: Dictionary) -> void:
 	if h.downed or h.out:
 		return
+	if by is Hunter and by.hero == "nyx" and by.team != h.team:
+		by.sig_cd = 0.0
 	h.downed = true
 	h.down_hp = Data.MATCH["down_hp"]
 	h.hp = 0.0
@@ -697,7 +713,7 @@ func _collect(h: Hunter, p: Dictionary) -> void:
 	if net_on:
 		net_event(["take", p["id"]])
 	match p["kind"]:
-		"gem": h.gems += int(p["v"])
+		"gem": h.gems += int(round(float(p["v"]) * (1.25 if h.perk == "scavenger" else 1.0)))
 		"seed": h.seeds[p["key"]] = int(h.seeds.get(p["key"], 0)) + int(p["v"])
 	if h == player:
 		sfx("pickup", null, -8.0, 1.0 + minf(0.4, h.gems * 0.004))
@@ -716,7 +732,7 @@ func spawn_shot(by: Ent, at: Vector3, v2: Vector2, dmg: float, life: float, size
 		mi.scale = Vector3.ONE * size * 2.0
 		mi.global_position = at
 	var team := by.team
-	shots.append({"pos": at, "vel": v2, "dmg": dmg, "team": team, "by": by, "life": life, "r": size, "col": col, "x": extra, "node": mi, "prev": at})
+	shots.append({"pos": at, "vel": v2, "dmg": dmg, "team": team, "by": by, "life": life, "r": size, "col": col, "x": extra, "node": mi, "prev": at, "start": at})
 	if net_on and not extra.get("cos", false) and not by.remote:
 		net_event(["s", _r(at.x), _r(at.y), _r(at.z), _r(v2.x), _r(v2.y), snappedf(life, 0.01), snappedf(size, 0.01), col.to_html(false), float(extra.get("boom", 0.0)), team, 1 if extra.get("mob", false) else 0])
 	if by is Hunter:
@@ -733,6 +749,10 @@ func _update_shots(dt: float) -> void:
 		var hit := false
 		for i in n:
 			p += step / n
+			# domes stop shots fired at them from outside
+			if _dome_blocks(s, p):
+				_shot_end(s, p, null)
+				hit = true; break
 			# terrain and rocks
 			if world.is_block(p.x, p.z) and world.ground_at(p.x, p.z) + World.BLOCK_H > p.y or world.ground_at(p.x, p.z) > p.y:
 				_shot_end(s, p, null)
@@ -800,12 +820,27 @@ func _shot_end(s: Dictionary, at: Vector3, e: Ent) -> void:
 	if e.stun_t > 0.0 and not x.get("mob", false):
 		dmg *= 1.5
 		crit = true
+	if x.get("crit", false) and not crit:
+		dmg *= 1.5
+		crit = true
+	if x.has("far") and Vector2(at.x - s["start"].x, at.z - s["start"].z).length() > float(x["far"]):
+		dmg *= 1.25
 	var dir: Vector2 = (s["vel"] as Vector2).normalized()
 	var o := {"src": "shot", "crit": crit}
 	if float(x.get("kb", 0.0)) > 0.0:
 		o["kb"] = dir * float(x["kb"])
 	if x.has("burn"): o["burn"] = x["burn"]
 	if x.has("slow"): o["slow"] = x["slow"]
+	if x.has("root"): o["root"] = x["root"]
+	if x.has("stun"): o["stun"] = x["stun"]
+	if x.get("hook", false) and by:
+		# drag it back toward whoever threw the hook
+		var back := Vector2(by.pos.x - e.pos.x, by.pos.z - e.pos.z)
+		o["kb"] = back.normalized() * clampf(back.length() * 2.2, 6.0, 15.0)
+		o["lift"] = 3.0
+		o["slow"] = 2.0
+		fx.bolt(by.pos + Vector3(0, 0.95, 0), e.pos + Vector3(0, 0.8, 0), Color("e0b05a"))
+		net_fx(["bolt", _r(by.pos.x), _r(by.pos.y + 0.95), _r(by.pos.z), _r(e.pos.x), _r(e.pos.y + 0.8), _r(e.pos.z), "e0b05a"])
 	e.hurt(dmg, by, o)
 
 func _boom(s: Dictionary, at: Vector3) -> void:
@@ -891,7 +926,7 @@ func _gather_input() -> void:
 		player.inp["move"] = Vector2.ZERO
 	player.inp["interact"] = Input.is_action_pressed("interact")
 	player.inp["glide"] = Input.is_action_pressed("jump") and not paused
-	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["kin_skill", "skill"]]:
+	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["kin_skill", "skill"], ["ultimate", "ult"]]:
 		if Input.is_action_just_pressed(a[0]):
 			pending_input[a[1]] = true
 
@@ -905,13 +940,25 @@ func step(dt: float) -> void:
 	if over:
 		return
 	time += dt
+	if opts.get("ability_demo", false) and player and not player.dropping:
+		var best: Ent = null; var bd := 1e9
+		for f in foes_of(player.team):
+			if player.flat_dist(f) < bd: bd = player.flat_dist(f); best = f
+		if best:
+			player.inp["aim"] = best.pos + Vector3(0, 0.9, 0)
+			player.inp["fire"] = bd < 10.0
+			if bd > 6.0: player.inp["move"] = player.dir_to(best)
+			else: player.inp["move"] = Vector2.ZERO
+		if int(time * 60.0) % 90 == 0: player.inp["sig"] = true
+		if time > 4.0 and int(time * 60.0) % 240 == 0:
+			player.ult = 1.0; player.inp["ult"] = true
 	if opts.get("glide_demo", false) and player:
 		if time < 0.05:
 			player.teleport(player.pos + Vector3(0, 6, 0)); player.grounded = false
 		player.inp["glide"] = true
 		player.inp["move"] = Vector2(1, 0.3).normalized()
 	if player and not player.out:
-		for k in ["dash", "jump", "sig", "reload", "tonic"]:
+		for k in ["dash", "jump", "sig", "reload", "tonic", "ult"]:
 			if pending_input[k]:
 				player.inp[k] = true
 				pending_input[k] = false
@@ -929,7 +976,7 @@ func step(dt: float) -> void:
 	if opts.get("autoplay", false) and int(time * 60.0) % 15 == 0:
 		for h in hunters:
 			var hist: Array = h.get_meta("hist", [])
-			hist.append("%.1f:(%.1f,%.1f,%.1f) v(%.1f,%.1f,%.1f) g%d f%.2f r%.2f gr%d void%d %s" % [time, h.pos.x, h.pos.y, h.pos.z, h.vel.x, h.vel.y, h.vel.z, int(h.grounded), h.fly_t, h.roll_t, int(h.grap.size() > 0), int(h.over_void()), String(h.ai.get("goal_kind", ""))])
+			hist.append("%.1f:(%.1f,%.1f,%.1f) v(%.1f,%.1f,%.1f) g%d f%.2f r%.2f gr%d void%d gl%d fuel%.1f kb%.1f %s" % [time, h.pos.x, h.pos.y, h.pos.z, h.vel.x, h.vel.y, h.vel.z, int(h.grounded), h.fly_t, h.roll_t, int(h.grap.size() > 0), int(h.over_void()), int(h.gliding), h.glide_fuel, time - h.kb_t, String(h.ai.get("goal_kind", ""))])
 			if hist.size() > 10: hist.pop_front()
 			h.set_meta("hist", hist)
 	for k in kins: k.sim(dt)
@@ -941,6 +988,7 @@ func step(dt: float) -> void:
 	_update_interact(dt)
 	_update_portals(dt)
 	_update_events()
+	_update_zones(dt)
 	if opts.get("tutorial", false):
 		if opts.get("tut_test", false):
 			_tut_drive()
@@ -1051,9 +1099,9 @@ func _update_interact(dt: float) -> void:
 				var o: Hunter = best["ent"]
 				if o.remote:
 					_rev_out[o.nid] = float(_rev_out.get(o.nid, 0.0)) + dt / Data.MATCH["revive_time"]
-					o.revive += dt / Data.MATCH["revive_time"]
+					o.revive += dt / Data.MATCH["revive_time"] * (1.3 if h.hero == "sage" else 1.0)
 				else:
-					o.revive += dt / Data.MATCH["revive_time"]
+					o.revive += dt / Data.MATCH["revive_time"] * (1.3 if h.hero == "sage" else 1.0)
 					if o.revive >= 1.0:
 						revive_hunter(o, h)
 			"catch":
@@ -1266,6 +1314,77 @@ func _tut_spot(dist: float, ang0: float) -> Vector3:
 				return Vector3(floor(x) + 0.5, world.ground_at(x, z), floor(z) + 0.5)
 	return Vector3.INF
 
+# ------------------------------------------------------------------ hero zones
+func add_zone(kind_s: String, at: Vector3, radius: float, dur: float, team_i: int, owner: Hunter, from_net := false) -> void:
+	var col: Color = Data.HEROES[owner.hero]["color"] if owner else Color.WHITE
+	var n := Node3D.new()
+	add_child(n)
+	n.position = at
+	match kind_s:
+		"dome":
+			var mi := MeshInstance3D.new(); mi.mesh = Models.sphere(radius, 24)
+			mi.material_override = Models.glow_mat(Color(col, 0.16))
+			mi.scale = Vector3(1, 0.75, 1)
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			n.add_child(mi)
+		"sanctuary", "well":
+			var ring := MeshInstance3D.new(); ring.mesh = Models.flat_quad(radius * 2.0)
+			ring.material_override = Models.ring_mat(Color(col if kind_s == "sanctuary" else Color("b06ae0"), 0.9), 0.06)
+			ring.position.y = 0.08
+			n.add_child(ring)
+	zones.append({"kind": kind_s, "pos": at, "r": radius, "t": 0.0, "dur": dur, "team": team_i, "owner": owner, "node": n, "tick": 0.0})
+	if kind_s == "well":
+		sfx("warn", at, -2.0, 1.4)
+	if net_on and not from_net and owner:
+		net_event(["zone", kind_s, _r(at.x), _r(at.y), _r(at.z), radius, dur, team_i, owner.nid])
+
+func _dome_blocks(s: Dictionary, p: Vector3) -> bool:
+	for z in zones:
+		if z["kind"] != "dome" or z["team"] == s["team"]:
+			continue
+		var c: Vector3 = z["pos"]
+		if Vector2(p.x - c.x, p.z - c.z).length() < z["r"] and Vector2(s["start"].x - c.x, s["start"].z - c.z).length() > z["r"]:
+			fx.burst(p, Color(Data.HEROES["halo"]["color"], 0.8), 6, 2.0, 0.25, 0.0, 0.7)
+			return true
+	return false
+
+func _update_zones(dt: float) -> void:
+	for z in zones.duplicate():
+		z["t"] += dt
+		z["tick"] -= dt
+		var n: Node3D = z["node"]
+		var k: float = z["t"] / z["dur"]
+		n.scale = Vector3.ONE * minf(1.0, z["t"] * 6.0) * (1.0 if k < 0.9 else (1.0 - k) * 10.0)
+		var owner: Hunter = z["owner"]
+		var mine: bool = owner != null and not owner.remote
+		var c: Vector3 = z["pos"]
+		if z["tick"] <= 0.0:
+			z["tick"] = 0.25
+			match String(z["kind"]):
+				"sanctuary", "dome":
+					# heal your own hunter and kin when standing inside a friendly area
+					var amt := 12.0 * 0.25 if z["kind"] == "sanctuary" else (4.0 * 0.25 if owner and owner.hero == "halo" else 0.0)
+					if amt > 0.0:
+						for h in hunters:
+							if h.team == z["team"] and not h.remote and not h.downed and not h.out and h.flat_dist(c) < z["r"]:
+								h.hp = minf(h.max_hp, h.hp + amt)
+								if h.kin and h.kin.state == "active" and h.kin.flat_dist(c) < z["r"]:
+									h.kin.hp = minf(h.kin.max_hp, h.kin.hp + amt)
+						if z["kind"] == "sanctuary":
+							fx.burst(c + Vector3(randf_range(-2, 2), 0.3, randf_range(-2, 2)), Color("9ee2a0"), 3, 1.5, 0.6, -2.0, 0.8)
+				"well":
+					fx.burst(c + Vector3(0, 0.5, 0), Color("b06ae0"), 8, -3.0, 0.4, 0.0, 0.8)
+					if mine:
+						for f in foes_of(z["team"]):
+							var rel := Vector2(c.x - f.pos.x, c.z - f.pos.z)
+							if rel.length() < z["r"] and rel.length() > 0.4:
+								f.hurt(1.0, owner, {"kb": rel.normalized() * 4.5, "slow": 0.5, "src": "abil"})
+		if z["t"] >= z["dur"]:
+			if z["kind"] == "well" and mine:
+				Abil._blast(owner, c, z["r"] * 0.6, 26.0, 7.0, Color("b06ae0"), 5.0)
+			n.queue_free()
+			zones.erase(z)
+
 func _update_events() -> void:
 	if opts.get("tutorial", false):
 		return
@@ -1421,15 +1540,15 @@ func _spawn_net_hunters(spots: Array, names: Array) -> void:
 			krec = Save.new_kin("cindle")
 		if peer == Net.me:
 			var rec: Dictionary = Save.active_kin()
-			player = make_hunter("P" + peer, t, String(r["cls"]), String(r["name"]), "local", rec, at)
+			player = make_hunter("P" + peer, t, String(r["cls"]), String(r["name"]), "local", rec, at, my_kit())
 			player.tonics = int(Save.d["items"].get("tonic", 0))
 			if Save.has_building("workshop"):
-				player.glide_max = Hunter.GLIDE_TIME * 1.5
+				player.glide_max *= 1.5
 			if player.kin:
 				_apply_treat(player.kin)
 			_start_drop(player, at)
 		else:
-			var h := make_hunter("P" + peer, t, String(r["cls"]), String(r["name"]), "remote", krec, at)
+			var h := make_hunter("P" + peer, t, String(r["cls"]), String(r["name"]), "remote", krec, at, {"hero": r.get("hero", ""), "weapon": r.get("weapon", ""), "perk": ""})
 			h.remote = true
 			if h.kin:
 				h.kin.remote = true
@@ -1712,6 +1831,10 @@ func _net_ev(x, from: String) -> void:
 					break
 			if String(x[0]) == "take" and is_host:
 				net_event(["gone", String(x[1])])
+		"zone":
+			var zo: Ent = ents_by_id.get(String(x[8]), null)
+			if zo is Hunter:
+				add_zone(String(x[1]), Vector3(x[2], x[3], x[4]), float(x[5]), float(x[6]), int(x[7]), zo, true)
 		"shr":
 			var si := int(x[1])
 			if si >= 0 and si < shrines.size():
@@ -1776,6 +1899,10 @@ func _tips() -> void:
 	if player.dropping or opts.get("tutorial", false):
 		return
 	_tip("move", "WASD to move, aim with the mouse, hold left click to shoot. Shift dashes, Space jumps. Hold Space in the air to glide.")
+	if _tip_t > 14.0:
+		_tip("ability", "E uses %s's ability, %s. R fires your ultimate once it charges, and dealing damage charges it faster." % [Data.HEROES[player.hero]["name"], Data.ABIL[Abil.e_id(player)]["name"]])
+	if player.ult >= 1.0:
+		_tip("ult", "Your ultimate, %s, is ready. Press R." % Data.ABIL[Abil.r_id(player)]["name"])
 	var k: Kin = player.kin
 	if k == null:
 		return

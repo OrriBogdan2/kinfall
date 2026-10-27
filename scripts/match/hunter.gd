@@ -21,7 +21,7 @@ var wid := "repeater"
 var wpn: Dictionary = {}
 var ctrl := "bot"             # local | bot | remote
 var inp := {"move": Vector2.ZERO, "aim": Vector3.ZERO, "fire": false, "dash": false, "jump": false,
-	"throw": false, "skill": false, "sig": false, "interact": false, "reload": false, "tonic": false, "glide": false}
+	"throw": false, "skill": false, "sig": false, "interact": false, "reload": false, "tonic": false, "glide": false, "ult": false}
 var base_speed := 5.4
 var ammo := 12
 var reload_t := 0.0
@@ -73,28 +73,45 @@ var glide_max := GLIDE_TIME
 var glide_cd := 0.0
 var glide_k := 0.0             # how far the glider is unfolded, for the model
 var wind_t := 0.0
+var hero := "sage"
+var perk := ""
+var ult := 0.0                # 0..1, R is ready at 1
+var crit_t := 0.0             # shots crit while this runs (Blink)
+var charge: Dictionary = {}   # Ram
+var acts: Array = []          # queued ability pieces, see Abil.tick
+var acts_tele: Node3D = null
+var idle_fire := 0.0
 var dropping := false         # gliding down from the sky at the start of a match
 var bless_t := 0.0
 
-func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, name_txt: String, control: String) -> void:
+const DEFAULT_HERO := {"light": "veil", "medium": "sage", "heavy": "bastion"}
+
+func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, name_txt: String, control: String, kit := {}) -> void:
 	setup(match_node, id)
 	kind = "hunter"
 	team = team_id
-	cls = class_id
+	hero = String(kit.get("hero", ""))
+	if not Data.HEROES.has(hero):
+		hero = DEFAULT_HERO.get(class_id, "sage")
+	cls = Data.HEROES[hero]["cls"]
 	cdat = Data.CLASSES[cls]
-	wid = cdat["weapon"]
+	wid = String(kit.get("weapon", ""))
+	if not cdat["weapons"].has(wid):
+		wid = Data.HEROES[hero]["weapon"]
 	wpn = Data.WEAPONS[wid]
+	perk = String(kit.get("perk", ""))
 	pname = name_txt
 	ctrl = control
-	max_hp = cdat["hp"]; hp = max_hp
+	max_hp = cdat["hp"] + (15 if perk == "toughskin" else 0); hp = max_hp
+	if perk == "featherfall": glide_max = GLIDE_TIME * 1.6
 	base_speed = cdat["speed"]
 	dashes = max_dashes()
 	ammo = wpn["mag"]
 	r = 0.38 * float(cdat["scale"])
-	set_model(Models.hunter(cls, Data.TEAM_COLORS[team % Data.TEAM_COLORS.size()], wid))
+	set_model(Models.hunter(cls, Data.TEAM_COLORS[team % Data.TEAM_COLORS.size()], wid, hero))
 
 func max_dashes() -> float:
-	return float(cdat["dashes"]) + (1.0 if shoulder() == "updraft" else 0.0)
+	return float(cdat["dashes"]) + (1.0 if shoulder() == "updraft" else 0.0) + (1.0 if perk == "secondwind" else 0.0)
 
 ## The shoulder passive is active once the kin has settled on your shoulder.
 func shoulder() -> String:
@@ -125,6 +142,8 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 	var d := dmg
 	if ctrl == "local" and m.opts.get("tutorial", false):
 		d *= 0.35
+	if hero == "bastion" and hp > max_hp * 0.5:
+		d *= 0.9
 	if shoulder() == "bedrock":
 		d *= 0.85
 	if downed:
@@ -189,7 +208,7 @@ func do_dash() -> void:
 	m.fx.dash_trail(self)
 
 func can_fire() -> bool:
-	return not (reload_t > 0.0 or roll_t > 0.0 or downed or out or stun_t > 0.0 or grap.size() > 0 or gliding)
+	return not (reload_t > 0.0 or roll_t > 0.0 or downed or out or stun_t > 0.0 or grap.size() > 0 or gliding or charge.size() > 0)
 
 func fire() -> void:
 	if not can_fire() or fire_cd > 0.0:
@@ -202,6 +221,7 @@ func fire() -> void:
 		m.sfx("cloak", pos, -8.0)
 	var rate: float = wpn["rate"] * (0.8 if shoulder() == "charge" else 1.0)
 	fire_cd = rate
+	idle_fire = 0.0
 	ammo -= 1
 	recoil = 1.0
 	muzzle_t = 0.05
@@ -218,6 +238,12 @@ func fire() -> void:
 		life = dist / spd
 		extra["boom"] = wpn["boom"]; extra["boom_kb"] = wpn["boom_kb"]
 	var sp := shoulder()
+	if crit_t > 0.0 or (hero == "veil" and cloak_t > 0.0):
+		extra["crit"] = true
+	if hero == "kestrel":
+		extra["far"] = 9.0
+	if hero == "pyra" and extra.has("boom_kb"):
+		extra["boom_kb"] = float(extra["boom_kb"]) * 1.2
 	if sp == "kindle": extra["burn"] = 4.0
 	if sp == "briar": extra["slow"] = 0.7
 	m.spawn_shot(self, start, Vector2(cos(a), sin(a)) * spd, wpn["dmg"] * m.dmg_mult(self), life, wpn["size"], wpn["color"], extra)
@@ -228,13 +254,13 @@ func fire() -> void:
 func start_reload() -> void:
 	if reload_t > 0.0 or ammo >= int(wpn["mag"]) or downed:
 		return
-	reload_t = float(wpn["reload"]) * (0.8 if shoulder() == "charge" else 1.0)
+	reload_t = float(wpn["reload"]) * (0.8 if shoulder() == "charge" else 1.0) * (0.7 if perk == "quickhands" else 1.0)
 	m.sfx("reload", pos, -8.0)
 
 func use_signature() -> void:
-	if sig_cd > 0.0 or downed or out:
-		return
-	sig_cd = Data.SIGS[cdat["sig"]]["cd"]
+	Abil.use_e(self)
+
+func _old_signature() -> void:
 	match cdat["sig"]:
 		"cloak":
 			cloak_t = 3.0; haste_t = 3.0
@@ -288,7 +314,7 @@ func sim(dt: float) -> void:
 	if out or extracted:
 		return
 	tick_status(dt)
-	for k in ["inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t"]:
+	for k in ["inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t"]:
 		set(k, maxf(0.0, get(k) - dt))
 	if shield_t > 0.0:
 		shield_t -= dt
@@ -304,6 +330,13 @@ func sim(dt: float) -> void:
 	if remote:
 		net_follow(dt)
 		return
+	if not downed and not dropping:
+		ult = minf(1.0, ult + dt / 110.0 * (1.3 if perk == "overcharge" else 1.0))
+	Abil.tick(self, dt)
+	# reload by itself once you stop shooting for a moment
+	idle_fire += dt
+	if idle_fire > 1.3 and ammo < int(wpn["mag"]) and reload_t <= 0.0 and not inp["fire"]:
+		start_reload()
 	if downed:
 		down_hp -= Data.MATCH["bleed"] * dt
 		if down_hp <= 0.0:
@@ -315,8 +348,9 @@ func sim(dt: float) -> void:
 	if inp["sig"]: use_signature()
 	if inp["reload"]: start_reload()
 	if inp["tonic"]: use_tonic()
+	if inp["ult"]: Abil.use_r(self)
 	if inp["fire"]: fire()
-	inp["dash"] = false; inp["jump"] = false; inp["sig"] = false; inp["reload"] = false; inp["tonic"] = false
+	inp["dash"] = false; inp["jump"] = false; inp["sig"] = false; inp["reload"] = false; inp["tonic"] = false; inp["ult"] = false
 	_physics(dt)
 	var ad := aim_dir()
 	var want := atan2(-ad.x, -ad.y)
@@ -359,7 +393,16 @@ func _physics(dt: float) -> void:
 	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0)
 	var hv := Vector2(vel.x, vel.z)
 	var cur := hv.length()
-	if roll_t > 0.0:
+	if charge.size() > 0:
+		charge["t"] -= dt
+		hv = charge["dir"] * 21.0
+		Abil.charge_hits(self)
+		if charge["t"] <= 0.0:
+			hv = charge["dir"] * spd
+			charge = {}
+		if int(m.time * 30.0) % 2 == 0:
+			m.fx.dust(pos, 2)
+	elif roll_t > 0.0:
 		roll_t -= dt
 		hv = roll_dir * DASH_SPEED
 		if roll_t <= 0.0:
@@ -443,7 +486,7 @@ func _update_glide(dt: float) -> void:
 	if grounded:
 		glide_fuel = minf(1.0, glide_fuel + dt / 1.2)
 	var can: bool = not grounded and roll_t <= 0.0 and fly_t <= 0.0 and glide_cd <= 0.0 and not downed and stun_t <= 0.0 \
-		and m.time - kb_t > 0.6 and glide_fuel > 0.0
+		and m.time - kb_t > 0.4 and glide_fuel > 0.0
 	var want: bool = inp.get("glide", false)
 	if gliding:
 		if not want or not can:

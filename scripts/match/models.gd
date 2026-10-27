@@ -78,7 +78,7 @@ static func flat_quad(size: float) -> PlaneMesh:
 	return p
 
 # ---------------------------------------------------------------- hunters
-static func hunter(cls: String, team_col: Color, weapon: String) -> Node3D:
+static func hunter(cls: String, team_col: Color, weapon: String, hero := "") -> Node3D:
 	var root := Node3D.new()
 	var body_col := team_col.lerp(Color("3a3f52"), 0.35)
 	var mats: Array = []
@@ -97,18 +97,56 @@ static func hunter(cls: String, team_col: Color, weapon: String) -> Node3D:
 	part(torso, sphere(0.215), m_skin, Vector3(0, 0.82, 0), Vector3.ONE, Vector3.ZERO, "Head")
 	part(torso, sphere(0.035, 8), m_dark, Vector3(-0.08, 0.84, -0.19))
 	part(torso, sphere(0.035, 8), m_dark, Vector3(0.08, 0.84, -0.19))
-	match cls:
-		"light":
+	var look: String = hero if hero != "" else {"light": "veil", "medium": "sage", "heavy": "bastion"}.get(cls, "sage")
+	var hc: Color = Data.HEROES[look]["color"] if Data.HEROES.has(look) else team_col
+	var m_hero := toon(hc); mats.append(m_hero)
+	match look:
+		"veil":
 			part(torso, sphere(0.25), m_acc, Vector3(0, 0.88, 0.04), Vector3(1.0, 0.95, 1.05))  # hood
 			part(torso, cyl(0.2, 0.26, 0.1), m_acc, Vector3(0, 0.58, 0))  # scarf
 			part(torso, box(0.12, 0.34, 0.04), m_acc, Vector3(0.1, 0.42, 0.24), Vector3.ONE, Vector3(0.3, 0, 0.2))
-		"medium":
+		"nyx":
+			part(torso, sphere(0.25), m_dark, Vector3(0, 0.88, 0.04), Vector3(1.0, 0.95, 1.05))
+			part(torso, box(0.34, 0.07, 0.06), toon(hc, false, 0.9), Vector3(0, 0.84, -0.2))   # glowing visor
+			for sx in [-1.0, 1.0]:
+				part(torso, cyl(0.0, 0.05, 0.22), m_hero, Vector3(0.14 * sx, 1.12, 0.02), Vector3.ONE, Vector3(-0.2, 0, -0.5 * sx))
+			part(torso, box(0.5, 0.5, 0.04), m_dark, Vector3(0, 0.3, 0.27), Vector3.ONE, Vector3(0.25, 0, 0))  # cape
+		"kestrel":
+			part(torso, cyl(0.22, 0.24, 0.12), m_hero, Vector3(0, 0.98, 0))
+			part(torso, box(0.38, 0.08, 0.1), toon(Color("2b2a33")), Vector3(0, 0.86, -0.17))
+			part(torso, sphere(0.05, 8), toon(hc, false, 0.9), Vector3(0.09, 0.86, -0.22))
+			part(torso, box(0.04, 0.32, 0.1), toon(Color("f3eee2")), Vector3(0.22, 1.08, 0.08), Vector3.ONE, Vector3(-0.4, 0, -0.4))  # feather
+		"sage":
 			part(torso, cyl(0.34, 0.34, 0.04), m_acc, Vector3(0, 0.98, 0))  # brim
 			part(torso, cyl(0.17, 0.2, 0.2), m_acc, Vector3(0, 1.08, 0))
 			part(torso, cyl(0.205, 0.205, 0.04), m_dark, Vector3(0, 1.01, 0))
-		"heavy":
+		"marlow":
+			part(torso, sphere(0.23), m_hero, Vector3(0, 0.9, 0.02), Vector3(1.0, 0.6, 1.0))  # bandana
+			part(torso, sphere(0.07, 8), m_hero, Vector3(0, 0.88, 0.24))
+			part(torso, box(0.07, 0.2, 0.04), m_hero, Vector3(0.04, 0.78, 0.27), Vector3.ONE, Vector3(0.3, 0, 0.3))
+			var t := TorusMesh.new(); t.inner_radius = 0.2; t.outer_radius = 0.26
+			part(torso, t, toon(Color("8a8d99")), Vector3(0, 0.38, 0), Vector3.ONE, Vector3(0.9, 0, 0.5))  # chain
+		"pyra":
+			part(torso, sphere(0.2), toon(Color("ff7a3d")), Vector3(0, 0.98, 0.05), Vector3(1.15, 0.8, 1.15))  # hair
+			for sx in [-1.0, 1.0]:
+				part(torso, cyl(0.07, 0.07, 0.05, 12), toon(Color("9af0ff"), false, 0.6), Vector3(0.09 * sx, 0.97, -0.17), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(torso, box(0.36, 0.04, 0.04), m_dark, Vector3(0, 0.97, -0.15))
+		"bastion":
 			part(torso, sphere(0.26), m_acc, Vector3(0, 0.9, 0.02), Vector3(1.05, 0.85, 1.05))  # helmet
 			part(torso, box(0.34, 0.06, 0.06), m_dark, Vector3(0, 0.83, -0.2))  # visor
+			part(torso, sphere(0.17), m_acc, Vector3(-0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
+			part(torso, sphere(0.17), m_acc, Vector3(0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
+		"tusk":
+			part(torso, sphere(0.26), m_hero, Vector3(0, 0.9, 0.02), Vector3(1.05, 0.85, 1.05))
+			for sx in [-1.0, 1.0]:
+				part(torso, cyl(0.0, 0.06, 0.3), toon(Color("f3eee2")), Vector3(0.14 * sx, 0.74, -0.2), Vector3.ONE, Vector3(-1.2, 0, -0.3 * sx))
+			part(torso, sphere(0.19), m_hero, Vector3(-0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
+			part(torso, sphere(0.19), m_hero, Vector3(0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
+		"halo":
+			part(torso, sphere(0.25), m_acc, Vector3(0, 0.9, 0.02), Vector3(1.0, 0.9, 1.0))
+			part(torso, box(0.3, 0.12, 0.06), toon(Color("9af0ff"), false, 0.5), Vector3(0, 0.85, -0.2))
+			var hr := TorusMesh.new(); hr.inner_radius = 0.17; hr.outer_radius = 0.22
+			part(torso, hr, toon(hc, false, 1.2), Vector3(0, 1.26, 0), Vector3.ONE, Vector3.ZERO, "Halo")
 			part(torso, sphere(0.17), m_acc, Vector3(-0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
 			part(torso, sphere(0.17), m_acc, Vector3(0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
 	var gun := Node3D.new(); gun.name = "Gun"; gun.position = Vector3(0.22, 0.32, -0.18); torso.add_child(gun)
@@ -126,6 +164,14 @@ static func hunter(cls: String, team_col: Color, weapon: String) -> Node3D:
 			part(gun, box(0.09, 0.12, 0.7), m_gun, Vector3(0, 0, -0.24))
 			part(gun, cyl(0.035, 0.035, 0.3), m_dark, Vector3(0, 0.02, -0.66), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			part(gun, box(0.05, 0.08, 0.16), m_acc, Vector3(0, 0.09, -0.16))
+		"rail":
+			part(gun, box(0.08, 0.1, 0.9), m_gun, Vector3(0, 0, -0.32))
+			part(gun, box(0.04, 0.04, 0.5), toon(Color("9af0ff"), false, 0.8), Vector3(0, 0.07, -0.42))
+			part(gun, cyl(0.05, 0.05, 0.14), m_dark, Vector3(0, 0.1, -0.12), Vector3.ONE, Vector3(PI / 2, 0, 0))
+		"rocket":
+			part(gun, cyl(0.1, 0.1, 0.72), toon(Color("5a6a4a")), Vector3(0, 0.04, -0.22), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(gun, cyl(0.06, 0.12, 0.12), toon(Color("ff7a5a")), Vector3(0, 0.04, -0.6), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(gun, box(0.06, 0.16, 0.08), m_dark, Vector3(0, -0.12, -0.05))
 		"thumper":
 			part(gun, cyl(0.12, 0.12, 0.62), m_gun, Vector3(0, 0, -0.2), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			part(gun, cyl(0.14, 0.14, 0.08), m_acc, Vector3(0, 0, -0.52), Vector3.ONE, Vector3(PI / 2, 0, 0))

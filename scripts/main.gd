@@ -15,6 +15,8 @@ func _ready() -> void:
 		if a.begins_with("--length="): opts["length"] = float(a.substr(9))
 		if a == "--no-drop": opts["no_drop"] = true
 		if a == "--watch-heart": opts["watch_heart"] = true
+		if a.begins_with("--hero="): Save.d["hero"] = a.substr(7); Save.d["weapon"] = ""
+		if a == "--ability-demo": opts["ability_demo"] = true
 		if a == "--fresh": Save.d = Save.fresh()
 		if a == "--skip-tutorial": Save.d["tutorial"]["home"] = true
 		if a.begins_with("--teams="): opts["teams"] = int(a.substr(8))

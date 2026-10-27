@@ -7,17 +7,17 @@ const TEAM_COLORS := [Color("f2a24a"), Color("5ab0f0"), Color("e0607e"), Color("
 const CLASSES := {
 	"light": {
 		"name": "Light", "hp": 90, "speed": 6.3, "dashes": 3, "mass": 0.9, "scale": 0.9,
-		"sig": "cloak", "weapon": "stinger",
+		"sig": "cloak", "weapon": "stinger", "weapons": ["stinger", "rail"],
 		"desc": "Fast and fragile. Three dashes and a cloak to slip out of fights.",
 	},
 	"medium": {
 		"name": "Medium", "hp": 115, "speed": 5.4, "dashes": 2, "mass": 1.0, "scale": 1.0,
-		"sig": "mend", "weapon": "repeater",
+		"sig": "mend", "weapon": "repeater", "weapons": ["repeater", "rocket", "rail"],
 		"desc": "The all-rounder. Heals the team and its kin, and speeds up revives.",
 	},
 	"heavy": {
 		"name": "Heavy", "hp": 155, "speed": 4.7, "dashes": 1, "mass": 1.45, "scale": 1.14,
-		"sig": "fortify", "weapon": "thumper",
+		"sig": "fortify", "weapon": "thumper", "weapons": ["thumper", "rocket"],
 		"desc": "Slow and tough. Grenades that blast people off edges, and a shield nothing can push.",
 	},
 }
@@ -30,6 +30,65 @@ const WEAPONS := {
 	"thumper": {"name": "Thumper", "dmg": 20.0, "rate": 0.8, "speed": 14.0, "mag": 4, "reload": 1.7,
 		"kb": 0.0, "spread": 0.0, "range": 9.0, "sfx": "thump", "color": Color("ff9a4a"), "size": 0.22,
 		"boom": 2.1, "boom_kb": 9.5},
+	"rail": {"name": "Rail Rifle", "dmg": 24.0, "rate": 0.9, "speed": 46.0, "mag": 4, "reload": 1.8,
+		"kb": 3.5, "spread": 0.0, "range": 18.0, "sfx": "rifle", "color": Color("9af0ff"), "size": 0.1},
+	"rocket": {"name": "Rocket Launcher", "dmg": 15.0, "rate": 0.65, "speed": 17.0, "mag": 3, "reload": 1.7,
+		"kb": 0.0, "spread": 0.0, "range": 11.0, "sfx": "thump", "color": Color("ff7a5a"), "size": 0.2,
+		"boom": 1.8, "boom_kb": 8.0},
+}
+
+## Heroes: three per weight class. Each has a passive, an E ability and an R ultimate that charges
+## as you deal damage. Your kin (RMB, Q, shoulder) stays the same whoever you play.
+const HEROES := {
+	"veil": {"name": "Veil", "cls": "light", "weapon": "stinger", "e": "cloak", "r": "vanish", "color": Color("c9bcff"),
+		"role": "Slippery scout", "passive": "Your first shot after leaving cloak always crits."},
+	"nyx": {"name": "Nyx", "cls": "light", "weapon": "stinger", "e": "blink", "r": "dance", "color": Color("b06ae0"),
+		"role": "Blink assassin", "passive": "Knocking down a hunter refreshes Blink."},
+	"kestrel": {"name": "Kestrel", "cls": "light", "weapon": "rail", "e": "tether", "r": "skypierce", "color": Color("6ad0e0"),
+		"role": "Long-range sniper", "passive": "Shots from more than 9 tiles away deal 25% more damage."},
+	"sage": {"name": "Sage", "cls": "medium", "weapon": "repeater", "e": "mend", "r": "sanctuary", "color": Color("9ee2a0"),
+		"role": "Healer", "passive": "Revives teammates 30% faster."},
+	"marlow": {"name": "Marlow", "cls": "medium", "weapon": "repeater", "e": "hook", "r": "anchor", "color": Color("e0b05a"),
+		"role": "Hook and slam", "passive": "Hooked foes are slowed for 2 seconds."},
+	"pyra": {"name": "Pyra", "cls": "medium", "weapon": "rocket", "e": "rocketjump", "r": "barrage", "color": Color("ff7a5a"),
+		"role": "Rocket jumper", "passive": "Your blasts knock foes 20% further."},
+	"bastion": {"name": "Bastion", "cls": "heavy", "weapon": "thumper", "e": "fortify", "r": "bulwark", "color": Color("e6dbc4"),
+		"role": "Unmovable wall", "passive": "Takes 10% less damage while above half health."},
+	"tusk": {"name": "Tusk", "cls": "heavy", "weapon": "thumper", "e": "ram", "r": "quake", "color": Color("c08a5a"),
+		"role": "Charging brawler", "passive": "Hitting someone with Ram refunds half its cooldown."},
+	"halo": {"name": "Halo", "cls": "heavy", "weapon": "thumper", "e": "dome", "r": "well", "color": Color("f2d47a"),
+		"role": "Bubble protector", "passive": "Allies inside your dome heal 4 health per second."},
+}
+
+const ABIL := {
+	"cloak": {"name": "Cloak", "cd": 14.0, "desc": "Vanish for 3s and move 35% faster. Firing reveals you."},
+	"mend": {"name": "Mend", "cd": 16.0, "desc": "Heal 35 to you, nearby teammates and kin. Nearby revives jump halfway."},
+	"fortify": {"name": "Fortify", "cd": 16.0, "desc": "A 60 point shield for 5s. Nothing can knock you back."},
+	"blink": {"name": "Blink", "cd": 7.0, "desc": "Teleport up to 6 tiles toward the cursor. Your next shots for 2s crit."},
+	"tether": {"name": "Tether Shot", "cd": 9.0, "desc": "A fast dart that roots the first foe it hits for 1.5s."},
+	"hook": {"name": "Chain Hook", "cd": 10.0, "desc": "Throw a hook that drags the first foe it hits to you and stuns it."},
+	"rocketjump": {"name": "Rocket Jump", "cd": 9.0, "desc": "Blast off toward the cursor, knocking away anyone next to you."},
+	"ram": {"name": "Ram", "cd": 9.0, "desc": "Charge forward, bowling foes over and shoving them hard. Great near edges."},
+	"dome": {"name": "Dome", "cd": 15.0, "desc": "A 4s bubble around you that blocks enemy shots from outside."},
+	"vanish": {"name": "Vanish", "desc": "Cloak and haste for 5s and refill every dash."},
+	"dance": {"name": "Shadow Dance", "desc": "Blink between up to three nearby foes, slashing and stunning each."},
+	"skypierce": {"name": "Skypierce", "desc": "Aim for a moment, then fire a beam across the map that pierces everything."},
+	"sanctuary": {"name": "Sanctuary", "desc": "A circle that heals you, your team and kin inside it for 6s."},
+	"anchor": {"name": "Anchor Drop", "desc": "Leap to the cursor and slam down, launching foes away."},
+	"barrage": {"name": "Barrage", "desc": "Fire six rockets into the area around the cursor."},
+	"bulwark": {"name": "Bulwark", "desc": "A 120 point shield, no knockback, and nearby foes are slowed for 6s."},
+	"quake": {"name": "Quake", "desc": "Stomp a shockwave ahead that launches and stuns everything in it."},
+	"well": {"name": "Gravity Well", "desc": "A vortex at the cursor that drags foes in, then bursts."},
+}
+
+## One perk per loadout.
+const PERKS := {
+	"quickhands": {"name": "Quick Hands", "desc": "Reload 30% faster."},
+	"secondwind": {"name": "Second Wind", "desc": "One extra dash charge."},
+	"featherfall": {"name": "Featherfall", "desc": "Glide 60% longer."},
+	"scavenger": {"name": "Scavenger", "desc": "Gems you pick up are worth 25% more."},
+	"toughskin": {"name": "Tough Skin", "desc": "15 more health."},
+	"overcharge": {"name": "Overcharge", "desc": "Your ultimate charges 30% faster."},
 }
 
 const SIGS := {
