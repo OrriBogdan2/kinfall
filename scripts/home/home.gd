@@ -237,6 +237,7 @@ func _ready() -> void:
 			add_child(kn)
 	_build_ui()
 	_refresh_top()
+	_refresh_day1()
 	if not visit.is_empty():
 		pass
 	elif not Save.d["tutorial"].get("home", false):
@@ -896,6 +897,56 @@ func _close_panel() -> void:
 	if was.ends_with(" evolved") or was.ends_with(" is changing") or was == "Welcome to your island":
 		_play_evolutions.call_deferred()
 
+# ---- your first day: a short list of things to try, each worth a few gems
+const DAY1 := [["pet", "Pet %s"], ["fetch", "Play fetch with %s"], ["plant", "Plant a seed in your farm"], ["water", "Water it"],
+	["inside", "Go inside your house"], ["inventory", "Open your inventory"], ["portal", "Visit the portal"]]
+var day1_box: PanelContainer = null
+
+func _day1_active() -> bool:
+	return visit.is_empty() and not Save.d["tutorial"].get("day1_done", false) and not Save.d["roster"].is_empty()
+
+func _day1(step: String) -> void:
+	if not _day1_active():
+		return
+	if typeof(Save.d["tutorial"].get("day1")) != TYPE_DICTIONARY:
+		Save.d["tutorial"]["day1"] = {}
+	var dd: Dictionary = Save.d["tutorial"]["day1"]
+	if dd.has(step):
+		return
+	dd[step] = true
+	Save.d["gems"] = int(Save.d["gems"]) + 5
+	Sfx.play("unlock", null, -8.0)
+	if dd.size() >= DAY1.size():
+		Save.d["tutorial"]["day1_done"] = true
+		Save.d["gems"] = int(Save.d["gems"]) + 30
+		_toast("First day done! +30 gems")
+	Save.save_game()
+	_refresh_day1()
+	_refresh_top()
+
+func _refresh_day1() -> void:
+	if is_instance_valid(day1_box):
+		day1_box.queue_free()
+	day1_box = null
+	if not _day1_active():
+		return
+	var dd: Dictionary = Save.d["tutorial"].get("day1", {}) if typeof(Save.d["tutorial"].get("day1")) == TYPE_DICTIONARY else {}
+	var box := UI.card(Color(0.06, 0.07, 0.1, 0.84), 12, 14)
+	box.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	box.offset_left = -300; box.offset_right = -16; box.offset_top = 14
+	var v := UI.vbox(5); box.add_child(v)
+	v.add_child(UI.section("Your first day"))
+	var kname: String = Save.active_kin().get("name", "your kin")
+	var keys := {"pet": "interact", "fetch": "play", "water": "interact", "inventory": "inventory"}
+	for st in DAY1:
+		var done: bool = dd.has(st[0])
+		var txt: String = (String(st[1]) % kname) if String(st[1]).contains("%s") else String(st[1])
+		if keys.has(st[0]): txt += "  (%s)" % Settings.key_cap(keys[st[0]])
+		v.add_child(UI.label(("✓  " if done else "○  ") + txt, 14, UI.GOOD if done else UI.INK))
+	v.add_child(UI.label("+5 gems each, +30 for all of them", 12, UI.MUTED))
+	root_ui.add_child(box)
+	day1_box = box
+
 func _open_welcome() -> void:
 	var v := _new_panel("Welcome to your island", 560)
 	v.add_child(UI.label("Your kin live here with you. Each one has its own personality, remembers what you do together, and decides how far it trusts you.", 16))
@@ -917,6 +968,19 @@ func _grow_left(arr: String, d: Dictionary) -> String:
 func _farm_tick() -> void:
 	if not visit.is_empty():
 		return
+	# steps done elsewhere (inside the house, the inventory) show up here
+	if _day1_active() and typeof(Save.d["tutorial"].get("day1")) == TYPE_DICTIONARY:
+		var dd: Dictionary = Save.d["tutorial"]["day1"]
+		if dd.size() >= DAY1.size():
+			Save.d["tutorial"]["day1_done"] = true
+			Save.d["gems"] = int(Save.d["gems"]) + 30
+			_toast("First day done! +30 gems")
+			Save.save_game()
+			_refresh_day1()
+			_refresh_top()
+		elif is_instance_valid(day1_box) and int(day1_box.get_meta("n", -1)) != dd.size():
+			_refresh_day1()
+			if is_instance_valid(day1_box): day1_box.set_meta("n", dd.size())
 	var now := Time.get_unix_time_from_system()
 	for arr in ["plots", "gh_plots"]:
 		var nodes: Array = plots if arr == "plots" else gh_plots
@@ -958,6 +1022,7 @@ func _water(arr: String, i: int, by_hand := true) -> void:
 	d["wt"] = Time.get_unix_time_from_system()
 	var pn: Node3D = _plot_node(arr, i)
 	if by_hand:
+		_day1("water")
 		Sfx.play("plant", null, -6.0, 0.1, 1.4)
 		fx.burst(pn.position + Vector3(0, 0.8, 0), Color("7ac8ff"), 14, 2.0)
 	_refresh_plot(arr, i)
@@ -1013,6 +1078,7 @@ func _open_plot(arr: String, i: int) -> void:
 			Save.d["seeds"][sk] = int(Save.d["seeds"][sk]) - 1
 			d["crop"] = sk; d["stage"] = 0; d["care"] = 0; d["wt"] = 0.0
 			Sfx.play("plant")
+			_day1("plant")
 			fx.dust(pn.position, 10)
 			_refresh_plot(arr, i)
 			Save.save_game()
@@ -1139,6 +1205,7 @@ func _pet_kin(k: Dictionary) -> void:
 	var rec: Dictionary = k["rec"]
 	k["hold_t"] = 1.0
 	k["joy_t"] = 0.9
+	_day1("pet")
 	_face(k["pos"])
 	_emote(k, "♥")
 	fx.burst(k["pos"] + Vector3(0, 0.9, 0), Color("ff8fb0"), 12, 1.8)
@@ -1198,6 +1265,7 @@ func _fetch_step(k: Dictionary, d: float) -> void:
 				f["life"] = -1.0
 				_emote(k, "★")
 				k["joy_t"] = 0.8
+				_day1("fetch")
 				Sfx.play("kin_happy", null, -6.0)
 				var rec: Dictionary = k["rec"]
 				if int(rec.get("played", -1)) != int(Save.d["matches"]):
@@ -1479,6 +1547,7 @@ func _weapon() -> String:
 	return w if Data.CLASSES[hd["cls"]]["weapons"].has(w) else hd["weapon"]
 
 func _open_expedition() -> void:
+	_day1("portal")
 	var v := _new_panel("Expedition", 720)
 	var hero := _hero()
 	var hd: Dictionary = Data.HEROES[hero]

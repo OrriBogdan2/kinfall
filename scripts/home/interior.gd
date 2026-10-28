@@ -59,6 +59,11 @@ func _ready() -> void:
 	else:
 		decor = (visit.get("decor", []) as Array).duplicate(true) if room == "house" else []
 	_rebuild_decor()
+	if visit.is_empty() and not Save.d["tutorial"].get("day1_done", false):
+		if typeof(Save.d["tutorial"].get("day1")) != TYPE_DICTIONARY: Save.d["tutorial"]["day1"] = {}
+		if not Save.d["tutorial"]["day1"].has("inside"):
+			Save.d["tutorial"]["day1"]["inside"] = true
+			Save.d["gems"] = int(Save.d["gems"]) + 5
 	var hero: String = Save.d.get("hero", "sage")
 	if not Data.HEROES.has(hero): hero = "sage"
 	player = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], Data.HEROES[hero]["weapon"], hero)
