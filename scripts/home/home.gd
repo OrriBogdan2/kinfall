@@ -1689,7 +1689,7 @@ func _open_expedition() -> void:
 	var ak := Save.active_kin()
 	if not ak.is_empty():
 		var sp: Dictionary = Data.KIN[ak["species"]]
-		var kl := "Partner: %s the %s, trust %d. RMB throws it into fights; Q fires its %s." % [ak["name"], sp["name"], int(ak["trust"]), Data.KIN_SKILLS[sp["skill"]]["name"]]
+		var kl := "Partner: %s the %s, trust %d. C throws it into fights; Q fires its %s." % [ak["name"], sp["name"], int(ak["trust"]), Data.KIN_SKILLS[sp["skill"]]["name"]]
 		v.add_child(UI.label(kl, 15, sp["color"]))
 		if float(ak["trust"]) < 30.0:
 			v.add_child(UI.label("%s doesn't trust you much yet and may refuse risky throws. Spend time with it, or feed it a Mindmint treat." % ak["name"], 13, UI.BAD))

@@ -172,7 +172,7 @@ func _draw_all() -> void:
 func _draw_world_labels() -> void:
 	var cam := m.cam
 	for h in m.hunters:
-		if h == m.player or h.out or h.extracted or not h.model or not h.model.visible:
+		if h == m.player or h.out or h.extracted or not h.model or not h.model.visible or h.unseen:
 			continue
 		var sp := cam.unproject_position(h.position + Vector3(0, 2.15, 0))
 		if cam.is_position_behind(h.position):
@@ -504,6 +504,14 @@ func _draw_vitals(sz: Vector2, p: Hunter) -> void:
 	_text(Vector2(x0 + w + 10, y0 + 30), hp_txt, 24, INK if not low else HP_LOW, big)
 	if p.armor > 0.5:
 		_text(Vector2(x0 + w + 10, y0 + 8), str(int(ceil(p.armor))), 13, ARMOR_COL, big)
+	# hidden in the grass
+	if m.world.in_bush(p.pos.x, p.pos.z):
+		var hid := p.reveal_t <= 0.0
+		var txt := "HIDDEN" if hid else "SPOTTED"
+		var tw := big.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+		var hr := Rect2(Vector2(sz.x * 0.5 - tw * 0.5 - 12, y0 - 34), Vector2(tw + 24, 20))
+		_rounded(hr, Color(0.05, 0.12, 0.06, 0.85) if hid else Color(0.25, 0.06, 0.05, 0.85), 10)
+		_text(hr.position + Vector2(12, 15), txt, 13, Color("8fe0a0") if hid else HP_LOW, big)
 	# glider cloth, while it matters
 	if p.gliding or p.glide_fuel < 0.999:
 		var gr := Rect2(Vector2(x0 + w * 0.25, y0 - 9), Vector2(w * 0.5, 3))
@@ -517,7 +525,7 @@ func _draw_abilities(sz: Vector2, p: Hunter) -> void:
 	var gap := 12.0
 	var us := 72.0
 	var k: Kin = p.kin
-	var n_small := 5 if k else 3
+	var n_small := 6 if k else 4
 	var total := n_small * s + us + (n_small) * gap
 	var x := sz.x * 0.5 - total * 0.5
 	var y := sz.y - 88.0
@@ -532,6 +540,20 @@ func _draw_abilities(sz: Vector2, p: Hunter) -> void:
 		var sk: Dictionary = Data.KIN_SKILLS[sk_id]
 		var kready: bool = k.skill_cd <= 0.0 and k.state not in ["fainted", "reviving"]
 		_ab_slot("kskill", Rect2(Vector2(x, y), Vector2(s, s)), sk_id, Settings.key_cap("kin_skill"), kc, k.skill_cd / float(sk["cd"]) if k.skill_cd > 0.0 else 0.0, k.skill_cd, kready)
+		x += s + gap
+	# right click: the hero's secondary
+	var s_id := Abil.s_id(p)
+	if s_id != "":
+		var s_ab: Dictionary = Data.ABIL[s_id]
+		var sr := Rect2(Vector2(x, y), Vector2(s, s))
+		if s_id == "breeze":
+			_ab_slot("sec", sr, s_id, Settings.key_cap("secondary"), hc, (p.sec_ch_t / float(s_ab["cd"])) if p.sec_ch == 0 else 0.0, p.sec_ch_t if p.sec_ch == 0 else 0.0, p.sec_ch > 0, p.sec_ch, 3)
+		elif s_id == "satchel" and not p.satchel.is_empty():
+			_ab_slot("sec", sr, s_id, Settings.key_cap("secondary"), Color("ff7a5a"), 0.0, 0.0, true, -1, 0, "Set off")
+		elif s_id == "brightshield" and p.bshield_on:
+			_ab_slot("sec", sr, "fortify", Settings.key_cap("secondary"), Color("fff6c0"), 1.0 - p.bshield_t / 3.0, 0.0, true, -1, 0, "Holding")
+		else:
+			_ab_slot("sec", sr, s_id, Settings.key_cap("secondary"), hc, p.sec_cd / float(s_ab["cd"]) if p.sec_cd > 0.0 else 0.0, p.sec_cd, p.sec_cd <= 0.0)
 		x += s + gap
 	var e_id := Abil.e_id(p)
 	var e_ab: Dictionary = Data.ABIL[e_id]
@@ -688,6 +710,9 @@ func _draw_kit(sz: Vector2, p: Hunter) -> void:
 	var e_ab: Dictionary = Data.ABIL[Abil.e_id(p)]
 	var r_ab: Dictionary = Data.ABIL[Abil.r_id(p)]
 	lines.append([Settings.key_cap("signature"), e_ab["name"], e_ab["desc"], Data.HEROES[p.hero]["color"]])
+	if Abil.s_id(p) != "":
+		var s_ab: Dictionary = Data.ABIL[Abil.s_id(p)]
+		lines.append([Settings.key_cap("secondary"), s_ab["name"], s_ab["desc"], Data.HEROES[p.hero]["color"].lightened(0.25)])
 	lines.append([Settings.key_cap("ultimate"), r_ab["name"] + " (ultimate)", r_ab["desc"], Color("f2c84a")])
 	if p.kin:
 		var sk: Dictionary = Data.KIN_SKILLS[Data.KIN[p.kin.species]["skill"]]

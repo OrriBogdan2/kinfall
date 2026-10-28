@@ -228,28 +228,66 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 	_place_pads()
 	_place_spots()
 
+var wall_mat: ShaderMaterial = null   # walls fade where they hide the player
+var walls := {}           # tile index -> true: built stone walls (drawn as walls, not rocks)
+var bush := {}            # tile index -> true: tall grass you can hide in
+
+func _wall_at(q: Vector2i, ii: int) -> void:
+	if inb(q.x, q.y) and kind[idx(q.x, q.y)] == T_GROUND and island[idx(q.x, q.y)] == ii and edge_dist(q.x, q.y, 3) >= 3:
+		kind[idx(q.x, q.y)] = T_BLOCK
+		walls[idx(q.x, q.y)] = true
+
 func _place_blockers() -> void:
-	for isl in islands:
-		var ruins: bool = rng.randf() < 0.4 and isl["cells"].size() > 70
-		for cell in isl["cells"]:
+	walls.clear(); bush.clear()
+	for ii in islands.size():
+		var isl: Dictionary = islands[ii]
+		var cells: Array = isl["cells"]
+		for cell in cells:
 			var i := idx(cell.x, cell.y)
 			if edge_dist(cell.x, cell.y, 2) <= 1:
 				continue
-			if rng.randf() < (0.035 if ruins else 0.055):
+			if rng.randf() < 0.03:
 				kind[i] = T_BLOCK
-		if ruins:
-			# old broken walls: short runs of stone with gaps, good cover to fight around
-			for _w in rng.randi_range(2, 4):
-				var cell: Vector2i = isl["cells"][rng.randi_range(0, isl["cells"].size() - 1)]
-				var dirs := [Vector2i(1, 0), Vector2i(0, 1)]
-				var dv: Vector2i = dirs[rng.randi_range(0, 1)]
-				var length := rng.randi_range(3, 6)
+		# stone walls to fight around and peek past: straight runs with a doorway, corners,
+		# rows of pillars, and on big islands a broken square keep
+		var n_walls := 1 + int(cells.size() / 110) + rng.randi_range(0, 1)
+		for _w in n_walls:
+			var c0: Vector2i = cells[rng.randi_range(0, cells.size() - 1)]
+			var dv: Vector2i = [Vector2i(1, 0), Vector2i(0, 1)][rng.randi_range(0, 1)]
+			var roll := rng.randf()
+			if roll < 0.4:
+				var length := rng.randi_range(4, 7)
 				var gap := rng.randi_range(1, length - 2)
 				for k in length:
-					if k == gap: continue
-					var q := cell + dv * k
-					if inb(q.x, q.y) and kind[idx(q.x, q.y)] == T_GROUND and island[idx(q.x, q.y)] == islands.find(isl) and edge_dist(q.x, q.y, 3) >= 3:
-						kind[idx(q.x, q.y)] = T_BLOCK
+					if k != gap: _wall_at(c0 + dv * k, ii)
+			elif roll < 0.7:
+				var a := rng.randi_range(3, 5); var b := rng.randi_range(3, 5)
+				var dv2 := Vector2i(dv.y, dv.x) * (1 if rng.randf() < 0.5 else -1)
+				for k in a: _wall_at(c0 + dv * k, ii)
+				for k in range(1, b): _wall_at(c0 + dv2 * k, ii)
+			elif roll < 0.85 or cells.size() < 160:
+				for k in 4: _wall_at(c0 + dv * (k * 2), ii)
+			else:
+				# a small keep: a 6x6 square with two openings
+				for k in 6:
+					for e in [Vector2i(k, 0), Vector2i(k, 5), Vector2i(0, k), Vector2i(5, k)]:
+						if e in [Vector2i(2, 0), Vector2i(3, 0), Vector2i(5, 2), Vector2i(5, 3), Vector2i(0, 3)]:
+							continue
+						_wall_at(c0 + e, ii)
+		# patches of tall grass
+		for _b in rng.randi_range(2, 4) + int(cells.size() / 160):
+			var bc: Vector2i = cells[rng.randi_range(0, cells.size() - 1)]
+			var rad := rng.randf_range(1.2, 2.3)
+			for dz in range(-3, 4):
+				for dx in range(-3, 4):
+					var q := bc + Vector2i(dx, dz)
+					if Vector2(dx, dz).length() > rad + rng.randf_range(-0.3, 0.3): continue
+					if inb(q.x, q.y) and kind[idx(q.x, q.y)] == T_GROUND and island[idx(q.x, q.y)] == ii and edge_dist(q.x, q.y, 2) >= 2:
+						bush[idx(q.x, q.y)] = true
+
+func in_bush(x: float, z: float) -> bool:
+	var ix := int(floor(x)); var iz := int(floor(z))
+	return inb(ix, iz) and bush.has(idx(ix, iz)) and kind[idx(ix, iz)] == T_GROUND
 
 func _edge_cell_toward(isl: int, target: Vector2, avoid: Array = [], spacing := PAD_SPACING) -> Vector2i:
 	var best := Vector2i(-1, -1); var bd := 1e9
@@ -681,7 +719,7 @@ func _decorate() -> void:
 	for z in h:
 		for x in w:
 			var i := idx(x, z)
-			if kind[i] != T_BLOCK or no_deco.has(i):
+			if kind[i] != T_BLOCK or no_deco.has(i) or walls.has(i):
 				continue
 			var y := level[i] * LEVEL
 			var n: Node3D
@@ -691,6 +729,49 @@ func _decorate() -> void:
 				n = Models.rock(drng, drng.randf_range(0.9, 1.25))
 			n.position = Vector3(x + 0.5, y, z + 0.5)
 			deco.add_child(n)
+	# stone walls, batched: a block per tile with a cap stone on top
+	var wlist: Array = []
+	for wi in walls:
+		if kind[wi] == T_BLOCK:
+			wlist.append(wi)
+	if wlist.size() > 0:
+		wall_mat = ShaderMaterial.new()
+		wall_mat.shader = load("res://shaders/wall.gdshader")
+		for part_i in 2:
+			var wm := MultiMesh.new(); wm.transform_format = MultiMesh.TRANSFORM_3D; wm.use_colors = true
+			wm.mesh = Models.box(1.0, 2.0, 1.0) if part_i == 0 else Models.box(1.08, 0.22, 1.08)
+			wm.instance_count = wlist.size()
+			for k in wlist.size():
+				var wi: int = wlist[k]
+				var wx := wi % w; var wz := wi / w
+				var y0 := level[wi] * LEVEL
+				var tr := Transform3D(Basis(), Vector3(wx + 0.5, y0 + (1.0 if part_i == 0 else 2.05), wz + 0.5))
+				wm.set_instance_transform(k, tr)
+				var shade := drng.randf_range(-0.06, 0.06)
+				wm.set_instance_color(k, Color("837d74").lightened(shade) if part_i == 0 else Color("a39c90").lightened(shade))
+			var wmi := MultiMeshInstance3D.new(); wmi.multimesh = wm
+			wmi.material_override = wall_mat
+			deco.add_child(wmi)
+	# tall grass to hide in, batched
+	var blist: Array = []
+	for bi in bush:
+		if kind[bi] == T_GROUND:
+			for _k in 3: blist.append(bi)
+	if blist.size() > 0:
+		var bm := MultiMesh.new(); bm.transform_format = MultiMesh.TRANSFORM_3D; bm.use_colors = true
+		bm.mesh = Models.sphere(0.42, 8)
+		bm.instance_count = blist.size()
+		for k in blist.size():
+			var bi: int = blist[k]
+			var bx := bi % w; var bz := bi / w
+			var p := Vector3(bx + drng.randf_range(0.2, 0.8), level[bi] * LEVEL + 0.35, bz + drng.randf_range(0.2, 0.8))
+			var sc := drng.randf_range(0.8, 1.15)
+			bm.set_instance_transform(k, Transform3D(Basis().scaled(Vector3(sc, sc * drng.randf_range(1.0, 1.5), sc)), p))
+			bm.set_instance_color(k, Color(biome["leaf"]).darkened(drng.randf_range(0.0, 0.25)))
+		var bmi := MultiMeshInstance3D.new(); bmi.multimesh = bm
+		bmi.material_override = Models.vtoon()
+		bmi.name = "Bushes"
+		deco.add_child(bmi)
 	# grass tufts and flowers, batched
 	var tuft := Models.cyl(0.0, 0.06, 0.22, 4)
 	var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.mesh = tuft

@@ -118,6 +118,8 @@ func _find_target() -> Ent:
 		if not h.targetable():
 			continue
 		var d := flat_dist(h)
+		if d > 2.6 and h.reveal_t <= 0.0 and m.world.in_bush(h.pos.x, h.pos.z):
+			continue        # hiding in the grass
 		if d < bd and absf(h.pos.y - pos.y) < 2.5:
 			bd = d; best = h
 	for k in m.kins:
@@ -220,7 +222,14 @@ func sim(dt: float) -> void:
 		if grounded and hv.length() <= spd * 1.3 and m.world.is_void(ahead.x, ahead.y):
 			hv = Vector2.ZERO
 		vel.x = hv.x; vel.z = hv.y
-	slide(dt)
+	var pre_v := Vector2(vel.x, vel.z).length()
+	if slide(dt) and m.time - kb_time < 0.6 and pre_v > 7.5 and mass() < 10.0:
+		# knocked into a wall or rock: stunned
+		kb_time = -9.0
+		stun_t = maxf(stun_t, 1.0)
+		if st == "windup": _cancel_tele(); st = "recover"; st_t = 1.0
+		m.on_wall_slam(self, 1.0)
+		hurt(10.0, last_hit_by, {"src": "wall"})
 	body_vertical(dt)
 	var look := atk_dir if st in ["windup", "lunge"] else Vector2(vel.x, vel.z)
 	if look.length() > 0.2:

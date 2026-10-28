@@ -125,8 +125,11 @@ func die() -> void:
 func mass() -> float:
 	return 1.0
 
+var kb_time := -9.0
+
 func impulse(kb: Vector2, lift := -1.0) -> void:
 	var ms := mass()
+	if kb.length() / ms > 4.0 and m: kb_time = m.time
 	vel.x += kb.x / ms
 	vel.z += kb.y / ms
 	var s := kb.length() / ms

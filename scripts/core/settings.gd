@@ -21,7 +21,7 @@ const DEFAULTS := {
 ## Rebindable actions, in the order the controls list shows them.
 const ACTIONS := [
 	["up", "Move up"], ["down", "Move down"], ["left", "Move left"], ["right", "Move right"],
-	["fire", "Fire"], ["dash", "Dash"], ["jump", "Jump (hold to glide)"], ["signature", "Hero ability"],
+	["fire", "Fire"], ["secondary", "Hero secondary (right click)"], ["dash", "Dash"], ["jump", "Jump (hold to glide)"], ["signature", "Hero ability"],
 	["ultimate", "Ultimate"], ["throw", "Throw / call back kin"], ["kin_skill", "Kin skill"],
 	["interact", "Use, catch, revive, pet"], ["tonic", "Drink a tonic"], ["scores", "Scoreboard"],
 	["play", "Play fetch with a kin"], ["talk", "Talk to a kin"], ["details", "A kin's details"], ["inventory", "Inventory"],
@@ -114,6 +114,9 @@ func apply(k: String) -> void:
 				(n as DirectionalLight3D).shadow_enabled = bool(v[k])
 		"ui_scale": get_tree().root.content_scale_factor = clampf(float(v[k]), 0.75, 1.5)
 		"keys":
+			# kin throw moved off right click when heroes got secondaries
+			if v[k].has("throw") and (v[k]["throw"] as Array).has("mouse:2") and not v[k].has("secondary"):
+				v[k].erase("throw")
 			for a in v[k]:
 				_bind(a, v[k][a])
 

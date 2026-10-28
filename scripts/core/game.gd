@@ -35,7 +35,8 @@ func _setup_input() -> void:
 	_key("up", [KEY_W, KEY_UP]); _key("down", [KEY_S, KEY_DOWN])
 	_key("left", [KEY_A, KEY_LEFT]); _key("right", [KEY_D, KEY_RIGHT])
 	_key("fire", [], MOUSE_BUTTON_LEFT)
-	_key("throw", [], MOUSE_BUTTON_RIGHT)     # throw your kin, or call it back
+	_key("secondary", [], MOUSE_BUTTON_RIGHT) # your hero's right-click ability
+	_key("throw", [KEY_C])                    # throw your kin, or call it back
 	_key("kin_skill", [KEY_Q])                # your kin's skill at the cursor
 	_key("signature", [KEY_E])                # class signature
 	_key("interact", [KEY_F])                 # catch, revive, open

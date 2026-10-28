@@ -114,6 +114,7 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 			a["jump_cd"] = randf_range(2.5, 6)
 			inp["jump"] = true
 		_use_sig(m, h, tgt)
+		_use_sec(m, h, tgt)
 	else:
 		a["tgt"] = null
 		var goal: Vector3 = a["goal"]
@@ -210,6 +211,42 @@ func _crawl(m: Match, h: Hunter) -> void:
 		mv = Vector2.ZERO
 	h.inp["move"] = mv
 
+## Right-click secondaries: each hero's own read on when it pays off.
+func _use_sec(m: Match, h: Hunter, tgt: Ent) -> void:
+	var id := Abil.s_id(h)
+	h.inp["sec_hold"] = false
+	if id == "" or tgt == null:
+		return
+	var d := h.flat_dist(tgt)
+	var hurt := h.hp < h.max_hp * 0.5
+	var facing: bool = tgt is Hunter and h.aim_dir().dot(h.dir_to(tgt)) > 0.6
+	if id == "brightshield":
+		h.inp["sec_hold"] = (hurt or h.armor <= 0.0) and facing and d < 12.0
+		if h.inp["sec_hold"] and not h.bshield_on and h.sec_cd <= 0.0:
+			h.inp["sec"] = true
+		return
+	if id == "satchel" and not h.satchel.is_empty():
+		var sp: Vector3 = h.satchel["pos"]
+		if Vector2(tgt.pos.x - sp.x, tgt.pos.z - sp.z).length() < 2.6 and float(h.satchel["t"]) < 5.3:
+			h.inp["sec"] = true
+		return
+	if id == "breeze":
+		if h.sec_ch > 0 and (hurt or (d < 2.5 and randf() < 0.05)):
+			h.inp["sec"] = true
+		return
+	if h.sec_cd > 0.0:
+		return
+	var go := false
+	match id:
+		"shadowstep", "bolas", "binding": go = d < 9.0 and randf() < 0.1
+		"divehawk": go = d < 8.0 and randf() < 0.1
+		"haymaker", "cleave": go = d < 2.3
+		"satchel": go = d < 7.5 and randf() < 0.08
+	if tgt is Mob and (tgt as Mob).stag_open > 0.0 and d < 6.0:
+		go = true
+	if go:
+		h.inp["sec"] = true
+
 ## Hero abilities: E when it fits the moment, R once it's charged and worth it.
 func _use_sig(m: Match, h: Hunter, tgt: Ent) -> void:
 	var d := h.flat_dist(tgt) if tgt else 1e9
@@ -254,6 +291,8 @@ func _choose(m: Match, h: Hunter) -> void:
 	var best: Ent = null; var bs := -1e9
 	for o in m.hunters:
 		if o.team == h.team or not o.targetable():
+			continue
+		if o is Hunter and not m.can_see(h.team, o):
 			continue
 		var d := h.flat_dist(o)
 		# early on bots farm monsters and only fight hunters who come close or shoot them
@@ -355,7 +394,7 @@ func _path_dir(m: Match, h: Hunter, goal: Vector3) -> Vector2:
 	var there := m.world.island_of(goal.x, goal.z)
 	if here < 0 or there < 0 or here == there:
 		if here >= 0 and h.grounded: h.ai.erase("cross")
-		return h.dir_to(goal)
+		return _steer(m, h, goal)
 	# breadth-first search over the island graph
 	var prev := {here: -1}
 	var q := [here]
@@ -376,14 +415,86 @@ func _path_dir(m: Match, h: Hunter, goal: Vector3) -> Vector2:
 		if pd["from"] == here and pd["to"] == nxt:
 			h.ai["pad_at"] = pd["pos"]
 			h.ai.erase("cross")
-			return h.dir_to(pd["pos"])
+			return _steer(m, h, pd["pos"])
 	for lk in m.world.links:
 		if lk["from"] == here and lk["to"] == nxt:
 			if not h.ai.has("cross") or h.ai["cross"] != lk:
 				h.ai["cross"] = lk
 				h.ai["cross_t"] = 14.0
-			return h.dir_to(lk["take"])
+			return _steer(m, h, lk["take"])
 	return h.dir_to(goal)
+
+## Heads for a spot on this island, finding a way around walls when they're in the way.
+func _steer(m: Match, h: Hunter, goal: Vector3) -> Vector2:
+	var from := Vector2(h.pos.x, h.pos.z)
+	var to := Vector2(goal.x, goal.z)
+	if _clear_line(m, from, to):
+		h.ai.erase("wp")
+		return h.dir_to(goal)
+	var gt := Vector2i(int(floor(goal.x)), int(floor(goal.z)))
+	var wp: Dictionary = h.ai.get("wp", {})
+	if wp.is_empty() or wp["goal"] != gt or m.time - float(wp["t"]) > 2.0:
+		wp = {"goal": gt, "t": m.time, "path": _grid_path(m, Vector2i(int(floor(h.pos.x)), int(floor(h.pos.z))), gt)}
+		h.ai["wp"] = wp
+	var path: Array = wp["path"]
+	if path.is_empty():
+		return h.dir_to(goal)
+	# aim for the furthest waypoint we can walk straight to
+	var pick: Vector2 = path[0]
+	for i in range(path.size() - 1, -1, -1):
+		if _clear_line(m, from, path[i]):
+			pick = path[i]
+			break
+	while path.size() > 1 and from.distance_to(path[0]) < 0.6:
+		path.pop_front()
+	var d := pick - from
+	return d.normalized() if d.length() > 0.05 else h.dir_to(goal)
+
+func _clear_line(m: Match, a: Vector2, b: Vector2) -> bool:
+	var d := b - a
+	var n := int(d.length() / 0.4) + 1
+	var side := Vector2(-d.y, d.x).normalized() * 0.32
+	for k in range(1, n + 1):
+		var p := a + d * (float(k) / n)
+		if m.world.is_block(p.x, p.y) or m.world.is_block(p.x + side.x, p.y + side.y) or m.world.is_block(p.x - side.x, p.y - side.y):
+			return false
+	return true
+
+## Breadth-first search over walkable tiles (a window around the trip), returning tile centres.
+func _grid_path(m: Match, a: Vector2i, b: Vector2i) -> Array:
+	var W: World = m.world
+	var lo := Vector2i(mini(a.x, b.x) - 8, mini(a.y, b.y) - 8)
+	var hi := Vector2i(maxi(a.x, b.x) + 8, maxi(a.y, b.y) + 8)
+	var prev := {a: a}
+	var q: Array = [a]
+	var found := false
+	var steps := 0
+	while q.size() > 0 and steps < 4000:
+		steps += 1
+		var cur: Vector2i = q.pop_front()
+		if cur == b or (absi(cur.x - b.x) <= 1 and absi(cur.y - b.y) <= 1 and W.is_block(b.x + 0.5, b.y + 0.5)):
+			b = cur
+			found = true
+			break
+		for dv in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var nx: Vector2i = cur + dv
+			if prev.has(nx) or nx.x < lo.x or nx.y < lo.y or nx.x > hi.x or nx.y > hi.y or not W.inb(nx.x, nx.y):
+				continue
+			var i := W.idx(nx.x, nx.y)
+			if W.kind[i] != World.T_GROUND:
+				continue
+			if absf(W.ground_at(nx.x + 0.5, nx.y + 0.5) - W.ground_at(cur.x + 0.5, cur.y + 0.5)) > 1.7:
+				continue
+			prev[nx] = cur
+			q.append(nx)
+	if not found:
+		return []
+	var out: Array = []
+	var c := b
+	while c != a:
+		out.push_front(Vector2(c.x + 0.5, c.y + 0.5))
+		c = prev[c]
+	return out
 
 func _banned(m: Match, a: Dictionary, p: Vector3) -> bool:
 	var bans: Dictionary = a.get("banned", {})

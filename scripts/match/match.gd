@@ -60,7 +60,7 @@ var aim_ring: MeshInstance3D
 var muzzle_light: OmniLight3D
 var collapse_warned := false
 var rng := RandomNumberGenerator.new()
-var pending_input := {"dash": false, "jump": false, "sig": false, "reload": false, "tonic": false, "throw": false, "skill": false, "ult": false}
+var pending_input := {"dash": false, "jump": false, "sig": false, "reload": false, "tonic": false, "throw": false, "skill": false, "ult": false, "sec": false}
 var zones: Array = []      # hero areas: dome, sanctuary, well
 var bot_brain := Bot.new()
 var seed_val := 0
@@ -1190,6 +1190,42 @@ func on_armor_break(h: Hunter, by: Ent) -> void:
 	elif h == player and hud:
 		hud.toast_small("Armor down", Color("7ac8ff"))
 
+## Knocked into a wall: stunned for a moment, which is the whole point of knockback near walls.
+func on_wall_slam(e: Ent, st: float) -> void:
+	fx.burst(e.pos + Vector3(0, 0.9, 0), Color("e6dccb"), 16, 4.0, 0.4)
+	fx.ring(e.pos, 1.2, Color("fff27a"), 0.3)
+	sfx("knock", e.pos, -2.0, 1.2)
+	shake(0.35, e.pos)
+	if e == player and hud: hud.toast_small("WALL SLAM", Color("fff27a"))
+	elif player and e.last_hit_by == player and hud: hud.toast_small("WALL SLAM  ·  stunned %.1fs" % st, Color("fff27a"))
+
+## What a team can see: rival hunters in tall grass stay hidden unless someone is right next to
+## them or they've just fired or been hit, and walls and high ground block sight entirely.
+func can_see(team_i: int, target: Hunter) -> bool:
+	if target.team == team_i or target.reveal_t > 0.0 or target.downed:
+		return true
+	var hidden_in_grass := world.in_bush(target.pos.x, target.pos.z)
+	for h in hunters:
+		if h.team != team_i or h.out or h.extracted or h.riding:
+			continue
+		var d: float = h.flat_dist(target)
+		if d < 2.6:
+			return true
+		if hidden_in_grass or d > 24.0:
+			continue
+		if world.los(h.pos, target.pos, h.pos.y + 1.1) or world.los(h.pos, target.pos + Vector3(0, 0.6, 0), h.pos.y + 1.6):
+			return true
+	return false
+
+var _vis_t := 0.0
+func _update_vision() -> void:
+	_vis_t -= get_process_delta_time()
+	if _vis_t > 0.0:
+		return
+	_vis_t = 0.1
+	for h in hunters:
+		h.unseen = player != null and h != player and not player.out and not can_see(player.team, h)
+
 func on_perfect_dodge(h: Hunter) -> void:
 	fx.ring(h.pos, 1.3, Color("9af0ff"), 0.3)
 	fx.burst(h.pos + Vector3(0, 0.9, 0), Color("cff6ff"), 12, 3.5, 0.4)
@@ -1413,7 +1449,25 @@ func _shot_end(s: Dictionary, at: Vector3, e: Ent) -> void:
 		o["slow"] = 2.0
 		fx.bolt(by.pos + Vector3(0, 0.95, 0), e.pos + Vector3(0, 0.8, 0), Color("e0b05a"))
 		net_fx(["bolt", _r(by.pos.x), _r(by.pos.y + 0.95), _r(by.pos.z), _r(e.pos.x), _r(e.pos.y + 0.8), _r(e.pos.z), "e0b05a"])
+	if x.get("bolas", false):
+		# a second foe close by gets tangled too, and both are stunned
+		for f in foes_of(int(s["team"])):
+			if f != e and f.flat_dist(e) < 2.2 and absf(f.pos.y - e.pos.y) < 1.5:
+				o["stun"] = 1.0
+				f.hurt(dmg, by, o.duplicate())
+				fx.bolt(e.pos + Vector3(0, 0.8, 0), f.pos + Vector3(0, 0.8, 0), Color("d8c9b0"))
+				break
 	e.hurt(dmg, by, o)
+	if x.get("blinkto", false) and by is Hunter and not by.remote and not by.downed:
+		# Shadow Knife: appear behind whoever it hit
+		var back := Vector2(e.pos.x - by.pos.x, e.pos.z - by.pos.z).normalized()
+		var to := Vector3(e.pos.x + back.x * 1.1, 0, e.pos.z + back.y * 1.1)
+		if not world.is_void(to.x, to.z) and not world.is_block(to.x, to.z):
+			fx.ghost(by.position, by.face, Data.HEROES[(by as Hunter).hero]["color"], float((by as Hunter).cdat["scale"]))
+			by.teleport(Vector3(to.x, world.ground_at(to.x, to.z), to.z))
+			by.vel = Vector3.ZERO
+			(by as Hunter).crit_t = maxf((by as Hunter).crit_t, 1.5)
+			sfx("cloak", by.pos, -2.0, 1.6)
 
 func _boom(s: Dictionary, at: Vector3) -> void:
 	var x: Dictionary = s["x"]
@@ -1459,8 +1513,15 @@ func _process(delta: float) -> void:
 		steps += 1
 		step(DT)
 	var alpha := acc / DT
+	_update_vision()
+	if world.wall_mat:
+		var fp := player.model.global_position + Vector3(0, 0.8, 0) if player and player.model and not player.out else Vector3(0, -999, 0)
+		world.wall_mat.set_shader_parameter("focus", fp)
 	for e in hunters: e.render(delta, alpha)
-	for e in kins: e.render(delta, alpha)
+	for e in kins:
+		e.render(delta, alpha)
+		if e.owner_h and (e.owner_h as Hunter).unseen and e.state == "shoulder":
+			e.visible = false
 	for e in mobs: e.render(delta, alpha)
 	for s in shots:
 		if s["node"]:
@@ -1522,7 +1583,8 @@ func _gather_input() -> void:
 	player.inp["interact"] = Input.is_action_pressed("interact")
 	player.inp["glide"] = Input.is_action_pressed("jump") and not paused
 	var quick: bool = Settings.get_v("quick_cast")
-	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["kin_skill", "skill"], ["ultimate", "ult"]]:
+	player.inp["sec_hold"] = Input.is_action_pressed("secondary") and not paused
+	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["kin_skill", "skill"], ["ultimate", "ult"], ["secondary", "sec"]]:
 		var aimable: bool = a[0] in ["signature", "ultimate", "kin_skill"] and not quick
 		if aimable:
 			# hold to see where it will land, let go to cast it
@@ -1532,7 +1594,7 @@ func _gather_input() -> void:
 				aim_hold = ""
 				pending_input[a[1]] = true
 			continue
-		if a[0] == "throw" and aim_hold != "" and Input.is_action_just_pressed("throw"):
+		if a[0] == "secondary" and aim_hold != "" and Input.is_action_just_pressed("secondary"):
 			aim_hold = ""          # right click while aiming cancels the cast
 			continue
 		if Input.is_action_just_pressed(a[0]):
@@ -1589,6 +1651,33 @@ func step(dt: float) -> void:
 	if opts.has("aim_demo") and player:
 		aim_hold = String(opts["aim_demo"])
 		player.inp["aim"] = player.pos + Vector3(4.0, 0, -3.0)
+	if opts.get("wall_behind", false) and player and time < 0.05:
+		for wi in world.walls:
+			var wx: int = int(wi) % world.w; var wz: int = int(wi) / world.w
+			var gi := world.idx(wx, wz - 1)
+			if world.kind[gi] == World.T_GROUND and world.walls.has(world.idx(wx + 1, wz)) and world.walls.has(world.idx(wx - 1, wz)):
+				player.teleport(Vector3(wx + 0.5, world.ground_at(wx + 0.5, wz - 0.5), wz - 0.5))
+				break
+	if opts.get("wall_demo", false) and player and time < 0.05:
+		# stand in grass right beside a wall, with a rival hiding in grass nearby
+		var spot := Vector3.INF; var rival_spot := Vector3.INF
+		for bi in world.bush:
+			var bx: int = int(bi) % world.w; var bz: int = int(bi) / world.w
+			var near_wall := false
+			for dz in range(-2, 3):
+				for dx in range(-2, 3):
+					if world.walls.has(world.idx(bx + dx, bz + dz)): near_wall = true
+			var p3 := Vector3(bx + 0.5, world.ground_at(bx + 0.5, bz + 0.5), bz + 0.5)
+			if near_wall and spot == Vector3.INF:
+				spot = p3
+			elif spot != Vector3.INF and rival_spot == Vector3.INF and p3.distance_to(spot) > 3.0 and p3.distance_to(spot) < 9.0:
+				rival_spot = p3
+		if spot != Vector3.INF:
+			player.teleport(spot)
+			for h in hunters:
+				if h.team != player.team:
+					h.teleport(rival_spot if rival_spot != Vector3.INF else spot + Vector3(4, 0, 0))
+					break
 	if opts.get("ring_demo", false) and player and time < 0.05 and not air_rings.is_empty():
 		var rg: Dictionary = air_rings[0]
 		var rd: Vector2 = rg["dir"]
@@ -1604,7 +1693,7 @@ func step(dt: float) -> void:
 		player.inp["glide"] = true
 		player.inp["move"] = Vector2(1, 0.3).normalized()
 	if player and not player.out:
-		for k in ["dash", "jump", "sig", "reload", "tonic", "ult"]:
+		for k in ["dash", "jump", "sig", "reload", "tonic", "ult", "sec"]:
 			if pending_input[k]:
 				player.inp[k] = true
 				pending_input[k] = false
@@ -1887,12 +1976,13 @@ func _use_shrine(h: Hunter, sh: Dictionary, from_net := false) -> void:
 ## Midway through, the Warden wakes on the heart island and guards it until someone brings it down.
 const TUT := ["Steer with WASD to choose where you land", "Walk around with WASD", "Press Shift to dash",
 	"Press Space to jump. Hold Space in the air to glide", "Hold left click to shoot. Defeat the monsters",
-	"Right click to throw %s at a monster", "Stand by the chest and hold F to open it", "An exit opened. Stand inside it to go home"]
+	"Press %%s to throw %s at a monster", "Stand by the chest and hold F to open it", "An exit opened. Stand inside it to go home"]
 
 # ---- training area
 ## [id, what to do, the action whose key it uses ("" for none)]
 const TRAIN := [["move", "Walk around", "up"], ["dash", "Dash", "dash"], ["glide", "Jump, then hold it in the air to glide", "jump"],
 	["shoot", "Shoot a target dummy", "fire"], ["ability", "Use your hero ability", "signature"], ["ult", "Use your ultimate (it charges fast here)", "ultimate"],
+	["secondary", "Use your hero's secondary", "secondary"],
 	["throw", "Throw your kin at a dummy", "throw"], ["kinskill", "Use your kin's skill", "kin_skill"], ["tonic", "Drink a tonic to heal", "tonic"],
 	["stagger", "Stagger a big dummy: hit it with an ability while it has a purple ring", "signature"],
 	["smash", "Break a crate or pot", "fire"], ["weapon", "Take a found weapon off the ground", "interact"],
@@ -1910,6 +2000,7 @@ func _update_training(dt: float) -> void:
 	# everything recharges quickly here
 	player.ult = minf(1.0, player.ult + dt / 6.0)
 	player.sig_cd = maxf(0.0, player.sig_cd - dt * 2.0)
+	player.sec_cd = maxf(0.0, player.sec_cd - dt)
 	if player.kin: player.kin.skill_cd = maxf(0.0, player.kin.skill_cd - dt * 2.0)
 	if player.tonics < 1: player.tonics = 3
 	if not train.has("tonic") and player.hp >= player.max_hp and train_t > 1.0:
@@ -1922,6 +2013,7 @@ func _update_training(dt: float) -> void:
 		"glide": player.gliding and not player.dropping,
 		"shoot": player.dmg_done > 0.0,
 		"ability": player.sig_cd > 0.0,
+		"secondary": player.sec_cd > 0.0 or player.sec_ch < 3 or player.bshield_on or not player.satchel.is_empty(),
 		"ult": was_ult and player.ult < 0.5,
 		"throw": player.kin != null and player.kin.st_throws > 0,
 		"kinskill": player.kin != null and player.kin.skill_cd > 0.0,
@@ -1992,6 +2084,8 @@ func _update_tutorial(dt: float) -> void:
 		_tut_enter(tut_step)
 	if tut_step < TUT.size():
 		var txt: String = TUT[tut_step]
+		if txt.contains("%%s"):
+			txt = txt.replace("%%s", Settings.key_cap("throw"))
 		tut_text = txt % kname if txt.contains("%s") else txt
 
 func _tut_enter(step_i: int) -> void:
@@ -2453,6 +2547,8 @@ func _flags(h: Hunter) -> int:
 	if h.gliding: f |= 256
 	if h.dropping: f |= 512
 	if h.riding: f |= 1024
+	if h.bshield_on: f |= 2048
+	if h.reveal_t > 0.0: f |= 4096
 	return f
 
 const KIN_STATES := ["shoulder", "flying", "flying_home", "active", "returning", "fainted", "reviving", "wild", "dazed"]
@@ -2576,6 +2672,8 @@ func _net_apply(e: Ent, it: Array) -> void:
 			h.gliding = f & 256 != 0
 			h.dropping = f & 512 != 0
 			h.riding = f & 1024 != 0
+			h.bshield_on = f & 2048 != 0
+			if f & 4096 != 0: h.reveal_t = maxf(h.reveal_t, 0.3)
 			h.down_hp = it[12]; h.revive = maxf(h.revive if h.revive > float(it[13]) and _rev_out.has(h.nid) else 0.0, float(it[13]))
 			h.shield = it[17]; h.extract_prog = it[18]
 			h.kills = int(it[19]); h.knocks = int(it[20]); h.dmg_done = float(it[21])
@@ -2824,9 +2922,9 @@ func _tips() -> void:
 			if player.flat_dist(f) < 9.0:
 				near_foe = true; break
 		if near_foe:
-			_tip("throw", "Right click throws %s at the cursor. A kin that hits a foe stuns it, and your shots crit stunned foes." % k.rec.get("name", "your kin"))
+			_tip("throw", (Settings.key_cap("throw") + " throws %s at the cursor. A kin that hits a foe stuns it, and your shots crit stunned foes.") % k.rec.get("name", "your kin"))
 	if k.state == "active":
-		_tip("skill", "Q makes %s use %s. Right click again calls it back to your shoulder, where it gives you %s." % [k.rec.get("name", "your kin"), Data.KIN_SKILLS[k.sp["skill"]]["name"], Data.SHOULDER[k.sp["shoulder"]]["name"]])
+		_tip("skill", ("%s makes %%s use %%s. %s again calls it back to your shoulder, where it gives you %%s." % [Settings.key_cap("kin_skill"), Settings.key_cap("throw")]) % [k.rec.get("name", "your kin"), Data.KIN_SKILLS[k.sp["skill"]]["name"], Data.SHOULDER[k.sp["shoulder"]]["name"]])
 	if not interact.is_empty() and interact["kind"] == "catch":
 		_tip("catch", "Hold F to catch it. Caught kin only come home if you extract.")
 	if portals.any(func(p): return p["open"]):

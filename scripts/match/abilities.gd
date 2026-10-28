@@ -213,6 +213,26 @@ static func tick(h: Hunter, dt: float) -> void:
 					if f.flat_dist(h) < 4.0:
 						f.hurt(2.0, h, {"slow": 0.8, "src": "abil", "ab": "r"})
 				m.fx.ring(h.pos, 4.0, Color(tc, 0.5), 0.4)
+			"hawk":
+				if a.get("tele"): m.fx.end_telegraph(a["tele"])
+				var at: Vector3 = a["at"]
+				m.fx.burst(at + Vector3(0, 0.5, 0), tc, 22, 5.0, 0.4)
+				m.fx.ring(at, 2.2, tc, 0.3)
+				m.net_fx(["ring", m._r(at.x), m._r(at.y), m._r(at.z), 2.2, tc.to_html(false)])
+				m.sfx("boom", at, -2.0, 1.3)
+				for f in m.foes_of(h.team):
+					var rel := Vector2(f.pos.x - at.x, f.pos.z - at.z)
+					if rel.length() < 2.2 + f.r and absf(f.pos.y - at.y) < 2.0:
+						f.hurt(24.0 * m.dmg_mult(h), h, {"kb": rel.normalized() * 8.0, "lift": 4.0, "stun": 0.6, "src": "abil", "ab": "s"})
+			"bind":
+				if a.get("tele"): m.fx.end_telegraph(a["tele"])
+				var at: Vector3 = a["at"]
+				m.fx.ring(at, 2.2, Color("f2d47a"), 0.4)
+				m.fx.burst(at + Vector3(0, 0.3, 0), Color("f2d47a"), 18, 3.0, 0.5)
+				m.net_fx(["ring", m._r(at.x), m._r(at.y), m._r(at.z), 2.2, "f2d47a"])
+				for f in m.foes_of(h.team):
+					if Vector2(f.pos.x - at.x, f.pos.z - at.z).length() < 2.2 + f.r and absf(f.pos.y - at.y) < 2.0:
+						f.hurt(8.0 * m.dmg_mult(h), h, {"root": 1.4, "src": "abil", "ab": "s"})
 			"quake":
 				var d: Vector2 = a["dir"]
 				m.fx.cone(h.pos, d, 8.0, Color("c08a5a"))
@@ -253,3 +273,143 @@ static func charge_hits(h: Hunter) -> void:
 			m.fx.burst(f.pos + Vector3(0, 0.8, 0), Color("c08a5a"), 18, 5.0, 0.4)
 			if h.hero == "tusk" and h.charge["hit"].size() == 1:
 				h.sig_cd = minf(h.sig_cd, e_cd(h) * 0.5)
+
+# ------------------------------------------------------------------ right click
+static func s_id(h: Hunter) -> String:
+	return String(Data.HEROES[h.hero].get("s", ""))
+
+static func s_cd(h: Hunter) -> float:
+	return float(Data.ABIL.get(s_id(h), {"cd": 6.0})["cd"])
+
+## Hero secondaries. Most fire on press; Brightshield is held; Satchel is thrown, then set off.
+static func use_s(h: Hunter) -> void:
+	var m: Match = h.m
+	var id := s_id(h)
+	if id == "" or h.downed or h.out or h.dropping or h.riding:
+		return
+	var tc: Color = Data.HEROES[h.hero]["color"]
+	if id == "satchel" and not h.satchel.is_empty():
+		_satchel_boom(h)
+		return
+	if id == "breeze":
+		if h.sec_ch < 1:
+			return
+	elif h.sec_cd > 0.0:
+		return
+	if id != "breeze" and id != "brightshield":
+		h.sec_cd = s_cd(h)
+	h.reveal_t = maxf(h.reveal_t, 1.0)
+	var d := h.aim_dir()
+	var from := h.pos + Vector3(d.x * 0.6, 0.95 * float(h.cdat["scale"]), d.y * 0.6)
+	match id:
+		"shadowstep":
+			m.spawn_shot(h, from, d * 26.0, 10.0 * m.dmg_mult(h), 9.0 / 26.0, 0.13, tc, {"blinkto": true, "ab": "s", "kb": 1.0})
+			m.sfx("throw", h.pos, -2.0, 1.4)
+		"bolas":
+			m.spawn_shot(h, from, d * 22.0, 8.0 * m.dmg_mult(h), 8.0 / 22.0, 0.2, Color("d8c9b0"), {"root": 1.0, "bolas": true, "ab": "s"})
+			m.sfx("throw", h.pos, -2.0, 1.1)
+		"divehawk":
+			var at := aim_point(h, 9.0)
+			at.y = m.world.ground_at(at.x, at.z) if not m.world.is_void(at.x, at.z) else h.pos.y
+			h.acts.append({"t": 0.65, "kind": "hawk", "at": at, "tele": m.fx.telegraph_circle(at, 2.2, Color(tc, 0.9))})
+			m.sfx("whoosh", h.pos, -4.0, 1.5)
+		"breeze":
+			h.sec_ch -= 1
+			if h.sec_ch_t <= 0.0: h.sec_ch_t = s_cd(h)
+			h.heal(18.0)
+			m.fx.cone(h.pos, d, 7.0, Color("9ee2a0"))
+			m.net_fx(["cone", m._r(h.pos.x), m._r(h.pos.y), m._r(h.pos.z), m._r(d.x), m._r(d.y), "9ee2a0"])
+			m.sfx("heal", h.pos, -2.0, 1.3)
+			for o in m.hunters:
+				if o == h or o.team != h.team or o.out or o.downed:
+					continue
+				var rel := Vector2(o.pos.x - h.pos.x, o.pos.z - h.pos.z)
+				if rel.length() < 7.0 and rel.normalized().dot(d) > 0.6:
+					if o.remote: m.net_event(["heal", o.nid, 18.0])
+					else: o.heal(18.0)
+		"haymaker":
+			m.fx.cone(h.pos, d, 2.2, Color("e0b05a"))
+			m.sfx("kinhit", h.pos, 0.0, 0.7)
+			var best: Ent = null; var bd := 2.4
+			for f in m.foes_of(h.team):
+				var rel := Vector2(f.pos.x - h.pos.x, f.pos.z - h.pos.z)
+				if rel.length() < bd + f.r and rel.normalized().dot(d) > 0.45 and absf(f.pos.y - h.pos.y) < 1.5:
+					bd = rel.length(); best = f
+			if best:
+				best.hurt(22.0 * m.dmg_mult(h), h, {"kb": d * 14.0, "lift": 3.0, "src": "abil", "ab": "s", "wallstun": 1.3})
+				m.shake(0.35, best.pos)
+		"satchel":
+			var at := reach(m, h.pos, aim_point(h, 8.0))
+			var n := Models.gem()
+			n.scale = Vector3.ONE * 1.6
+			(n.get_child(0) as MeshInstance3D).material_override = Models.toon(Color("ff7a5a"), true, 0.6)
+			n.position = at + Vector3(0, 0.3, 0)
+			m.add_child(n)
+			h.satchel = {"pos": at, "node": n, "t": 6.0}
+			h.sec_cd = 0.35        # so the next click sets it off
+			m.sfx("throw", h.pos, -2.0, 0.9)
+		"brightshield":
+			pass               # held: see Hunter.sim
+		"cleave":
+			m.fx.cone(h.pos, d, 2.6, Color("c08a5a"))
+			m.net_fx(["cone", m._r(h.pos.x), m._r(h.pos.y), m._r(h.pos.z), m._r(d.x), m._r(d.y), "c08a5a"])
+			m.sfx("boom", h.pos, -6.0, 1.3)
+			var airborne := not h.grounded
+			if airborne:
+				h.vel.y = -16.0
+			for f in m.foes_of(h.team):
+				var rel := Vector2(f.pos.x - h.pos.x, f.pos.z - h.pos.z)
+				if rel.length() < 2.6 + f.r and (rel.length() < 0.5 or rel.normalized().dot(d) > 0.35) and absf(f.pos.y - h.pos.y) < 2.5:
+					var mult := 1.5 if f.hp < f.max_hp * 0.4 else 1.0
+					var o := {"kb": d * 7.0, "lift": 2.0, "src": "abil", "ab": "s"}
+					if airborne: o["stun"] = 0.8
+					f.hurt(20.0 * mult * m.dmg_mult(h), h, o)
+		"binding":
+			var at := aim_point(h, 9.0)
+			at.y = m.world.ground_at(at.x, at.z) if not m.world.is_void(at.x, at.z) else h.pos.y
+			var travel := clampf(Vector2(at.x - h.pos.x, at.z - h.pos.z).length() / 16.0, 0.15, 0.6)
+			m.fx.bolt(from, at + Vector3(0, 0.3, 0), tc)
+			h.acts.append({"t": travel + 0.5, "kind": "bind", "at": at, "tele": m.fx.telegraph_circle(at, 2.2, Color(tc, 0.9))})
+			m.sfx("cloak", h.pos, -4.0, 1.4)
+
+static func _satchel_boom(h: Hunter) -> void:
+	var m: Match = h.m
+	var s: Dictionary = h.satchel
+	h.satchel = {}
+	h.sec_cd = s_cd(h)
+	var at: Vector3 = s["pos"]
+	if is_instance_valid(s["node"]): (s["node"] as Node3D).queue_free()
+	_blast(h, at, 2.6, 20.0, 11.0, Color("ff7a5a"), 6.0, "s")
+	m.shake(0.4, at)
+	# the rocket ride: it throws you too
+	var rel := Vector2(h.pos.x - at.x, h.pos.z - at.z)
+	if rel.length() < 3.0 and not h.downed:
+		var dir := rel.normalized() if rel.length() > 0.2 else h.aim_dir()
+		h.vel = Vector3(dir.x * 13.0, 11.5, dir.y * 13.0)
+		h.grounded = false
+		h.glide_cd = 0.0
+
+## Ticks held and timed secondaries. Called from Hunter.sim.
+static func tick_s(h: Hunter, dt: float) -> void:
+	var m: Match = h.m
+	h.sec_cd = maxf(0.0, h.sec_cd - dt)
+	if s_id(h) == "breeze" and h.sec_ch < 3:
+		h.sec_ch_t -= dt
+		if h.sec_ch_t <= 0.0:
+			h.sec_ch += 1
+			h.sec_ch_t = s_cd(h) if h.sec_ch < 3 else 0.0
+	if not h.satchel.is_empty():
+		h.satchel["t"] = float(h.satchel["t"]) - dt
+		if float(h.satchel["t"]) <= 0.0:
+			_satchel_boom(h)
+	if s_id(h) == "brightshield":
+		var want: bool = h.inp.get("sec_hold", false) and not h.downed and not h.out
+		if want and h.bshield_t <= 0.0 and h.sec_cd <= 0.0 and not h.bshield_on:
+			h.bshield_on = true; h.bshield_t = 3.0
+			m.sfx("shield", h.pos, -2.0, 1.3)
+		if h.bshield_on:
+			h.bshield_t -= dt
+			if not want or h.bshield_t <= 0.0 or h.downed:
+				h.bshield_on = false
+				h.bshield_t = 0.0
+				h.sec_cd = s_cd(h)

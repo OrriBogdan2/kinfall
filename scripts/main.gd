@@ -31,6 +31,8 @@ func _ready() -> void:
 		if a == "--no-drop": opts["no_drop"] = true
 		if a.begins_with("--aim-demo="): opts["aim_demo"] = a.substr(11); opts["no_drop"] = true
 		if a == "--ring-demo": opts["ring_demo"] = true; opts["no_drop"] = true
+		if a == "--wall-demo": opts["wall_demo"] = true; opts["no_drop"] = true
+		if a == "--wall-behind": opts["wall_behind"] = true; opts["no_drop"] = true
 		if a == "--meteor-test": opts["meteor_test"] = true; opts["no_drop"] = true
 		if a == "--break-demo": opts["break_demo"] = true; opts["no_drop"] = true
 		if a == "--watch-heart": opts["watch_heart"] = true
@@ -245,6 +247,8 @@ func _simtest(opts: Dictionary) -> void:
 			var down := m.hunters.filter(func(x): return x.downed).size()
 			var P: Hunter = m.player
 			print("  island=", m.world.island_of(P.pos.x, P.pos.z), " pads=", m.world.pads.map(func(pd): return "%d>%d@(%d,%d)" % [pd["from"], pd["to"], pd["pos"].x, pd["pos"].z]))
+			var TG = P.ai.get("tgt")
+			if TG: print("  DBG tgt=%s pos=%s hp=%s dead=%s drop=%s vel=%s grap=%s ride=%s cross=%s blockhere=%s ground=%s" % [TG.get_class() + ":" + str(TG.get_script().resource_path.get_file()), TG.pos.snapped(Vector3(0.1,0.1,0.1)), TG.hp, TG.dead, P.dropping, P.vel.snapped(Vector3(0.1,0.1,0.1)), P.grap.size(), P.riding, P.ai.has("cross"), m.world.is_block(P.pos.x, P.pos.z), m.world.ground_at(P.pos.x, P.pos.z)])
 			print("  player pos=%s goal=%s kind=%s tgt=%s move=%s grounded=%s" % [P.pos.snapped(Vector3(0.1,0.1,0.1)), str(P.ai.get("goal")), P.ai.get("goal_kind"), str(P.ai.get("tgt")), str(P.inp["move"]), P.grounded])
 			print("t=%d alive=%d down=%d mobs=%d shots=%d pickups=%d feed=%s" % [m.time, alive, down, m.mobs.filter(func(x): return not x.dead).size(), m.shots.size(), m.pickups.size(), str(m.feed.map(func(f): return f["text"]))])
 		if m.result.get("ending", false):

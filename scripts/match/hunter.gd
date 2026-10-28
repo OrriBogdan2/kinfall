@@ -30,7 +30,8 @@ var wid := "repeater"
 var wpn: Dictionary = {}
 var ctrl := "bot"             # local | bot | remote
 var inp := {"move": Vector2.ZERO, "aim": Vector3.ZERO, "fire": false, "dash": false, "jump": false,
-	"throw": false, "skill": false, "sig": false, "interact": false, "reload": false, "tonic": false, "glide": false, "ult": false}
+	"throw": false, "skill": false, "sig": false, "interact": false, "reload": false, "tonic": false, "glide": false, "ult": false,
+	"sec": false, "sec_hold": false}
 var base_speed := 5.4
 var ammo := 12
 var reload_t := 0.0
@@ -80,6 +81,18 @@ var armor := 0.0
 var max_armor := 50.0
 var armor_wait := 0.0
 var bloom := 0.0              # extra spread from moving, jumping and dashing
+var sec_cd := 0.0             # right-click ability
+var sec_ch := 3               # its charges, for heroes that have them
+var sec_ch_t := 0.0
+var satchel := {}             # Pyra's thrown charge, waiting to be set off
+var bshield_on := false       # Bastion's Brightshield is up
+var bshield_t := 0.0
+var reveal_t := 0.0           # seen through bushes and around walls for a moment after firing or getting hit
+var wall_touch_t := 0.0       # touching a wall in the air: a jump kicks off it
+var wall_n := Vector2.ZERO
+var wall_kicks := 1
+var wslam_t := 0.0
+var wallstun := 0.0           # how long the next wall slam stuns (Haymaker makes it longer)
 var land_t := 0.0
 var ghost_t := 0.0
 var step_t := 0.0
@@ -184,6 +197,15 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 		return 0.0
 	if ctrl == "local" and Game.god:
 		return 0.0
+	reveal_t = maxf(reveal_t, 1.0)
+	if opts.has("wallstun"):
+		wallstun = float(opts["wallstun"])
+	if bshield_on and by != null and opts.get("src", "") not in ["fall", "burn", "wall"]:
+		var to := Vector2(by.pos.x - pos.x, by.pos.z - pos.z)
+		if to.length() > 0.2 and to.normalized().dot(aim_dir()) > 0.3:
+			m.fx.burst(pos + Vector3(to.normalized().x * 0.6, 1.0, to.normalized().y * 0.6), Color("fff6c0"), 6, 2.5, 0.25)
+			m.sfx("shield", pos, -10.0, 1.6)
+			return 0.0
 	var d := dmg
 	if ctrl == "local" and m.opts.get("tutorial", false):
 		d *= 0.35
@@ -255,6 +277,17 @@ func do_jump() -> void:
 		coyote = 0.0
 		m.sfx("jump", pos, -6.0)
 		return
+	# against a wall in the air: kick off it
+	if wall_touch_t > 0.0 and wall_kicks > 0 and wall_n.length() > 0.1:
+		wall_kicks -= 1
+		wall_touch_t = 0.0
+		var hv0 := Vector2(vel.x, vel.z)
+		var out := wall_n * 7.5 + hv0.slide(wall_n) * 0.6
+		vel = Vector3(out.x, JUMP_V * 0.9, out.y)
+		gliding = false
+		m.fx.burst(pos + Vector3(wall_n.x * -0.3, 0.8, wall_n.y * -0.3), Color("e6dccb"), 8, 2.5, 0.3)
+		m.sfx("jump", pos, -4.0, 1.3)
+		return
 	# already in the air: a second press opens the glider straight away, rising or falling,
 	# unless you're about to land, where it buffers a jump instead
 	var near_ground := vel.y < 0.0 and pos.y - ground() < 0.9 and not over_void()
@@ -315,6 +348,7 @@ func fire() -> void:
 	var rate: float = wpn["rate"] * (0.8 if shoulder() == "charge" else 1.0)
 	fire_cd = rate
 	idle_fire = 0.0
+	reveal_t = maxf(reveal_t, 1.2)
 	ammo -= 1
 	recoil = 1.0
 	muzzle_t = 0.05
@@ -421,7 +455,7 @@ func sim(dt: float) -> void:
 				inp[k] = false
 		return
 	tick_status(dt)
-	for k in ["inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t"]:
+	for k in ["reveal_t", "inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t"]:
 		set(k, maxf(0.0, get(k) - dt))
 	if shield_t > 0.0:
 		shield_t -= dt
@@ -466,11 +500,13 @@ func sim(dt: float) -> void:
 	if inp["dash"]: do_dash()
 	if inp["jump"]: do_jump()
 	if inp["sig"]: use_signature()
+	if inp["sec"]: Abil.use_s(self)
+	Abil.tick_s(self, dt)
 	if inp["reload"]: start_reload()
 	if inp["tonic"]: use_tonic()
 	if inp["ult"]: Abil.use_r(self)
 	if inp["fire"]: fire()
-	inp["dash"] = false; inp["jump"] = false; inp["sig"] = false; inp["reload"] = false; inp["tonic"] = false; inp["ult"] = false
+	inp["dash"] = false; inp["jump"] = false; inp["sig"] = false; inp["reload"] = false; inp["tonic"] = false; inp["ult"] = false; inp["sec"] = false
 	_physics(dt)
 	var ad := aim_dir()
 	var want := atan2(-ad.x, -ad.y)
@@ -510,7 +546,7 @@ func _physics(dt: float) -> void:
 		_grapple(dt)
 		return
 	var mv: Vector2 = inp["move"] if stun_t <= 0.0 and root_t <= 0.0 else Vector2.ZERO
-	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0)
+	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * (0.6 if bshield_on else 1.0)
 	var hv := Vector2(vel.x, vel.z)
 	var cur := hv.length()
 	if charge.size() > 0:
@@ -558,6 +594,7 @@ func _physics(dt: float) -> void:
 	var guard := grounded and roll_t <= 0.0 and hv.length() <= spd * 1.25
 	# horizontal with walls; mantle onto ledges you run or fall into
 	var x0 := pos.x; var z0 := pos.z
+	var pre_v := Vector2(vel.x, vel.z)
 	var step_up := 0.0
 	var nx := pos.x + vel.x * dt
 	var b1: float = m.world.occupy(nx, pos.z, r, pos.y, guard)
@@ -587,7 +624,23 @@ func _physics(dt: float) -> void:
 					pos.x = tx; pos.z = tz
 					break
 	var blk := maxf(b1, b2)
-	if not grounded and blk > 0.0 and blk < pos.y + 2.4 and mantle_cd <= 0.0 and blk - pos.y < World.BLOCK_H - 0.1:
+	if (b1 > 0.0 or b2 > 0.0) and blk > pos.y + 0.6:
+		# against a wall: in the air you can kick off it; knocked into it hard, you're stunned
+		if not grounded:
+			wall_touch_t = 0.2
+			wall_n = Vector2(-signf(pre_v.x) if b1 > 0.0 else 0.0, -signf(pre_v.y) if b2 > 0.0 else 0.0).normalized()
+		if m.time - kb_t < 0.6 and pre_v.length() > 8.0 and wslam_t <= 0.0 and not remote:
+			wslam_t = 1.2
+			var st := maxf(0.9, wallstun)
+			wallstun = 0.0
+			stun_t = maxf(stun_t, st)
+			m.on_wall_slam(self, st)
+			hurt(10.0, last_hit_by, {"src": "wall"})
+	if grounded:
+		wall_kicks = 2 if cls == "light" else 1
+	wall_touch_t = maxf(0.0, wall_touch_t - dt)
+	wslam_t = maxf(0.0, wslam_t - dt)
+	if not grounded and not dropping and blk > 0.0 and blk < pos.y + 2.4 and mantle_cd <= 0.0 and blk - pos.y < World.BLOCK_H - 0.1:
 		vel.y = sqrt(2.0 * GRAV * (blk - pos.y + 0.3))
 		mantle_cd = 0.45
 	var g := ground()
@@ -752,12 +805,19 @@ func _grapple(dt: float) -> void:
 		pad = {"from": pos, "to": land, "t": 0.0, "dur": 0.22, "h": 0.4, "ledge": true}
 
 # ------------------------------------------------------------------ visuals
+var unseen := false           # hidden from the local player (in a bush, or behind a wall)
+
 func render(delta: float, alpha: float) -> void:
 	super.render(delta, alpha)
-	visible = not out and not extracted and not riding
+	visible = not out and not extracted and not riding and not unseen
 	if not model:
 		return
 	model.rotation.y = face
+	var bs: Node3D = model.get_node_or_null("BShield")
+	if bshield_on and bs == null:
+		bs = Models.part(model, Models.sphere(0.7, 18), Models.glow_mat(Color(1.0, 0.95, 0.75, 0.45)), Vector3(0, 0.9, -0.65), Vector3(1.0, 1.15, 0.22), Vector3.ZERO, "BShield")
+		bs.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	if bs: bs.visible = bshield_on
 	var rig: Node3D = model.get_node("Rig")
 	var torso: Node3D = rig.get_node("Torso")
 	var legs: Node3D = rig.get_node("Legs")
