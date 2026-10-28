@@ -27,7 +27,9 @@ const ACTIONS := [
 ]
 
 var v: Dictionary = {}
-var _defaults_keys := {}       # the bindings the game ships with, for "reset"
+var _defaults_keys := {}
+var _dirty := false
+var _started := false       # the bindings the game ships with, for "reset"
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -50,14 +52,23 @@ func apply_all() -> void:
 		_defaults_keys[a[0]] = _events_to_list(InputMap.action_get_events(a[0]))
 	for k in v:
 		apply(k)
+	_started = true
 
 func get_v(k: String):
 	return v.get(k, DEFAULTS.get(k))
 
-func set_v(k: String, val) -> void:
+func set_v(k: String, val, write := true) -> void:
 	v[k] = val
 	apply(k)
-	save()
+	if write:
+		save()
+	else:
+		# dragging a slider: write once things settle instead of on every step
+		_dirty = true
+		get_tree().create_timer(0.6).timeout.connect(func():
+			if _dirty:
+				_dirty = false
+				save())
 	changed.emit(k)
 
 func save() -> void:
@@ -83,6 +94,10 @@ func apply(k: String) -> void:
 		"sfx": Sfx.set_bus("SFX", float(v[k]))
 		"ambience": Sfx.set_bus("Ambience", float(v[k]))
 		"fullscreen":
+			# browsers only allow fullscreen from a click, so the web build doesn't restore it at startup
+			if OS.has_feature("web") and not _started:
+				v[k] = false
+				return
 			var want := DisplayServer.WINDOW_MODE_FULLSCREEN if v[k] else DisplayServer.WINDOW_MODE_WINDOWED
 			if DisplayServer.window_get_mode() != want:
 				DisplayServer.window_set_mode(want)

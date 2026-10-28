@@ -936,7 +936,8 @@ func _open_plot(arr: String, i: int) -> void:
 			var n := 2 + (1 if care * 2 >= grow else 0)
 			Save.d["crops"][d["crop"]] = int(Save.d["crops"].get(d["crop"], 0)) + n
 			var extra := ""
-			if care >= grow:
+			# a fully tended common crop sometimes drops a seed (rare ones never do)
+			if care >= grow and float(cd.get("weight", 1.0)) >= 1.0 and randf() < 0.5:
 				Save.add_seed(d["crop"], 1)
 				extra = " and a seed"
 			fx.burst(pn.position + Vector3(0, 0.6, 0), cd["color"], 18 + n * 4, 3.0)
@@ -953,7 +954,7 @@ func _open_plot(arr: String, i: int) -> void:
 		var v := _new_panel(cd["name"], 440)
 		v.add_child(UI.label("Watered. It grows a stage in %s while you're home, or after your next expedition." % _grow_left(arr, d), 16))
 		v.add_child(UI.label("Stage %d of %d. Tended %d time%s: %s" % [int(d["stage"]), grow, int(d.get("care", 0)), "" if int(d.get("care", 0)) == 1 else "s",
-			"water it every stage for a bigger harvest and a seed back." if int(d.get("care", 0)) < grow else "it'll be a big harvest."], 14, UI.MUTED))
+			"water it every stage for a bigger harvest, and maybe a seed back." if int(d.get("care", 0)) < grow else "it'll be a big harvest."], 14, UI.MUTED))
 		v.add_child(UI.label(cd["desc"], 14, UI.MUTED))
 		return
 	var v := _new_panel("Plant a seed", 480)
@@ -1010,6 +1011,12 @@ func _open_kitchen() -> void:
 					Save.remember(ak, "fed", "got a %s snack from you" % cd["name"], 4.0)
 					_toast("%s loved the snack" % ak["name"])
 				"levelup":
+					var today := int(Time.get_unix_time_from_system() / 86400.0)
+					if int(ak.get("starfruit_day", -1)) == today:
+						Save.d["crops"][sk] = int(Save.d["crops"][sk]) + 1
+						_toast("%s is still full from the last one. Try again tomorrow" % ak["name"])
+						return
+					ak["starfruit_day"] = today
 					ak["level"] = int(ak["level"]) + 1
 					var out := {}
 					Game._evolve(ak, out)
@@ -1043,7 +1050,7 @@ func _open_shop() -> void:
 			v.add_child(UI.section("Sell your harvest"))
 			sell_any = true
 		var sk: String = s
-		var gain := int(Data.CROPS[s]["price"])
+		var gain := maxi(1, int(round(int(Data.CROPS[s]["price"]) * 0.4)))
 		var row := UI.hbox(10)
 		var l := UI.label("%s  ×%d" % [Data.CROPS[s]["name"], n], 16, Data.CROPS[s]["color"]); l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(l)
@@ -1276,6 +1283,10 @@ func _send_chat() -> void:
 		if not is_inside_tree():
 			return
 		chat_busy = false
+		if chat_kin.get("uid", "") != rec["uid"]:
+			# you went off to talk to someone else; this one keeps its thought to itself
+			dots.kill()
+			return
 		dots.kill()
 		if is_instance_valid(typing): typing.queue_free()
 		chat_log.append({"role": "assistant", "content": reply})

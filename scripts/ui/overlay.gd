@@ -18,6 +18,8 @@ var listen_lbl: Label = null
 var delete_armed := -1
 
 func _ready() -> void:
+	Game.screen_changed.connect(func(_n):
+		if page != "": close())
 	layer = 50
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	root = Control.new()
@@ -93,9 +95,14 @@ func _page(name: String, title_txt: String, width := 620.0) -> VBoxContainer:
 		ch.queue_free()
 	if page != "" and page != name and not stack.has(page):
 		stack.append(page)
+	var was_open := page != ""
 	page = name
 	dim.visible = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	if not was_open and Game.main:
+		var s = Game.main.screen_node()
+		if s and s.has_method("on_menu_opened"):
+			s.on_menu_opened()
 	var pb := UI.scroll_panel(title_txt, width, back, "Back" if stack.size() > 0 else "Close")
 	host.add_child(pb[0])
 	return pb[1]
@@ -118,6 +125,7 @@ func close() -> void:
 	page = ""
 	stack.clear()
 	listening = ""
+	delete_armed = -1
 	dim.visible = false
 	Sfx.play("whoosh", null, -14.0)
 	closed.emit()
@@ -235,12 +243,16 @@ func _slider(v: VBoxContainer, label_txt: String, key: String, lo: float, hi: fl
 	var pct := UI.label("%d%%" % int(round(sl.value * 100.0)), 14, UI.MUTED); pct.custom_minimum_size.x = 52
 	# the interface size only changes when you let go, so the slider doesn't run away from the mouse
 	if key == "ui_scale":
+		# applies when you let go (or click the track), so the slider doesn't run away from the mouse
 		sl.drag_ended.connect(func(_c): Settings.set_v(key, sl.value))
-		sl.value_changed.connect(func(val): pct.text = "%d%%" % int(round(val * 100.0)))
+		sl.value_changed.connect(func(val):
+			pct.text = "%d%%" % int(round(val * 100.0))
+			if not Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT): Settings.set_v(key, val))
 	else:
 		sl.value_changed.connect(func(val):
 			pct.text = "%d%%" % int(round(val * 100.0))
-			Settings.set_v(key, val))
+			Settings.set_v(key, val, false))
+		sl.drag_ended.connect(func(_c): Settings.save())
 	r.add_child(sl)
 	r.add_child(pct)
 
@@ -282,9 +294,13 @@ func open_saves() -> void:
 		if info["exists"]:
 			col.add_child(UI.label("Save %d · %s%s" % [n, info["name"], "  (playing)" if n == Save.slot else ""], 17, UI.INK))
 			col.add_child(UI.label("%d kin · %d gems · %d expeditions · last played %s" % [info["kin"], info["gems"], info["matches"], info["when"]], 13, UI.MUTED))
-			if n != Save.slot:
+			if n == Save.slot:
+				h.add_child(UI.label("Playing", 14, UI.GOLD))
+			else:
 				h.add_child(UI.button("Play", func(): _play_slot(sn), 90))
-			if delete_armed == n:
+			if n == Save.slot:
+				pass
+			elif delete_armed == n:
 				h.add_child(UI.button("Really delete?", func():
 					delete_armed = -1
 					Save.delete_slot(sn)

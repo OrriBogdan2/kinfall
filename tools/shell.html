@@ -71,7 +71,7 @@ window.kinBridge=(function(){
   async function storeInit(cb){try{const c=window.claude;
       if(c&&c.use){const [d,u]=await Promise.all([c.use('db'),c.use('user')]);if(d&&u){const id=await u.id();if(id){db=d;uid=id;storeMode='db'}}}}catch(e){db=null}
     if(!db){storeMode='local';const hu=/uid=(\w+)/.exec(location.hash);uid=hu?hu[1]:localStorage.getItem('kf-uid');if(!uid){uid='u'+Math.random().toString(36).slice(2,12);localStorage.setItem('kf-uid',uid)}}
-    let owner=!db;try{const c=window.claude;const u=c&&c.use?await c.use('user'):null;if(u&&u.isOwner)owner=!!(await u.isOwner())}catch(e){}
+    let owner=!(window.claude&&window.claude.use);try{const c=window.claude;const u=c&&c.use?await c.use('user'):null;if(u&&u.isOwner)owner=!!(await u.isOwner())}catch(e){}
     cb(JSON.stringify({mode:storeMode,me:uid,owner}))}
   function cmp(a,op,b){switch(op){case'==':return a===b;case'!=':return a!==b;case'<':return a<b;case'<=':return a<=b;case'>':return a>b;case'>=':return a>=b;case'array-contains':return Array.isArray(a)&&a.includes(b);case'in':return Array.isArray(b)&&b.includes(a)}return false}
   async function dbGet(path,cb){try{if(db){const s=await db.doc(path).get();cb(s.exists?JSON.stringify(s.data()):'null')}else{cb(localStorage.getItem(lsKey(path))||'null')}}catch(e){cb('null')}}

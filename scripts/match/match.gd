@@ -600,10 +600,10 @@ func revive_hunter(h: Hunter, by: Ent) -> void:
 	if by is Hunter and by != h:
 		by.dmg_done += 0.0
 
-func eliminate(h: Hunter, by: Ent, why: String) -> void:
+func eliminate(h: Hunter, by: Ent, why: String, final := false) -> void:
 	if h.out:
 		return
-	if h.lives > 1 and not h.remote and not over:
+	if h.lives > 1 and not h.remote and not over and not final:
 		_lose_life(h, by, why)
 		return
 	cancel_abilities(h)
@@ -665,16 +665,23 @@ func _lose_life(h: Hunter, by: Ent, why: String) -> void:
 	h.lives -= 1
 	var lose := int(ceil(h.gems * 0.3))
 	if lose > 0 and not world.is_void(h.pos.x, h.pos.z):
-		var n := mini(5, lose)
-		for i in n:
-			drop("gem", h.pos + Vector3(0, 0.5, 0), maxi(1, lose / n))
+		if net_on and not is_host:
+			net_event(["spill", _r(h.pos.x), _r(h.pos.y), _r(h.pos.z), lose, {}, []])
+		else:
+			var n := mini(5, lose)
+			for i in n:
+				# the last pile takes the remainder so nothing is lost to rounding
+				drop("gem", h.pos + Vector3(0, 0.5, 0), (lose / n) + (lose % n if i == n - 1 else 0))
 	elif lose > 0:
 		h.lost_gems += lose
 	h.gems -= lose
+	if net_on:
+		net_event(["up", h.nid])
 	var credit: Ent = by.owner_h if by is Kin and by.owner_h else by
 	if credit is Hunter and credit != h and credit.team != h.team:
 		credit.kills += 1
-	add_feed("%s lost a life (%d left)" % [h.pname, h.lives])
+	if h.lives < 50:
+		add_feed("%s lost a life (%d left)" % [h.pname, h.lives])
 	h.downed = false
 	h.down_hp = 0.0
 	h.revive = 0.0
@@ -698,7 +705,7 @@ func _lose_life(h: Hunter, by: Ent, why: String) -> void:
 	opts["no_drop"] = was
 	if h.kin and h.kin.state == "fainted":
 		h.kin.hp = h.kin.max_hp * 0.5
-	if h == player:
+	if h == player and h.lives < 50:
 		killcam_text = ""
 		_slow(0.6, 0.35)
 		if hud:
@@ -1063,11 +1070,14 @@ func _gather_input() -> void:
 			pending_input[a[1]] = true
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("menu") and not over and not Overlay.is_open():
-		paused = true
+	if event.is_action_pressed("menu") and not over and not result.get("ending", false) and not Overlay.is_open():
 		Overlay.open_pause("match")
-		if not Overlay.closed.is_connected(_on_menu_closed):
-			Overlay.closed.connect(_on_menu_closed, CONNECT_ONE_SHOT)
+
+## Called by the Overlay whenever one of its menus opens over this match.
+func on_menu_opened() -> void:
+	paused = true
+	if not Overlay.closed.is_connected(_on_menu_closed):
+		Overlay.closed.connect(_on_menu_closed, CONNECT_ONE_SHOT)
 
 func _on_menu_closed() -> void:
 	paused = false
@@ -1374,7 +1384,9 @@ func _update_training(dt: float) -> void:
 	player.ult = minf(1.0, player.ult + dt / 6.0)
 	player.sig_cd = maxf(0.0, player.sig_cd - dt * 2.0)
 	if player.kin: player.kin.skill_cd = maxf(0.0, player.kin.skill_cd - dt * 2.0)
-	if train.has("tonic") and player.tonics < 2: player.tonics = 3
+	if player.tonics < 1: player.tonics = 3
+	if not train.has("tonic") and player.hp >= player.max_hp and train_t > 1.0:
+		player.hp = player.max_hp * 0.7     # a scratch, so the tonic has something to heal
 	if player.inp["move"].length() > 0.1:
 		train["_moved"] = float(train.get("_moved", 0.0)) + Vector2(player.pos.x - player.prev.x, player.pos.z - player.prev.z).length()
 	var marks := {
@@ -1673,7 +1685,7 @@ func _update_rules(_dt: float) -> void:
 	if left <= 0.0:
 		for h in hunters:
 			if not h.out and not h.extracted:
-				eliminate(h, null, "abyss")
+				eliminate(h, null, "abyss", true)
 		if not over and result.is_empty():
 			result = {"extracted": false, "why": "abyss"}
 			_end_soon(1.5)
@@ -1693,6 +1705,10 @@ func _finish() -> void:
 	if over:
 		return
 	over = true
+	if Overlay.is_open():
+		if Overlay.closed.is_connected(_on_menu_closed):
+			Overlay.closed.disconnect(_on_menu_closed)
+		Overlay.close()
 	if opts.get("training", false):
 		# nothing from the training area carries over
 		Game.goto("home")

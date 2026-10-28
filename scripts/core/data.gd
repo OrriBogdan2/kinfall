@@ -192,7 +192,7 @@ const CROPS := {
 	"glowcap": {"name": "Glowcap", "grow": 2, "color": Color("b48cff"), "price": 30, "weight": 0.6,
 		"use": "treat_xp", "desc": "Treat: your partner learns half again as much next match."},
 	"starfruit": {"name": "Starfruit", "grow": 4, "color": Color("fff07a"), "price": 60, "weight": 0.3,
-		"use": "levelup", "desc": "Rare. Your partner gains a level right away."},
+		"use": "levelup", "desc": "Rare. Your partner gains a level right away (once a day)."},
 }
 
 ## Farming: a watered plant grows a stage after this long at home (half in the greenhouse).

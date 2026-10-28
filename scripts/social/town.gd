@@ -380,7 +380,7 @@ func _move_player(d: float) -> void:
 	var nz := ppos.z + hv.y * d
 	if not _blocked(ppos.x, nz, 0.38): ppos.z = nz
 	pvel = Vector3(hv.x, 0, hv.y)
-	if panel_open == "" and py <= 0.0 and pvy <= 0.0 and Input.is_action_just_pressed("jump"):
+	if panel_open == "" and not Overlay.is_open() and py <= 0.0 and pvy <= 0.0 and Input.is_action_just_pressed("jump"):
 		pvy = 8.5
 		Sfx.play("jump", null, -12.0)
 	if py > 0.0 or pvy > 0.0:

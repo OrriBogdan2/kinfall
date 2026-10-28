@@ -39,6 +39,7 @@ var mantle_cd := 0.0
 var grap_cd := 0.0
 var grap: Dictionary = {}       # floating back up a ledge
 var push_t := 0.0
+var last_gy := 0.0             # ground height where you last stood
 var pad: Dictionary = {}        # jump-pad flight along a fixed arc
 var kb_t := -9.0
 var sig_cd := 0.0
@@ -483,6 +484,8 @@ func _physics(dt: float) -> void:
 				grounded = false
 	else:
 		pos.y = g
+	if grounded:
+		last_gy = pos.y
 	_try_ledge_grab(dt)
 	if pos.y < -14.0:
 		fall_out()
@@ -545,6 +548,7 @@ func _try_ledge_grab(dt: float) -> void:
 		if vel.y > 1.0 or grap_cd > 0.0 or (m.time - kb_t < 0.3 and Vector2(vel.x, vel.z).length() > 8.0):
 			return
 		reach = LEDGE_REACH if over_void() else r + 0.45
+	var void_here := over_void()
 	var best := {}; var bd := 1e9
 	for z in range(int(floor(pos.z - reach)), int(floor(pos.z + reach)) + 1):
 		for x in range(int(floor(pos.x - reach)), int(floor(pos.x + reach)) + 1):
@@ -556,8 +560,14 @@ func _try_ledge_grab(dt: float) -> void:
 				continue
 			var ex := clampf(pos.x, x + 0.06, x + 0.94); var ez := clampf(pos.z, z + 0.06, z + 0.94)
 			var d := Vector2(ex - pos.x, ez - pos.z).length()
-			if grounded and Vector2(ex - pos.x, ez - pos.z).dot(mv) <= 0.0:
+			var toward := Vector2(ex - pos.x, ez - pos.z)
+			if grounded and toward.dot(mv) <= 0.0:
 				continue
+			if not grounded and not void_here:
+				# off the void, only a wall you're heading into and that rises above where you last stood:
+				# hopping down a terrace must not float you back up it
+				if gz <= last_gy + World.STEP or (toward.dot(mv) <= 0.0 and toward.dot(Vector2(vel.x, vel.z)) <= 0.0):
+					continue
 			if d < bd and d < reach:
 				bd = d
 				best = {"x": x, "z": z, "gz": gz, "ex": ex, "ez": ez}
