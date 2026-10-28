@@ -1,14 +1,54 @@
 extends Node
 ## The player's persistent state: gems, the farm, the kin roster with their personalities and memories.
 
-const PATH := "user://kinfall_save.json"
 const VERSION := 1
 const MAX_MEMORY := 40
+const SLOTS := 3
 
 var d: Dictionary = {}
+var slot := 1                 # which save file is in play
 
 func _ready() -> void:
+	# the last save you played comes back (remembered next to the settings)
+	var cf := ConfigFile.new()
+	if cf.load("user://settings.cfg") == OK:
+		slot = clampi(int(cf.get_value("save", "slot", 1)), 1, SLOTS)
 	load_game()
+
+static func path_for(n: int) -> String:
+	return "user://kinfall_save.json" if n == 1 else "user://kinfall_save_%d.json" % n
+
+## What a save file holds, for the save list.
+func slot_info(n: int) -> Dictionary:
+	var out := {"exists": false}
+	var p := path_for(n)
+	if not FileAccess.file_exists(p):
+		return out
+	var f := FileAccess.open(p, FileAccess.READ)
+	if f == null:
+		return out
+	var parsed = JSON.parse_string(f.get_as_text())
+	if typeof(parsed) != TYPE_DICTIONARY or (parsed.get("roster", []) as Array).is_empty():
+		return out
+	var when := Time.get_datetime_dict_from_unix_time(int(FileAccess.get_modified_time(p)))
+	return {"exists": true, "name": String(parsed.get("name", "Hunter")), "kin": (parsed.get("roster", []) as Array).size(),
+		"gems": int(parsed.get("gems", 0)), "matches": int(parsed.get("matches", 0)),
+		"when": "%d-%02d-%02d" % [when["year"], when["month"], when["day"]]}
+
+func use_slot(n: int) -> void:
+	save_game()
+	slot = clampi(n, 1, SLOTS)
+	load_game()
+	var cf := ConfigFile.new()
+	cf.load("user://settings.cfg")
+	cf.set_value("save", "slot", slot)
+	cf.save("user://settings.cfg")
+
+func delete_slot(n: int) -> void:
+	if FileAccess.file_exists(path_for(n)):
+		DirAccess.remove_absolute(path_for(n))
+	if n == slot:
+		d = fresh()
 
 func fresh() -> Dictionary:
 	# a new save has no kin yet: the first thing you do is pick an egg and hatch it
@@ -61,9 +101,9 @@ func new_kin(species: String, kname := "") -> Dictionary:
 
 func load_game() -> void:
 	d = fresh()
-	if not FileAccess.file_exists(PATH):
+	if not FileAccess.file_exists(path_for(slot)):
 		return
-	var f := FileAccess.open(PATH, FileAccess.READ)
+	var f := FileAccess.open(path_for(slot), FileAccess.READ)
 	if f == null:
 		return
 	var parsed = JSON.parse_string(f.get_as_text())
@@ -73,7 +113,7 @@ func load_game() -> void:
 		# JSON numbers come back as floats; plots and roster are fine with that.
 
 func save_game() -> void:
-	var f := FileAccess.open(PATH, FileAccess.WRITE)
+	var f := FileAccess.open(path_for(slot), FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(d))
 

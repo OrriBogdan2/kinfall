@@ -187,23 +187,42 @@ const CROPS := {
 		"use": "treat_hardy", "desc": "Treat: your kin has 40% more health next match."},
 	"mindmint": {"name": "Mindmint", "grow": 3, "color": Color("8fe0b0"), "price": 25,
 		"use": "treat_calm", "desc": "Treat: +12 trust. Calm kin follow risky orders."},
+	"puffcorn": {"name": "Puffcorn", "grow": 1, "color": Color("f6e3a8"), "price": 8,
+		"use": "snack", "desc": "Snack: your partner gets +4 trust right away. Quick and cheap."},
+	"glowcap": {"name": "Glowcap", "grow": 2, "color": Color("b48cff"), "price": 30, "weight": 0.6,
+		"use": "treat_xp", "desc": "Treat: your partner learns half again as much next match."},
+	"starfruit": {"name": "Starfruit", "grow": 4, "color": Color("fff07a"), "price": 60, "weight": 0.3,
+		"use": "levelup", "desc": "Rare. Your partner gains a level right away."},
 }
+
+## Farming: a watered plant grows a stage after this long at home (half in the greenhouse).
+const WATER_TIME := 90.0
+
+## A random seed for loot, rare crops less often.
+func pick_seed(r: RandomNumberGenerator = null) -> String:
+	var total := 0.0
+	for k in CROPS: total += float(CROPS[k].get("weight", 1.0))
+	var x := (r.randf() if r else randf()) * total
+	for k in CROPS:
+		x -= float(CROPS[k].get("weight", 1.0))
+		if x <= 0.0: return k
+	return CROPS.keys()[0]
 
 const KIN_NAMES := ["Pip", "Mochi", "Bramble", "Sorrel", "Tumble", "Fig", "Juniper", "Biscuit", "Nettle", "Wren", "Sprout", "Ember", "Clove", "Pebble", "Marlo", "Quill", "Dusk", "Taffy", "Rune", "Kip"]
 const BOT_NAMES := ["Vexa", "Moss", "Tarn", "Juno", "Rook", "Kestrel", "Nim", "Sable", "Orin", "Lux", "Bryn", "Cato", "Ivy", "Rho", "Wick", "Zed", "Fen", "Mara"]
 
 ## Expedition tiers: deeper islands are harder and richer, and in the Hollow your partner can be lost.
 const TIERS := [
-	{"name": "The Meadow", "desc": "Gentle islands. Lose the match and you only lose what you carried.",
-		"mob": 1.0, "loot": 1.0, "kin_lvl": [1, 3], "unlock": 0, "risk_kin": false,
+	{"name": "The Meadow", "desc": "Gentle islands. 3 lives. Run out and you only lose what you carried.",
+		"mob": 1.0, "loot": 1.0, "kin_lvl": [1, 3], "unlock": 0, "risk_kin": false, "lives": 3,
 		"biome": {"top": Color("5f8d45"), "top2": Color("4a7538"), "side": Color("8b6d52"), "deep": Color("3a3140"), "leaf": Color("5a9a4f")},
 		"sky": Color("10131f"), "ambient": Color("b9c4e6"), "sun": Color("fff1dc"), "clouds": [Color(0.06, 0.07, 0.13), Color(0.22, 0.24, 0.38)]},
-	{"name": "Dusk Isles", "desc": "Tougher monsters, about twice the loot, and rarer kin.",
-		"mob": 1.45, "loot": 1.9, "kin_lvl": [2, 5], "unlock": 2, "risk_kin": false,
+	{"name": "Dusk Isles", "desc": "Tougher monsters, about twice the loot, and rarer kin. 2 lives.",
+		"mob": 1.45, "loot": 1.9, "kin_lvl": [2, 5], "unlock": 2, "risk_kin": false, "lives": 2,
 		"biome": {"top": Color("56688a"), "top2": Color("465576"), "side": Color("6d5a74"), "deep": Color("2a2440"), "leaf": Color("8a6fb8")},
 		"sky": Color("150f22"), "ambient": Color("c9b4e6"), "sun": Color("ffc9a8"), "clouds": [Color(0.09, 0.05, 0.14), Color(0.32, 0.2, 0.4)]},
-	{"name": "The Hollow", "desc": "Brutal and rich. If you don't make it out, a partner that doesn't fully trust you stays behind.",
-		"mob": 2.0, "loot": 3.2, "kin_lvl": [4, 8], "unlock": 5, "risk_kin": true,
+	{"name": "The Hollow", "desc": "Brutal and rich, and only 1 life. If you don't make it out, a partner that doesn't fully trust you stays behind.",
+		"mob": 2.0, "loot": 3.2, "kin_lvl": [4, 8], "unlock": 5, "risk_kin": true, "lives": 1,
 		"biome": {"top": Color("4f6b5e"), "top2": Color("3d5650"), "side": Color("5a4a44"), "deep": Color("1e1a22"), "leaf": Color("c25a4a")},
 		"sky": Color("0d0b10"), "ambient": Color("d0a0a0"), "sun": Color("ffb090"), "clouds": [Color(0.07, 0.03, 0.04), Color(0.3, 0.12, 0.12)]},
 ]

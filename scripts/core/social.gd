@@ -12,6 +12,7 @@ signal ready_changed(ok: bool)
 var ok := false            # the store answered
 var mode := ""             # "db" (shared with everyone the page is shared with) or "local" (this browser)
 var me := ""
+var is_owner := false      # the artifact's owner (admin tools are theirs)
 var guild: Dictionary = {}         # my guild, cleaned, plus "id"
 var guild_progress: Dictionary = {} # project -> gems put in
 var _keep: Array = []
@@ -35,6 +36,7 @@ func _ready() -> void:
 			ok = true
 			mode = txt_of(d.get("mode"))
 			me = txt_of(d.get("me"))
+			is_owner = d.get("owner", false) == true
 			ready_changed.emit(true)
 			refresh_guild())
 

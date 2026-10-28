@@ -1,0 +1,397 @@
+extends CanvasLayer
+## Menus that sit on top of any screen: the Esc menu, settings, save files and the admin panel.
+## Screens open it (Esc at home, in town, in a match; buttons on the title screen) and listen for
+## `closed` to carry on.
+
+signal closed
+
+var root: Control
+var dim: ColorRect
+var host: CenterContainer
+var fps_lbl: Label
+var page := ""                  # "" when nothing is open
+var ctx := ""                   # title | home | town | match
+var stack: Array = []           # pages to go back to with Esc
+var tab := "Audio"
+var listening := ""             # an action waiting for its new key
+var listen_lbl: Label = null
+var delete_armed := -1
+
+func _ready() -> void:
+	layer = 50
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	root = Control.new()
+	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	root.theme = UI.theme()
+	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(root)
+	dim = ColorRect.new()
+	dim.color = Color(0.02, 0.03, 0.06, 0.6)
+	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	dim.mouse_filter = Control.MOUSE_FILTER_STOP
+	dim.visible = false
+	root.add_child(dim)
+	host = CenterContainer.new()
+	host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	host.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(host)
+	fps_lbl = UI.label("", 13, UI.MUTED)
+	fps_lbl.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
+	fps_lbl.position = Vector2(-80, 4)
+	root.add_child(fps_lbl)
+
+func _process(_d: float) -> void:
+	fps_lbl.visible = bool(Settings.get_v("show_fps"))
+	if fps_lbl.visible:
+		fps_lbl.text = "%d fps" % Engine.get_frames_per_second()
+
+func is_open() -> bool:
+	return page != ""
+
+## Admin tools are for the game's owner: always on desktop, and on the web for the artifact's owner.
+func admin_allowed() -> bool:
+	return not OS.has_feature("web") or Social.is_owner
+
+# ------------------------------------------------------------------ input
+func _input(event: InputEvent) -> void:
+	if listening != "":
+		if event is InputEventKey and event.pressed and not event.echo:
+			if (event as InputEventKey).physical_keycode == KEY_ESCAPE:
+				listening = ""
+				_show_settings()
+			else:
+				_finish_rebind(event)
+			get_viewport().set_input_as_handled()
+		elif event is InputEventMouseButton and event.pressed:
+			_finish_rebind(event)
+			get_viewport().set_input_as_handled()
+		return
+	if event is InputEventKey and event.pressed and not event.echo:
+		var k := (event as InputEventKey).physical_keycode
+		var typing := get_viewport().gui_get_focus_owner() is LineEdit
+		if (k == KEY_F1 or (k == KEY_QUOTELEFT and not typing)) and admin_allowed() and Game.main and ctx_now() != "title":
+			if page == "admin": close()
+			else: open_admin()
+			get_viewport().set_input_as_handled()
+			return
+	if page != "" and event.is_action_pressed("menu"):
+		back()
+		get_viewport().set_input_as_handled()
+
+func ctx_now() -> String:
+	var s = Game.main.screen_node() if Game.main else null
+	if s == null: return "title"
+	var path := String(s.get_script().resource_path) if s.get_script() else ""
+	if path.ends_with("home.gd"): return "home"
+	if path.ends_with("town.gd"): return "town"
+	if s is Match: return "match"
+	return "title"
+
+# ------------------------------------------------------------------ pages
+func _page(name: String, title_txt: String, width := 620.0) -> VBoxContainer:
+	for ch in host.get_children():
+		ch.queue_free()
+	if page != "" and page != name and not stack.has(page):
+		stack.append(page)
+	page = name
+	dim.visible = true
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	var pb := UI.scroll_panel(title_txt, width, back, "Back" if stack.size() > 0 else "Close")
+	host.add_child(pb[0])
+	return pb[1]
+
+func back() -> void:
+	if stack.size() > 0:
+		var prev: String = stack.pop_back()
+		page = ""
+		match prev:
+			"pause": open_pause(ctx)
+			"settings": open_settings()
+			"saves": open_saves()
+			_: close()
+	else:
+		close()
+
+func close() -> void:
+	for ch in host.get_children():
+		ch.queue_free()
+	page = ""
+	stack.clear()
+	listening = ""
+	dim.visible = false
+	Sfx.play("whoosh", null, -14.0)
+	closed.emit()
+
+## The Esc menu.
+func open_pause(where: String) -> void:
+	ctx = where
+	stack.clear()
+	page = ""
+	var v := _page("pause", "Paused" if where == "match" else "Menu", 420)
+	var bw := 360.0
+	v.add_child(UI.primary("Resume", close, bw))
+	v.add_child(UI.button("Settings", open_settings, bw))
+	v.add_child(UI.button("Controls", func(): tab = "Controls"; open_settings(), bw))
+	if admin_allowed():
+		v.add_child(UI.button("Admin tools  (F1)", open_admin, bw))
+	if where == "match":
+		var m = Game.main.screen_node()
+		var tut: bool = m.opts.get("tutorial", false) or m.opts.get("training", false)
+		v.add_child(UI.button("Leave the training area" if m.opts.get("training", false) else ("Skip the tutorial" if tut else "Leave match (you lose what you carry)"), func():
+			close()
+			m.paused = false
+			m.result = {"extracted": tut, "why": "left"}
+			m._finish(), bw))
+	else:
+		v.add_child(UI.button("Save files", open_saves, bw))
+		v.add_child(UI.button("Save and go to the main menu", func():
+			Save.save_game()
+			close()
+			Game.goto("title"), bw))
+	if not OS.has_feature("web"):
+		v.add_child(UI.button("Save and quit the game", func():
+			Save.save_game()
+			get_tree().quit(), bw))
+
+# ------------------------------------------------------------------ settings
+func open_settings() -> void:
+	_show_settings()
+
+func _show_settings() -> void:
+	var v := _page("settings", "Settings", 680)
+	var tabs := UI.hbox(6)
+	for t in ["Audio", "Video", "Controls", "Gameplay", "Accessibility"]:
+		var tn: String = t
+		var b := UI.choice(t, t == tab, func(): tab = tn; _show_settings())
+		tabs.add_child(b)
+	v.add_child(tabs)
+	match tab:
+		"Audio":
+			_slider(v, "Master volume", "master", 0.0, 1.0)
+			_slider(v, "Music", "music", 0.0, 1.0)
+			_slider(v, "Sound effects", "sfx", 0.0, 1.0)
+			_slider(v, "Ambience (wind, rain)", "ambience", 0.0, 1.0)
+			_toggle(v, "Mute when the window isn't focused", "mute_unfocused")
+		"Video":
+			_toggle(v, "Fullscreen", "fullscreen")
+			if not OS.has_feature("web"):
+				_toggle(v, "V-sync", "vsync")
+			_choice(v, "Frame rate limit", "max_fps", [[0, "None"], [30, "30"], [60, "60"], [120, "120"], [144, "144"]])
+			_choice(v, "Anti-aliasing", "msaa", [[0, "Off"], [2, "2x"], [4, "4x"]])
+			_toggle(v, "Shadows", "shadows")
+			_toggle(v, "Show frame rate", "show_fps")
+		"Controls":
+			v.add_child(UI.label("Click Change, then press a key or mouse button. Esc cancels.", 13, UI.MUTED))
+			for a in Settings.ACTIONS:
+				var row := UI.hbox(10)
+				var l := UI.label(a[1], 15); l.custom_minimum_size.x = 230
+				row.add_child(l)
+				var cur := UI.label(Settings.binding_text(a[0]), 15, UI.GOLD)
+				cur.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				row.add_child(cur)
+				var an: String = a[0]
+				row.add_child(UI.button("Change", func():
+					listening = an
+					cur.text = "Press a key..."
+					listen_lbl = cur, 110))
+				v.add_child(row)
+			v.add_child(UI.label("Esc always opens this menu. Reloading is automatic.", 13, UI.MUTED))
+		"Gameplay":
+			var name_row := UI.hbox(10)
+			var nl := UI.label("Your name", 15); nl.custom_minimum_size.x = 230
+			name_row.add_child(nl)
+			var ne := LineEdit.new(); ne.text = Save.d.get("name", "Hunter"); ne.max_length = 16
+			ne.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			ne.text_changed.connect(func(t):
+				Save.d["name"] = t.strip_edges() if t.strip_edges() != "" else "Hunter"
+				Save.save_game())
+			name_row.add_child(ne)
+			v.add_child(name_row)
+			_slider(v, "Camera lean toward the cursor", "cam_lead", 0.0, 1.5)
+			_toggle(v, "Damage numbers", "damage_numbers")
+			_toggle(v, "Tips during matches", "tips")
+		"Accessibility":
+			_slider(v, "Interface size", "ui_scale", 0.75, 1.5, 0.05)
+			_slider(v, "Screen shake", "shake", 0.0, 1.5)
+			_toggle(v, "Fewer flashes", "reduce_flashes")
+	var foot := UI.hbox(8)
+	foot.add_child(UI.button("Reset everything to defaults", func():
+		Settings.reset_all()
+		_show_settings()))
+	v.add_child(foot)
+
+func _row(v: VBoxContainer, label_txt: String) -> HBoxContainer:
+	var r := UI.hbox(10)
+	var l := UI.label(label_txt, 15); l.custom_minimum_size.x = 260
+	r.add_child(l)
+	v.add_child(r)
+	return r
+
+func _slider(v: VBoxContainer, label_txt: String, key: String, lo: float, hi: float, step := 0.05) -> void:
+	var r := _row(v, label_txt)
+	var sl := HSlider.new(); sl.min_value = lo; sl.max_value = hi; sl.step = step
+	sl.value = float(Settings.get_v(key)); sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sl.custom_minimum_size.x = 200
+	var pct := UI.label("%d%%" % int(round(sl.value * 100.0)), 14, UI.MUTED); pct.custom_minimum_size.x = 52
+	# the interface size only changes when you let go, so the slider doesn't run away from the mouse
+	if key == "ui_scale":
+		sl.drag_ended.connect(func(_c): Settings.set_v(key, sl.value))
+		sl.value_changed.connect(func(val): pct.text = "%d%%" % int(round(val * 100.0)))
+	else:
+		sl.value_changed.connect(func(val):
+			pct.text = "%d%%" % int(round(val * 100.0))
+			Settings.set_v(key, val))
+	r.add_child(sl)
+	r.add_child(pct)
+
+func _toggle(v: VBoxContainer, label_txt: String, key: String) -> void:
+	var r := _row(v, label_txt)
+	var cb := CheckButton.new()
+	cb.button_pressed = bool(Settings.get_v(key))
+	cb.toggled.connect(func(on): Settings.set_v(key, on))
+	r.add_child(cb)
+
+func _choice(v: VBoxContainer, label_txt: String, key: String, opts: Array) -> void:
+	var r := _row(v, label_txt)
+	var ob := OptionButton.new()
+	var cur = Settings.get_v(key)
+	for i in opts.size():
+		ob.add_item(String(opts[i][1]), i)
+		if opts[i][0] == cur: ob.select(i)
+	ob.item_selected.connect(func(i): Settings.set_v(key, opts[i][0]))
+	r.add_child(ob)
+
+func _finish_rebind(ev: InputEvent) -> void:
+	Settings.rebind(listening, ev)
+	listening = ""
+	Sfx.play("click")
+	_show_settings()
+
+# ------------------------------------------------------------------ save files
+func open_saves() -> void:
+	var v := _page("saves", "Save files", 620)
+	v.add_child(UI.label("Each save has its own island, kin and gems. Settings are shared by all of them.", 14, UI.MUTED))
+	for n in range(1, Save.SLOTS + 1):
+		var info := Save.slot_info(n)
+		var c := UI.card(UI.CARD, 12, 12)
+		if n == Save.slot: UI.set_card_border(c, UI.ACCENT)
+		var h := UI.hbox(10); c.add_child(h)
+		var col := UI.vbox(2); col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		h.add_child(col)
+		var sn: int = n
+		if info["exists"]:
+			col.add_child(UI.label("Save %d · %s%s" % [n, info["name"], "  (playing)" if n == Save.slot else ""], 17, UI.INK))
+			col.add_child(UI.label("%d kin · %d gems · %d expeditions · last played %s" % [info["kin"], info["gems"], info["matches"], info["when"]], 13, UI.MUTED))
+			if n != Save.slot:
+				h.add_child(UI.button("Play", func(): _play_slot(sn), 90))
+			if delete_armed == n:
+				h.add_child(UI.button("Really delete?", func():
+					delete_armed = -1
+					Save.delete_slot(sn)
+					open_saves(), 150))
+			else:
+				h.add_child(UI.button("Delete", func():
+					delete_armed = sn
+					open_saves(), 90))
+		else:
+			col.add_child(UI.label("Save %d · empty" % n, 17, UI.MUTED))
+			h.add_child(UI.button("New game", func(): _play_slot(sn), 130))
+		v.add_child(c)
+
+func _play_slot(n: int) -> void:
+	Save.use_slot(n)
+	close()
+	Social.refresh_guild()
+	Game.goto("home" if not Save.d["roster"].is_empty() else "hatch")
+
+# ------------------------------------------------------------------ admin
+func open_admin() -> void:
+	if page != "admin" and page != "":
+		stack.append(page)
+	var c := ctx_now()
+	var v := _page("admin", "Admin tools", 640)
+	v.add_child(UI.label("For testing. F1 or ` opens this anywhere.", 13, UI.MUTED))
+	var god := CheckButton.new()
+	god.text = "God mode: can't be hurt or fall, no cooldowns, endless ammo"
+	god.button_pressed = Game.god
+	god.toggled.connect(func(on): Game.god = on)
+	v.add_child(god)
+	var grid := GridContainer.new(); grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 8); grid.add_theme_constant_override("v_separation", 8)
+	v.add_child(grid)
+	var add := func(txt: String, f: Callable):
+		var b := UI.button(txt, func():
+			f.call()
+			Sfx.play("pickup")
+			Save.save_game()
+			_admin_refresh(), 290)
+		grid.add_child(b)
+	add.call("+1000 gems", func(): Save.d["gems"] = int(Save.d["gems"]) + 1000)
+	add.call("+10 of every seed", func():
+		for s in Data.CROPS: Save.add_seed(s, 10))
+	add.call("+5 of every crop", func():
+		for s in Data.CROPS: Save.d["crops"][s] = int(Save.d["crops"].get(s, 0)) + 5)
+	add.call("+5 tonics", func(): Save.add_item("tonic", 5))
+	add.call("Partner +1 level", func():
+		var k := Save.active_kin()
+		if not k.is_empty():
+			k["level"] = int(k["level"]) + 1
+			Game._evolve(k, {}))
+	add.call("Partner full trust", func():
+		var k := Save.active_kin()
+		if not k.is_empty(): k["trust"] = 100.0)
+	add.call("Grow every crop now", func():
+		for arr in ["plots", "gh_plots"]:
+			for p in Save.d.get(arr, []):
+				if p["crop"] != "":
+					p["stage"] = int(Data.CROPS[p["crop"]]["grow"])
+					p["care"] = p["stage"]
+		if c == "home": _reload_home())
+	add.call("Unlock every building and bridge", func():
+		for b in Data.BUILDINGS:
+			if not Save.d["buildings"].has(b): Save.d["buildings"].append(b)
+		for i in Data.ISLES:
+			if not Save.d["bridges"].has(i): Save.d["bridges"].append(i)
+		Save.d["extracts"] = maxi(int(Save.d.get("extracts", 0)), 10)
+		if c == "home": _reload_home())
+	add.call("Unlock every expedition tier", func(): Save.d["extracts"] = maxi(int(Save.d.get("extracts", 0)), 10))
+	add.call("Replay the tutorials", func(): Save.d["tutorial"] = {})
+	if c == "home":
+		var h = Game.main.screen_node()
+		add.call("Morning", func(): h.day_t = 0.27)
+		add.call("Night", func(): h.day_t = 0.95)
+		add.call("Rain on / off", func():
+			h.raining = not h.raining
+			h.weather_t = 999.0 if h.raining else 60.0
+			h.rain.emitting = h.raining)
+	if c == "match":
+		var m = Game.main.screen_node()
+		add.call("Ultimate and ability ready", func():
+			if m.player:
+				m.player.ult = 1.0; m.player.sig_cd = 0.0)
+		add.call("Defeat every monster", func():
+			for mb in m.mobs:
+				if not mb.dead: mb.hurt(99999.0, m.player, {}))
+		add.call("Open the exits now", func():
+			for p in m.portals: p["open_at"] = minf(p["open_at"], m.time))
+		add.call("Extract now", func():
+			if m.player and not m.player.out:
+				close()
+				m._extract(m.player))
+	var stat := UI.label("", 13, UI.MUTED)
+	stat.name = "AdminStat"
+	v.add_child(stat)
+	_admin_refresh()
+
+func _admin_refresh() -> void:
+	var st := root.find_child("AdminStat", true, false)
+	if st:
+		var k := Save.active_kin()
+		(st as Label).text = "%d gems · partner %s level %d, trust %d" % [int(Save.d["gems"]), k.get("name", "none"), int(k.get("level", 0)), int(k.get("trust", 0))]
+	var s = Game.main.screen_node() if Game.main else null
+	if s and s.has_method("_refresh_top"):
+		s._refresh_top()
+
+func _reload_home() -> void:
+	close()
+	Game.goto("home")

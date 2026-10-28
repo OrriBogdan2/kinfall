@@ -154,7 +154,7 @@ func _show_pick() -> void:
 		dl.custom_minimum_size.x = 220
 		v.add_child(dl)
 		var ii := i
-		v.add_child(UI.button("This one" if i != chosen else "Hatch it", func(): _pick(ii)))
+		v.add_child((UI.primary if i == chosen else UI.button).call("This one" if i != chosen else "Hatch it", func(): _pick(ii)))
 		row.add_child(card)
 	bottom.add_child(row)
 
@@ -263,7 +263,7 @@ func _show_name() -> void:
 	you_row.add_child(ye)
 	v.add_child(you_row)
 	var btns := UI.hbox(10)
-	btns.add_child(UI.button("Head out together", func(): _finish(sp_id, ne.text, ye.text, true), 240))
+	btns.add_child(UI.primary("Head out together", func(): _finish(sp_id, ne.text, ye.text, true), 240))
 	var skip := UI.button("Skip the tutorial", func(): _finish(sp_id, ne.text, ye.text, false), 180)
 	skip.flat = true
 	btns.add_child(skip)

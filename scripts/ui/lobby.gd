@@ -30,7 +30,7 @@ func _ready() -> void:
 	v.add_child(status)
 	list_box = UI.vbox(6)
 	v.add_child(list_box)
-	v.add_child(UI.label("Teams", 13, UI.MUTED))
+	v.add_child(UI.section("Teams"))
 	var modes := UI.hbox(8)
 	for m in [["ffa", "Everyone for themselves"], ["duo", "Teams of 2"], ["trio", "Teams of 3"]]:
 		var key: String = m[0]
@@ -41,7 +41,7 @@ func _ready() -> void:
 	v.add_child(UI.label("Empty spots are filled with bots, up to 4 squads. Whoever presses Start hosts the match and runs the monsters, so keep that tab in front.", 13, UI.MUTED))
 	var row := UI.hbox(10)
 	ready_btn = UI.button("I'm ready", _toggle_ready, 160)
-	start_btn = UI.button("Start the match", _start, 200)
+	start_btn = UI.primary("Start the match", _start, 200)
 	row.add_child(ready_btn); row.add_child(start_btn)
 	v.add_child(row)
 	_refresh_modes()
@@ -60,7 +60,7 @@ func _exit_tree() -> void:
 
 func _refresh_modes() -> void:
 	for k in mode_btns:
-		mode_btns[k].text = mode_btns[k].text.trim_suffix("  ✓") + ("  ✓" if k == mode else "")
+		mode_btns[k].theme_type_variation = "Chosen" if k == mode else ""
 
 func _announce() -> void:
 	var k := Save.active_kin()

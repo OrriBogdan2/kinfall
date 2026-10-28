@@ -21,20 +21,25 @@ The project uses the Compatibility renderer so the same build runs on the web.
 | Left click | Shoot |
 | Right click | Throw your kin at the cursor, or call it back |
 | Q | Your kin's skill at the cursor (throws it first if it's on your shoulder) |
-| E | Class ability (Cloak, Mend or Fortify) |
+| E | Hero ability |
+| R | Ultimate |
 | Shift | Dash |
-| Space | Jump |
+| Space | Jump; hold it in the air to glide |
 | F (hold) | Catch a dazed wild kin, revive a teammate, open a chest |
 | 1 | Tonic |
 | Tab | Scoreboard |
-| Esc | Pause |
+| Esc | Menu: settings, controls, save files |
+| F1 or ` | Admin tools (god mode, gems, unlocks) for the game's owner |
 
-On the farm: WASD to walk, F to use whatever is in front of you, Esc for settings.
+Every key can be rebound in Settings > Controls. On the farm: WASD to walk, Space to jump, F to use whatever is in front of you, Esc for the menu.
+
+Touch the side of an island while you're falling (or gliding) and you float back up onto it. Walk into a step a few terraces high and you climb it.
 
 ## How a run works
 
-- **Farm.** Plant seeds, harvest crops (they grow one stage per match), cook tonics or a treat for your partner, buy seeds and plots, and spend time with your kin. Talking, petting and feeding raise trust.
-- **Expedition.** Pick a class (Light, Medium, Heavy), a tier (Meadow, Dusk Isles, Hollow) and a mode. Every match is PvPvE: rival squads, monsters, wild kin, chests. Exits open partway through; stand in one for 3 seconds to leave with everything you carry. If you go down for good, you lose it all. At 6:00 the islands fall.
+- **Farm.** Plant seeds and water them (F): a watered plant grows a stage every 90 seconds while you're home, and every expedition grows everything a stage too. Rain waters for you, and one kin can be your farmhand. A plant watered every stage gives a bigger harvest and a seed back. Crops become tonics, treats, snacks, a level for your partner (Starfruit), or gems at the stall.
+- **Training area.** From the expedition menu: a safe island with target dummies and a checklist for every button.
+- **Expedition.** Pick a class (Light, Medium, Heavy), a tier (Meadow, Dusk Isles, Hollow) and a mode. Every match is PvPvE: rival squads, monsters, wild kin, chests. Exits open partway through; stand in one for 3 seconds to leave with everything you carry. You have lives (3 in the Meadow, 2 in the Dusk Isles, 1 in the Hollow): losing one drops some of your gems and glides you back in somewhere quiet. Lose the last and everything you carry is gone. You heal on your own after a few seconds out of the fight. At 6:00 the islands fall.
 - **The Hollow.** If you fall there and your partner's trust is below 80, it stays behind.
 
 ## The kin's mind

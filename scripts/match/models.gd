@@ -459,6 +459,9 @@ static func plot() -> Node3D:
 	part(root, box(1.7, 0.2, 1.7), soil, Vector3(0, 0.1, 0))
 	for i in 3:
 		part(root, box(1.5, 0.05, 0.14), dark, Vector3(0, 0.21, -0.5 + i * 0.5))
+	# watered soil: darker and a little shiny
+	var wet := part(root, box(1.66, 0.02, 1.66), toon(Color("3a2618"), false, 0.25), Vector3(0, 0.205, 0), Vector3.ONE, Vector3.ZERO, "Wet")
+	wet.visible = false
 	var crop := Node3D.new(); crop.name = "Crop"; root.add_child(crop)
 	return root
 

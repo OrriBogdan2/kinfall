@@ -17,6 +17,11 @@ var hint: Label
 var player: Node3D
 var ppos := Vector3.ZERO
 var pvel := Vector3.ZERO
+var py := 0.0               # height of a jump
+var farm_t := 0.0
+var pvy := 0.0
+const JUMP_V := 8.5
+const GRAV := 26.0
 var pface := 0.0
 var walk_ph := 0.0
 var kins: Array = []           # {rec, node, pos, vel, goal, t, emote, emote_t, hop}
@@ -30,6 +35,7 @@ var chat_box: VBoxContainer
 var chat_scroll: ScrollContainer
 var chat_input: LineEdit
 var chat_busy := false
+var chat_offline_noted := false
 var emote_labels: Array = []
 var pet_done := {}
 
@@ -174,12 +180,24 @@ func _ready() -> void:
 		if a == "--home-noon": day_t = 0.5
 		if a == "--home-rain":
 			raining = true; rain_k = 1.0; rain.emitting = true; weather_t = 999.0
+		if a == "--farm-test":
+			# test: a farm in every state, with a farmhand on duty
+			Save.d["plot_cap"] = 8
+			_build_plots()
+			var ks: Array = Data.CROPS.keys()
+			for i in 8:
+				Save.d["plots"][i] = {"crop": ks[i % ks.size()], "stage": i % 3, "care": 0, "wt": (Time.get_unix_time_from_system() - 85.0) if i % 2 == 0 else 0.0}
+				_refresh_plot("plots", i)
+			Save.active_kin()["farmhand"] = true
 		if a.begins_with("--open="):
 			var which := a.substr(7)
 			get_tree().create_timer(0.2).timeout.connect(func():
 				if which == "loadout": _open_loadout()
 				elif which == "expedition": _open_expedition()
-				elif which == "kin": _open_kin(Save.active_kin()))
+				elif which == "kin": _open_kin(Save.active_kin())
+				elif which == "shop": _open_shop()
+				elif which == "kitchen": _open_kitchen()
+				elif which == "plot": _open_plot("plots", 0))
 		if a.begins_with("--home-at="):
 			var xy := a.substr(10).split(",")
 			ppos = Vector3(float(xy[0]), 0, float(xy[1])); player.position = ppos; cam.snap(ppos)
@@ -424,6 +442,7 @@ func _refresh_plot(arr: String, i: int) -> void:
 	for ch in holder.get_children():
 		ch.queue_free()
 	var d: Dictionary = _d()[arr][i]
+	(p.get_node("Wet") as Node3D).visible = d["crop"] != "" and float(d.get("wt", 0.0)) > 0.0
 	if d["crop"] != "":
 		var cd: Dictionary = Data.CROPS[d["crop"]]
 		holder.add_child(Models.crop(int(d["stage"]), int(cd["grow"]), cd["color"]))
@@ -511,38 +530,68 @@ func _update_sky(d: float) -> void:
 
 func _process(delta: float) -> void:
 	var d := minf(delta, 0.05)
+	farm_t -= delta
+	if farm_t <= 0.0:
+		farm_t = 1.0
+		_farm_tick()
 	_update_sky(d)
 	_move_player(d)
 	_move_kin(d)
 	cam.follow(ppos, d, panel_open == "")
 	_find_interact()
-	if panel_open == "" and not building_now and Input.is_action_just_pressed("interact") and not interact.is_empty():
+	if panel_open == "" and not building_now and not Overlay.is_open() and Input.is_action_just_pressed("interact") and not interact.is_empty():
 		_use(interact)
 
 func _move_player(d: float) -> void:
 	var mv := Vector2.ZERO
-	if panel_open == "":
+	if panel_open == "" and not Overlay.is_open():
 		mv = Vector2(Input.get_axis("left", "right"), Input.get_axis("up", "down"))
 		if mv.length() > 1.0: mv = mv.normalized()
 	var hv := Vector2(pvel.x, pvel.z)
-	hv += (mv * SPEED - hv) * (1.0 - exp(-14.0 * d))
+	var air := py > 0.001 or pvy > 0.0
+	hv += (mv * SPEED - hv) * (1.0 - exp(-(14.0 if not air else 6.0) * d))
+	# the island edge is an invisible wall: walking and jumping both stop at it
 	var nx := ppos.x + hv.x * d
 	if world.occupy(nx, ppos.z, 0.38, 0.0, true) == 0.0: ppos.x = nx
+	else: hv.x = 0.0
 	var nz := ppos.z + hv.y * d
 	if world.occupy(ppos.x, nz, 0.38, 0.0, true) == 0.0: ppos.z = nz
+	else: hv.y = 0.0
 	pvel = Vector3(hv.x, 0, hv.y)
-	player.position = ppos
-	if hv.length() > 0.3:
-		pface = lerp_angle(pface, atan2(-hv.x, -hv.y), minf(1.0, d * 14.0))
+	# jumping, just for fun
+	if panel_open == "" and not Overlay.is_open() and not air and Input.is_action_just_pressed("jump"):
+		pvy = JUMP_V
+		Sfx.play("jump", null, -12.0)
+	if air or pvy > 0.0:
+		pvy -= GRAV * d
+		py += pvy * d
+		if py <= 0.0:
+			py = 0.0
+			pvy = 0.0
+			Sfx.step(null, -16.0)
+	player.position = ppos + Vector3(0, py, 0)
+	# face the mouse; with the mouse outside the window, face where you're walking
+	var vp := get_viewport()
+	var mp := vp.get_mouse_position()
+	var aim_ok := panel_open == "" and Rect2(Vector2.ZERO, vp.get_visible_rect().size).has_point(mp)
+	var want := pface
+	if aim_ok:
+		var aim := cam.mouse_on_plane(0.9)
+		var ad := Vector2(aim.x - ppos.x, aim.z - ppos.z)
+		if ad.length() > 0.4: want = atan2(-ad.x, -ad.y)
+	elif hv.length() > 0.3:
+		want = atan2(-hv.x, -hv.y)
+	pface = lerp_angle(pface, want, minf(1.0, d * 14.0))
 	player.rotation.y = pface
 	var ph0 := walk_ph
-	walk_ph += d * hv.length() * 2.2
+	walk_ph += d * hv.length() * 2.2 * (0.0 if py > 0.0 else 1.0)
 	if hv.length() > 1.0 and int(walk_ph / PI) != int(ph0 / PI):
 		Sfx.step(null, -20.0)
 	var legs: Node3D = player.get_node("Rig/Legs")
 	var sw := sin(walk_ph) * clampf(hv.length() / 4.0, 0.0, 1.0) * 0.6
-	legs.get_node("LegL").rotation.x = sw
-	legs.get_node("LegR").rotation.x = -sw
+	if py > 0.0: sw = 0.0
+	legs.get_node("LegL").rotation.x = sw if py <= 0.0 else -0.5
+	legs.get_node("LegR").rotation.x = -sw if py <= 0.0 else 0.3
 	player.get_node("Rig/Torso").position.y = 0.42 + absf(sin(walk_ph)) * 0.04 * clampf(hv.length() / 4.0, 0.0, 1.0)
 
 func _move_kin(d: float) -> void:
@@ -568,7 +617,27 @@ func _move_kin(d: float) -> void:
 					if not other.get("busy", false) and randf() < 0.7:
 						other["chase"] = k; other["chase_t"] = 4.0
 				k["goal"] = world.random_ground(maxi(here, 0))
-		if k["t"] <= 0.0 and not k.has("chase"):
+		if k.has("task"):
+			var tk: Array = k["task"]
+			var tpos: Vector3 = _plot_node(tk[0], tk[1]).position
+			k["goal"] = tpos + Vector3(0, 0, 1.0)
+			k["task_t"] = float(k.get("task_t", 15.0)) - d
+			if k["task_t"] <= 0.0:
+				k.erase("task")      # couldn't get there; try again later
+			elif Vector2(tpos.x - pos.x, tpos.z + 1.0 - pos.z).length() < 0.6:
+				k.erase("task")
+				var pd: Dictionary = Save.d[tk[0]][tk[1]]
+				if pd["crop"] != "" and float(pd.get("wt", 0.0)) <= 0.0:
+					_water(tk[0], tk[1])
+					_emote(k, "♪")
+					rec["trust"] = minf(100.0, float(rec["trust"]) + 0.2)
+				k["t"] = randf_range(1.0, 2.0)
+		elif k["t"] <= 0.0 and rec.get("farmhand", false) and visit.is_empty() and (k["farm_t"] if k.has("farm_t") else 0.0) <= 0.0 and _dry_plot() != []:
+			k["task"] = _dry_plot()
+			k["task_t"] = 15.0
+			k["farm_t"] = 6.0
+		if k.has("farm_t"): k["farm_t"] = float(k["farm_t"]) - d
+		if k["t"] <= 0.0 and not k.has("chase") and not k.has("task"):
 			k["t"] = randf_range(2.0, 5.0)
 			var night := sin((day_t - 0.25) * TAU) < -0.2
 			var friends: Array = kins.filter(func(o): return o != k and not o.get("busy", false) and world.island_of(o["pos"].x, o["pos"].z) == here)
@@ -673,9 +742,8 @@ func _label_for(it: Dictionary) -> String:
 			if d["crop"] == "": return "Plant something"
 			var cd: Dictionary = Data.CROPS[d["crop"]]
 			if int(d["stage"]) >= int(cd["grow"]): return "Harvest the %s" % cd["name"]
-			var left := int(cd["grow"]) - int(d["stage"])
-			if it["arr"] == "gh_plots": left = int(ceil(left / 2.0))
-			return "%s: ready in %d more match%s" % [cd["name"], left, "" if left == 1 else "es"]
+			if float(d.get("wt", 0.0)) <= 0.0: return "Water the %s" % cd["name"]
+			return "%s: watered, growing (%s)" % [cd["name"], _grow_left(it["arr"], d)]
 		"pot": return "Cook"
 		"stall": return "Shop"
 		"portal": return "Start an expedition"
@@ -710,11 +778,11 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and panel_open == "":
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP: cam.zoom_to = clampf(cam.zoom_to - 0.08, 0.55, 1.6)
 		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: cam.zoom_to = clampf(cam.zoom_to + 0.08, 0.55, 1.6)
-	if event.is_action_pressed("menu"):
+	if event.is_action_pressed("menu") and not Overlay.is_open():
 		if panel_open != "":
 			_close_panel()
 		else:
-			_open_settings()
+			Overlay.open_pause("home")
 
 # ------------------------------------------------------------------ ui
 func _build_ui() -> void:
@@ -737,7 +805,7 @@ func _build_ui() -> void:
 	prompt_box.add_child(prompt_lbl)
 	root_ui.add_child(prompt_box)
 	var hint_box := UI.card(Color(0.06, 0.07, 0.1, 0.7), 8, 10)
-	hint = UI.label("WASD walk   ·   F use what's in front of you   ·   Scroll to zoom   ·   Esc settings", 14, UI.INK)
+	hint = UI.label("WASD walk   ·   Space jump   ·   F use what's in front of you   ·   Scroll to zoom   ·   Esc menu", 14, UI.INK)
 	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hint_box.add_child(hint)
 	hint_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -769,17 +837,9 @@ func _treat_name(t: String) -> String:
 func _new_panel(title_txt: String, width := 520.0) -> VBoxContainer:
 	var prev := panel_open
 	_close_panel()
-	var p := PanelContainer.new()
-	p.custom_minimum_size = Vector2(width, 0)
-	p.mouse_filter = Control.MOUSE_FILTER_STOP
-	var v := UI.vbox(12)
-	p.add_child(v)
-	var head := UI.hbox(8)
-	var t := UI.title(title_txt, 30)
-	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(t)
-	head.add_child(UI.button("Close", _close_panel))
-	v.add_child(head)
+	var pb := UI.scroll_panel(title_txt, width, _close_panel)
+	var p: PanelContainer = pb[0]
+	var v: VBoxContainer = pb[1]
 	panel_host.add_child(p)
 	panel_open = title_txt
 	if prev != title_txt:
@@ -808,25 +868,93 @@ func _open_welcome() -> void:
 		_close_panel(), 200))
 
 # ---- farm
+## How long until the next stage, for a watered plant.
+func _grow_left(arr: String, d: Dictionary) -> String:
+	var need := Data.WATER_TIME * (0.5 if arr == "gh_plots" else 1.0)
+	var left := int(ceil(need - (Time.get_unix_time_from_system() - float(d.get("wt", 0.0)))))
+	return "%ds" % maxi(1, left)
+
+## Watered plants grow while you're home; rain and a farmhand kin water for you.
+func _farm_tick() -> void:
+	if not visit.is_empty():
+		return
+	var now := Time.get_unix_time_from_system()
+	for arr in ["plots", "gh_plots"]:
+		var nodes: Array = plots if arr == "plots" else gh_plots
+		for i in mini(nodes.size(), Save.d[arr].size()):
+			var d: Dictionary = Save.d[arr][i]
+			if d["crop"] == "":
+				continue
+			var cd: Dictionary = Data.CROPS[d["crop"]]
+			if int(d["stage"]) >= int(cd["grow"]):
+				continue
+			var wt := float(d.get("wt", 0.0))
+			if wt <= 0.0 and raining:
+				_water(arr, i, false)
+				continue
+			if wt > 0.0 and now - wt >= Data.WATER_TIME * (0.5 if arr == "gh_plots" else 1.0):
+				d["stage"] = int(d["stage"]) + 1
+				d["care"] = int(d.get("care", 0)) + 1
+				d["wt"] = 0.0
+				var pn: Node3D = nodes[i]
+				fx.burst(pn.position + Vector3(0, 0.5, 0), Color("8fd16a"), 8, 1.6)
+				_refresh_plot(arr, i)
+				if int(d["stage"]) >= int(cd["grow"]):
+					_toast("%s is ready to harvest" % cd["name"])
+				Save.save_game()
+
+## The first planted, unwatered plant the farmhand can reach.
+func _dry_plot() -> Array:
+	for arr in ["plots", "gh_plots"]:
+		var nodes: Array = plots if arr == "plots" else gh_plots
+		for i in mini(nodes.size(), Save.d[arr].size()):
+			var d: Dictionary = Save.d[arr][i]
+			if d["crop"] != "" and float(d.get("wt", 0.0)) <= 0.0 and int(d["stage"]) < int(Data.CROPS[d["crop"]]["grow"]):
+				if arr == "plots" or _isle_open("orchard"):
+					return [arr, i]
+	return []
+
+func _water(arr: String, i: int, by_hand := true) -> void:
+	var d: Dictionary = Save.d[arr][i]
+	d["wt"] = Time.get_unix_time_from_system()
+	var pn: Node3D = _plot_node(arr, i)
+	if by_hand:
+		Sfx.play("plant", null, -6.0, 0.1, 1.4)
+		fx.burst(pn.position + Vector3(0, 0.8, 0), Color("7ac8ff"), 14, 2.0)
+	_refresh_plot(arr, i)
+	Save.save_game()
+
 func _open_plot(arr: String, i: int) -> void:
 	var d: Dictionary = Save.d[arr][i]
 	var pn: Node3D = _plot_node(arr, i)
 	if d["crop"] != "":
 		var cd: Dictionary = Data.CROPS[d["crop"]]
-		if int(d["stage"]) >= int(cd["grow"]):
-			Save.d["crops"][d["crop"]] = int(Save.d["crops"].get(d["crop"], 0)) + 2
-			fx.burst(pn.position + Vector3(0, 0.6, 0), cd["color"], 18, 3.0)
+		var grow := int(cd["grow"])
+		if int(d["stage"]) >= grow:
+			# a tended plant gives more, and a fully tended one gives a seed back
+			var care := int(d.get("care", 0))
+			var n := 2 + (1 if care * 2 >= grow else 0)
+			Save.d["crops"][d["crop"]] = int(Save.d["crops"].get(d["crop"], 0)) + n
+			var extra := ""
+			if care >= grow:
+				Save.add_seed(d["crop"], 1)
+				extra = " and a seed"
+			fx.burst(pn.position + Vector3(0, 0.6, 0), cd["color"], 18 + n * 4, 3.0)
 			Sfx.play("harvest")
-			d["crop"] = ""; d["stage"] = 0
+			_toast("%d %s%s%s" % [n, cd["name"], "" if n == 1 else "s", extra])
+			d["crop"] = ""; d["stage"] = 0; d["care"] = 0; d["wt"] = 0.0
 			_refresh_plot(arr, i)
 			Save.save_game()
 			_refresh_top()
 			return
+		if float(d.get("wt", 0.0)) <= 0.0:
+			_water(arr, i)
+			return
 		var v := _new_panel(cd["name"], 440)
-		var left := int(cd["grow"]) - int(d["stage"])
-		if arr == "gh_plots": left = int(ceil(left / 2.0))
-		v.add_child(UI.label("Growing. Ready in %d more match%s." % [left, "" if left == 1 else "es"], 16))
-		v.add_child(UI.label(cd["desc"], 15, UI.MUTED))
+		v.add_child(UI.label("Watered. It grows a stage in %s while you're home, or after your next expedition." % _grow_left(arr, d), 16))
+		v.add_child(UI.label("Stage %d of %d. Tended %d time%s: %s" % [int(d["stage"]), grow, int(d.get("care", 0)), "" if int(d.get("care", 0)) == 1 else "s",
+			"water it every stage for a bigger harvest and a seed back." if int(d.get("care", 0)) < grow else "it'll be a big harvest."], 14, UI.MUTED))
+		v.add_child(UI.label(cd["desc"], 14, UI.MUTED))
 		return
 	var v := _new_panel("Plant a seed", 480)
 	var any := false
@@ -838,12 +966,12 @@ func _open_plot(arr: String, i: int) -> void:
 		var info := UI.vbox(2)
 		info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		info.add_child(UI.label("%s  ×%d" % [Data.CROPS[s]["name"], n], 17, Data.CROPS[s]["color"]))
-		info.add_child(UI.label("Grows in %d match%s. %s" % [Data.CROPS[s]["grow"], "" if Data.CROPS[s]["grow"] == 1 else "es", Data.CROPS[s]["desc"]], 13, UI.MUTED))
+		info.add_child(UI.label("%d stages. %s" % [Data.CROPS[s]["grow"], Data.CROPS[s]["desc"]], 13, UI.MUTED))
 		row.add_child(info)
 		var sk: String = s
 		row.add_child(UI.button("Plant", func():
 			Save.d["seeds"][sk] = int(Save.d["seeds"][sk]) - 1
-			d["crop"] = sk; d["stage"] = 0
+			d["crop"] = sk; d["stage"] = 0; d["care"] = 0; d["wt"] = 0.0
 			Sfx.play("plant")
 			fx.dust(pn.position, 10)
 			_refresh_plot(arr, i)
@@ -852,6 +980,7 @@ func _open_plot(arr: String, i: int) -> void:
 		v.add_child(row)
 	if not any:
 		v.add_child(UI.label("You have no seeds. Find them in chests and from monsters on expeditions, or buy some at the stall.", 16, UI.MUTED))
+	v.add_child(UI.label("Water a plant (F) and it grows a stage every %d seconds while you're home. Expeditions grow everything a stage too. Rain waters for you." % int(Data.WATER_TIME), 13, UI.MUTED))
 
 func _open_kitchen() -> void:
 	var v := _new_panel("Cooking pot", 520)
@@ -868,13 +997,26 @@ func _open_kitchen() -> void:
 		info.add_child(UI.label(cd["desc"], 13, UI.MUTED))
 		row.add_child(info)
 		var sk: String = s
-		var label_txt := "Brew 2 tonics" if cd["use"] == "tonic" else "Make the treat"
+		var label_txt: String = {"tonic": "Brew 2 tonics", "snack": "Feed a snack", "levelup": "Feed it"}.get(cd["use"], "Make the treat")
 		row.add_child(UI.button(label_txt, func():
+			var ak := Save.active_kin()
+			if (cd["use"] == "snack" or cd["use"] == "levelup") and ak.is_empty():
+				_toast("You need a partner kin for that")
+				return
 			Save.d["crops"][sk] = int(Save.d["crops"][sk]) - 1
-			if cd["use"] == "tonic":
-				Save.add_item("tonic", 2)
-			else:
-				Save.d["treat"] = cd["use"]
+			match String(cd["use"]):
+				"tonic": Save.add_item("tonic", 2)
+				"snack":
+					Save.remember(ak, "fed", "got a %s snack from you" % cd["name"], 4.0)
+					_toast("%s loved the snack" % ak["name"])
+				"levelup":
+					ak["level"] = int(ak["level"]) + 1
+					var out := {}
+					Game._evolve(ak, out)
+					Save.remember(ak, "fed", "ate a Starfruit and grew stronger", 2.0)
+					_toast("%s is now level %d" % [ak["name"], int(ak["level"])])
+					_play_evolutions()
+				_: Save.d["treat"] = cd["use"]
 			Sfx.play("heal")
 			fx.burst(spots["pot"] + Vector3(0, 1.0, 0), cd["color"], 20, 3.0)
 			Save.save_game()
@@ -893,6 +1035,27 @@ func _open_shop() -> void:
 		var sk: String = s
 		_shop_row(v, "%s seed" % cd["name"], cd["desc"], int(cd["price"]), func(): Save.add_seed(sk, 1))
 	_shop_row(v, "Tonic", "Heals 45 in a match (key 1).", 30, func(): Save.add_item("tonic", 1))
+	var sell_any := false
+	for s in Data.CROPS:
+		var n := int(Save.d["crops"].get(s, 0))
+		if n <= 0: continue
+		if not sell_any:
+			v.add_child(UI.section("Sell your harvest"))
+			sell_any = true
+		var sk: String = s
+		var gain := int(Data.CROPS[s]["price"])
+		var row := UI.hbox(10)
+		var l := UI.label("%s  ×%d" % [Data.CROPS[s]["name"], n], 16, Data.CROPS[s]["color"]); l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+		row.add_child(UI.button("Sell 1 for %d" % gain, func():
+			if int(Save.d["crops"].get(sk, 0)) <= 0: return
+			Save.d["crops"][sk] = int(Save.d["crops"][sk]) - 1
+			Save.d["gems"] = int(Save.d["gems"]) + gain
+			Sfx.play("pickup")
+			Save.save_game()
+			_refresh_top()
+			_open_shop(), 140))
+		v.add_child(row)
 	if int(Save.d["plot_cap"]) < 8:
 		_shop_row(v, "Two more plots", "Grow more at once.", 120 + 80 * (int(Save.d["plot_cap"]) - 4), func():
 			Save.d["plot_cap"] = int(Save.d["plot_cap"]) + 2
@@ -972,7 +1135,7 @@ func _open_kin(rec: Dictionary) -> void:
 	v.add_child(grow)
 	var mem: Array = rec.get("memory", [])
 	if mem.size() > 0:
-		v.add_child(UI.label("Remembers", 13, UI.MUTED))
+		v.add_child(UI.section("Remembers"))
 		for i in range(maxi(0, mem.size() - 4), mem.size()):
 			v.add_child(UI.label("· " + String(mem[i]["text"]), 14, UI.INK))
 	var btns := UI.hbox(8)
@@ -1006,6 +1169,20 @@ func _open_kin(rec: Dictionary) -> void:
 			_open_kin(rec)))
 	else:
 		btns.add_child(UI.label("  Your partner", 15, UI.GOLD))
+	# one kin can look after the farm: it waters dry plants while you're home
+	if rec.get("farmhand", false):
+		btns.add_child(UI.button("Stop farming", func():
+			rec.erase("farmhand")
+			Save.save_game()
+			_open_kin(rec)))
+	else:
+		btns.add_child(UI.button("Make farmhand", func():
+			for r2 in Save.d["roster"]: r2.erase("farmhand")
+			rec["farmhand"] = true
+			Save.remember(rec, "farm", "was put in charge of watering the farm", 1.0)
+			Save.save_game()
+			_toast("%s will water your plants" % rec["name"])
+			_open_kin(rec)))
 	v.add_child(btns)
 
 func _open_chat(rec: Dictionary) -> void:
@@ -1032,8 +1209,6 @@ func _open_chat(rec: Dictionary) -> void:
 	row.add_child(chat_input)
 	row.add_child(UI.button("Send", _send_chat))
 	v.add_child(row)
-	if not Bridge.has_page():
-		v.add_child(UI.label("Conversations need the web version of the game, where your kin talk through Claude. Here they answer with a few stock lines.", 13, UI.MUTED))
 	chat_input.grab_focus()
 
 func _greeting(rec: Dictionary) -> String:
@@ -1067,16 +1242,17 @@ func _send_chat() -> void:
 	chat_log.append({"role": "user", "content": txt})
 	_chat_bubble("user", txt)
 	var rec := chat_kin
-	if not Bridge.has_page():
-		var reply := _stock_reply(rec)
-		chat_log.append({"role": "assistant", "content": reply})
-		_chat_bubble("assistant", reply)
-		return
 	chat_busy = true
-	var thinking := UI.label("%s is thinking..." % rec["name"], 13, UI.MUTED)
-	chat_box.add_child(thinking)
+	var typing := UI.label("%s is typing" % rec["name"], 13, UI.MUTED)
+	chat_box.add_child(typing)
+	var dots := create_tween().set_loops()
+	for i in 4:
+		var n := i
+		dots.tween_callback(func(): if is_instance_valid(typing): typing.text = "%s is typing%s" % [rec["name"], ".".repeat(n)])
+		dots.tween_interval(0.35)
+	var t0 := Time.get_ticks_msec() / 1000.0
 	var msgs := []
-	var brief := Bridge.kin_brief(rec) + "\n\nYou are chatting with your hunter at home on the farm. Stay in character, answer in one to three short sentences, plain text, no emoji, no stage directions. " + \
+	var brief := Bridge.kin_brief(rec) + "\n\nYou are chatting with your hunter at home on the farm. Stay in character and answer what they actually said, in one to three short sentences, plain text, no emoji, no stage directions. " + \
 		"If they apologise or are kind, you can warm up a little. If they ask you to do something in a match, you can agree or set conditions based on your trust."
 	var turns: Array = chat_log.slice(1)
 	turns = turns.slice(maxi(0, turns.size() - 10))
@@ -1089,13 +1265,25 @@ func _send_chat() -> void:
 	if msgs.size() > 0 and msgs[0]["role"] != "user":
 		msgs.push_front({"role": "user", "content": brief + "\n\n(The hunter walks up to you.)"})
 	Bridge.ask(msgs, func(reply: String):
+		var offline := reply.strip_edges() == ""
+		if offline:
+			reply = KinBrain.reply(rec, txt)
+		# a kin takes a moment to answer: at least 2 seconds, longer for longer replies
+		var want := clampf(2.0 + reply.length() * 0.03, 2.0, 6.0)
+		var wait := want - (Time.get_ticks_msec() / 1000.0 - t0)
+		if wait > 0.0:
+			await get_tree().create_timer(wait).timeout
+		if not is_inside_tree():
+			return
 		chat_busy = false
-		if is_instance_valid(thinking): thinking.queue_free()
-		if reply == "":
-			reply = _stock_reply(rec)
+		dots.kill()
+		if is_instance_valid(typing): typing.queue_free()
 		chat_log.append({"role": "assistant", "content": reply})
 		if is_instance_valid(chat_box):
 			_chat_bubble("assistant", reply)
+			if offline and not chat_offline_noted:
+				chat_offline_noted = true
+				chat_box.add_child(UI.label(_offline_reason(), 12, UI.MUTED))
 		# talking builds a little trust, once per match
 		if int(rec.get("talked", -1)) != int(Save.d["matches"]):
 			rec["talked"] = int(Save.d["matches"])
@@ -1104,20 +1292,12 @@ func _send_chat() -> void:
 			if Bridge.ai_ok and rec["uid"] == Save.d.get("active", "") and not rec.has("lines"):
 				Bridge.refresh_lines(rec), "default")
 
-func _stock_reply(rec: Dictionary) -> String:
-	var t := float(rec["trust"])
-	var dom := "bravery"; var best := 0.0
-	for k in rec["traits"]:
-		if float(rec["traits"][k]) > best: best = float(rec["traits"][k]); dom = k
-	var pool := {
-		"bravery": ["When do we go back out? I'm ready.", "Next time, throw me at the big one."],
-		"loyalty": ["As long as we stick together, I'm happy.", "Did you eat? You should eat."],
-		"temper": ["Hmph. Fine. What?", "I'm still annoyed about last time."],
-		"curiosity": ["I found a weird bug by the plots!", "What's past the clouds, do you think?"],
-	}
-	if t < 30.0:
-		return ["I don't really want to talk.", "Maybe stop throwing me into everything first."].pick_random()
-	return pool[dom].pick_random()
+func _offline_reason() -> String:
+	match Bridge.last_err:
+		"no_page": return "(%s is answering on their own here. In the web version they talk through Claude.)" % chat_kin.get("name", "Your kin")
+		"not_granted": return "(Claude isn't allowed on this page yet, so %s is answering on their own. Allow it from the page's permissions to have real conversations.)" % chat_kin.get("name", "Your kin")
+		"rate_limited": return "(Claude is busy for a moment, so %s answered on their own.)" % chat_kin.get("name", "Your kin")
+	return "(Couldn't reach Claude, so %s answered on their own.)" % chat_kin.get("name", "Your kin")
 
 # ---- expedition
 var exp_cls := ""
@@ -1160,17 +1340,17 @@ func _open_expedition() -> void:
 			v.add_child(UI.label("%s doesn't trust you much yet and may refuse risky throws. Spend time with it, or feed it a Mindmint treat." % ak["name"], 13, UI.BAD))
 	if Save.d.get("treat", "") != "":
 		v.add_child(UI.label("Treat: " + _treat_name(Save.d["treat"]), 14, UI.GOLD))
-	v.add_child(UI.label("Where", 13, UI.MUTED))
+	v.add_child(UI.section("Where"))
 	var tiers := UI.hbox(8)
 	var ex := int(Save.d.get("extracts", 0))
 	for i in Data.TIERS.size():
 		var td: Dictionary = Data.TIERS[i]
 		var locked := ex < int(td["unlock"])
 		var ti := i
-		var label_t: String = td["name"] + ("  ✓" if exp_tier == i else "")
+		var label_t: String = td["name"]
 		if locked:
 			label_t = "%s (make it out %d more time%s)" % [td["name"], int(td["unlock"]) - ex, "" if int(td["unlock"]) - ex == 1 else "s"]
-		var b := UI.button(label_t, func(): exp_tier = ti; _open_expedition())
+		var b := UI.choice(label_t, exp_tier == i and not locked, func(): exp_tier = ti; _open_expedition())
 		b.disabled = locked
 		tiers.add_child(b)
 	v.add_child(tiers)
@@ -1179,18 +1359,25 @@ func _open_expedition() -> void:
 	if tsel["risk_kin"] and not ak.is_empty():
 		var safe := float(ak["trust"]) >= 80.0
 		v.add_child(UI.label(("%s trusts you enough to find its way home if you fall." if safe else "%s's trust is %d. Below 80, it won't come home if you fall here.") % ([ak["name"]] if safe else [ak["name"], int(ak["trust"])]), 14, UI.GOOD if safe else UI.BAD))
-	v.add_child(UI.label("Match", 13, UI.MUTED))
+	v.add_child(UI.section("Match"))
 	var modes := UI.hbox(8)
 	for m in [["solo", "Solo · 4 squads"], ["duo", "Duos with a bot · 3 squads"], ["big", "Solo · 6 squads"]]:
 		var mk: String = m[0]
-		var b := UI.button(m[1] + ("  ✓" if exp_mode == mk else ""), func(): exp_mode = mk; _open_expedition())
+		var b := UI.choice(m[1], exp_mode == mk, func(): exp_mode = mk; _open_expedition())
 		modes.add_child(b)
 	v.add_child(modes)
 	var go := UI.hbox(10)
-	go.add_child(UI.button("Start expedition", _start_match, 220))
+	go.add_child(UI.primary("Start expedition", _start_match, 220))
+	go.add_child(UI.button("Training area", _start_training, 180))
 	if Bridge.net_available():
 		go.add_child(UI.button("Play online with friends", func(): Game.goto("lobby", {"cls": Data.HEROES[_hero()]["cls"], "tier": exp_tier}), 240))
 	v.add_child(go)
+
+## A safe island to learn every button: nothing can hurt you and nothing you do there counts.
+func _start_training() -> void:
+	Save.d["cls"] = Data.HEROES[_hero()]["cls"]
+	Save.save_game()
+	Game.start_match({"training": true, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242})
 
 func _start_match() -> void:
 	Save.d["cls"] = Data.HEROES[_hero()]["cls"]
@@ -1409,7 +1596,7 @@ func _open_hall() -> void:
 		grid.add_child(UI.label(row[0], 16, UI.MUTED))
 		grid.add_child(UI.label(str(row[1]), 18, UI.GOLD, UI.big))
 	v.add_child(grid)
-	v.add_child(UI.label("Your kin", 13, UI.MUTED))
+	v.add_child(UI.section("Your kin"))
 	var kr := HFlowContainer.new()
 	kr.add_theme_constant_override("h_separation", 8)
 	for rec in Save.d["roster"]:
@@ -1443,8 +1630,7 @@ func _open_loadout() -> void:
 				_refresh_player_model()
 				_open_loadout())
 			if hid == hero:
-				b.add_theme_color_override("font_color", hh["color"])
-				b.text = "▶ " + b.text
+				b.theme_type_variation = "Chosen"
 			col.add_child(b)
 		cols.add_child(col)
 	v.add_child(cols)
@@ -1455,13 +1641,13 @@ func _open_loadout() -> void:
 	dv.add_child(UI.label("E  %s: %s" % [Data.ABIL[hd["e"]]["name"], Data.ABIL[hd["e"]]["desc"]], 14))
 	dv.add_child(UI.label("R  %s: %s" % [Data.ABIL[hd["r"]]["name"], Data.ABIL[hd["r"]]["desc"]], 14, UI.GOLD))
 	v.add_child(det)
-	v.add_child(UI.label("Weapon", 13, UI.MUTED))
+	v.add_child(UI.section("Weapon"))
 	var wr := UI.hbox(8)
 	var cur_w: String = Save.d.get("weapon", hd["weapon"])
 	for w in Data.CLASSES[hd["cls"]]["weapons"]:
 		var wd: Dictionary = Data.WEAPONS[w]
 		var wk: String = w
-		var wb := UI.button(("▶ " if w == cur_w else "") + String(wd["name"]), func():
+		var wb := UI.choice(String(wd["name"]), w == cur_w, func():
 			Save.d["weapon"] = wk
 			Save.save_game()
 			_refresh_player_model()
@@ -1469,14 +1655,14 @@ func _open_loadout() -> void:
 		wb.tooltip_text = "%d damage, %d per mag, range %d" % [int(wd["dmg"]), int(wd["mag"]), int(wd["range"])]
 		wr.add_child(wb)
 	v.add_child(wr)
-	v.add_child(UI.label("Perk", 13, UI.MUTED))
+	v.add_child(UI.section("Perk"))
 	var pr := HFlowContainer.new()
 	pr.add_theme_constant_override("h_separation", 8); pr.add_theme_constant_override("v_separation", 8)
 	var cur_p: String = Save.d.get("perk", "")
 	for pkey in Data.PERKS:
 		var pd: Dictionary = Data.PERKS[pkey]
 		var pk: String = pkey
-		var pb := UI.button(("▶ " if pkey == cur_p else "") + String(pd["name"]), func():
+		var pb := UI.choice(String(pd["name"]), pkey == cur_p, func():
 			Save.d["perk"] = pk
 			Save.save_game()
 			_open_loadout())
@@ -1660,34 +1846,6 @@ func _open_house() -> void:
 
 # ---- settings
 func _open_settings() -> void:
-	var v := _new_panel("Settings", 480)
-	var st: Dictionary = Save.d["settings"]
-	var name_row := UI.hbox(8)
-	var nl := UI.label("Your name", 15)
-	nl.custom_minimum_size.x = 200
-	name_row.add_child(nl)
-	var ne := LineEdit.new(); ne.text = Save.d.get("name", "Hunter"); ne.size_flags_horizontal = Control.SIZE_EXPAND_FILL; ne.max_length = 16
-	ne.text_changed.connect(func(t): Save.d["name"] = t.strip_edges() if t.strip_edges() != "" else "Hunter")
-	name_row.add_child(ne)
-	v.add_child(name_row)
-	for s in [["volume", "Volume"], ["music", "Music"], ["shake", "Screen shake"], ["cam_lead", "Camera lean toward cursor"]]:
-		var r := UI.hbox(8)
-		var l := UI.label(s[1], 15); l.custom_minimum_size.x = 200
-		r.add_child(l)
-		var sl := HSlider.new(); sl.min_value = 0.0; sl.max_value = 1.0 if s[0] in ["volume", "music"] else 1.5; sl.step = 0.05
-		sl.value = float(st.get(s[0], 0.7 if s[0] == "music" else 1.0)); sl.custom_minimum_size.x = 200
-		var key: String = s[0]
-		sl.value_changed.connect(func(val):
-			st[key] = val
-			if key == "volume": Sfx.set_volume(val)
-			if key == "music": Sfx.set_music_volume(val))
-		r.add_child(sl)
-		v.add_child(r)
-	v.add_child(UI.label("In a match: WASD move · LMB fire · Shift dash · Space jump (hold to glide) · RMB throw or call back your kin · Q kin skill · E hero ability · R ultimate · F catch, revive, open · 1 tonic · Tab scores · Esc pause. Reloading is automatic.", 13, UI.MUTED))
-	var row := UI.hbox(8)
-	row.add_child(UI.button("Save", func(): Save.save_game(); _close_panel()))
-	row.add_child(UI.button("Main menu", func(): Save.save_game(); Game.goto("title")))
-	row.add_child(UI.button("Start over", func():
-		Save.reset()
-		Game.goto("hatch")))
-	v.add_child(row)
+	_close_panel()
+	Overlay.ctx = "home"
+	Overlay.open_settings()

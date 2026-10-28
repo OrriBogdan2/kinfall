@@ -13,7 +13,8 @@ func show_result(r: Dictionary) -> void:
 	var center := CenterContainer.new(); center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(center)
 	var panel := PanelContainer.new(); panel.custom_minimum_size = Vector2(560, 0); center.add_child(panel)
 	UI.pop_in(panel, 0.1)
-	var v := UI.vbox(12); panel.add_child(v)
+	var v := UI.vbox(12)
+	panel.add_child(UI.scroll_box(v, 70.0))
 	var won: bool = r.get("extracted", false)
 	v.add_child(UI.title("You made it out" if won else _lost_title(r.get("why", "")), 40, UI.TEAL if won else UI.BAD))
 	v.add_child(UI.label("Everything you carried is yours now." if won else "Everything you carried is lost in the islands.", 16, UI.MUTED))
@@ -29,7 +30,7 @@ func show_result(r: Dictionary) -> void:
 	v.add_child(stats)
 	if won:
 		var loot := UI.vbox(6)
-		loot.add_child(UI.label("Brought home", 13, UI.MUTED))
+		loot.add_child(UI.section("Brought home"))
 		loot.add_child(UI.label("%d gems" % s["gems"], 18, UI.GOLD))
 		for sd in s["seeds"]:
 			loot.add_child(UI.label("%d %s seeds" % [s["seeds"][sd], Data.CROPS[sd]["name"]], 16, Data.CROPS[sd]["color"]))
@@ -64,7 +65,7 @@ func show_result(r: Dictionary) -> void:
 	v.add_child(UI.spacer(6))
 	if r.get("tutorial", false):
 		v.add_child(UI.label("That's the basics. Now come see your home.", 16, UI.GOLD))
-	v.add_child(UI.button("Go home" if r.get("tutorial", false) else "Back to the farm", func(): Game.goto("home"), 240))
+	v.add_child(UI.primary("Go home" if r.get("tutorial", false) else "Back to the farm", func(): Game.goto("home"), 240))
 
 func _lost_title(why: String) -> String:
 	match why:

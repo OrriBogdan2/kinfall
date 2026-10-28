@@ -79,26 +79,47 @@ func _build_ui() -> void:
 	var root := Control.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root.theme = UI.theme()
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(root)
+	# a soft shade behind the menu so it reads over the scene
+	var shade := TextureRect.new()
+	var gt := GradientTexture2D.new()
+	var gr := Gradient.new()
+	gr.set_color(0, Color(0.03, 0.04, 0.08, 0.82)); gr.set_color(1, Color(0.03, 0.04, 0.08, 0.0))
+	gr.set_offset(0, 0.35); gr.set_offset(1, 1.0)
+	gt.gradient = gr; gt.fill_from = Vector2(0, 0); gt.fill_to = Vector2(1, 0); gt.width = 256; gt.height = 4
+	shade.texture = gt
+	shade.stretch_mode = TextureRect.STRETCH_SCALE
+	shade.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+	shade.offset_right = 760
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(shade)
+	# the menu column stays vertically centred and fits any window height
 	var col := VBoxContainer.new()
-	col.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT)
-	col.position = Vector2(80, -170)
-	col.add_theme_constant_override("separation", 14)
+	col.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
+	col.offset_left = 80; col.offset_right = 400; col.offset_top = 24; col.offset_bottom = -40
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	col.add_theme_constant_override("separation", 12)
 	root.add_child(col)
-	var logo := UI.title("KINFALL", 96, UI.ACCENT)
+	var logo := UI.title("KINFALL", 88, UI.ACCENT)
 	logo.add_theme_constant_override("outline_size", 18)
 	logo.add_theme_color_override("font_outline_color", Color(0.05, 0.04, 0.08))
 	col.add_child(logo)
 	var tag := UI.label("Raise them. Risk them. Bring them home.", 20, UI.INK)
 	tag.autowrap_mode = TextServer.AUTOWRAP_OFF
 	col.add_child(tag)
-	col.add_child(UI.spacer(16))
-	var play_txt := "Play" if not Save.d["roster"].is_empty() else "New game"
-	var b1 := UI.button(play_txt, func(): Game.goto("home" if not Save.d["roster"].is_empty() else "hatch"), 280)
+	col.add_child(UI.spacer(8))
+	var has: bool = not Save.d["roster"].is_empty()
+	var b1 := UI.primary(("Continue  ·  %s" % Save.d.get("name", "Hunter")) if has else "New game", func(): Game.goto("home" if has else "hatch"), 300)
 	col.add_child(b1)
+	col.add_child(UI.button("Save files", func(): Overlay.ctx = "title"; Overlay.open_saves(), 300))
 	if Bridge.net_available():
-		col.add_child(UI.button("Play online with friends", func(): Game.goto("lobby", {}), 280))
+		col.add_child(UI.button("Play online with friends", func(): Game.goto("lobby", {}), 300))
+	var srv := UI.button("Servers  ·  coming soon", func(): pass, 300)
+	srv.disabled = true
+	srv.tooltip_text = "Dedicated servers are on the way. For now, play online with friends from the lobby."
+	col.add_child(srv)
+	col.add_child(UI.button("Settings", func(): Overlay.ctx = "title"; Overlay.open_settings(), 300))
 	if not OS.has_feature("web"):
-		col.add_child(UI.button("Quit", func(): get_tree().quit(), 280))
+		col.add_child(UI.button("Quit", func(): get_tree().quit(), 300))
 	var i := 0
 	for ch in col.get_children():
 		UI.pop_in(ch, 0.15 + i * 0.08)

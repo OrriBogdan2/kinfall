@@ -6,6 +6,7 @@ signal screen_changed(name: String)
 var main: Node = null          # set by main.gd
 var last_result: Dictionary = {}
 var match_opts: Dictionary = {}
+var god := false               # admin god mode (Overlay's admin tools)
 
 func _ready() -> void:
 	# symbols the text fonts lack (checkmarks, hearts, stars) come from a small fallback font
@@ -16,8 +17,7 @@ func _ready() -> void:
 			ff.fallbacks = ff.fallbacks + [sym]
 	_setup_input()
 	RenderingServer.set_default_clear_color(Color("10131f"))
-	Sfx.set_volume(float(Save.d["settings"].get("volume", 0.8)))
-	Sfx.set_music_volume(float(Save.d["settings"].get("music", 0.7)))
+	Settings.apply_all()
 
 func _key(action: String, keys: Array, mouse := -1) -> void:
 	if not InputMap.has_action(action):
@@ -88,6 +88,7 @@ func apply_result(r: Dictionary) -> Dictionary:
 			d["roster"].append(nk)
 			out["caught"].append(nk)
 	d["items"]["tonic"] = int(r.get("tonics", d["items"].get("tonic", 0)))
+	var treat: String = d.get("treat", "")
 	d["treat"] = ""
 	# the partner kin remembers the match
 	var k := Save.active_kin()
@@ -114,6 +115,7 @@ func apply_result(r: Dictionary) -> Dictionary:
 			Save.remember(k, "lost", "lost a match with you (%s)" % _why(r.get("why", "")), -1.0)
 		Evo.learn(k, r.get("kin_stats", {}))
 		var xp := 40 + (40 if won else 0) + int(r.get("knocks", 0)) * 10
+		if treat == "treat_xp": xp = int(xp * 1.5)
 		k["xp"] = int(k.get("xp", 0)) + xp
 		while int(k["xp"]) >= 100 * int(k["level"]):
 			k["xp"] = int(k["xp"]) - 100 * int(k["level"])
@@ -160,19 +162,21 @@ func apply_result(r: Dictionary) -> Dictionary:
 	if won:
 		stt["best_gems"] = maxi(int(stt.get("best_gems", 0)), int(r.get("gems", 0)))
 		stt["caught"] = int(stt.get("caught", 0)) + r.get("caught", []).size()
-	# crops grow one stage per match, twice as fast in the greenhouse
-	for p in d["plots"]:
-		if p["crop"] != "":
-			p["stage"] = int(p["stage"]) + 1
-			if int(p["stage"]) == int(Data.CROPS[p["crop"]]["grow"]):
+	# crops grow a stage per match (two in the greenhouse); a plant you watered counts as tended
+	for arr in (["plots", "gh_plots"] if Save.has_building("greenhouse") else ["plots"]):
+		for p in d[arr]:
+			if p["crop"] == "":
+				continue
+			var grow := int(Data.CROPS[p["crop"]]["grow"])
+			var before_s := int(p["stage"])
+			if before_s >= grow:
+				continue
+			p["stage"] = mini(before_s + (2 if arr == "gh_plots" else 1), grow)
+			if float(p.get("wt", 0.0)) > 0.0:
+				p["care"] = int(p.get("care", 0)) + 1
+				p["wt"] = 0.0
+			if int(p["stage"]) == grow:
 				out["crops_ready"] += 1
-	if Save.has_building("greenhouse"):
-		for p in d["gh_plots"]:
-			if p["crop"] != "":
-				var before_s := int(p["stage"])
-				p["stage"] = mini(before_s + 2, int(Data.CROPS[p["crop"]]["grow"]))
-				if before_s < int(Data.CROPS[p["crop"]]["grow"]) and int(p["stage"]) == int(Data.CROPS[p["crop"]]["grow"]):
-					out["crops_ready"] += 1
 	Save.save_game()
 	return out
 

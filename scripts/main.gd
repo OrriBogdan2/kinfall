@@ -8,10 +8,22 @@ func _ready() -> void:
 	var args := OS.get_cmdline_user_args()
 	var opts := {}
 	for a in args:
+		if a.begins_with("--overlay="):
+			# test: open one of the overlay menus a moment after the screen appears
+			var which := a.substr(10).split(":")
+			get_tree().create_timer(0.6).timeout.connect(func():
+				Overlay.ctx = Overlay.ctx_now()
+				if which[0] == "pause": Overlay.open_pause(Overlay.ctx_now())
+				elif which[0] == "settings":
+					if which.size() > 1: Overlay.tab = which[1]
+					Overlay.open_settings()
+				elif which[0] == "admin": Overlay.open_admin()
+				elif which[0] == "saves": Overlay.open_saves())
 		if a.begins_with("--seed="): opts["seed"] = int(a.substr(7))
 		if a == "--god": opts["god"] = true
 		if a == "--autoplay": opts["autoplay"] = true
 		if a == "--glide-demo": opts["glide_demo"] = true
+		if a == "--ledge-demo": opts["ledge_demo"] = true
 		if a.begins_with("--length="): opts["length"] = float(a.substr(9))
 		if a == "--no-drop": opts["no_drop"] = true
 		if a == "--watch-heart": opts["watch_heart"] = true
@@ -70,6 +82,8 @@ func _ready() -> void:
 		show_screen("town", {"mode": town_arg, "gid": "test"})
 	elif "--match" in args:
 		show_screen("match", opts)
+	elif "--training" in args:
+		show_screen("match", {"training": true, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242, "no_drop": "--no-drop" in args})
 	elif "--tutorial" in args:
 		show_screen("match", {"tutorial": true, "teams": 1, "squad": 1, "tier": 0, "length": 1500.0, "tut_test": "--tut-test" in args})
 	elif args.is_empty() or "--title" in args:

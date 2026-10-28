@@ -118,7 +118,7 @@ func sim(dt: float) -> void:
 					wish = dir_to(tgt) * spd
 				elif mkind == "spitter" and d < 3.0:
 					wish = -dir_to(tgt) * spd
-				if d <= md["range"] + tgt.r and cd <= 0.0 and m.world.los(pos, tgt.pos, pos.y + 0.8):
+				if d <= md["range"] + tgt.r and cd <= 0.0 and m.world.los(pos, tgt.pos, pos.y + 0.8) and not m.opts.get("training", false):
 					_begin_attack()
 		"windup":
 			if tgt and mkind != "brute" and mkind != "warden":

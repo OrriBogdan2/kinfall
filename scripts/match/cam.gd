@@ -29,7 +29,7 @@ func punch(a: float) -> void:
 	kick = maxf(kick, a)
 
 func add_trauma(a: float) -> void:
-	trauma = minf(1.0, trauma + a * float(Save.d["settings"].get("shake", 1.0)))
+	trauma = minf(1.0, trauma + a * float(Settings.get_v("shake")))
 
 func follow(p: Vector3, delta: float, mouse_lead := true) -> void:
 	var off := Vector3.ZERO

@@ -9,6 +9,7 @@ var js = null                  # window.kinBridge
 var _keep: Array = []          # JS callbacks must stay referenced until they fire
 var ai_ok := false             # Claude answered at least once this session
 var ai_known := false
+var last_err := ""             # why the last ask came back empty: no_page, not_granted, rate_limited, ...
 
 func _ready() -> void:
 	web = OS.has_feature("web")
@@ -21,11 +22,20 @@ func has_page() -> bool:
 ## Asks Claude. messages: [{role, content}] ending on a user turn. cb receives the reply, or "" on any failure.
 func ask(messages: Array, cb: Callable, tier := "quick") -> void:
 	if js == null:
+		last_err = "no_page"
 		cb.call_deferred("")
 		return
 	var holder := []
 	var f := JavaScriptBridge.create_callback(func(args):
-		var txt := str(args[0]) if args.size() > 0 else ""
+		var raw := str(args[0]) if args.size() > 0 else ""
+		var d = JSON.parse_string(raw) if raw.begins_with("{") else null
+		var txt := ""
+		if typeof(d) == TYPE_DICTIONARY:
+			txt = str(d.get("text", ""))
+			last_err = str(d.get("err", ""))
+		else:
+			txt = raw
+			last_err = "" if raw != "" else "error"
 		if txt != "":
 			ai_ok = true
 		ai_known = true

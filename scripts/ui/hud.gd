@@ -11,7 +11,7 @@ var hit_crit := false
 var hurt_t := 0.0
 var toasts: Array = []
 var minimap: ImageTexture
-var pause_box: Control
+var kit_t0 := 0.0
 var bar_lerp := 1.0
 
 const INK := Color("f3eee2")
@@ -31,7 +31,6 @@ func setup(match_node: Match) -> void:
 	add_child(c)
 	c.draw.connect(_draw_all)
 	_build_minimap()
-	_build_pause()
 
 func _process(delta: float) -> void:
 	hit_t = maxf(0.0, hit_t - delta)
@@ -67,34 +66,6 @@ var tips: Array = []
 
 func tip(text: String) -> void:
 	tips.append({"text": text, "t": 0.0})
-
-func set_paused(p: bool) -> void:
-	pause_box.visible = p
-
-func _build_pause() -> void:
-	pause_box = PanelContainer.new()
-	var sb := StyleBoxFlat.new(); sb.bg_color = Color(0.05, 0.06, 0.09, 0.92); sb.set_corner_radius_all(14); sb.content_margin_left = 28; sb.content_margin_right = 28; sb.content_margin_top = 22; sb.content_margin_bottom = 22
-	pause_box.add_theme_stylebox_override("panel", sb)
-	pause_box.set_anchors_preset(Control.PRESET_CENTER)
-	var v := VBoxContainer.new(); v.add_theme_constant_override("separation", 12)
-	pause_box.add_child(v)
-	var t := Label.new(); t.text = "Paused"; t.add_theme_font_override("font", big); t.add_theme_font_size_override("font_size", 36); t.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(t)
-	var keys := Label.new()
-	keys.text = "WASD move · LMB fire · Shift dash · Space jump, hold to glide\nRMB throw / call back your kin · Q kin skill\nE hero ability · R ultimate · F catch, revive, open · 1 tonic · Tab scores"
-	keys.add_theme_color_override("font_color", MUTED); keys.add_theme_font_size_override("font_size", 14)
-	keys.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	v.add_child(keys)
-	var resume := Button.new(); resume.text = "Resume"; resume.custom_minimum_size = Vector2(240, 44)
-	resume.pressed.connect(func(): m.paused = false; set_paused(false); Input.mouse_mode = Input.MOUSE_MODE_HIDDEN)
-	v.add_child(resume)
-	var leave := Button.new(); leave.text = "Leave match (lose what you carry)"; leave.custom_minimum_size = Vector2(240, 44)
-	leave.pressed.connect(func(): m.paused = false; m.result = {"extracted": false, "why": "left"}; m._finish())
-	v.add_child(leave)
-	pause_box.visible = false
-	add_child(pause_box)
-	await get_tree().process_frame
-	pause_box.position = (c.size - pause_box.size) * 0.5
 
 func _build_minimap() -> void:
 	var w := m.world
@@ -159,7 +130,7 @@ func _draw_all() -> void:
 			var inset := i * 16.0
 			c.draw_rect(Rect2(Vector2(inset, inset), sz - Vector2(inset, inset) * 2.0), Color(0.75, 0.05, 0.05, (0.09 - i * 0.016) * (0.6 + pulse * 0.4)), false, 16.0)
 	if flash_t > 0.0:
-		c.draw_rect(Rect2(Vector2.ZERO, sz), Color(flash_col, flash_col.a * flash_t))
+		c.draw_rect(Rect2(Vector2.ZERO, sz), Color(flash_col, flash_col.a * flash_t * (0.3 if Settings.get_v("reduce_flashes") else 1.0)))
 	if p and (p.out or p.downed) and m.killcam_text != "":
 		_ctext(Vector2(sz.x * 0.5, sz.y * 0.22), m.killcam_text, 22, Color("ff9a8a"), big)
 	_draw_top(sz)
@@ -170,6 +141,7 @@ func _draw_all() -> void:
 	if p:
 		_draw_player(sz, p)
 		_draw_bar(sz, p)
+		_draw_kit(sz, p)
 		_draw_prompt(sz, p)
 		_draw_crosshair(p)
 		if p.downed:
@@ -269,6 +241,23 @@ func _draw_pings(sz: Vector2) -> void:
 			c.draw_colored_polygon(PackedVector2Array([edge + d * 14, edge - d * 8 + n * 10, edge - d * 8 - n * 10]), col)
 
 func _draw_top(sz: Vector2) -> void:
+	if m.opts.get("training", false):
+		var rr := Rect2(Vector2(sz.x * 0.5 - 220, 12), Vector2(440, 54))
+		_panel(rr, Color(0.06, 0.07, 0.1, 0.88), 12)
+		_ctext(Vector2(sz.x * 0.5, 34), "TRAINING AREA", 12, Color("8fe3c8"))
+		_ctext(Vector2(sz.x * 0.5, 56), "Nothing can hurt you here  ·  Esc to leave", 15, INK)
+		# the checklist
+		var lines: Array = m.TRAIN
+		var box := Rect2(Vector2(16, 90), Vector2(330, 34 + lines.size() * 24))
+		_panel(box, Color(0.06, 0.07, 0.1, 0.82), 12)
+		_text(box.position + Vector2(14, 24), "Try everything", 15, GOLD, big)
+		for i in lines.size():
+			var t: Array = lines[i]
+			var done: bool = m.train.has(t[0])
+			var key := ("[%s]  " % Settings.key_cap(t[2])) if t[2] != "" else ""
+			if t[0] == "move": key = "[%s%s%s%s]  " % [Settings.key_cap("up"), Settings.key_cap("left"), Settings.key_cap("down"), Settings.key_cap("right")]
+			_text(box.position + Vector2(14, 50 + i * 24), ("✓  " if done else "○  ") + key + String(t[1]), 13, GOOD if done else INK)
+		return
 	if m.opts.get("tutorial", false):
 		var txt: String = m.tut_text
 		var w := maxf(360.0, big.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 22).x + 60.0)
@@ -334,11 +323,19 @@ func _draw_minimap(sz: Vector2) -> void:
 				var d: Vector2 = h.aim_dir()
 				c.draw_line(pp, pp + d * 10.0, col, 2.0)
 
+## On narrow windows the ability bar takes the whole bottom row and the player card sits above it.
+func _narrow(sz: Vector2) -> bool:
+	return sz.x < 1080.0
+
 func _draw_player(sz: Vector2, p: Hunter) -> void:
-	var r := Rect2(Vector2(18, sz.y - 150), Vector2(330, 132))
+	var r := Rect2(Vector2(18, sz.y - 150 - (96.0 if _narrow(sz) else 0.0)), Vector2(330, 132))
 	_panel(r, PANEL, 14)
 	var cls_n: String = String(Data.HEROES[p.hero]["name"]) + " · " + String(Data.CLASSES[p.cls]["name"])
 	_text(r.position + Vector2(16, 28), p.pname, 20, INK, big)
+	if p.lives < 50:
+		var hearts := "♥".repeat(maxi(0, p.lives))
+		var hw := body.get_string_size(hearts, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+		_text(r.position + Vector2(r.size.x - hw - 14, 26), hearts, 16, Color("ff7a8a"))
 	_text(r.position + Vector2(16 + big.get_string_size(p.pname, HORIZONTAL_ALIGNMENT_LEFT, -1, 20).x + 10, 27), cls_n + " · " + String(p.wpn["name"]), 13, MUTED)
 	var frac := p.hp / p.max_hp
 	bar_lerp = lerpf(bar_lerp, frac, 0.08)
@@ -408,17 +405,17 @@ func _draw_bar(sz: Vector2, p: Hunter) -> void:
 	# weapon
 	var ammo_txt := "%d/%d" % [p.ammo, int(p.wpn["mag"])]
 	var reload_f := p.reload_t / float(p.wpn["reload"]) if p.reload_t > 0.0 else 0.0
-	_slot(Vector2(x, y), "LMB", String(p.wpn["name"]).split(" ")[0], reload_f, "..." if p.reload_t > 0.0 else ammo_txt, p.ammo > 0 and p.reload_t <= 0.0, Color("ffe7a8")); x += 72
+	_slot(Vector2(x, y), Settings.key_cap("fire"), String(p.wpn["name"]).split(" ")[0], reload_f, "..." if p.reload_t > 0.0 else ammo_txt, p.ammo > 0 and p.reload_t <= 0.0, Color("ffe7a8")); x += 72
 	# dash charges
 	var dmax := p.max_dashes()
-	_slot(Vector2(x, y), "SHIFT", "Dash", 1.0 - fposmod(p.dashes, 1.0) if p.dashes < dmax else 0.0, str(int(floor(p.dashes))), p.dashes >= 1.0, Color("bfe6ff")); x += 72
-	_slot(Vector2(x, y), "SPACE", "Jump", 0.0, "▲", p.grounded, Color("bfe6ff")); x += 72
+	_slot(Vector2(x, y), Settings.key_cap("dash"), "Dash", 1.0 - fposmod(p.dashes, 1.0) if p.dashes < dmax else 0.0, str(int(floor(p.dashes))), p.dashes >= 1.0, Color("bfe6ff")); x += 72
+	_slot(Vector2(x, y), Settings.key_cap("jump"), "Jump", 0.0, "▲", p.grounded, Color("bfe6ff")); x += 72
 	var hc: Color = Data.HEROES[p.hero]["color"]
 	var e_ab: Dictionary = Data.ABIL[Abil.e_id(p)]
-	_slot(Vector2(x, y), "E", e_ab["name"], p.sig_cd / float(e_ab["cd"]), str(int(ceil(p.sig_cd))) if p.sig_cd > 0.0 else "", p.sig_cd <= 0.0, hc); x += 72
+	_slot(Vector2(x, y), Settings.key_cap("signature"), e_ab["name"], p.sig_cd / float(e_ab["cd"]), str(int(ceil(p.sig_cd))) if p.sig_cd > 0.0 else "", p.sig_cd <= 0.0, hc); x += 72
 	var r_ab: Dictionary = Data.ABIL[Abil.r_id(p)]
 	var ready_r := p.ult >= 1.0
-	_slot(Vector2(x, y), "R", r_ab["name"], 1.0 - p.ult, "%d%%" % int(p.ult * 100.0) if not ready_r else "★", ready_r, Color("f2c84a")); x += 72
+	_slot(Vector2(x, y), Settings.key_cap("ultimate"), r_ab["name"], 1.0 - p.ult, "%d%%" % int(p.ult * 100.0) if not ready_r else "★", ready_r, Color("f2c84a")); x += 72
 	if ready_r:
 		var pulse := 0.5 + 0.5 * sin(m.time * 6.0)
 		var rr := Rect2(Vector2(x - 72, y), Vector2(64, 64)).grow(3.0 + pulse * 3.0)
@@ -427,11 +424,48 @@ func _draw_bar(sz: Vector2, p: Hunter) -> void:
 	if k:
 		var kcol: Color = Data.KIN[k.species]["color"]
 		var throw_lbl := "Throw" if k.state == "shoulder" else ("Call back" if k.state in ["active", "flying"] else "—")
-		_slot(Vector2(x, y), "RMB", throw_lbl, 0.0, "", k.state in ["shoulder", "active", "flying"], kcol, Data.KIN[k.species]["name"]); x += 72
+		_slot(Vector2(x, y), Settings.key_cap("throw"), throw_lbl, 0.0, "", k.state in ["shoulder", "active", "flying"], kcol, Data.KIN[k.species]["name"]); x += 72
 		var sk: Dictionary = Data.KIN_SKILLS[Data.KIN[k.species]["skill"]]
-		_slot(Vector2(x, y), "Q", sk["name"].split(" ")[-1], k.skill_cd / float(sk["cd"]), str(int(ceil(k.skill_cd))) if k.skill_cd > 0.0 else "", k.skill_cd <= 0.0 and k.state not in ["fainted", "reviving"], kcol); x += 72
+		_slot(Vector2(x, y), Settings.key_cap("kin_skill"), sk["name"].split(" ")[-1], k.skill_cd / float(sk["cd"]), str(int(ceil(k.skill_cd))) if k.skill_cd > 0.0 else "", k.skill_cd <= 0.0 and k.state not in ["fainted", "reviving"], kcol); x += 72
 	x += 10
-	_slot(Vector2(x, y), "1", "Tonic", 0.0, "×%d" % p.tonics, p.tonics > 0, GOOD)
+	_slot(Vector2(x, y), Settings.key_cap("tonic"), "Tonic", 0.0, "×%d" % p.tonics, p.tonics > 0, GOOD)
+
+## For the first seconds of every match: what each of your buttons does.
+func _draw_kit(sz: Vector2, p: Hunter) -> void:
+	if not Settings.get_v("tips") or m.opts.get("tutorial", false) or p.out:
+		return
+	var show_t := 14.0 if not m.opts.get("training", false) else 1e9
+	var t := m.time - kit_t0
+	if p.dropping:
+		kit_t0 = m.time
+		t = 0.0
+	if t > show_t:
+		return
+	var a := clampf(show_t - t, 0.0, 1.0)
+	var lines: Array = []
+	var e_ab: Dictionary = Data.ABIL[Abil.e_id(p)]
+	var r_ab: Dictionary = Data.ABIL[Abil.r_id(p)]
+	lines.append([Settings.key_cap("signature"), e_ab["name"], e_ab["desc"], Data.HEROES[p.hero]["color"]])
+	lines.append([Settings.key_cap("ultimate"), r_ab["name"] + " (ultimate)", r_ab["desc"], Color("f2c84a")])
+	if p.kin:
+		var sk: Dictionary = Data.KIN_SKILLS[Data.KIN[p.kin.species]["skill"]]
+		lines.append([Settings.key_cap("throw"), "Throw " + String(p.kin.rec.get("name", "your kin")), "Stuns what it hits. Click again to call it back.", Data.KIN[p.kin.species]["color"]])
+		lines.append([Settings.key_cap("kin_skill"), sk["name"], sk["desc"], Data.KIN[p.kin.species]["color"]])
+	var w := 420.0
+	var box := Rect2(Vector2(sz.x - w - 16, sz.y - 120 - 16 - lines.size() * 44 - 30), Vector2(w, 30 + lines.size() * 44))
+	if m.opts.get("training", false):
+		box.position.y = 240
+	_panel(box, Color(0.06, 0.07, 0.1, 0.82 * a), 12)
+	_text(box.position + Vector2(14, 22), "Your kit", 14, Color(GOLD, a), big)
+	for i in lines.size():
+		var l: Array = lines[i]
+		var y := box.position.y + 34 + i * 44
+		var kw := big.get_string_size(l[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+		var ks := StyleBoxFlat.new(); ks.bg_color = Color(l[3], a); ks.set_corner_radius_all(5)
+		c.draw_style_box(ks, Rect2(Vector2(box.position.x + 14, y), Vector2(kw + 12, 20)))
+		c.draw_string(big, Vector2(box.position.x + 20, y + 15), l[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.07, 0.06, 0.08, a))
+		_text(Vector2(box.position.x + 34 + kw, y + 15), l[1], 14, Color(INK, a))
+		c.draw_string(body, Vector2(box.position.x + 14, y + 36), String(l[2]), HORIZONTAL_ALIGNMENT_LEFT, w - 28, 12, Color(MUTED, a))
 
 func _draw_prompt(sz: Vector2, p: Hunter) -> void:
 	var it := m.interact

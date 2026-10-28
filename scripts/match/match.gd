@@ -89,7 +89,7 @@ func start(o: Dictionary) -> void:
 	world.build_meshes()
 	fx = Fx.new(); fx.name = "Fx"; add_child(fx)
 	cam = CamRig.new(); cam.name = "Cam"; add_child(cam)
-	cam.lead = float(Save.d["settings"].get("cam_lead", 1.0))
+	cam.lead = float(Settings.get_v("cam_lead"))
 	_build_shot_pool()
 	if o.has("net"):
 		net_on = true
@@ -175,11 +175,12 @@ func _spawn_pads_and_portals() -> void:
 		var n := Models.portal(Color("8fe3c8"))
 		n.position = world.portal_spots[i]
 		add_child(n)
-		portals.append({"pos": world.portal_spots[i], "open_at": (1e9 if opts.get("tutorial", false) else open_at + i * 35.0), "open": false, "node": n})
+		portals.append({"pos": world.portal_spots[i], "open_at": (1e9 if opts.get("tutorial", false) or opts.get("training", false) else open_at + i * 35.0), "open": false, "node": n})
 
 func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String, kin_rec: Dictionary, at: Vector3, kit := {}) -> Hunter:
 	var h := Hunter.new()
 	h.init_hunter(self, id, team, cls, pname, ctrl, kit)
+	h.lives = 99 if (opts.get("tutorial", false) or opts.get("training", false)) else int(T.get("lives", 2))
 	add_child(h)
 	h.teleport(at)
 	hunters.append(h)
@@ -289,6 +290,7 @@ func _start_drop(h: Hunter, at: Vector3) -> void:
 	h.ai["land"] = at
 
 func on_drop_landed(h: Hunter) -> void:
+	h.inv_t = maxf(h.inv_t, 2.0)     # a moment to get your bearings after landing
 	if world.is_block(h.pos.x, h.pos.z):
 		var best := h.pos; var bd := 1e9
 		for dz in range(-2, 3):
@@ -569,7 +571,7 @@ func ult_moment(h: Hunter) -> void:
 		freeze_frame(0.05)
 
 func _check_team(team: int) -> void:
-	if opts.get("tutorial", false):
+	if opts.get("tutorial", false) or opts.get("training", false):
 		return
 	var members: Array = hunters.filter(func(x): return x.team == team and not x.out and not x.extracted)
 	if members.is_empty():
@@ -600,6 +602,9 @@ func revive_hunter(h: Hunter, by: Ent) -> void:
 
 func eliminate(h: Hunter, by: Ent, why: String) -> void:
 	if h.out:
+		return
+	if h.lives > 1 and not h.remote and not over:
+		_lose_life(h, by, why)
 		return
 	cancel_abilities(h)
 	h.out = true
@@ -653,6 +658,53 @@ func eliminate(h: Hunter, by: Ent, why: String) -> void:
 			Sfx.duck(1.0)
 	_check_last()
 
+## Losing a life: some of what you carry spills where you went down, and you glide back in
+## somewhere quiet with full health and a moment of protection.
+func _lose_life(h: Hunter, by: Ent, why: String) -> void:
+	cancel_abilities(h)
+	h.lives -= 1
+	var lose := int(ceil(h.gems * 0.3))
+	if lose > 0 and not world.is_void(h.pos.x, h.pos.z):
+		var n := mini(5, lose)
+		for i in n:
+			drop("gem", h.pos + Vector3(0, 0.5, 0), maxi(1, lose / n))
+	elif lose > 0:
+		h.lost_gems += lose
+	h.gems -= lose
+	var credit: Ent = by.owner_h if by is Kin and by.owner_h else by
+	if credit is Hunter and credit != h and credit.team != h.team:
+		credit.kills += 1
+	add_feed("%s lost a life (%d left)" % [h.pname, h.lives])
+	h.downed = false
+	h.down_hp = 0.0
+	h.revive = 0.0
+	h.hp = h.max_hp
+	h.inv_t = 3.0
+	h.vel = Vector3.ZERO
+	h.grap = {}; h.pad = {}; h.charge = {}; h.roll_t = 0.0
+	h.stun_t = 0.0
+	# the safest place: the spawn farthest from anyone who isn't on your team
+	var best: Vector3 = world.spawns[0] if world.spawns.size() > 0 else world.random_ground()
+	var bd := -1.0
+	for sp in world.spawns:
+		var dmin := 1e9
+		for o in hunters:
+			if o.team != h.team and not o.out and not o.extracted:
+				dmin = minf(dmin, Vector2(o.pos.x - sp.x, o.pos.z - sp.z).length())
+		if dmin > bd: bd = dmin; best = sp
+	var was: bool = opts.get("no_drop", false)
+	opts["no_drop"] = false
+	_start_drop(h, best)
+	opts["no_drop"] = was
+	if h.kin and h.kin.state == "fainted":
+		h.kin.hp = h.kin.max_hp * 0.5
+	if h == player:
+		killcam_text = ""
+		_slow(0.6, 0.35)
+		if hud:
+			hud.flash(Color("ff3a2a"), 0.35)
+			hud.toast(("Last life. Be careful" if h.lives == 1 else "%d lives left" % h.lives) + ("  ·  you dropped %d gems" % lose if lose > 0 else ""), Color("ffb0a0"))
+
 func _check_last() -> void:
 	var teams := {}
 	for h in hunters:
@@ -687,7 +739,7 @@ func on_fell(e: Ent) -> void:
 		e.dead = true
 
 func S_dev_god() -> bool:
-	return bool(opts.get("god", false)) or bool(opts.get("tutorial", false))
+	return bool(opts.get("god", false)) or bool(opts.get("tutorial", false)) or bool(opts.get("training", false)) or Game.god
 
 func on_mob_dead(mb: Mob, by: Ent, _o: Dictionary) -> void:
 	if net_on:
@@ -703,7 +755,7 @@ func on_mob_dead(mb: Mob, by: Ent, _o: Dictionary) -> void:
 		for i in int(mb.md["gems"]):
 			drop("gem", mb.pos + Vector3(0, 0.6, 0), int(round(3 * float(T["loot"]))))
 		if rng.randf() < (0.35 if mb.mkind == "brute" else 0.12):
-			drop("seed", mb.pos + Vector3(0, 0.6, 0), 1, Data.CROPS.keys()[rng.randi_range(0, Data.CROPS.size() - 1)])
+			drop("seed", mb.pos + Vector3(0, 0.6, 0), 1, Data.pick_seed())
 	if credit == player and player.kin and randf() < 0.15:
 		player.kin.bark("kill")
 
@@ -717,8 +769,8 @@ func on_wild_dazed(k: Kin) -> void:
 		add_feed("The wild %s is dazed. Hold F to catch it!" % Data.KIN[k.species]["name"])
 
 func on_ledge_grab(h: Hunter) -> void:
-	if h == player and hud:
-		hud.toast("Ledge grab", Color("cfe6c0"))
+	if h == player and hud and h.over_void():
+		hud.toast("Caught the ledge", Color("cfe6c0"))
 
 # ------------------------------------------------------------------ pickups
 func drop(kind_s: String, at: Vector3, v: int, key := "", pid := "", vel0 = null) -> void:
@@ -1011,15 +1063,30 @@ func _gather_input() -> void:
 			pending_input[a[1]] = true
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("menu") and not over:
-		paused = not paused
-		hud.set_paused(paused)
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if paused else Input.MOUSE_MODE_HIDDEN
+	if event.is_action_pressed("menu") and not over and not Overlay.is_open():
+		paused = true
+		Overlay.open_pause("match")
+		if not Overlay.closed.is_connected(_on_menu_closed):
+			Overlay.closed.connect(_on_menu_closed, CONNECT_ONE_SHOT)
+
+func _on_menu_closed() -> void:
+	paused = false
+	if not over:
+		Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
 
 func step(dt: float) -> void:
 	if over:
 		return
 	time += dt
+	if Game.god and player and not player.out:
+		# admin god mode: full health, endless ammo, nothing on cooldown
+		player.hp = player.max_hp
+		player.ammo = int(player.wpn["mag"])
+		player.sig_cd = 0.0
+		player.ult = 1.0
+		player.dashes = player.max_dashes()
+		player.glide_fuel = 1.0
+		if player.downed: revive_hunter(player, player)
 	if opts.get("ability_demo", false) and player and not player.dropping:
 		var best: Ent = null; var bd := 1e9
 		for f in foes_of(player.team):
@@ -1032,6 +1099,14 @@ func step(dt: float) -> void:
 		if int(time * 60.0) % 90 == 0: player.inp["sig"] = true
 		if time > 4.0 and int(time * 60.0) % 240 == 0:
 			player.ult = 1.0; player.inp["ult"] = true
+	if opts.get("ledge_demo", false) and player and time < 0.05:
+		# test: start just off the edge of your island, a few metres below the lip
+		var p0 := player.pos
+		for i in 60:
+			var q := p0 + Vector3(0.5 * i, 0, 0)
+			if world.is_void(q.x, q.z):
+				player.teleport(Vector3(q.x + 1.0, player.pos.y - 4.0, q.z)); player.grounded = false
+				break
 	if opts.get("glide_demo", false) and player:
 		if time < 0.05:
 			player.teleport(player.pos + Vector3(0, 6, 0)); player.grounded = false
@@ -1056,7 +1131,7 @@ func step(dt: float) -> void:
 	if opts.get("autoplay", false) and int(time * 60.0) % 15 == 0:
 		for h in hunters:
 			var hist: Array = h.get_meta("hist", [])
-			hist.append("%.1f:(%.1f,%.1f,%.1f) v(%.1f,%.1f,%.1f) g%d f%.2f r%.2f gr%d void%d gl%d fuel%.1f kb%.1f %s" % [time, h.pos.x, h.pos.y, h.pos.z, h.vel.x, h.vel.y, h.vel.z, int(h.grounded), h.fly_t, h.roll_t, int(h.grap.size() > 0), int(h.over_void()), int(h.gliding), h.glide_fuel, time - h.kb_t, String(h.ai.get("goal_kind", ""))])
+			hist.append("%.1f:(%.1f,%.1f,%.1f) v(%.1f,%.1f,%.1f) g%d f%.2f r%.2f gr%d void%d gl%d fuel%.1f kb%.1f dn%d st%.1f cd%.1f %s" % [time, h.pos.x, h.pos.y, h.pos.z, h.vel.x, h.vel.y, h.vel.z, int(h.grounded), h.fly_t, h.roll_t, int(h.grap.size() > 0), int(h.over_void()), int(h.gliding), h.glide_fuel, time - h.kb_t, int(h.downed), h.stun_t, h.grap_cd, String(h.ai.get("goal_kind", ""))])
 			if hist.size() > 10: hist.pop_front()
 			h.set_meta("hist", hist)
 	for k in kins: k.sim(dt)
@@ -1073,6 +1148,8 @@ func step(dt: float) -> void:
 		if opts.get("tut_test", false):
 			_tut_drive()
 		_update_tutorial(dt)
+	if opts.get("training", false):
+		_update_training(dt)
 	_update_rules(dt)
 	if net_on:
 		_net_rev_t -= dt
@@ -1247,7 +1324,7 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 		drop("gem", c["pos"] + Vector3(0, 0.8, 0), int(round((3 + t) * float(T["loot"]))))
 	var seeds_n: int = [1 if randf() < 0.6 else 0, 1, 2][t]
 	for i in seeds_n:
-		drop("seed", c["pos"] + Vector3(0, 0.8, 0), randi_range(1, 2), Data.CROPS.keys()[randi_range(0, Data.CROPS.size() - 1)])
+		drop("seed", c["pos"] + Vector3(0, 0.8, 0), randi_range(1, 2), Data.pick_seed())
 	if h and not h.remote and h.tonics < 3 and randf() < [0.35, 0.7, 1.0][t]:
 		h.tonics += 1
 		if h == player: hud.toast("+1 tonic", Color("8ff0a0"))
@@ -1276,6 +1353,63 @@ func _use_shrine(h: Hunter, sh: Dictionary, from_net := false) -> void:
 const TUT := ["Steer with WASD to choose where you land", "Walk around with WASD", "Press Shift to dash",
 	"Press Space to jump. Hold Space in the air to glide", "Hold left click to shoot. Defeat the monsters",
 	"Right click to throw %s at a monster", "Stand by the chest and hold F to open it", "An exit opened. Stand inside it to go home"]
+
+# ---- training area
+## [id, what to do, the action whose key it uses ("" for none)]
+const TRAIN := [["move", "Walk around", "up"], ["dash", "Dash", "dash"], ["glide", "Jump, then hold it in the air to glide", "jump"],
+	["shoot", "Shoot a target dummy", "fire"], ["ability", "Use your hero ability", "signature"], ["ult", "Use your ultimate (it charges fast here)", "ultimate"],
+	["throw", "Throw your kin at a dummy", "throw"], ["kinskill", "Use your kin's skill", "kin_skill"], ["tonic", "Drink a tonic to heal", "tonic"],
+	["ledge", "Dash off an edge and float back up", ""]]
+var train := {}
+var train_t := 0.0
+
+func _update_training(dt: float) -> void:
+	if player == null:
+		return
+	train_t += dt
+	if player.downed and train_t > 2.0:
+		revive_hunter(player, null)
+	var was_ult: bool = train.get("_ult_full", false)
+	# everything recharges quickly here
+	player.ult = minf(1.0, player.ult + dt / 6.0)
+	player.sig_cd = maxf(0.0, player.sig_cd - dt * 2.0)
+	if player.kin: player.kin.skill_cd = maxf(0.0, player.kin.skill_cd - dt * 2.0)
+	if train.has("tonic") and player.tonics < 2: player.tonics = 3
+	if player.inp["move"].length() > 0.1:
+		train["_moved"] = float(train.get("_moved", 0.0)) + Vector2(player.pos.x - player.prev.x, player.pos.z - player.prev.z).length()
+	var marks := {
+		"move": float(train.get("_moved", 0.0)) > 4.0,
+		"dash": player.roll_t > 0.0,
+		"glide": player.gliding and not player.dropping,
+		"shoot": player.dmg_done > 0.0,
+		"ability": player.sig_cd > 0.0,
+		"ult": was_ult and player.ult < 0.5,
+		"throw": player.kin != null and player.kin.st_throws > 0,
+		"kinskill": player.kin != null and player.kin.skill_cd > 0.0,
+		"tonic": player.tonics < int(train.get("_tonics", player.tonics)),
+		"ledge": player.grap.size() > 0,
+	}
+	train["_ult_full"] = player.ult >= 0.99
+	train["_tonics"] = player.tonics
+	for k in marks:
+		if marks[k] and not train.has(k):
+			train[k] = true
+			Sfx.play("unlock", null, -8.0)
+			var left := TRAIN.filter(func(t): return not train.has(t[0])).size()
+			if hud: hud.toast(("Done: %s" % _train_label(k)) if left > 0 else "Training complete. Press Esc to head home whenever you like", Color("8ff0a0"))
+			if left == 0:
+				Save.d["tutorial"]["training"] = true
+	# keep a few target dummies around you
+	var alive := mobs.filter(func(x): return not x.dead)
+	if alive.size() < 4 and int(train_t * 10.0) % 20 == 0:
+		var at := world.random_ground(world.island_of(player.pos.x, player.pos.z))
+		if Vector2(at.x - player.pos.x, at.z - player.pos.z).length() > 3.0:
+			spawn_mob(["skitter", "spitter", "brute"][randi() % 3], at)
+
+func _train_label(k: String) -> String:
+	for t in TRAIN:
+		if t[0] == k: return t[1]
+	return k
 
 ## The first match is a guided one: no rival hunters, gentle damage, and each step waits for you.
 func _update_tutorial(dt: float) -> void:
@@ -1468,7 +1602,7 @@ func _update_zones(dt: float) -> void:
 			zones.erase(z)
 
 func _update_events() -> void:
-	if opts.get("tutorial", false):
+	if opts.get("tutorial", false) or opts.get("training", false):
 		return
 	if warden_done or time < length * 0.4 or world.heart_spot == Vector3.INF:
 		return
@@ -1559,6 +1693,10 @@ func _finish() -> void:
 	if over:
 		return
 	over = true
+	if opts.get("training", false):
+		# nothing from the training area carries over
+		Game.goto("home")
+		return
 	var r := result.duplicate()
 	r["time"] = time
 	r["tier"] = tier
@@ -1977,7 +2115,7 @@ func _tip(key: String, text: String) -> void:
 	hud.tip(text)
 
 func _tips() -> void:
-	if player == null or player.out or opts.get("autoplay", false):
+	if player == null or player.out or opts.get("autoplay", false) or not Settings.get_v("tips"):
 		return
 	_tip_t += get_process_delta_time()
 	if _tip_t < 1.0:

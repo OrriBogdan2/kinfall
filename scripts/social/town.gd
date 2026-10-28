@@ -20,6 +20,8 @@ var player: Node3D
 var ppos := Vector3.ZERO
 var pvel := Vector3.ZERO
 var pface := 0.0
+var py := 0.0
+var pvy := 0.0
 var walk_ph := 0.0
 var spots: Array = []          # {kind, pos, label, reach, data}
 var interact: Dictionary = {}
@@ -363,12 +365,12 @@ func _process(delta: float) -> void:
 	cam.follow(ppos, d, panel_open == "")
 	_send_presence(d)
 	_find_interact()
-	if panel_open == "" and Input.is_action_just_pressed("interact") and not interact.is_empty():
+	if panel_open == "" and not Overlay.is_open() and Input.is_action_just_pressed("interact") and not interact.is_empty():
 		_use(interact)
 
 func _move_player(d: float) -> void:
 	var mv := Vector2.ZERO
-	if panel_open == "":
+	if panel_open == "" and not Overlay.is_open():
 		mv = Vector2(Input.get_axis("left", "right"), Input.get_axis("up", "down"))
 		if mv.length() > 1.0: mv = mv.normalized()
 	var hv := Vector2(pvel.x, pvel.z)
@@ -378,9 +380,24 @@ func _move_player(d: float) -> void:
 	var nz := ppos.z + hv.y * d
 	if not _blocked(ppos.x, nz, 0.38): ppos.z = nz
 	pvel = Vector3(hv.x, 0, hv.y)
-	player.position = ppos
-	if hv.length() > 0.3:
-		pface = lerp_angle(pface, atan2(-hv.x, -hv.y), minf(1.0, d * 14.0))
+	if panel_open == "" and py <= 0.0 and pvy <= 0.0 and Input.is_action_just_pressed("jump"):
+		pvy = 8.5
+		Sfx.play("jump", null, -12.0)
+	if py > 0.0 or pvy > 0.0:
+		pvy -= 26.0 * d
+		py = maxf(0.0, py + pvy * d)
+		if py <= 0.0: pvy = 0.0
+	player.position = ppos + Vector3(0, py, 0)
+	# face the mouse, or where you walk when the mouse is outside the window
+	var vp := get_viewport()
+	var mp := vp.get_mouse_position()
+	var want := pface
+	if panel_open == "" and Rect2(Vector2.ZERO, vp.get_visible_rect().size).has_point(mp):
+		var aim := cam.mouse_on_plane(0.9)
+		if Vector2(aim.x - ppos.x, aim.z - ppos.z).length() > 0.4: want = atan2(-(aim.x - ppos.x), -(aim.z - ppos.z))
+	elif hv.length() > 0.3:
+		want = atan2(-hv.x, -hv.y)
+	pface = lerp_angle(pface, want, minf(1.0, d * 14.0))
 	player.rotation.y = pface
 	var ph0 := walk_ph
 	walk_ph += d * hv.length() * 2.2
@@ -419,8 +436,9 @@ func _find_interact() -> void:
 	prompt_box.position = Vector2((vp.x - prompt_box.size.x) * 0.5, vp.y - 110.0)
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("menu") and panel_open != "":
-		_close_panel()
+	if event.is_action_pressed("menu") and not Overlay.is_open():
+		if panel_open != "": _close_panel()
+		else: Overlay.open_pause("town")
 	if event is InputEventMouseButton and event.pressed and panel_open == "":
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP: cam.zoom_to = clampf(cam.zoom_to - 0.08, 0.55, 1.5)
 		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: cam.zoom_to = clampf(cam.zoom_to + 0.08, 0.55, 1.5)
@@ -445,7 +463,7 @@ func _build_ui() -> void:
 	prompt_box.add_child(prompt_lbl)
 	root_ui.add_child(prompt_box)
 	var hint_box := UI.card(Color(0.06, 0.07, 0.1, 0.7), 8, 10)
-	var hint := UI.label("WASD walk   ·   F use   ·   Scroll to zoom   ·   Esc close", 14, UI.INK)
+	var hint := UI.label("WASD walk   ·   Space jump   ·   F use   ·   Scroll to zoom   ·   Esc menu", 14, UI.INK)
 	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hint_box.add_child(hint)
 	hint_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
@@ -461,17 +479,9 @@ func _build_ui() -> void:
 func _new_panel(title_txt: String, width := 540.0) -> VBoxContainer:
 	var prev := panel_open
 	_close_panel()
-	var p := PanelContainer.new()
-	p.custom_minimum_size = Vector2(width, 0)
-	p.mouse_filter = Control.MOUSE_FILTER_STOP
-	var v := UI.vbox(10)
-	p.add_child(v)
-	var head := UI.hbox(8)
-	var t := UI.title(title_txt, 28)
-	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(t)
-	head.add_child(UI.button("Close", _close_panel))
-	v.add_child(head)
+	var pb := UI.scroll_panel(title_txt, width, _close_panel)
+	var p: PanelContainer = pb[0]
+	var v: VBoxContainer = pb[1]
 	panel_host.add_child(p)
 	panel_open = title_txt
 	if prev != title_txt:
@@ -602,7 +612,7 @@ func _open_market() -> void:
 						if panel_open == "Market": _open_market()), 100)
 				b.disabled = int(Save.d["gems"]) < int(l["price"])
 				row.add_child(b))
-	v.add_child(UI.label("Sell", 13, UI.MUTED))
+	v.add_child(UI.section("Sell"))
 	var any := false
 	for kind in ["seed", "crop"]:
 		var store: Dictionary = Save.d["seeds"] if kind == "seed" else Save.d["crops"]
@@ -679,7 +689,7 @@ func _open_guilds() -> void:
 					_toast("%s is founded" % gname)
 				if panel_open == "Guild registry": _open_guilds()), 120))
 		v.add_child(row)
-	v.add_child(UI.label("Guilds", 13, UI.MUTED))
+	v.add_child(UI.section("Guilds"))
 	var list := _loading(v)
 	Social.list_guilds(func(rows: Array):
 		if not _clear(list): return

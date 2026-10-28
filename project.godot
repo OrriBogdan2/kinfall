@@ -12,10 +12,12 @@ run/max_fps=0
 Data="*res://scripts/core/data.gd"
 Save="*res://scripts/core/save.gd"
 Sfx="*res://scripts/core/sfx.gd"
+Settings="*res://scripts/core/settings.gd"
 Bridge="*res://scripts/core/bridge.gd"
 Game="*res://scripts/core/game.gd"
 Net="*res://scripts/core/net.gd"
 Social="*res://scripts/core/social.gd"
+Overlay="*res://scripts/ui/overlay.gd"
 Shot="*res://scripts/shot.gd"
 
 [display]

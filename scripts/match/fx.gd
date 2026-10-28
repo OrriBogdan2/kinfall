@@ -105,7 +105,7 @@ func ghost(at: Vector3, yaw: float, col: Color, scl: float) -> void:
 	ghosts.append({"node": mi, "t": 0.0, "col": col})
 
 func number(at: Vector3, v: float, col: Color, crit: bool, prefix := "") -> void:
-	if v < 0.5:
+	if v < 0.5 or (prefix == "" and not Settings.get_v("damage_numbers")):
 		return
 	var l: Label3D = num_pool.pop_front()
 	num_pool.append(l)

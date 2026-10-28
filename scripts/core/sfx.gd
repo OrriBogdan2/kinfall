@@ -24,14 +24,16 @@ var music_bus := 0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	AudioServer.add_bus()
-	music_bus = AudioServer.bus_count - 1
-	AudioServer.set_bus_name(music_bus, "Music")
-	AudioServer.set_bus_send(music_bus, "Master")
+	for bn in ["Music", "SFX", "Ambience"]:
+		AudioServer.add_bus()
+		var bi := AudioServer.bus_count - 1
+		AudioServer.set_bus_name(bi, bn)
+		AudioServer.set_bus_send(bi, "Master")
+	music_bus = AudioServer.get_bus_index("Music")
 	for i in 2:
 		var mp := AudioStreamPlayer.new(); mp.bus = "Music"; mp.volume_db = -80.0
 		add_child(mp); music.append(mp)
-	amb = AudioStreamPlayer.new(); amb.bus = "Music"; amb.volume_db = -80.0
+	amb = AudioStreamPlayer.new(); amb.bus = "Ambience"; amb.volume_db = -80.0
 	add_child(amb)
 	for n in NAMES:
 		var s = load("res://audio/%s.wav" % n)
@@ -39,15 +41,14 @@ func _ready() -> void:
 			streams[n] = s
 	for i in POOL:
 		var p := AudioStreamPlayer.new()
-		p.bus = "Master"
+		p.bus = "SFX"
 		add_child(p)
 		players.append(p)
 
-func set_volume(v: float) -> void:
-	AudioServer.set_bus_volume_db(0, linear_to_db(maxf(v, 0.001)))
-
-func set_music_volume(v: float) -> void:
-	AudioServer.set_bus_volume_db(music_bus, linear_to_db(maxf(v, 0.001)))
+func set_bus(bus_name: String, v: float) -> void:
+	var i := AudioServer.get_bus_index(bus_name)
+	if i >= 0:
+		AudioServer.set_bus_volume_db(i, linear_to_db(maxf(v, 0.0001)))
 
 func _loop_stream(path: String) -> AudioStream:
 	var st = load(path)

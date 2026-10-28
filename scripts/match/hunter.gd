@@ -6,13 +6,15 @@ const JUMP_V := 10.8
 const DASH_SPEED := 19.0
 const DASH_TIME := 0.17
 const DASH_REGEN := 2.2
-const LEDGE_REACH := 3.4
-const LEDGE_CD := 5.0
-const GLIDE_FALL := 2.3
-const GLIDE_SPEED := 7.4
-const GLIDE_TIME := 3.2
+const LEDGE_REACH := 2.8
+const LEDGE_CD := 1.2
+const FLOAT_SPEED := 9.0
+const GLIDE_FALL := 1.7
+const GLIDE_SPEED := 9.6
+const GLIDE_TIME := 6.0
 const DROP_FALL := 5.0
 const DROP_SPEED := 9.0
+const REGEN := 7.0            # health per second once you've gone a while without getting hit
 
 var pname := "Hunter"
 var cls := "medium"
@@ -35,7 +37,8 @@ var jump_buf := 0.0
 var fly_t := 0.0
 var mantle_cd := 0.0
 var grap_cd := 0.0
-var grap: Dictionary = {}
+var grap: Dictionary = {}       # floating back up a ledge
+var push_t := 0.0
 var pad: Dictionary = {}        # jump-pad flight along a fixed arc
 var kb_t := -9.0
 var sig_cd := 0.0
@@ -84,6 +87,7 @@ var acts_tele: Node3D = null
 var idle_fire := 0.0
 var dropping := false         # gliding down from the sky at the start of a match
 var bless_t := 0.0
+var lives := 1                # comes back this many times minus one before it's really out
 
 const DEFAULT_HERO := {"light": "veil", "medium": "sage", "heavy": "bastion"}
 
@@ -140,6 +144,8 @@ func aim_dir() -> Vector2:
 func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 	if (inv_t > 0.0 or dropping) and opts.get("src", "") != "fall":
 		return 0.0
+	if ctrl == "local" and Game.god:
+		return 0.0
 	var d := dmg
 	if ctrl == "local" and m.opts.get("tutorial", false):
 		d *= 0.35
@@ -160,7 +166,7 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 			flash_t = 0.06
 			m.fx.number(pos + Vector3(0, 1.6, 0), a, Color("cfe8ff"), false)
 			return 0.0
-	regen_wait = 4.0
+	regen_wait = 5.0
 	if gliding and d > 0.0:
 		gliding = false
 		glide_cd = 0.8
@@ -329,6 +335,9 @@ func sim(dt: float) -> void:
 		dashes = minf(max_dashes(), dashes + dt / DASH_REGEN)
 	if shoulder() == "spring" and not downed:
 		hp = minf(max_hp, hp + 3.0 * dt)
+	# out of the fight for a few seconds, you patch yourself up
+	if not downed and regen_wait <= 0.0 and hp < max_hp and not remote:
+		hp = minf(max_hp, hp + REGEN * dt)
 	if remote:
 		net_follow(dt)
 		return
@@ -413,11 +422,12 @@ func _physics(dt: float) -> void:
 	elif fly_t > 0.0:
 		fly_t -= dt
 	elif gliding:
+		# the glider keeps the speed you opened it with and bleeds it off slowly, like Supervive's
 		var gs := DROP_SPEED if dropping else GLIDE_SPEED
-		var gw := mv * gs
+		var gw := mv * maxf(gs, minf(cur, gs * 1.6))
 		if mv.length() < 0.1:
-			gw = hv.normalized() * minf(cur, gs * 0.6) if cur > 0.1 else Vector2.ZERO
-		hv += (gw - hv) * (1.0 - exp(-3.2 * dt))
+			gw = hv.normalized() * minf(cur, gs * 0.7) if cur > 0.1 else Vector2.ZERO
+		hv += (gw - hv) * (1.0 - exp(-(1.6 if cur > gs else 2.6) * dt))
 	else:
 		var wish := mv * spd
 		var over := cur > spd * 1.15
@@ -473,7 +483,7 @@ func _physics(dt: float) -> void:
 				grounded = false
 	else:
 		pos.y = g
-	_try_ledge_grab()
+	_try_ledge_grab(dt)
 	if pos.y < -14.0:
 		fall_out()
 
@@ -498,30 +508,57 @@ func _update_glide(dt: float) -> void:
 				glide_cd = 0.5
 		else:
 			glide_fuel = maxf(0.0, glide_fuel - dt / glide_max)
-	elif want and can and vel.y < 0.0 and glide_fuel > 0.15:
+	elif want and can and vel.y < 1.5 and glide_fuel > 0.15:
 		gliding = true
 		m.sfx("glide", pos, -4.0)
 		m.fx.burst(pos + Vector3(0, 1.7, 0), Color("f3eee2"), 8, 2.0, 0.35, 0.0)
 
-# ledge grab: slip or get nudged off an edge and a grapple pulls you back. Big knockbacks still kill.
-func _try_ledge_grab() -> void:
-	if gliding or grounded or fly_t > 0.0 or grap.size() > 0 or vel.y >= 0.0 or stun_t > 0.0 or downed or grap_cd > 0.0 or not over_void():
+# Ledge float: touch the side of any ground above you while you're still alive and you float
+# back up onto it, the way Supervive does it. Walking into a step up a few terraces high does
+# the same after a short push. Getting launched hard still carries you past the edge.
+func _try_ledge_grab(dt: float) -> void:
+	if grap.size() > 0 or pad.size() > 0 or fly_t > 0.0 or downed or charge.size() > 0 or dropping or pos.y < -12.0 or (grounded and stun_t > 0.0):
+		push_t = 0.0
 		return
-	if m.time - kb_t < 1.2 and Vector2(vel.x, vel.z).length() > 9.5:
-		return
-	var best := {}; var bd := 1e9
 	var w: World = m.world
-	for z in range(int(floor(pos.z - LEDGE_REACH)), int(floor(pos.z + LEDGE_REACH)) + 1):
-		for x in range(int(floor(pos.x - LEDGE_REACH)), int(floor(pos.x + LEDGE_REACH)) + 1):
+	var mv: Vector2 = inp["move"]
+	var reach := 0.0
+	var max_rise := 12.0
+	if grounded:
+		# a wall of ground in front of you: lean on it for a moment and you go up
+		if mv.length() < 0.5 or grap_cd > 0.0:
+			push_t = 0.0
+			return
+		var probe := Vector2(pos.x, pos.z) + mv.normalized() * (r + 0.35)
+		var g2 := w.ground_at(probe.x, probe.y)
+		if w.is_block(probe.x, probe.y) or g2 <= pos.y + World.STEP or g2 - pos.y > World.LEVEL * 4.0 + 0.05:
+			push_t = 0.0
+			return
+		push_t += dt
+		if push_t < 0.2:
+			return
+		reach = r + 0.6
+		max_rise = World.LEVEL * 4.0 + 0.1
+	else:
+		push_t = 0.0
+		# a hard launch carries you a moment before you can catch anything
+		if vel.y > 1.0 or grap_cd > 0.0 or (m.time - kb_t < 0.3 and Vector2(vel.x, vel.z).length() > 8.0):
+			return
+		reach = LEDGE_REACH if over_void() else r + 0.45
+	var best := {}; var bd := 1e9
+	for z in range(int(floor(pos.z - reach)), int(floor(pos.z + reach)) + 1):
+		for x in range(int(floor(pos.x - reach)), int(floor(pos.x + reach)) + 1):
 			if not w.inb(x, z) or w.kind[w.idx(x, z)] != World.T_GROUND:
 				continue
 			var gz := w.level[w.idx(x, z)] * World.LEVEL
 			var dz := gz - pos.y
-			if dz < 0.2 or dz > 7.5:
+			if dz < (0.05 if not grounded and over_void() else World.STEP + 0.05) or dz > max_rise:
 				continue
 			var ex := clampf(pos.x, x + 0.06, x + 0.94); var ez := clampf(pos.z, z + 0.06, z + 0.94)
 			var d := Vector2(ex - pos.x, ez - pos.z).length()
-			if d < bd and d < LEDGE_REACH:
+			if grounded and Vector2(ex - pos.x, ez - pos.z).dot(mv) <= 0.0:
+				continue
+			if d < bd and d < reach:
 				bd = d
 				best = {"x": x, "z": z, "gz": gz, "ex": ex, "ez": ez}
 	if best.is_empty():
@@ -529,36 +566,44 @@ func _try_ledge_grab() -> void:
 	var cx: float = best["x"] + 0.5; var cz: float = best["z"] + 0.5
 	var a := atan2(cz - best["ez"], cx - best["ex"])
 	var land := Vector3(cx, best["gz"], cz)
-	for k in [1.25, 0.9]:
+	for k in [1.25, 0.9, 0.6]:
 		var lx: float = best["ex"] + cos(a) * k; var lz: float = best["ez"] + sin(a) * k
 		if absf(w.ground_at(lx, lz) - best["gz"]) < 0.1 and not w.is_block(lx, lz):
 			land = Vector3(lx, best["gz"], lz); break
 	if w.is_block(land.x, land.z):
 		return
-	grap = {"ex": best["ex"], "ez": best["ez"], "gz": best["gz"], "land": land, "t": 0.0}
+	grap = {"ex": best["ex"], "ez": best["ez"], "gz": best["gz"], "land": land, "t": 0.0, "fx": 0.0}
 	grap_cd = LEDGE_CD
+	push_t = 0.0
+	gliding = false
+	roll_t = 0.0
 	vel = Vector3.ZERO
 	m.sfx("grab", pos, -2.0)
 	m.on_ledge_grab(self)
 
+## Floating up the side: rise to the lip, drift onto it, then a small hop onto the top.
 func _grapple(dt: float) -> void:
 	grap["t"] += dt
-	var tz: float = grap["gz"] + 0.8
-	var to := Vector3(grap["ex"], tz, grap["ez"]) - pos
-	var step := 22.0 * dt
-	if stun_t > 0.0 and grap["t"] > 0.05:
-		grap = {}
-		return
-	if to.length() <= step or grap["t"] > 0.7:
+	var tz: float = grap["gz"] + 0.5
+	var rise := clampf(tz - pos.y, -FLOAT_SPEED * dt, FLOAT_SPEED * dt)
+	pos.y += rise
+	var hd := Vector2(grap["ex"] - pos.x, grap["ez"] - pos.z)
+	var hs := 7.0 * dt
+	if hd.length() <= hs: pos.x = grap["ex"]; pos.z = grap["ez"]
+	else:
+		var hn := hd.normalized() * hs
+		pos.x += hn.x; pos.z += hn.y
+	vel = Vector3.ZERO
+	grounded = false
+	grap["fx"] -= dt
+	if grap["fx"] <= 0.0:
+		grap["fx"] = 0.07
+		m.fx.burst(pos + Vector3(0, 0.6, 0), Color("cfeaff"), 2, 1.2, 0.35, 0.0)
+	if (absf(tz - pos.y) < 0.02 and hd.length() < 0.05) or grap["t"] > 2.0:
 		pos = Vector3(grap["ex"], maxf(pos.y, tz), grap["ez"])
 		var land: Vector3 = grap["land"]
 		grap = {}
-		# hop onto the ledge along a fixed arc so it always lands
 		pad = {"from": pos, "to": land, "t": 0.0, "dur": 0.22, "h": 0.4}
-		return
-	pos += to.normalized() * step
-	vel = Vector3.ZERO
-	grounded = false
 
 # ------------------------------------------------------------------ visuals
 func render(delta: float, alpha: float) -> void:
