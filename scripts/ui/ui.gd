@@ -280,9 +280,15 @@ static func hbox(sep := 10) -> HBoxContainer:
 static func bar(frac: float, col: Color, w := 120.0, h := 8.0) -> Control:
 	var c := Control.new()
 	c.custom_minimum_size = Vector2(w, h)
+	c.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	c.draw.connect(func():
-		c.draw_rect(Rect2(Vector2.ZERO, c.size), Color(0, 0, 0, 0.4))
-		c.draw_rect(Rect2(Vector2.ZERO, Vector2(c.size.x * clampf(frac, 0.0, 1.0), c.size.y)), col))
+		var r := minf(c.size.y * 0.5, 4.0)
+		var bg := StyleBoxFlat.new(); bg.bg_color = Color(0, 0, 0, 0.4); bg.set_corner_radius_all(int(r))
+		c.draw_style_box(bg, Rect2(Vector2.ZERO, c.size))
+		var fw := c.size.x * clampf(frac, 0.0, 1.0)
+		if fw > 1.0:
+			var fg := StyleBoxFlat.new(); fg.bg_color = col; fg.set_corner_radius_all(int(r))
+			c.draw_style_box(fg, Rect2(Vector2.ZERO, Vector2(fw, c.size.y))))
 	return c
 
 static func spacer(h := 8.0) -> Control:

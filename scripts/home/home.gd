@@ -31,8 +31,6 @@ var interact := {}
 var panel_open := ""
 var chat_log: Array = []       # [{role, content}]
 var chat_kin: Dictionary = {}
-var chat_box: VBoxContainer
-var chat_scroll: ScrollContainer
 var chat_input: LineEdit
 var chat_busy := false
 var chat_offline_noted := false
@@ -197,7 +195,17 @@ func _ready() -> void:
 				elif which == "kin": _open_kin(Save.active_kin())
 				elif which == "shop": _open_shop()
 				elif which == "kitchen": _open_kitchen()
-				elif which == "plot": _open_plot("plots", 0))
+				elif which == "plot": _open_plot("plots", 0)
+				elif which == "chat":
+					var ak := Save.active_kin()
+					var ke := _kin_entry(ak)
+					if not ke.is_empty(): ppos = ke["pos"] + Vector3(1.5, 0, 1.0); cam.snap(ppos)
+					_open_chat(ak)
+					chat_input.text = "hi, how are you?"
+					_send_chat()
+				elif which == "fetch":
+					var ke := _kin_entry(Save.active_kin())
+					if not ke.is_empty(): ppos = ke["pos"] + Vector3(1.5, 0, 1.0); cam.snap(ppos); _play_with_kin(ke))
 		if a.begins_with("--home-at="):
 			var xy := a.substr(10).split(",")
 			ppos = Vector3(float(xy[0]), 0, float(xy[1])); player.position = ppos; cam.snap(ppos)
@@ -539,12 +547,17 @@ func _process(delta: float) -> void:
 	_move_kin(d)
 	cam.follow(ppos, d, panel_open == "")
 	_find_interact()
-	if panel_open == "" and not building_now and not Overlay.is_open() and Input.is_action_just_pressed("interact") and not interact.is_empty():
-		_use(interact)
+	if panel_open == "" and not building_now and not Overlay.is_open() and not chat_open and not interact.is_empty():
+		if Input.is_action_just_pressed("interact"):
+			_use(interact)
+		elif interact["kind"] == "kin" and visit.is_empty():
+			if Input.is_action_just_pressed("play"): _play_with_kin(interact["k"])
+			elif Input.is_action_just_pressed("talk"): _open_chat(interact["k"]["rec"])
+			elif Input.is_action_just_pressed("details"): _open_kin(interact["k"]["rec"])
 
 func _move_player(d: float) -> void:
 	var mv := Vector2.ZERO
-	if panel_open == "" and not Overlay.is_open():
+	if panel_open == "" and not Overlay.is_open() and not chat_open:
 		mv = Vector2(Input.get_axis("left", "right"), Input.get_axis("up", "down"))
 		if mv.length() > 1.0: mv = mv.normalized()
 	var hv := Vector2(pvel.x, pvel.z)
@@ -559,7 +572,7 @@ func _move_player(d: float) -> void:
 	else: hv.y = 0.0
 	pvel = Vector3(hv.x, 0, hv.y)
 	# jumping, just for fun
-	if panel_open == "" and not Overlay.is_open() and not air and Input.is_action_just_pressed("jump"):
+	if panel_open == "" and not Overlay.is_open() and not chat_open and not air and Input.is_action_just_pressed("jump"):
 		pvy = JUMP_V
 		Sfx.play("jump", null, -12.0)
 	if air or pvy > 0.0:
@@ -656,12 +669,19 @@ func _move_kin(d: float) -> void:
 				k["goal"] = world.random_ground(maxi(here, 0))
 			if randf() < 0.3:
 				_emote(k, "♥" if trust > 65.0 else ("?" if trust < 30.0 else "★"))
+		if k.has("fetch"):
+			_fetch_step(k, d)
+		var hold := float(k.get("hold_t", 0.0))
+		if hold > 0.0:
+			# being petted or talked to: it stays put and looks at you
+			k["hold_t"] = hold - d
+			k["goal"] = pos
 		var wish := Vector2.ZERO
 		var goal: Vector3 = k["goal"]
 		if goal != Vector3.INF:
 			var to := Vector2(goal.x - pos.x, goal.z - pos.z)
 			if to.length() > 0.4:
-				wish = to.normalized() * (3.6 if k.has("chase") else 2.4)
+				wish = to.normalized() * (4.4 if k.has("fetch") else (3.6 if k.has("chase") else 2.4))
 		var hv := Vector2(k["vel"].x, k["vel"].z)
 		hv += (wish - hv) * (1.0 - exp(-8.0 * d))
 		var nx := pos.x + hv.x * d
@@ -675,7 +695,15 @@ func _move_kin(d: float) -> void:
 		var face := atan2(-hv.x, -hv.y) if hv.length() > 0.2 else atan2(-(ppos.x - pos.x), -(ppos.z - pos.z))
 		n.rotation.y = lerp_angle(n.rotation.y, face, minf(1.0, d * 8.0))
 		k["hop"] += d * (9.0 if hv.length() > 0.3 else 2.5)
-		n.get_node("Body").position.y = absf(sin(k["hop"])) * (0.14 if hv.length() > 0.3 else 0.03)
+		var joy := float(k.get("joy_t", 0.0))
+		if joy > 0.0:
+			# a happy little bounce
+			k["joy_t"] = joy - d
+			k["hop"] += d * 10.0
+		n.get_node("Body").position.y = absf(sin(k["hop"])) * (0.26 if joy > 0.0 else (0.14 if hv.length() > 0.3 else 0.03))
+		if k.has("say"):
+			k["say_t"] = float(k.get("say_t", 0.0)) - d
+			(k["say"] as Label3D).visible = k["say_t"] > 0.0
 		n.scale = Vector3.ONE * (1.05 if rec["uid"] == _d().get("active", "") else 0.9) * float(n.get_meta("evo_scale", 1.0))
 		if k["emote_t"] > 0.0:
 			k["emote_t"] -= d
@@ -718,11 +746,15 @@ func _find_interact() -> void:
 		var d := p2.distance_to(Vector2(k["pos"].x, k["pos"].z))
 		if d < bd: bd = d; best = {"kind": "kin", "k": k}
 	interact = best
-	if panel_open != "" or best.is_empty() or building_now:
+	if panel_open != "" or best.is_empty() or building_now or chat_open:
 		prompt_box.visible = false
 		return
 	prompt_box.visible = true
-	prompt_lbl.text = "F  " + _label_for(best)
+	if best["kind"] == "kin" and visit.is_empty():
+		var nm: String = best["k"]["rec"]["name"]
+		prompt_lbl.text = "%s  Pet %s     %s  Play fetch     %s  Talk     %s  Details" % [Settings.key_cap("interact"), nm, Settings.key_cap("play"), Settings.key_cap("talk"), Settings.key_cap("details")]
+	else:
+		prompt_lbl.text = Settings.key_cap("interact") + "  " + _label_for(best)
 	prompt_box.reset_size()
 	var vp := get_viewport().get_visible_rect().size
 	prompt_box.position = Vector2((vp.x - prompt_box.size.x) * 0.5, vp.y - 110.0)
@@ -772,14 +804,16 @@ func _use(it: Dictionary) -> void:
 		"stall": _open_shop()
 		"portal": _open_expedition()
 		"house": _open_house()
-		"kin": _open_kin(it["k"]["rec"])
+		"kin": _pet_kin(it["k"])
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.pressed and panel_open == "":
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP: cam.zoom_to = clampf(cam.zoom_to - 0.08, 0.55, 1.6)
 		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: cam.zoom_to = clampf(cam.zoom_to + 0.08, 0.55, 1.6)
 	if event.is_action_pressed("menu") and not Overlay.is_open():
-		if panel_open != "":
+		if chat_open:
+			_close_chat()
+		elif panel_open != "":
 			_close_panel()
 		else:
 			Overlay.open_pause("home")
@@ -1086,79 +1120,178 @@ func _shop_row(v: VBoxContainer, name_txt: String, desc: String, price: int, on_
 	v.add_child(row)
 
 # ---- kin
+# ---- kin: petting, playing and talking happen out in the world; only the details card is a menu
+func _kin_entry(rec: Dictionary) -> Dictionary:
+	for k in kins:
+		if k["rec"] == rec: return k
+	return {}
+
+func _face(at: Vector3) -> void:
+	pface = atan2(-(at.x - ppos.x), -(at.z - ppos.z))
+	player.rotation.y = pface
+
+func _pet_kin(k: Dictionary) -> void:
+	var rec: Dictionary = k["rec"]
+	k["hold_t"] = 1.0
+	k["joy_t"] = 0.9
+	_face(k["pos"])
+	_emote(k, "♥")
+	fx.burst(k["pos"] + Vector3(0, 0.9, 0), Color("ff8fb0"), 12, 1.8)
+	Sfx.play("kin_happy", null, -4.0, 0.12)
+	if pet_done.get(rec["uid"], -1) != int(Save.d["matches"]):
+		pet_done[rec["uid"]] = int(Save.d["matches"])
+		Save.remember(rec, "petted", "got a long scratch behind the ears", 1.5)
+		Save.save_game()
+		_say(k, ["Hehe!", "More!", "That's the spot.", "♥"][randi() % 4], 1.6)
+
+## Fetch: you toss a ball toward the cursor, the kin runs it down and brings it back.
+func _play_with_kin(k: Dictionary) -> void:
+	if k.has("fetch"):
+		return
+	var aim := cam.mouse_on_plane(0.0)
+	var dir := Vector2(aim.x - ppos.x, aim.z - ppos.z)
+	if dir.length() < 1.0: dir = Vector2(sin(pface), cos(pface)) * -1.0
+	var to := ppos + Vector3(dir.normalized().x, 0, dir.normalized().y) * clampf(dir.length(), 3.0, 7.0)
+	for _i in 8:
+		if not world.is_void(to.x, to.z) and not world.is_block(to.x, to.z): break
+		to = ppos + (to - ppos) * 0.75
+	if world.is_void(to.x, to.z) or world.is_block(to.x, to.z):
+		to = ppos + Vector3(1.5, 0, 0)
+	var ball := MeshInstance3D.new()
+	ball.mesh = Models.sphere(0.16, 12)
+	ball.material_override = Models.toon(Color("ff6a5a"))
+	add_child(ball)
+	ball.position = ppos + Vector3(0, 1.2, 0)
+	_face(to)
+	k["fetch"] = {"ball": ball, "from": ball.position, "to": to, "t": 0.0, "phase": "fly", "life": 14.0}
+	k.erase("chase"); k.erase("task")
+	_emote(k, "!")
+	Sfx.play("throw", null, -8.0)
+
+func _fetch_step(k: Dictionary, d: float) -> void:
+	var f: Dictionary = k["fetch"]
+	var ball: MeshInstance3D = f["ball"]
+	f["life"] -= d
+	var pos: Vector3 = k["pos"]
+	match String(f["phase"]):
+		"fly":
+			f["t"] += d
+			var q := clampf(f["t"] / 0.7, 0.0, 1.0)
+			var a: Vector3 = f["from"]; var b: Vector3 = f["to"] + Vector3(0, 0.16, 0)
+			ball.position = a.lerp(b, q) + Vector3(0, 2.2 * q * (1.0 - q), 0)
+			k["goal"] = f["to"]
+			if q >= 1.0: f["phase"] = "ground"
+		"ground":
+			k["goal"] = f["to"]
+			if Vector2(pos.x - f["to"].x, pos.z - f["to"].z).length() < 0.55:
+				f["phase"] = "carry"
+				Sfx.play("pickup", null, -14.0)
+		"carry":
+			ball.position = pos + Vector3(0, 0.75, 0)
+			k["goal"] = ppos
+			if Vector2(pos.x - ppos.x, pos.z - ppos.z).length() < 1.3:
+				f["life"] = -1.0
+				_emote(k, "★")
+				k["joy_t"] = 0.8
+				Sfx.play("kin_happy", null, -6.0)
+				var rec: Dictionary = k["rec"]
+				if int(rec.get("played", -1)) != int(Save.d["matches"]):
+					rec["played"] = int(Save.d["matches"])
+					Save.remember(rec, "played", "played fetch with you on the farm", 1.5)
+					Save.save_game()
+	if f["life"] <= 0.0:
+		ball.queue_free()
+		k.erase("fetch")
+		k["t"] = randf_range(1.5, 3.0)
+
+## A speech bubble over a kin's head.
+func _say(k: Dictionary, text: String, secs := 4.0) -> void:
+	if not k.has("say"):
+		var l := Label3D.new()
+		l.font = UI.body; l.font_size = 30; l.pixel_size = 0.0075; l.outline_size = 12
+		l.outline_modulate = Color(0.06, 0.05, 0.09, 0.95)
+		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED; l.no_depth_test = true
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; l.width = 520
+		l.position = Vector3(0, 1.75, 0)
+		(k["node"] as Node3D).add_child(l)
+		k["say"] = l
+	(k["say"] as Label3D).text = text
+	k["say_t"] = secs
+	(k["say"] as Label3D).visible = true
+
+## The details card: everything about one kin, laid out to fit on screen.
 func _open_kin(rec: Dictionary) -> void:
 	var sp: Dictionary = Data.KIN[rec["species"]]
 	Evo.ensure(rec)
-	var v := _new_panel("%s the %s" % [rec["name"], Evo.form_name(rec)], 640)
-	var row := UI.hbox(20)
-	var left := UI.vbox(6); left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left.add_child(UI.label("Level %d %s kin · trust %d" % [int(rec["level"]), String(sp["type"]).capitalize(), int(rec["trust"])], 15, sp["color"]))
-	for t in ["bravery", "loyalty", "temper", "curiosity"]:
+	var v := _new_panel("%s the %s" % [rec["name"], Evo.form_name(rec)], 860)
+	var cols := UI.hbox(18)
+	v.add_child(cols)
+	# who it is
+	var c1 := UI.vbox(6); c1.custom_minimum_size.x = 250
+	c1.add_child(UI.label("Level %d %s kin" % [int(rec["level"]), String(sp["type"]).capitalize()], 16, sp["color"]))
+	if rec["uid"] == Save.d.get("active", ""): c1.add_child(UI.label("Your partner", 13, UI.GOLD))
+	for t in [["Trust", float(rec["trust"]) / 100.0, Color("ffb3c6")], ["Bravery", float(rec["traits"]["bravery"]), sp["color"]],
+			["Loyalty", float(rec["traits"]["loyalty"]), sp["color"]], ["Temper", float(rec["traits"]["temper"]), sp["color"]],
+			["Curiosity", float(rec["traits"]["curiosity"]), sp["color"]]]:
 		var r := UI.hbox(8)
-		var l := UI.label(t.capitalize(), 14, UI.MUTED); l.custom_minimum_size.x = 80
-		r.add_child(l)
-		r.add_child(UI.bar(float(rec["traits"][t]), sp["color"], 160, 8))
-		left.add_child(r)
-	var tr := UI.hbox(8)
-	var tl := UI.label("Trust", 14, Color("ffb3c6")); tl.custom_minimum_size.x = 80
-	tr.add_child(tl); tr.add_child(UI.bar(float(rec["trust"]) / 100.0, Color("ffb3c6"), 160, 8))
-	left.add_child(tr)
-	row.add_child(left)
-	var right := UI.vbox(6); right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var l := UI.label(t[0], 13, UI.MUTED); l.custom_minimum_size.x = 70
+		r.add_child(l); r.add_child(UI.bar(t[1], t[2], 150, 7))
+		c1.add_child(r)
+	cols.add_child(c1)
+	# what it does
+	var c2 := UI.vbox(4); c2.custom_minimum_size.x = 250
 	var sk: Dictionary = Data.KIN_SKILLS[sp["skill"]]
 	var sh: Dictionary = Data.SHOULDER[sp["shoulder"]]
-	right.add_child(UI.label("Q skill: %s" % sk["name"], 15, UI.INK))
-	right.add_child(UI.label(sk["desc"], 13, UI.MUTED))
-	right.add_child(UI.label("On your shoulder: %s" % sh["name"], 15, UI.INK))
-	right.add_child(UI.label(sh["desc"], 13, UI.MUTED))
-	row.add_child(right)
-	v.add_child(row)
+	c2.add_child(UI.section("In a match"))
+	c2.add_child(UI.label("%s  (Q)" % sk["name"], 15))
+	var skd := UI.label(sk["desc"], 13, UI.MUTED); skd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c2.add_child(skd)
+	c2.add_child(UI.label("On your shoulder: %s" % sh["name"], 15))
+	var shd := UI.label(sh["desc"], 13, UI.MUTED); shd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c2.add_child(shd)
+	cols.add_child(c2)
 	# how it's growing
-	var grow := UI.vbox(4)
+	var c3 := UI.vbox(4); c3.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var lead := Evo.leading(rec)
 	var lv := int(rec["level"])
 	var next_form := (lv / 4 + 1) * 4
 	var next_mut := lv + ((2 - lv % 4) + 4) % 4
 	if next_mut == lv: next_mut += 4
-	grow.add_child(UI.label("Growing %s. Next new form at level %d, next mutation at level %d." % [String(Evo.AFF[lead]["name"]).to_lower(), next_form, next_mut], 14, Evo.AFF[lead]["tint"]))
-	var ar := UI.hbox(10)
+	c3.add_child(UI.section("Growing"))
+	c3.add_child(UI.label("%s. New form at %d, mutation at %d." % [String(Evo.AFF[lead]["name"]), next_form, next_mut], 14, Evo.AFF[lead]["tint"]))
 	var tot := 0.0
 	for a in Evo.AFF: tot += maxf(0.0, float(rec["aff"][a]))
 	for a in Evo.AFF:
-		var cbox := UI.vbox(2)
-		var al := UI.label(Evo.AFF[a]["name"], 12, UI.MUTED); al.autowrap_mode = TextServer.AUTOWRAP_OFF
-		cbox.add_child(al)
-		cbox.add_child(UI.bar(float(rec["aff"][a]) / maxf(tot, 1.0), Evo.AFF[a]["tint"], 120, 6))
-		ar.add_child(cbox)
-	grow.add_child(ar)
+		var r := UI.hbox(8)
+		var al := UI.label(Evo.AFF[a]["name"], 12, UI.MUTED); al.custom_minimum_size.x = 76
+		r.add_child(al); r.add_child(UI.bar(float(rec["aff"][a]) / maxf(tot, 1.0), Evo.AFF[a]["tint"], 120, 6))
+		c3.add_child(r)
 	var parts: Array = []
 	for mu in rec["muts"]:
-		parts.append(String(Evo.PART_NAMES.get(mu["id"], mu["id"])) + ("" if int(mu["lv"]) == 1 else " (x%d)" % int(mu["lv"])))
-	if rec["forms"].size() > 0 or parts.size() > 0:
-		var path: Array = []
-		for f in rec["forms"]: path.append(Evo.AFF[f]["name"])
-		grow.add_child(UI.label(("Path: " + " > ".join(path) if path.size() > 0 else "") + ("   Has: " + ", ".join(parts) if parts.size() > 0 else ""), 13, UI.MUTED))
-	grow.add_child(UI.label("Food shapes it too: Emberberry fierce, Sunroot steadfast, Mindmint curious, Tidebloom swift.", 12, UI.MUTED))
-	v.add_child(grow)
+		parts.append(String(Evo.PART_NAMES.get(mu["id"], mu["id"])) + ("" if int(mu["lv"]) == 1 else " x%d" % int(mu["lv"])))
+	if parts.size() > 0:
+		var pl := UI.label("Has " + ", ".join(parts.slice(0, 5)), 12, UI.MUTED); pl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		c3.add_child(pl)
+	cols.add_child(c3)
+	# memories
 	var mem: Array = rec.get("memory", [])
 	if mem.size() > 0:
-		v.add_child(UI.section("Remembers"))
-		for i in range(maxi(0, mem.size() - 4), mem.size()):
-			v.add_child(UI.label("· " + String(mem[i]["text"]), 14, UI.INK))
-	var btns := UI.hbox(8)
-	btns.add_child(UI.button("Talk", func(): _open_chat(rec)))
-	var pet_b := UI.button("Pet", func():
-		pet_done[rec["uid"]] = int(Save.d["matches"])
-		Save.remember(rec, "petted", "got a long scratch behind the ears", 1.5)
-		Sfx.play("kin_happy")
-		for k in kins:
-			if k["rec"] == rec: _emote(k, "♥")
-		Save.save_game()
-		_open_kin(rec))
-	pet_b.disabled = pet_done.get(rec["uid"], -1) == int(Save.d["matches"])
-	btns.add_child(pet_b)
+		var mc := UI.card(UI.CARD, 10, 12)
+		var mv := UI.vbox(3); mc.add_child(mv)
+		mv.add_child(UI.section("Remembers"))
+		for i in range(maxi(0, mem.size() - 3), mem.size()):
+			mv.add_child(UI.label(String(mem[i]["text"]).capitalize().substr(0, 1) + String(mem[i]["text"]).substr(1), 14))
+		v.add_child(mc)
+	# what you can do from here
+	var btns := HFlowContainer.new()
+	btns.add_theme_constant_override("h_separation", 8); btns.add_theme_constant_override("v_separation", 8)
+	if rec["uid"] != Save.d.get("active", ""):
+		btns.add_child(UI.primary("Bring on expeditions", func():
+			Save.d["active"] = rec["uid"]
+			Save.save_game()
+			_open_kin(rec)))
+	var fed := 0
 	for s in Data.CROPS:
-		if int(Save.d["crops"].get(s, 0)) > 0:
+		if int(Save.d["crops"].get(s, 0)) > 0 and fed < 3:
+			fed += 1
 			var crop_k: String = s
 			btns.add_child(UI.button("Feed %s" % Data.CROPS[s]["name"], func():
 				Save.d["crops"][crop_k] = int(Save.d["crops"][crop_k]) - 1
@@ -1166,17 +1299,10 @@ func _open_kin(rec: Dictionary) -> void:
 					if Evo.AFF[af]["food"] == crop_k: Evo.add(rec, af, 6.0)
 				Save.remember(rec, "fed", "was fed a %s" % Data.CROPS[crop_k]["name"].to_lower(), 4.0)
 				Sfx.play("kin_happy")
+				var ke := _kin_entry(rec)
+				if not ke.is_empty(): ke["joy_t"] = 0.8; _emote(ke, "♥")
 				Save.save_game()
 				_open_kin(rec)))
-			break
-	if rec["uid"] != Save.d.get("active", ""):
-		btns.add_child(UI.button("Bring on expeditions", func():
-			Save.d["active"] = rec["uid"]
-			Save.save_game()
-			_open_kin(rec)))
-	else:
-		btns.add_child(UI.label("  Your partner", 15, UI.GOLD))
-	# one kin can look after the farm: it waters dry plants while you're home
 	if rec.get("farmhand", false):
 		btns.add_child(UI.button("Stop farming", func():
 			rec.erase("farmhand")
@@ -1191,32 +1317,62 @@ func _open_kin(rec: Dictionary) -> void:
 			_toast("%s will water your plants" % rec["name"])
 			_open_kin(rec)))
 	v.add_child(btns)
+	v.add_child(UI.label("Food shapes how it grows: Emberberry fierce, Sunroot steadfast, Mindmint curious, Tidebloom swift.", 12, UI.MUTED))
+
+# ---- talking: speech bubbles over the kin and a slim bar to type in
+var chat_open := false
+var chat_bar: Control = null
+var chat_hist: Label = null
 
 func _open_chat(rec: Dictionary) -> void:
-	var v := _new_panel("Talking with %s" % rec["name"], 600)
+	_close_panel()
+	_close_chat()
 	chat_kin = rec
+	chat_open = true
 	if chat_log.size() == 0 or chat_log[0].get("uid", "") != rec["uid"]:
 		chat_log = [{"uid": rec["uid"]}]
-	chat_scroll = ScrollContainer.new()
-	chat_scroll.custom_minimum_size = Vector2(0, 280)
-	chat_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	chat_box = UI.vbox(8)
-	chat_box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	chat_scroll.add_child(chat_box)
-	v.add_child(chat_scroll)
-	for msg in chat_log.slice(1):
-		_chat_bubble(msg["role"], msg["content"])
-	if chat_log.size() == 1:
-		_chat_bubble("assistant", _greeting(rec))
+	var k := _kin_entry(rec)
+	if not k.is_empty():
+		k["hold_t"] = 9999.0
+		_face(k["pos"])
+		if chat_log.size() == 1:
+			_say(k, _greeting(rec), 5.0)
+	var bar := UI.card(Color(0.06, 0.07, 0.1, 0.92), 12, 14)
+	bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	bar.offset_top = -64; bar.offset_bottom = -64
+	bar.custom_minimum_size.x = minf(640.0, get_viewport().get_visible_rect().size.x - 32.0)
+	var col := UI.vbox(8)
+	bar.add_child(col)
+	chat_hist = UI.label("", 13, UI.MUTED)
+	chat_hist.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	col.add_child(chat_hist)
 	var row := UI.hbox(8)
 	chat_input = LineEdit.new()
 	chat_input.placeholder_text = "Say something to %s" % rec["name"]
 	chat_input.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	chat_input.max_length = 200
 	chat_input.text_submitted.connect(func(_t): _send_chat())
 	row.add_child(chat_input)
-	row.add_child(UI.button("Send", _send_chat))
-	v.add_child(row)
+	row.add_child(UI.button("Say", _send_chat))
+	row.add_child(UI.button("Done", _close_chat))
+	col.add_child(row)
+	root_ui.add_child(bar)
+	chat_bar = bar
+	_chat_bubble("", "")
 	chat_input.grab_focus()
+
+func _close_chat() -> void:
+	if is_instance_valid(chat_bar):
+		chat_bar.queue_free()
+	chat_bar = null
+	chat_input = null
+	chat_hist = null
+	if chat_open:
+		var k := _kin_entry(chat_kin)
+		if not k.is_empty(): k["hold_t"] = 0.6
+	chat_open = false
 
 func _greeting(rec: Dictionary) -> String:
 	var t := float(rec["trust"])
@@ -1224,20 +1380,15 @@ func _greeting(rec: Dictionary) -> String:
 	if t < 30.0: return "...oh. It's you."
 	return "Hey. What's up?"
 
-func _chat_bubble(role: String, text: String) -> void:
-	var mine := role == "user"
-	var c := UI.card(Color(0.95, 0.92, 0.85) if not mine else Color(0.2, 0.24, 0.34), 10, 12)
-	var l := UI.label(text, 15, Color(0.1, 0.09, 0.12) if not mine else UI.INK)
-	l.custom_minimum_size.x = 380
-	c.add_child(l)
-	var h := UI.hbox(0)
-	if mine:
-		var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL; h.add_child(sp)
-	h.add_child(c)
-	chat_box.add_child(h)
-	await get_tree().process_frame
-	if is_instance_valid(chat_scroll):
-		chat_scroll.scroll_vertical = int(chat_scroll.get_v_scroll_bar().max_value)
+## Keeps the last few lines of the conversation in the bar.
+func _chat_bubble(_role: String, _text: String) -> void:
+	if not is_instance_valid(chat_hist):
+		return
+	var lines: Array = []
+	var turns: Array = chat_log.slice(1)
+	for t in turns.slice(maxi(0, turns.size() - 4)):
+		lines.append(("You: " if t["role"] == "user" else "%s: " % chat_kin.get("name", "Kin")) + String(t["content"]))
+	chat_hist.text = "\n".join(lines) if lines.size() > 0 else "Type below and press Enter. %s answers above its head." % chat_kin.get("name", "Your kin")
 
 func _send_chat() -> void:
 	if chat_input == null or chat_busy:
@@ -1249,13 +1400,12 @@ func _send_chat() -> void:
 	chat_log.append({"role": "user", "content": txt})
 	_chat_bubble("user", txt)
 	var rec := chat_kin
+	var k := _kin_entry(rec)
 	chat_busy = true
-	var typing := UI.label("%s is typing" % rec["name"], 13, UI.MUTED)
-	chat_box.add_child(typing)
 	var dots := create_tween().set_loops()
 	for i in 4:
 		var n := i
-		dots.tween_callback(func(): if is_instance_valid(typing): typing.text = "%s is typing%s" % [rec["name"], ".".repeat(n)])
+		dots.tween_callback(func(): if not k.is_empty(): _say(k, ".".repeat(n + 1), 1.0))
 		dots.tween_interval(0.35)
 	var t0 := Time.get_ticks_msec() / 1000.0
 	var msgs := []
@@ -1280,21 +1430,18 @@ func _send_chat() -> void:
 		var wait := want - (Time.get_ticks_msec() / 1000.0 - t0)
 		if wait > 0.0:
 			await get_tree().create_timer(wait).timeout
+		dots.kill()
 		if not is_inside_tree():
 			return
 		chat_busy = false
-		if chat_kin.get("uid", "") != rec["uid"]:
-			# you went off to talk to someone else; this one keeps its thought to itself
-			dots.kill()
-			return
-		dots.kill()
-		if is_instance_valid(typing): typing.queue_free()
 		chat_log.append({"role": "assistant", "content": reply})
-		if is_instance_valid(chat_box):
+		if not k.is_empty():
+			_say(k, reply, clampf(3.0 + reply.length() * 0.06, 4.0, 10.0))
+		if chat_kin.get("uid", "") == rec["uid"]:
 			_chat_bubble("assistant", reply)
-			if offline and not chat_offline_noted:
+			if offline and not chat_offline_noted and is_instance_valid(chat_hist):
 				chat_offline_noted = true
-				chat_box.add_child(UI.label(_offline_reason(), 12, UI.MUTED))
+				_toast(_offline_reason())
 		# talking builds a little trust, once per match
 		if int(rec.get("talked", -1)) != int(Save.d["matches"]):
 			rec["talked"] = int(Save.d["matches"])
@@ -1305,10 +1452,10 @@ func _send_chat() -> void:
 
 func _offline_reason() -> String:
 	match Bridge.last_err:
-		"no_page": return "(%s is answering on their own here. In the web version they talk through Claude.)" % chat_kin.get("name", "Your kin")
-		"not_granted": return "(Claude isn't allowed on this page yet, so %s is answering on their own. Allow it from the page's permissions to have real conversations.)" % chat_kin.get("name", "Your kin")
-		"rate_limited": return "(Claude is busy for a moment, so %s answered on their own.)" % chat_kin.get("name", "Your kin")
-	return "(Couldn't reach Claude, so %s answered on their own.)" % chat_kin.get("name", "Your kin")
+		"no_page": return "%s answers on their own here. In the web version they talk through Claude." % chat_kin.get("name", "Your kin")
+		"not_granted": return "Claude isn't allowed on this page yet, so %s answers on their own." % chat_kin.get("name", "Your kin")
+		"rate_limited": return "Claude is busy for a moment, so %s answered on their own." % chat_kin.get("name", "Your kin")
+	return "Couldn't reach Claude, so %s answered on their own." % chat_kin.get("name", "Your kin")
 
 # ---- expedition
 var exp_cls := ""

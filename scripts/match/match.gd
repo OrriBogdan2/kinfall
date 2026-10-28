@@ -170,6 +170,33 @@ func _spawn_pads_and_portals() -> void:
 		n.rotation.y = atan2(-(pd["land"].x - pd["pos"].x), -(pd["land"].z - pd["pos"].z))
 		add_child(n)
 		pd["node"] = n
+		# where it goes: a sign over the pad, and the flight path and landing ring when you're close
+		var to_role: String = world.islands[pd["to"]]["role"] if pd["to"] < world.islands.size() else ""
+		var lbl := Label3D.new()
+		lbl.text = "to " + String({"heart": "the Heart", "camp": "the monster camp", "nest": "the kin nest", "grove": "the grove", "shrine": "the shrine"}.get(to_role, "the next island"))
+		lbl.font = UI.big; lbl.font_size = 34; lbl.pixel_size = 0.01; lbl.outline_size = 10
+		lbl.modulate = Color("c9fff0"); lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED; lbl.no_depth_test = true
+		lbl.position = pd["pos"] + Vector3(0, 1.3, 0)
+		add_child(lbl)
+		var arc := Node3D.new()
+		var a: Vector3 = pd["pos"]; var b: Vector3 = pd["land"]
+		var dist := Vector2(b.x - a.x, b.z - a.z).length()
+		var hh := maxf(a.y, b.y) - a.y + 2.5 + dist * 0.12
+		var dm := Models.sphere(0.07, 8)
+		var mat := Models.glow_mat(Color("bff7e6"))
+		for i in range(1, 18):
+			var k := i / 18.0
+			var mi := MeshInstance3D.new(); mi.mesh = dm; mi.material_override = mat
+			mi.position = Vector3(lerpf(a.x, b.x, k), lerpf(a.y, b.y, k) + 4.0 * hh * k * (1.0 - k) + 0.3, lerpf(a.z, b.z, k))
+			arc.add_child(mi)
+		var ring := MeshInstance3D.new()
+		var rm := PlaneMesh.new(); rm.size = Vector2(1.6, 1.6); ring.mesh = rm
+		ring.material_override = Models.ring_mat(Color("8fe3c8"))
+		ring.position = b + Vector3(0, 0.05, 0)
+		arc.add_child(ring)
+		arc.visible = false
+		add_child(arc)
+		pd["arc"] = arc
 	var open_at := float(Data.MATCH["portal_open"]) * length / float(Data.MATCH["length"])
 	for i in world.portal_spots.size():
 		var n := Models.portal(Color("8fe3c8"))
@@ -1042,6 +1069,9 @@ func _process(delta: float) -> void:
 	for pd in world.pads:
 		var top: Node3D = pd["node"].get_node("Top")
 		top.scale = Vector3.ONE * (1.0 + sin(time * 5.0) * 0.06)
+		if pd.has("arc") and player:
+			var near := Vector2(player.pos.x - pd["pos"].x, player.pos.z - pd["pos"].z).length() < 6.0
+			(pd["arc"] as Node3D).visible = near or player.pad.size() > 0 and (player.pad["to"] as Vector3).distance_to(pd["land"]) < 0.5
 	for b in bubbles.duplicate():
 		b["t"] += delta
 		if b["t"] > 2.6: bubbles.erase(b)

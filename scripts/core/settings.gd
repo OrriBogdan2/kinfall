@@ -23,7 +23,8 @@ const ACTIONS := [
 	["up", "Move up"], ["down", "Move down"], ["left", "Move left"], ["right", "Move right"],
 	["fire", "Fire"], ["dash", "Dash"], ["jump", "Jump (hold to glide)"], ["signature", "Hero ability"],
 	["ultimate", "Ultimate"], ["throw", "Throw / call back kin"], ["kin_skill", "Kin skill"],
-	["interact", "Use, catch, revive"], ["tonic", "Drink a tonic"], ["scores", "Scoreboard"],
+	["interact", "Use, catch, revive, pet"], ["tonic", "Drink a tonic"], ["scores", "Scoreboard"],
+	["play", "Play fetch with a kin"], ["talk", "Talk to a kin"], ["details", "A kin's details"], ["inventory", "Inventory"],
 ]
 
 var v: Dictionary = {}

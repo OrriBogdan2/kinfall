@@ -46,6 +46,10 @@ func _setup_input() -> void:
 	_key("tonic", [KEY_1])
 	_key("scores", [KEY_TAB])
 	_key("menu", [KEY_ESCAPE])
+	_key("play", [KEY_G])                     # at home: play fetch with a kin
+	_key("talk", [KEY_T])                     # at home: talk to a kin
+	_key("details", [KEY_C])                  # at home: a kin's details
+	_key("inventory", [KEY_I])                # your things
 
 func goto(screen: String, opts := {}) -> void:
 	match_opts = opts

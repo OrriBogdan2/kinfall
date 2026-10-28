@@ -190,15 +190,25 @@ func _place_blockers() -> void:
 			if rng.randf() < 0.055:
 				kind[i] = T_BLOCK
 
-func _edge_cell_toward(isl: int, target: Vector2) -> Vector2i:
+func _edge_cell_toward(isl: int, target: Vector2, avoid: Array = [], spacing := PAD_SPACING) -> Vector2i:
 	var best := Vector2i(-1, -1); var bd := 1e9
 	for cell in islands[isl]["cells"]:
 		if kind[idx(cell.x, cell.y)] != T_GROUND or edge_dist(cell.x, cell.y, 3) != 2 or _near_block(cell.x, cell.y):
+			continue
+		# keep pads well apart so each one clearly goes somewhere different
+		var cp := Vector2(cell.x + 0.5, cell.y + 0.5)
+		var crowded := false
+		for a in avoid:
+			if cp.distance_to(a) < spacing:
+				crowded = true; break
+		if crowded:
 			continue
 		var d := Vector2(cell.x + 0.5, cell.y + 0.5).distance_to(target)
 		if d < bd:
 			bd = d; best = cell
 	return best
+
+const PAD_SPACING := 6.0
 
 func _place_pads() -> void:
 	# connect islands with a spanning tree of jump pads, plus a couple of extra links
@@ -218,16 +228,26 @@ func _place_pads() -> void:
 			break
 		linked[best[1]] = true
 		edges.append(best)
-	for _e in 2:
-		var a := rng.randi_range(0, n - 1); var b := rng.randi_range(0, n - 1)
-		if a != b and not edges.has([a, b]) and not edges.has([b, a]):
-			edges.append([a, b])
+	# one extra link so the map isn't a pure tree, between two islands that are close
+	var extra := []; var ed_best := 1e9
+	for a in n:
+		for b in range(a + 1, n):
+			if edges.has([a, b]) or edges.has([b, a]): continue
+			var d: float = islands[a]["c"].distance_to(islands[b]["c"])
+			if d < ed_best: ed_best = d; extra = [a, b]
+	if extra.size() == 2:
+		edges.append(extra)
+	var used: Array = []
 	for e in edges:
 		for dir in [[e[0], e[1]], [e[1], e[0]]]:
 			var from: int = dir[0]; var to: int = dir[1]
-			var c_from := _edge_cell_toward(from, islands[to]["c"])
+			var c_from := _edge_cell_toward(from, islands[to]["c"], used)
+			if c_from.x < 0:
+				# a crowded island: settle for less room rather than leave the link out
+				c_from = _edge_cell_toward(from, islands[to]["c"], used, 3.0)
 			if c_from.x < 0:
 				continue
+			used.append(Vector2(c_from.x + 0.5, c_from.y + 0.5))
 			var p := Vector3(c_from.x + 0.5, level[idx(c_from.x, c_from.y)] * LEVEL, c_from.y + 0.5)
 			pads.append({"pos": p, "land": Vector3.INF, "from": from, "to": to, "cd": 0.0})
 	# landing spots: on the target island, facing where you came from, but clear of every pad and rock

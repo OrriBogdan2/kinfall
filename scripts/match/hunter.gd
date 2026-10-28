@@ -191,7 +191,14 @@ func _on_zero(by: Ent, opts: Dictionary) -> void:
 
 # ------------------------------------------------------------------ actions
 func do_jump() -> void:
-	if downed or stun_t > 0.0 or grap.size() > 0 or pad.size() > 0 or out:
+	if downed or stun_t > 0.0 or grap.size() > 0 or out:
+		return
+	if pad.size() > 0:
+		# press jump mid-flight off a jump pad and the glider opens, keeping the launch's speed
+		if float(pad["t"]) > 0.12 and can_glide():
+			pad = {}
+			vel.y = minf(vel.y, 2.0)
+			_open_glider()
 		return
 	if grounded or coyote > 0.0:
 		vel.y = JUMP_V
@@ -199,7 +206,21 @@ func do_jump() -> void:
 		coyote = 0.0
 		m.sfx("jump", pos, -6.0)
 		return
+	# already in the air: a second press opens the glider straight away, rising or falling
+	if not gliding and can_glide():
+		_open_glider()
+		return
 	jump_buf = 0.12
+
+func can_glide() -> bool:
+	return not grounded and roll_t <= 0.0 and fly_t <= 0.0 and glide_cd <= 0.0 and not downed and stun_t <= 0.0 \
+		and m.time - kb_t > 0.4 and glide_fuel > 0.15 and not dropping and charge.is_empty()
+
+func _open_glider() -> void:
+	gliding = true
+	grounded = false
+	m.sfx("glide", pos, -4.0)
+	m.fx.burst(pos + Vector3(0, 1.7, 0), Color("f3eee2"), 8, 2.0, 0.35, 0.0)
 
 func do_dash() -> void:
 	if downed or stun_t > 0.0 or root_t > 0.0 or out or dashes < 1.0 or roll_t > 0.0 or grap.size() > 0 or pad.size() > 0:
@@ -502,7 +523,7 @@ func _update_glide(dt: float) -> void:
 	if grounded:
 		glide_fuel = minf(1.0, glide_fuel + dt / 1.2)
 	var can: bool = not grounded and roll_t <= 0.0 and fly_t <= 0.0 and glide_cd <= 0.0 and not downed and stun_t <= 0.0 \
-		and m.time - kb_t > 0.4 and glide_fuel > 0.0
+		and m.time - kb_t > 0.4 and glide_fuel > 0.0 and pad.is_empty()
 	var want: bool = inp.get("glide", false)
 	if gliding:
 		if not want or not can:
