@@ -129,6 +129,11 @@ func screen_node() -> Node:
 		return current.get_meta("screen")
 	return current
 
+func _has_arg(prefix: String) -> bool:
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with(prefix): return true
+	return false
+
 func show_screen(screen: String, opts: Dictionary) -> void:
 	if current:
 		current.queue_free()
@@ -136,11 +141,24 @@ func show_screen(screen: String, opts: Dictionary) -> void:
 	await get_tree().process_frame
 	match screen:
 		"match":
+			# a loading screen covers building the world; tests that screenshot by frame count skip it
+			var ld = null
+			if not opts.get("autoplay", false) and (not _has_arg("--shot=") or _has_arg("--show-loading")):
+				ld = load("res://scripts/ui/loading.gd").new()
+				ld.setup(opts)
+				add_child(ld)
+				await ld.shown
+				await ld.step(0.2)
 			var m := Match.new()
 			m.name = "Match"
 			add_child(m)
 			current = m
 			m.start(opts)
+			if ld:
+				# hold the match still while the bar finishes, except online where everyone runs together
+				if not opts.has("net"): m.set_process(false)
+				await ld.finish()
+				if is_instance_valid(m) and m.is_inside_tree(): m.set_process(true)
 		"results":
 			var R = load("res://scripts/ui/results.gd")
 			var scr = R.new()
