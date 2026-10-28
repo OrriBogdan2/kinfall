@@ -71,6 +71,11 @@ func _input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		var k := (event as InputEventKey).physical_keycode
 		var typing := get_viewport().gui_get_focus_owner() is LineEdit
+		if not typing and event.is_action_pressed("inventory") and ctx_now() in ["home", "town", "interior"]:
+			if page == "inventory": close()
+			elif page == "": open_inventory()
+			get_viewport().set_input_as_handled()
+			return
 		if (k == KEY_F1 or (k == KEY_QUOTELEFT and not typing)) and admin_allowed() and Game.main and ctx_now() != "title":
 			if page == "admin": close()
 			else: open_admin()
@@ -86,6 +91,7 @@ func ctx_now() -> String:
 	var path := String(s.get_script().resource_path) if s.get_script() else ""
 	if path.ends_with("home.gd"): return "home"
 	if path.ends_with("town.gd"): return "town"
+	if path.ends_with("interior.gd"): return "interior"
 	if s is Match: return "match"
 	return "title"
 
@@ -115,6 +121,7 @@ func back() -> void:
 			"pause": open_pause(ctx)
 			"settings": open_settings()
 			"saves": open_saves()
+			"inventory": open_inventory()
 			_: close()
 	else:
 		close()
@@ -138,6 +145,8 @@ func open_pause(where: String) -> void:
 	var v := _page("pause", "Paused" if where == "match" else "Menu", 420)
 	var bw := 360.0
 	v.add_child(UI.primary("Resume", close, bw))
+	if where != "match":
+		v.add_child(UI.button("Inventory  (%s)" % Settings.key_cap("inventory"), open_inventory, bw))
 	v.add_child(UI.button("Settings", open_settings, bw))
 	v.add_child(UI.button("Controls", func(): tab = "Controls"; open_settings(), bw))
 	if admin_allowed():
@@ -278,6 +287,81 @@ func _finish_rebind(ev: InputEvent) -> void:
 	listening = ""
 	Sfx.play("click")
 	_show_settings()
+
+# ------------------------------------------------------------------ inventory
+var inv_tab := "Items"
+
+func open_inventory() -> void:
+	var v := _page("inventory", "Inventory", 720)
+	var tabs := UI.hbox(6)
+	for t in ["Items", "Seeds", "Crops", "Furniture", "Kin"]:
+		var tn: String = t
+		tabs.add_child(UI.choice(t, t == inv_tab, func(): inv_tab = tn; open_inventory()))
+	v.add_child(tabs)
+	var grid := GridContainer.new(); grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 10); grid.add_theme_constant_override("v_separation", 10)
+	v.add_child(grid)
+	var cell := func(title_txt: String, count_txt: String, desc: String, col: Color, action_txt := "", action := Callable()) -> void:
+		var c := UI.card(UI.CARD, 12, 12)
+		c.custom_minimum_size = Vector2(210, 0)
+		var cv := UI.vbox(4); c.add_child(cv)
+		var top := UI.hbox(8)
+		var sw := ColorRect.new(); sw.color = col; sw.custom_minimum_size = Vector2(14, 14); sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		top.add_child(sw)
+		var tl := UI.label(title_txt, 15); tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		top.add_child(tl)
+		top.add_child(UI.label(count_txt, 15, UI.GOLD))
+		cv.add_child(top)
+		if desc != "":
+			var dl := UI.label(desc, 12, UI.MUTED); dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			cv.add_child(dl)
+		if action.is_valid():
+			cv.add_child(UI.button(action_txt, action))
+		grid.add_child(c)
+	var empty := true
+	match inv_tab:
+		"Items":
+			empty = false
+			cell.call("Gems", str(int(Save.d["gems"])), "Spend them at the stall, on buildings and furniture.", Color("7ef0d0"))
+			cell.call("Tonics", "×%d" % int(Save.d["items"].get("tonic", 0)), "Heal 45 in a match (key %s)." % Settings.key_cap("tonic"), Color("8ff0a0"))
+			var tr: String = Save.d.get("treat", "")
+			if tr != "":
+				cell.call("Treat ready", "", "Your partner eats it before the next expedition.", Color("f2c84a"))
+		"Seeds":
+			for k in Data.CROPS:
+				var n := int(Save.d["seeds"].get(k, 0))
+				if n <= 0: continue
+				empty = false
+				cell.call(Data.CROPS[k]["name"] + " seed", "×%d" % n, "Plant it in a farm plot.", Data.CROPS[k]["color"])
+		"Crops":
+			for k in Data.CROPS:
+				var n := int(Save.d["crops"].get(k, 0))
+				if n <= 0: continue
+				empty = false
+				var ck: String = k
+				cell.call(Data.CROPS[k]["name"], "×%d" % n, Data.CROPS[k]["desc"], Data.CROPS[k]["color"], "Feed to your partner", func():
+					var ak := Save.active_kin()
+					if ak.is_empty() or int(Save.d["crops"].get(ck, 0)) <= 0: return
+					Save.d["crops"][ck] = int(Save.d["crops"][ck]) - 1
+					for af in Evo.AFF:
+						if Evo.AFF[af]["food"] == ck: Evo.add(ak, af, 6.0)
+					Save.remember(ak, "fed", "was fed a %s" % Data.CROPS[ck]["name"].to_lower(), 4.0)
+					Sfx.play("kin_happy")
+					Save.save_game()
+					open_inventory())
+		"Furniture":
+			for k in Data.FURN:
+				var n := int(Save.d.get("furniture", {}).get(k, 0))
+				if n <= 0: continue
+				empty = false
+				cell.call(Data.FURN[k]["name"], "×%d" % n, "Place it inside your house: go in and press B.", Color("c99a6a"))
+		"Kin":
+			for rec in Save.d["roster"]:
+				empty = false
+				var sp: Dictionary = Data.KIN[rec["species"]]
+				cell.call(String(rec["name"]), "Lv %d" % int(rec["level"]), "%s · trust %d%s" % [Evo.form_name(rec), int(rec["trust"]), "  · partner" if rec["uid"] == Save.d.get("active", "") else ""], sp["color"])
+	if empty:
+		v.add_child(UI.label({"Seeds": "No seeds. Find them on expeditions or buy them at the stall.", "Crops": "No crops yet. Harvest your plots.", "Furniture": "Nothing stored. Furniture you buy or put away lands here.", "Kin": "No kin yet."}.get(inv_tab, ""), 14, UI.MUTED))
 
 # ------------------------------------------------------------------ save files
 func open_saves() -> void:

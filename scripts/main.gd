@@ -18,7 +18,10 @@ func _ready() -> void:
 					if which.size() > 1: Overlay.tab = which[1]
 					Overlay.open_settings()
 				elif which[0] == "admin": Overlay.open_admin()
-				elif which[0] == "saves": Overlay.open_saves())
+				elif which[0] == "saves": Overlay.open_saves()
+				elif which[0] == "inventory":
+					if which.size() > 1: Overlay.inv_tab = which[1]
+					Overlay.open_inventory())
 		if a.begins_with("--seed="): opts["seed"] = int(a.substr(7))
 		if a == "--god": opts["god"] = true
 		if a == "--autoplay": opts["autoplay"] = true

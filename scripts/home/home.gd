@@ -844,7 +844,7 @@ func _build_ui() -> void:
 	prompt_box.add_child(prompt_lbl)
 	root_ui.add_child(prompt_box)
 	var hint_box := UI.card(Color(0.06, 0.07, 0.1, 0.7), 8, 10)
-	hint = UI.label("WASD walk   ·   Space jump   ·   F use what's in front of you   ·   Scroll to zoom   ·   Esc menu", 14, UI.INK)
+	hint = UI.label("WASD walk   ·   Space jump   ·   F use   ·   I inventory   ·   Scroll to zoom   ·   Esc menu", 14, UI.INK)
 	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hint_box.add_child(hint)
 	hint_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
