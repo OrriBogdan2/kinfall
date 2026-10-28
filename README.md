@@ -26,6 +26,7 @@ The project uses the Compatibility renderer so the same build runs on the web.
 | Shift | Dash |
 | Space | Jump; hold it in the air to glide |
 | F (hold) | Catch a dazed wild kin, revive a teammate, open a chest |
+| F (tap) | Swap to a found weapon on the ground |
 | 1 | Tonic |
 | Tab | Scoreboard |
 | Esc | Menu: settings, controls, save files |
@@ -33,13 +34,16 @@ The project uses the Compatibility renderer so the same build runs on the web.
 
 Every key can be rebound in Settings > Controls. On the farm: WASD to walk, Space to jump, F to use whatever is in front of you, Esc for the menu.
 
-Touch the side of an island while you're falling (or gliding) and you float back up onto it. Walk into a step a few terraces high and you climb it.
+Touch the side of an island while you're falling (or gliding) and you float back up onto it. Walk into a single terrace and you hop up it; walk into a step a few terraces high and you climb it. Dash through an attack just as it lands for a perfect dodge: you get some dash back and your next shots crit.
 
 ## How a run works
 
 - **Farm.** Plant seeds and water them (F): a watered plant grows a stage every 90 seconds while you're home, and every expedition grows everything a stage too. Rain waters for you, and one kin can be your farmhand. A plant watered every stage gives a bigger harvest and a seed back. Crops become tonics, treats, snacks, a level for your partner (Starfruit), or gems at the stall.
 - **Training area.** From the expedition menu: a safe island with target dummies and a checklist for every button.
 - **Expedition.** Pick a class (Light, Medium, Heavy), a tier (Meadow, Dusk Isles, Hollow) and a mode. Every match is PvPvE: rival squads, monsters, wild kin, chests. Exits open partway through; stand in one for 3 seconds to leave with everything you carry. You have lives (3 in the Meadow, 2 in the Dusk Isles, 1 in the Hollow): losing one drops some of your gems and glides you back in somewhere quiet. Lose the last and everything you carry is gone. You heal on your own after a few seconds out of the fight. At 6:00 the islands fall.
+- **The drop.** Expeditions happen on a big map. Everyone starts aboard the skyship as it crosses the islands: press Space to jump when you're over the spot you want, then glide down. A ring on the ground shows where you'd land. Anyone still aboard at the far side gets dropped.
+- **Loot.** Crates, pots and red barrels break when you shoot or dash through them (barrels explode, so mind where you stand). Some crates, chests and the Glimmerkin drop found weapons: Fine, Rare, Epic or Legendary versions of any weapon, stronger than the one you brought, yours until the expedition ends.
+- **Events.** A meteor shower comes down about a quarter of the way in (the stars leave gems), the Warden wakes on the center island, and halfway through a Glimmerkin appears and runs. Bring it down before it slips away.
 - **The Hollow.** If you fall there and your partner's trust is below 80, it stays behind.
 
 ## The kin's mind
