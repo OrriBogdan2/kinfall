@@ -39,6 +39,29 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 	if a["think"] <= 0.0:
 		a["think"] = randf_range(0.12, 0.3) / (0.6 + a["skill"])
 		_choose(m, h)
+	# crossing to another island on a glide route: run off the edge, jump, open the glider at the
+	# top of the jump and steer for the landing (through any rings on the way)
+	if a.has("cross"):
+		var L: Dictionary = a["cross"]
+		var land: Vector3 = L["land"]
+		var tol := Vector2(land.x - h.pos.x, land.z - h.pos.z)
+		a["cross_t"] = float(a.get("cross_t", 12.0)) - dt
+		if (h.grounded and m.world.island_of(h.pos.x, h.pos.z) == int(L["to"])) or float(a["cross_t"]) <= 0.0:
+			a.erase("cross"); a.erase("cross_t")
+		elif not h.grounded and a.get("cross_go", false):
+			inp["move"] = tol.normalized()
+			# over the landing: fold the glider and drop onto it
+			inp["glide"] = tol.length() > 1.6 or m.world.is_void(h.pos.x, h.pos.z)
+			if not h.gliding and h.vel.y < 1.0 and h.can_glide():
+				inp["jump"] = true
+			return
+		elif h.grounded and h.flat_dist(L["take"]) < 0.9:
+			inp["move"] = tol.normalized()
+			inp["jump"] = true
+			a["cross_go"] = true
+			return
+		else:
+			a["cross_go"] = false
 	var tgt: Ent = a["tgt"]
 	var move := Vector2.ZERO
 	# ---- combat
@@ -107,7 +130,7 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 		if Abil.e_id(h) == "mend" and h.sig_cd <= 0.0 and h.hp < h.max_hp * 0.6:
 			inp["sig"] = true
 	# ---- don't walk off edges (except onto the jump pad we're heading for), and keep off other pads
-	var to_pad: bool = a.has("pad_at") and h.flat_dist(a["pad_at"]) < 2.5
+	var to_pad: bool = (a.has("pad_at") and h.flat_dist(a["pad_at"]) < 2.5) or (a.has("cross") and h.flat_dist(a["cross"]["take"]) < 2.5)
 	for pd in m.world.pads:
 		if a.has("pad_at") and pd["pos"] == a["pad_at"]:
 			continue
@@ -331,6 +354,7 @@ func _path_dir(m: Match, h: Hunter, goal: Vector3) -> Vector2:
 	var here := m.world.island_of(h.pos.x, h.pos.z)
 	var there := m.world.island_of(goal.x, goal.z)
 	if here < 0 or there < 0 or here == there:
+		if here >= 0 and h.grounded: h.ai.erase("cross")
 		return h.dir_to(goal)
 	# breadth-first search over the island graph
 	var prev := {here: -1}
@@ -339,7 +363,7 @@ func _path_dir(m: Match, h: Hunter, goal: Vector3) -> Vector2:
 		var cur: int = q.pop_front()
 		if cur == there:
 			break
-		for pd in m.world.pads:
+		for pd in m.world.pads + m.world.links:
 			if pd["from"] == cur and not prev.has(pd["to"]):
 				prev[pd["to"]] = cur
 				q.append(pd["to"])
@@ -351,7 +375,14 @@ func _path_dir(m: Match, h: Hunter, goal: Vector3) -> Vector2:
 	for pd in m.world.pads:
 		if pd["from"] == here and pd["to"] == nxt:
 			h.ai["pad_at"] = pd["pos"]
+			h.ai.erase("cross")
 			return h.dir_to(pd["pos"])
+	for lk in m.world.links:
+		if lk["from"] == here and lk["to"] == nxt:
+			if not h.ai.has("cross") or h.ai["cross"] != lk:
+				h.ai["cross"] = lk
+				h.ai["cross_t"] = 14.0
+			return h.dir_to(lk["take"])
 	return h.dir_to(goal)
 
 func _banned(m: Match, a: Dictionary, p: Vector3) -> bool:

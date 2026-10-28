@@ -29,6 +29,7 @@ func _ready() -> void:
 		if a == "--ledge-demo": opts["ledge_demo"] = true
 		if a.begins_with("--length="): opts["length"] = float(a.substr(9))
 		if a == "--no-drop": opts["no_drop"] = true
+		if a == "--ring-demo": opts["ring_demo"] = true; opts["no_drop"] = true
 		if a == "--meteor-test": opts["meteor_test"] = true; opts["no_drop"] = true
 		if a == "--break-demo": opts["break_demo"] = true; opts["no_drop"] = true
 		if a == "--watch-heart": opts["watch_heart"] = true
@@ -256,7 +257,7 @@ func _simtest(opts: Dictionary) -> void:
 	for b in m.breaks: nb += int(b["dead"])
 	var wr: Array = []
 	for h in m.hunters: wr.append(h.wrar)
-	print("SIMSTAT breaks %d/%d weapons left %d rarities %s staggers %d" % [nb, m.breaks.size(), m.wpicks.size(), str(wr), m.stag_n])
+	print("SIMSTAT breaks %d/%d weapons left %d rarities %s staggers %d rings %d pads %d" % [nb, m.breaks.size(), m.wpicks.size(), str(wr), m.stag_n, m.ring_n, m.world.pads.size()])
 	print("SIMTEST done in %dms, sim time %d, result %s" % [Time.get_ticks_msec() - t0, m.time, str(m.result)])
 	for h in m.hunters:
 		print("  %s team %d %s knocks %d kills %d dmg %d gems %d %s" % [h.pname, h.team, h.cls, h.knocks, h.kills, h.dmg_done, h.gems, "OUT" if h.out else ("EXTRACTED" if h.extracted else "alive")])

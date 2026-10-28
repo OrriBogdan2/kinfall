@@ -19,6 +19,8 @@ var pickups: Array = []     # {pos, vel, kind:"gem"|"seed"|"tonic", v, key, node
 var chests: Array = []      # {pos, open, prog, node, tier}
 var shrines: Array = []     # {pos, used, prog, node}
 var breaks: Array = []      # {i, pos, kind, hp, node, dead}
+var ring_n := 0
+var air_rings: Array = []   # {pos, dir, node, cd: {hunter nid: time}}
 var wpicks: Array = []      # found weapons on the ground {id, pos, wid, rar, node}
 var wdrop_n := 0
 var warden_done := false
@@ -110,6 +112,12 @@ func start(o: Dictionary) -> void:
 	_spawn_mobs()
 	_spawn_chests()
 	_spawn_breakables()
+	for rg in world.rings:
+		var rn := Models.air_ring()
+		rn.position = rg["pos"]
+		rn.rotation.y = atan2(float(rg["dir"].x), float(rg["dir"].y))
+		add_child(rn)
+		air_rings.append({"pos": rg["pos"], "dir": rg["dir"], "node": rn, "cd": {}})
 	if o.get("break_demo", false) and player and not breaks.is_empty():
 		# test: stand by some breakables with two found weapons on the ground
 		var b0: Vector3 = breaks[0]["pos"]
@@ -651,6 +659,47 @@ func _barrel_boom(at: Vector3, by: Ent, from_net := false) -> void:
 			# every peer sees the same chain, so only the one that set it off rolls for loot
 			if from_net: _break(b, by, true)
 			else: hit_break(b, 30.0, by)
+
+## Air rings: anyone flying through one gets thrown forward along their own heading, the glider
+## pops open and gets a little fuel back, so a chain of rings carries you across a long gap.
+func _update_rings(dt: float) -> void:
+	if player and not player.out and int(time * 4.0) % 4 == 0:
+		for rg in air_rings:
+			if player.pos.distance_to(rg["pos"]) < 9.0:
+				_tip("rings", "Glowing rings in the air between islands: jump off the edge, glide (hold %s) and fly through them for a burst of speed. Fast gliders barely sink." % Settings.key_cap("jump"))
+				break
+	for rg in air_rings:
+		var n: Node3D = rg["node"]
+		(n.get_node("Ring") as Node3D).rotation.z += dt * 0.8
+		for h in hunters:
+			if h.remote or h.grounded or h.out or h.downed or h.riding:
+				continue
+			var c: Vector3 = rg["pos"]
+			var body: Vector3 = h.pos + Vector3(0, 0.8, 0)
+			if body.distance_to(c) > 1.6:
+				continue
+			if float(rg["cd"].get(h.nid, -9.0)) > time:
+				continue
+			rg["cd"][h.nid] = time + 3.0
+			ring_n += 1
+			var hv := Vector2(h.vel.x, h.vel.z)
+			var rd: Vector2 = rg["dir"]
+			var d: Vector2 = hv.normalized() if hv.length() > 1.0 else rd
+			if absf(d.dot(rd)) > 0.5:
+				d = rd if d.dot(rd) > 0.0 else -rd    # line up with the ring
+			var spd := minf(maxf(hv.length(), Hunter.GLIDE_SPEED) + 7.0, Hunter.GLIDE_MAX)
+			h.vel.x = d.x * spd; h.vel.z = d.y * spd
+			h.vel.y = maxf(h.vel.y, 2.0)
+			h.glide_fuel = minf(1.0, h.glide_fuel + 0.35)
+			h.pad = {}
+			if not h.gliding and not h.dropping:
+				h.glide_cd = 0.0
+				h.gliding = true
+			fx.ring(c, 1.6, Color("8fe3ff"), 0.3)
+			fx.burst(c, Color("cff6ff"), 14, 4.0, 0.35, 0.0)
+			sfx("whoosh", c, -2.0 if h == player else -10.0, 1.3)
+			if h == player:
+				cam.punch(0.05)
 
 ## Breakables are solid: push bodies out, and dashing straight through one smashes it.
 func _collide_breaks() -> void:
@@ -1500,6 +1549,15 @@ func step(dt: float) -> void:
 			if world.is_void(q.x, q.z):
 				player.teleport(Vector3(q.x + 1.0, player.pos.y - 4.0, q.z)); player.grounded = false
 				break
+	if opts.get("ring_demo", false) and player and time < 0.05 and not air_rings.is_empty():
+		var rg: Dictionary = air_rings[0]
+		var rd: Vector2 = rg["dir"]
+		player.teleport(rg["pos"] - Vector3(rd.x, 0, rd.y) * 5.0 + Vector3(0, -0.6, 0))
+		player.grounded = false; player.gliding = true
+		player.vel = Vector3(rd.x, 0, rd.y) * 9.6
+	if opts.get("ring_demo", false) and player and player.gliding:
+		player.inp["glide"] = true
+		player.inp["move"] = Vector2(player.vel.x, player.vel.z).normalized()
 	if opts.get("glide_demo", false) and player:
 		if time < 0.05:
 			player.teleport(player.pos + Vector3(0, 6, 0)); player.grounded = false
@@ -1531,6 +1589,7 @@ func step(dt: float) -> void:
 	for mb in mobs: mb.sim(dt)
 	_separate()
 	_collide_breaks()
+	_update_rings(dt)
 	_update_shots(dt)
 	_update_pickups(dt)
 	_update_wpicks(dt)

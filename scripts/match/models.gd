@@ -368,6 +368,16 @@ static func accessory(body: Node3D, id: String) -> void:
 			part(body, cyl(0.11, 0.11, 0.2, 14), m, Vector3(0, 0.79, 0))
 			part(body, cyl(0.113, 0.113, 0.04, 14), toon(Color("d9604a")), Vector3(0, 0.72, 0))
 
+## An air ring: fly through it for a burst of speed.
+static func air_ring() -> Node3D:
+	var root := Node3D.new()
+	var t := TorusMesh.new(); t.inner_radius = 1.2; t.outer_radius = 1.42; t.rings = 28; t.ring_segments = 8
+	var ring := part(root, t, toon(Color("5ad0f0"), true, 0.45), Vector3.ZERO, Vector3.ONE, Vector3(PI / 2, 0, 0), "Ring")
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var disc := part(root, cyl(1.2, 1.2, 0.02, 24), glow_mat(Color(0.55, 0.9, 1.0, 0.12)), Vector3.ZERO, Vector3.ONE, Vector3(PI / 2, 0, 0), "Disc")
+	disc.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return root
+
 ## A thought bubble over a kin's head with what it wants in it.
 static func want_bubble() -> Node3D:
 	var root := Node3D.new()

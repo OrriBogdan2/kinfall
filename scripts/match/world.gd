@@ -19,6 +19,9 @@ var depth := PackedFloat32Array()
 var rng := RandomNumberGenerator.new()
 var islands: Array = []      # {cx, cz, r, base, cells:Array[Vector2i]}
 var pads: Array = []         # {pos:Vector3, land:Vector3, from:int, to:int, cd:float, node}
+var links: Array = []        # glide routes between close islands {from, to, take: Vector3, land: Vector3}
+var rings: Array = []        # air rings {pos: Vector3, dir: Vector2}
+const GLIDE_GAP := 14.0      # islands closer than this (edge to edge) are reached by gliding, not pads
 var spawns: Array = []       # Vector3 candidates at island edges
 var portal_spots: Array = []
 var chest_spots: Array = []
@@ -128,6 +131,7 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 	island.resize(w * h); island.fill(-1)
 	depth.resize(w * h); depth.fill(0.0)
 	islands.clear(); pads.clear(); spawns.clear(); portal_spots.clear(); chest_spots.clear(); camp_spots.clear(); wild_spots.clear()
+	links.clear(); rings.clear()
 	var shape := FastNoiseLite.new(); shape.seed = seed_val; shape.frequency = 0.09
 	var terr := FastNoiseLite.new(); terr.seed = seed_val + 7; terr.frequency = 0.07
 	# island centres: a big heart island in the middle and a ring of outer islands around it,
@@ -152,30 +156,63 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 		var c := Vector2(w / 2.0, h / 2.0) + Vector2(cos(ang), sin(ang)) * dist
 		c.x = clampf(c.x, r + 2, w - r - 2); c.y = clampf(c.y, r + 2, h - r - 2)
 		centers.append({"c": c, "r": r})
+	# every island gets a shape of its own so no two feel the same
+	var shapes := ["blob", "crescent", "atoll", "twin", "mesa", "canyon", "highlands", "terraces"]
 	for ii in centers.size():
 		var c: Vector2 = centers[ii]["c"]; var r: float = centers[ii]["r"]
 		var base := 0 if ii == 0 else rng.randi_range(0, 2)
+		var form: String = ["blob", "mesa", "terraces"][rng.randi_range(0, 2)] if ii == 0 else shapes[rng.randi_range(0, shapes.size() - 1)]
+		var fdir := Vector2.from_angle(rng.randf() * TAU)
 		var cells: Array = []
-		for z in range(int(c.y - r - 3), int(c.y + r + 4)):
-			for x in range(int(c.x - r - 3), int(c.x + r + 4)):
+		var pad_r := r * (1.25 if form == "twin" else 1.0)
+		for z in range(int(c.y - pad_r - 3), int(c.y + pad_r + 4)):
+			for x in range(int(c.x - pad_r - 3), int(c.x + pad_r + 4)):
 				if not inb(x, z) or x < 1 or z < 1 or x > w - 2 or z > h - 2:
 					continue
-				var d := Vector2(x + 0.5, z + 0.5).distance_to(c) / r
+				var pt := Vector2(x + 0.5, z + 0.5)
+				var d := pt.distance_to(c) / r
 				var n := shape.get_noise_2d(x, z) * 0.35
-				if d + n < 1.0 and kind[idx(x, z)] == T_VOID:
-					var i := idx(x, z)
-					kind[i] = T_GROUND
-					island[i] = ii
-					var lv := base
-					var tn := terr.get_noise_2d(x, z)
-					if tn > 0.22 and d < 0.8:
-						lv += 1
-					if tn > 0.5 and d < 0.6:
-						lv += 1
-					level[i] = clampi(lv, 0, 4)
-					depth[i] = -(2.2 + (1.0 - d) * 4.5 + rng.randf() * 1.5)
-					cells.append(Vector2i(x, z))
-		islands.append({"c": c, "r": r, "base": base, "cells": cells, "role": "heart" if ii == 0 else ""})
+				var rel := pt - c
+				var along := rel.dot(fdir); var across := rel.dot(fdir.orthogonal())
+				match form:
+					"twin":
+						# two lobes joined by a narrow neck
+						var d1 := pt.distance_to(c + fdir * r * 0.62) / (r * 0.66)
+						var d2 := pt.distance_to(c - fdir * r * 0.62) / (r * 0.66)
+						d = minf(d1, d2)
+						if absf(across) < 1.3 and absf(along) < r * 0.7: d = minf(d, 0.5)
+				if d + n >= 1.0 or kind[idx(x, z)] != T_VOID:
+					continue
+				match form:
+					"crescent":
+						if pt.distance_to(c + fdir * r * 0.8) < r * 0.62: continue
+					"atoll":
+						if d < 0.33 + n * 0.3: continue      # a hole in the middle to the sky below
+					"canyon":
+						if absf(across) < 1.1 and absf(along) > 1.6: continue   # split down the middle, one crossing
+				var i := idx(x, z)
+				kind[i] = T_GROUND
+				island[i] = ii
+				var lv := base
+				var tn := terr.get_noise_2d(x, z)
+				match form:
+					"mesa":
+						# a flat top above stepped sides you can hop up
+						lv += 3 if d < 0.45 else (2 if d < 0.6 else (1 if d < 0.78 else 0))
+					"terraces":
+						# rings of steps climbing to one side
+						lv += clampi(int((along / r + 1.0) * 1.6), 0, 3)
+					"highlands":
+						if tn > 0.0 and d < 0.9: lv += 1
+						if tn > 0.25 and d < 0.75: lv += 1
+						if tn > 0.45 and d < 0.6: lv += 1
+					_:
+						if tn > 0.22 and d < 0.8: lv += 1
+						if tn > 0.5 and d < 0.6: lv += 1
+				level[i] = clampi(lv, 0, 4)
+				depth[i] = -(2.2 + (1.0 - clampf(d, 0.0, 1.0)) * 4.5 + rng.randf() * 1.5)
+				cells.append(Vector2i(x, z))
+		islands.append({"c": c, "r": r, "base": base, "cells": cells, "role": "heart" if ii == 0 else "", "form": form, "fdir": fdir})
 	var roles: Array = ["camp", "camp", "nest", "nest", "grove", "shrine"]
 	while roles.size() < n_outer: roles.append(["camp", "nest", "grove", "shrine", "camp"][roles.size() % 5])
 	roles = roles.slice(0, n_outer)
@@ -193,12 +230,26 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 
 func _place_blockers() -> void:
 	for isl in islands:
+		var ruins: bool = rng.randf() < 0.4 and isl["cells"].size() > 70
 		for cell in isl["cells"]:
 			var i := idx(cell.x, cell.y)
 			if edge_dist(cell.x, cell.y, 2) <= 1:
 				continue
-			if rng.randf() < 0.055:
+			if rng.randf() < (0.035 if ruins else 0.055):
 				kind[i] = T_BLOCK
+		if ruins:
+			# old broken walls: short runs of stone with gaps, good cover to fight around
+			for _w in rng.randi_range(2, 4):
+				var cell: Vector2i = isl["cells"][rng.randi_range(0, isl["cells"].size() - 1)]
+				var dirs := [Vector2i(1, 0), Vector2i(0, 1)]
+				var dv: Vector2i = dirs[rng.randi_range(0, 1)]
+				var length := rng.randi_range(3, 6)
+				var gap := rng.randi_range(1, length - 2)
+				for k in length:
+					if k == gap: continue
+					var q := cell + dv * k
+					if inb(q.x, q.y) and kind[idx(q.x, q.y)] == T_GROUND and island[idx(q.x, q.y)] == islands.find(isl) and edge_dist(q.x, q.y, 3) >= 3:
+						kind[idx(q.x, q.y)] = T_BLOCK
 
 func _edge_cell_toward(isl: int, target: Vector2, avoid: Array = [], spacing := PAD_SPACING) -> Vector2i:
 	var best := Vector2i(-1, -1); var bd := 1e9
@@ -220,33 +271,71 @@ func _edge_cell_toward(isl: int, target: Vector2, avoid: Array = [], spacing := 
 
 const PAD_SPACING := 6.0
 
+## Closest edge cells between two islands and the gap between them: [gap, cell_a, cell_b].
+func _gap(a: int, b: int, edges_of: Dictionary) -> Array:
+	var best := [1e9, Vector2i.ZERO, Vector2i.ZERO]
+	for ca in edges_of[a]:
+		for cb in edges_of[b]:
+			var d: float = Vector2(ca.x - cb.x, ca.y - cb.y).length()
+			if d < best[0]:
+				best = [d, ca, cb]
+	return best
+
 func _place_pads() -> void:
-	# connect islands with a spanning tree of jump pads, plus a couple of extra links
+	# islands close enough are crossed by gliding (with air rings over the longer gaps); only the
+	# far ones get jump pads. A spanning tree on the gaps keeps everything reachable.
 	var n := islands.size()
+	var edges_of := {}
+	for ii in n:
+		var e: Array = []
+		for cell in islands[ii]["cells"]:
+			if kind[idx(cell.x, cell.y)] != T_VOID and edge_dist(cell.x, cell.y, 1) == 1:
+				e.append(cell)
+		edges_of[ii] = e
+	var gaps := {}
+	for a in n:
+		for b in range(a + 1, n):
+			var cd: float = islands[a]["c"].distance_to(islands[b]["c"]) - float(islands[a]["r"]) - float(islands[b]["r"])
+			if cd > 30.0:
+				continue
+			gaps[Vector2i(a, b)] = _gap(a, b, edges_of)
 	var linked := {0: true}
 	var edges: Array = []
 	while linked.size() < n:
 		var best := []; var bd := 1e9
-		for a in linked:
-			for b in n:
-				if linked.has(b):
-					continue
-				var d: float = islands[a]["c"].distance_to(islands[b]["c"])
-				if d < bd:
-					bd = d; best = [a, b]
+		for k in gaps:
+			var a: int = k.x; var b: int = k.y
+			if linked.has(a) == linked.has(b):
+				continue
+			if float(gaps[k][0]) < bd:
+				bd = float(gaps[k][0]); best = [a, b]
 		if best.is_empty():
-			break
-		linked[best[1]] = true
+			# nothing within range: fall back to centre distance
+			for a in linked:
+				for b in n:
+					if linked.has(b): continue
+					var d: float = islands[a]["c"].distance_to(islands[b]["c"])
+					if d < bd: bd = d; best = [a, b]
+			if best.is_empty(): break
+			var kk := Vector2i(mini(best[0], best[1]), maxi(best[0], best[1]))
+			if not gaps.has(kk): gaps[kk] = _gap(kk.x, kk.y, edges_of)
+		linked[best[1] if linked.has(best[0]) else best[0]] = true
 		edges.append(best)
-	# one extra link so the map isn't a pure tree, between two islands that are close
-	var extra := []; var ed_best := 1e9
-	for a in n:
-		for b in range(a + 1, n):
-			if edges.has([a, b]) or edges.has([b, a]): continue
-			var d: float = islands[a]["c"].distance_to(islands[b]["c"])
-			if d < ed_best: ed_best = d; extra = [a, b]
-	if extra.size() == 2:
-		edges.append(extra)
+	# a few more glide routes between close neighbours, so there's more than one way around
+	for k in gaps:
+		if float(gaps[k][0]) <= GLIDE_GAP * 0.75 and rng.randf() < 0.5:
+			var e := [k.x, k.y]
+			if not edges.has(e) and not edges.has([k.y, k.x]):
+				edges.append(e)
+	var pad_edges: Array = []
+	for e in edges:
+		var k := Vector2i(mini(e[0], e[1]), maxi(e[0], e[1]))
+		var g: Array = gaps[k]
+		if float(g[0]) > GLIDE_GAP:
+			pad_edges.append(e)
+			continue
+		_glide_link(k.x, k.y, g)
+	edges = pad_edges
 	var used: Array = []
 	for e in edges:
 		for dir in [[e[0], e[1]], [e[1], e[0]]]:
@@ -282,6 +371,35 @@ func _place_pads() -> void:
 				bs = score; best = Vector3(cp.x, level[i] * LEVEL, cp.y)
 		pd["land"] = best
 	pads = pads.filter(func(pd): return pd["land"] != Vector3.INF)
+
+## A glide route both ways between two close islands, with air rings over anything but a hop.
+func _glide_link(a: int, b: int, g: Array) -> void:
+	var ca: Vector2i = g[1]; var cb: Vector2i = g[2]
+	var pa := Vector3(ca.x + 0.5, level[idx(ca.x, ca.y)] * LEVEL, ca.y + 0.5)
+	var pb := Vector3(cb.x + 0.5, level[idx(cb.x, cb.y)] * LEVEL, cb.y + 0.5)
+	# land a couple of tiles in from the edge
+	var land_b := _inward(b, pb, pa); var land_a := _inward(a, pa, pb)
+	links.append({"from": a, "to": b, "take": pa, "land": land_b})
+	links.append({"from": b, "to": a, "take": pb, "land": land_a})
+	var gap := float(g[0])
+	if gap < 5.0:
+		return
+	var nr := clampi(int(gap / 5.0), 1, 4)
+	var top := maxf(pa.y, pb.y) + 1.8
+	var dir := Vector2(pb.x - pa.x, pb.z - pa.z).normalized()
+	for i in nr:
+		var t := float(i + 1) / float(nr + 1)
+		var p := pa.lerp(pb, t)
+		rings.append({"pos": Vector3(p.x, top + sin(t * PI) * 0.8, p.z), "dir": dir})
+
+func _inward(isl: int, from: Vector3, away: Vector3) -> Vector3:
+	var d := Vector2(from.x - away.x, from.z - away.z).normalized()
+	for k in [2.5, 2.0, 1.5, 1.0, 0.0]:
+		var q: Vector2 = Vector2(from.x, from.z) + d * k
+		var i := idx(int(floor(q.x)), int(floor(q.y)))
+		if inb(int(floor(q.x)), int(floor(q.y))) and kind[i] == T_GROUND and island[i] == isl:
+			return Vector3(floor(q.x) + 0.5, level[i] * LEVEL, floor(q.y) + 0.5)
+	return from
 
 var shrine_spots: Array = []     # Vector3
 var break_spots: Array = []      # {pos, kind: crate | pot | barrel}

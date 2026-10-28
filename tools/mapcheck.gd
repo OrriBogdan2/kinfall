@@ -2,6 +2,7 @@ extends RefCounted
 ## Checks generated maps: every island must be reachable from every other through jump pads.
 func run(seeds: Array, size := 64, n_isl := 7) -> void:
 	var bad := 0
+	var tot_pads := 0; var tot_links := 0; var tot_rings := 0
 	for sd in seeds:
 		var w := World.new()
 		var t0 := Time.get_ticks_msec()
@@ -13,7 +14,7 @@ func run(seeds: Array, size := 64, n_isl := 7) -> void:
 			var seen := {a: true}; var q := [a]
 			while q.size() > 0:
 				var cur: int = q.pop_front()
-				for pd in w.pads:
+				for pd in w.pads + w.links:
 					if pd["from"] == cur and not seen.has(pd["to"]):
 						seen[pd["to"]] = true; q.append(pd["to"])
 			if seen.size() < n:
@@ -22,8 +23,9 @@ func run(seeds: Array, size := 64, n_isl := 7) -> void:
 			for o in w.pads:
 				if Vector2(o["pos"].x - pd["land"].x, o["pos"].z - pd["land"].z).length() < 2.5:
 					ok = false
+		tot_pads += w.pads.size(); tot_links += w.links.size(); tot_rings += w.rings.size()
 		if not ok or w.portal_spots.size() < 3 or w.spawns.size() < 6:
 			bad += 1
 			print("MAP BAD seed=%d islands=%d pads=%d portals=%d spawns=%d" % [sd, n, w.pads.size(), w.portal_spots.size(), w.spawns.size()])
 		w.free()
-	print("MAPCHECK done, bad: ", bad, " of ", seeds.size())
+	print("MAPCHECK done, bad: ", bad, " of ", seeds.size(), "  avg pads %.1f glide links %.1f rings %.1f" % [tot_pads / float(seeds.size()), tot_links / float(seeds.size()), tot_rings / float(seeds.size())])

@@ -44,7 +44,22 @@ Touch the side of an island while you're falling (or gliding) and you float back
 - **The drop.** Expeditions happen on a big map. Everyone starts aboard the skyship as it crosses the islands: press Space to jump when you're over the spot you want, then glide down. A ring on the ground shows where you'd land. Anyone still aboard at the far side gets dropped.
 - **Loot.** Crates, pots and red barrels break when you shoot or dash through them (barrels explode, so mind where you stand). Some crates, chests and the Glimmerkin drop found weapons: Fine, Rare, Epic or Legendary versions of any weapon, stronger than the one you brought, yours until the expedition ends.
 - **Events.** A meteor shower comes down about a quarter of the way in (the stars leave gems), the Warden wakes on the center island, and halfway through a Glimmerkin appears and runs. Bring it down before it slips away.
+- **Islands and flight.** Every island has a shape of its own: crescents, atolls with a hole to the sky, twin lobes on a narrow neck, mesas, stepped terraces, split canyons, highlands, some with ruined walls to fight around. Close islands are crossed by gliding: jump off the edge and glide through the air rings between them for a burst of speed. The glider runs on fuel, and speed is what keeps you up: fast gliders barely sink, slow ones drift down. Steer hard against your heading to brake. Jump pads only cover the long gaps.
+- **Stagger.** Big monsters (Brutes, Sentinels, the Warden, the Glimmerkin) open short purple-ring windows, always while winding up a slam. Hit one with an ability (E, R, your kin's skill or a throw) in that window, not a regular shot: it takes a big hit, is stunned for a few seconds, takes extra damage the whole time, and your E or kin skill comes straight back.
 - **The Hollow.** If you fall there and your partner's trust is below 80, it stays behind.
+
+## Raising kin
+
+Code: `scripts/core/care.gd`, `scripts/core/kin_speak.gd`, the raising section of `scripts/home/home.gd`.
+
+- **Needs.** Full, Energy, Happy and Clean drift down at home and drop after every expedition. A thought bubble over a kin shows what it wants. Hungry kin hang around the cooking pot, tired ones go to bed, dusty ones shed dust. How it's doing changes how it fights: a kin in great shape gets +10%, a struggling one loses up to 18% and is more likely to refuse you.
+- **Care.** Pet (F), fetch (G) and talk (T) out in the world. The card (C) has Feed, Brush, Bath, Nap, Train, Dress and Pair, and each one plays out on the farm, not in a menu.
+- **Likes.** Every kin loves one food, refuses another and has a favourite way to spend time. You find out by trying, and the card remembers.
+- **Training.** Four stats (Power, Guard, Speed, Focus) trained at the yard with a three-round timing drill. A happy kin learns faster, a tired one won't train. Points are capped by level.
+- **Bond.** Trust ranks: Wary, Friendly, Close (skills hit harder), Devoted (rushes to revive you), Soulbound (never refuses, +10% to everything).
+- **Talking.** Newly hatched kin only say their own name ("Cin! Cindle?"), and get their meaning across with tone and what they do. Around level 4 with some trust they pick up a few words, around level 8 short sentences, and by level 12 with a Devoted bond they talk freely.
+- **Natures, life stages, eggs.** Each kin has a nature from its strongest traits and grows from Hatchling to Youngling, Grown and Elder. Two kin at level 5 with a Close bond can leave an egg in the nest; the baby mixes their personalities and may come out shimmering (rare colours, also found wild about 1 in 25).
+- **Outfits and the Kindex.** The stall sells things for kin to wear, worn into matches too. The Kindex tab in the inventory tracks every species you've seen, caught, evolved and found shimmering.
 
 ## The kin's mind
 

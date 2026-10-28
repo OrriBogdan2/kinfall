@@ -12,6 +12,8 @@ const FLOAT_SPEED := 9.0
 const GLIDE_FALL := 1.7
 const GLIDE_SPEED := 9.6
 const GLIDE_TIME := 6.0
+const GLIDE_DRAG := 1.4         # speed lost per second while gliding
+const GLIDE_MAX := 19.0
 const DROP_FALL := 5.0
 const DROP_SPEED := 9.0
 const REGEN := 7.0            # health per second once you've gone a while without getting hit
@@ -239,6 +241,10 @@ func do_jump() -> void:
 		return
 	jump_buf = 0.12
 
+## Fast gliders barely sink; a slow one drifts steadily down.
+static func glide_fall(speed: float) -> float:
+	return lerpf(2.6, 0.25, clampf((speed - 6.0) / 10.0, 0.0, 1.0))
+
 func can_glide() -> bool:
 	return not grounded and roll_t <= 0.0 and fly_t <= 0.0 and glide_cd <= 0.0 and not downed and stun_t <= 0.0 \
 		and m.time - kb_t > 0.4 and glide_fuel > 0.15 and not dropping and charge.is_empty()
@@ -246,6 +252,13 @@ func can_glide() -> bool:
 func _open_glider() -> void:
 	gliding = true
 	grounded = false
+	# unfolding catches the air: a slow start gets carried up to cruising speed
+	var hv := Vector2(vel.x, vel.z)
+	if hv.length() < GLIDE_SPEED and not dropping:
+		var mvv: Vector2 = inp.get("move", Vector2.ZERO)
+		var dirv := mvv.normalized() if mvv.length() > 0.1 else (hv.normalized() if hv.length() > 0.3 else aim_dir())
+		hv = dirv * GLIDE_SPEED
+		vel.x = hv.x; vel.z = hv.y
 	m.sfx("glide", pos, -4.0)
 	m.fx.burst(pos + Vector3(0, 1.7, 0), Color("f3eee2"), 8, 2.0, 0.35, 0.0)
 
@@ -486,12 +499,19 @@ func _physics(dt: float) -> void:
 	elif fly_t > 0.0:
 		fly_t -= dt
 	elif gliding:
-		# the glider keeps the speed you opened it with and bleeds it off slowly, like Supervive's
+		# the glider keeps the speed you bring into it and bleeds it off slowly; steering turns
+		# you without slowing you down. Speed is what keeps you up (see the fall below).
 		var gs := DROP_SPEED if dropping else GLIDE_SPEED
-		var gw := mv * maxf(gs, minf(cur, gs * 1.6))
-		if mv.length() < 0.1:
-			gw = hv.normalized() * minf(cur, gs * 0.7) if cur > 0.1 else Vector2.ZERO
-		hv += (gw - hv) * (1.0 - exp(-(1.6 if cur > gs else 2.6) * dt))
+		var head := hv.normalized() if cur > 0.3 else mv
+		# steering hard against your heading works as an air brake
+		var brake := 0.0
+		if mv.length() > 0.1 and head.length() > 0.1:
+			brake = clampf(-head.dot(mv.normalized()) + 0.3, 0.0, 1.3) * 7.0
+		var keep := maxf(gs * 0.7, cur - (GLIDE_DRAG + brake) * dt) if cur > gs * 0.7 else gs * 0.7
+		if dropping: keep = gs
+		if mv.length() > 0.1:
+			head = head.slerp(mv.normalized(), 1.0 - exp(-3.2 * dt)) if head.length() > 0.1 else mv.normalized()
+		hv = head * keep
 	else:
 		var wish := mv * spd
 		var over := cur > spd * 1.15
@@ -500,7 +520,7 @@ func _physics(dt: float) -> void:
 	vel.x = hv.x; vel.z = hv.y
 	_update_glide(dt)
 	if gliding:
-		vel.y = lerpf(vel.y, -(DROP_FALL if dropping else GLIDE_FALL), 1.0 - exp(-7.0 * dt))
+		vel.y = lerpf(vel.y, -(DROP_FALL if dropping else glide_fall(Vector2(vel.x, vel.z).length())), 1.0 - exp(-4.0 * dt))
 	elif not grounded:
 		vel.y -= GRAV * (1.3 if vel.y < 0.0 and fly_t <= 0.0 else 1.0) * dt
 	var guard := grounded and roll_t <= 0.0 and hv.length() <= spd * 1.25
