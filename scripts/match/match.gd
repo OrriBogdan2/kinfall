@@ -78,7 +78,7 @@ func start(o: Dictionary) -> void:
 	tier = clampi(int(o.get("tier", 0)), 0, Data.TIERS.size() - 1)
 	T = Data.TIERS[tier]
 	_build_env()
-	Sfx.play_music("match")
+	Sfx.play_music("hollow" if tier >= 2 else "match")
 	Sfx.play_ambience("match")
 	world = World.new()
 	world.name = "World"
@@ -261,8 +261,7 @@ func _spawn_hunters() -> void:
 					player.ai = bot_brain.new_mind(rng, 0.7)
 				player.teleport(at)
 				player.tonics = int(Save.d["items"].get("tonic", 0))
-				if Save.has_building("workshop"):
-					player.glide_max *= 1.5
+				_apply_home_perks(player)
 				if player.kin:
 					_apply_treat(player.kin)
 				_start_drop(player, at)
@@ -305,6 +304,17 @@ func on_drop_landed(h: Hunter) -> void:
 	h.squash = 0.4
 	if h == player:
 		shake(0.25, h.pos)
+
+## Perks you carry from home: your workshop, and the projects your guild has finished.
+func _apply_home_perks(h: Hunter) -> void:
+	if Save.has_building("workshop"):
+		h.glide_max *= 1.5
+	var gp: Array = Save.d.get("guild_perks", [])
+	if gp.has("lighthouse"):
+		h.glide_max *= 1.25
+	if gp.has("forge"):
+		h.tonics += 1
+		h.free_tonics = 1
 
 func _apply_treat(k: Kin) -> void:
 	match String(Save.d.get("treat", "")):
@@ -1563,7 +1573,7 @@ func _finish() -> void:
 		r["kills"] = player.kills
 		r["knocks"] = player.knocks
 		r["damage"] = int(player.dmg_done)
-		r["tonics"] = player.tonics
+		r["tonics"] = maxi(0, player.tonics - player.free_tonics)
 		if player.kin:
 			r["kin_events"] = player.kin.events.duplicate(true)
 			r["kin_trust"] = player.kin.trust
@@ -1615,8 +1625,7 @@ func _spawn_net_hunters(spots: Array, names: Array) -> void:
 			var rec: Dictionary = Save.active_kin()
 			player = make_hunter("P" + peer, t, String(r["cls"]), String(r["name"]), "local", rec, at, my_kit())
 			player.tonics = int(Save.d["items"].get("tonic", 0))
-			if Save.has_building("workshop"):
-				player.glide_max *= 1.5
+			_apply_home_perks(player)
 			if player.kin:
 				_apply_treat(player.kin)
 			_start_drop(player, at)

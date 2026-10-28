@@ -559,8 +559,15 @@ func _decorate() -> void:
 
 ## The home island: one flat round island with room for the farm, house and portal.
 func make_home(seed_val: int) -> void:
+	var defs: Array = [["main", Vector2(38, 32), Vector2(14, 11)]]
+	for k in Data.ISLES:
+		defs.append([k, Data.ISLES[k]["c"], Data.ISLES[k]["r"]])
+	make_islands(seed_val, 72, 50, defs)
+
+## Flat islands for social places: defs is [[id, centre, radii], ...].
+func make_islands(seed_val: int, ww: int, hh: int, defs: Array) -> void:
 	rng.seed = seed_val
-	w = 72; h = 50
+	w = ww; h = hh
 	kind.resize(w * h); kind.fill(T_VOID)
 	level.resize(w * h); level.fill(0)
 	island.resize(w * h); island.fill(-1)
@@ -568,9 +575,6 @@ func make_home(seed_val: int) -> void:
 	islands.clear(); pads.clear(); spawns.clear(); portal_spots.clear(); chest_spots.clear(); camp_spots.clear(); wild_spots.clear()
 	bridge.clear()
 	var shape := FastNoiseLite.new(); shape.seed = seed_val; shape.frequency = 0.12
-	var defs: Array = [["main", Vector2(38, 32), Vector2(14, 11)]]
-	for k in Data.ISLES:
-		defs.append([k, Data.ISLES[k]["c"], Data.ISLES[k]["r"]])
 	for di in defs.size():
 		var c: Vector2 = defs[di][1]; var rr: Vector2 = defs[di][2]
 		var cells: Array = []

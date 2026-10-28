@@ -14,6 +14,7 @@ var hear_range := 22.0
 var last_played := {}
 var rng := RandomNumberGenerator.new()
 
+signal new_track(name: String)
 var music: Array[AudioStreamPlayer] = []   # two players so tracks can crossfade
 var music_i := 0
 var music_name := ""
@@ -55,15 +56,29 @@ func _loop_stream(path: String) -> AudioStream:
 	return st
 
 ## Crossfades to another music track ("home", "match", "title"), or to silence with "".
+var music_lock := ""
+var _music_tw: Tween      # a track picked in the music list plays until cleared
+
 func play_music(name: String, fade := 1.5) -> void:
 	if name == music_name:
 		return
 	music_name = name
+	if name != "" and not Save.d.get("music", []).has(name):
+		# first time hearing this one: it joins the music list
+		if not Save.d.has("music"): Save.d["music"] = []
+		Save.d["music"].append(name)
+		Save.save_game()
+		new_track.emit(name)
 	var old := music[music_i]
 	music_i = 1 - music_i
 	var nw := music[music_i]
+	# a fade still running would keep pushing its track back up, so it stops here
+	if _music_tw and _music_tw.is_valid():
+		_music_tw.kill()
 	var tw := create_tween().set_parallel(true)
+	_music_tw = tw
 	tw.tween_property(old, "volume_db", -80.0, fade).set_trans(Tween.TRANS_SINE)
+	tw.chain().tween_callback(old.stop)
 	if name != "":
 		nw.stream = _loop_stream("res://audio/music_%s.ogg" % name)
 		nw.volume_db = -40.0

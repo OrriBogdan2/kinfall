@@ -43,6 +43,16 @@ func _ready() -> void:
 	if OS.has_feature("web"):
 		_expose_test_hooks()
 		var hash := str(JavaScriptBridge.eval("location.hash", true))
+		_soc_test = hash.contains("soctest")
+		if _soc_test:
+			# test-only: a ready-made player so the shared features can be driven from a script
+			Save.d["tutorial"]["home"] = true
+			if Save.d["roster"].is_empty():
+				var k := Save.new_kin("zapple")
+				Save.d["roster"].append(k)
+				Save.d["active"] = k["uid"]
+			show_screen("home", {})
+			return
 		if hash.contains("online"):
 			Save.d["tutorial"]["home"] = true
 			show_screen("lobby", {})
@@ -53,7 +63,12 @@ func _ready() -> void:
 	if "--lobby-test" in args:
 		show_screen("lobby", {})
 		return
-	if "--match" in args:
+	var town_arg := ""
+	for a in args:
+		if a.begins_with("--town="): town_arg = a.substr(7)
+	if town_arg != "":
+		show_screen("town", {"mode": town_arg, "gid": "test"})
+	elif "--match" in args:
 		show_screen("match", opts)
 	elif "--tutorial" in args:
 		show_screen("match", {"tutorial": true, "teams": 1, "squad": 1, "tier": 0, "length": 1500.0, "tut_test": "--tut-test" in args})
@@ -110,6 +125,14 @@ func show_screen(screen: String, opts: Dictionary) -> void:
 		"home":
 			var H = load("res://scripts/home/home.gd")
 			current = H.new()
+			current.set("visit", opts.get("visit", {}))
+			current.set("visit_id", String(opts.get("visit_id", "")))
+			add_child(current)
+		"town":
+			var Tw = load("res://scripts/social/town.gd")
+			current = Tw.new()
+			current.set("mode", String(opts.get("mode", "hub")))
+			current.set("gid", String(opts.get("gid", "")))
 			add_child(current)
 
 ## Headless check: a whole match with the player on autopilot, stepped as fast as possible.
@@ -151,6 +174,8 @@ var _cmd_cb = null
 
 ## window.kinGameCmd("ready" | "start" | "state" | "move:x,z" | "fire:x,z" | "god") for automated browser tests.
 ## Results land in window.kinGameOut as JSON.
+var _soc_test := false      # the shared-feature test hooks only answer on a #soctest page
+
 func _expose_test_hooks() -> void:
 	_cmd_cb = JavaScriptBridge.create_callback(func(a): _cmd(str(a[0])))
 	JavaScriptBridge.get_interface("window").kinGameCmd = _cmd_cb
@@ -158,6 +183,9 @@ func _expose_test_hooks() -> void:
 func _cmd(c: String) -> void:
 	var out := {}
 	var current = screen_node()
+	if (c.begins_with("goto:") or c.begins_with("soc:")) and _soc_test:
+		_social_cmd(c, current)
+		return
 	if current and current.has_method("_toggle_ready") and c == "ready":
 		current._toggle_ready()
 	elif current and current.has_method("_start") and c == "start":
@@ -197,3 +225,55 @@ func _cmd(c: String) -> void:
 	elif current and current.has_method("show_result"):
 		out = {"screen": "results"}
 	JavaScriptBridge.eval("window.kinGameOut = " + JSON.stringify(out) + ";", true)
+
+## Test hooks for the shared features. Answers land in window.kinSocOut (they're mostly async).
+func _soc_reply(v) -> void:
+	JavaScriptBridge.eval("window.kinSocOut = " + JSON.stringify(v) + ";", true)
+
+func _social_cmd(c: String, current) -> void:
+	var p := c.split(":")
+	match p[0] + ":" + p[1]:
+		"goto:town": Game.goto("town", {"mode": p[2], "gid": p[3] if p.size() > 3 else ""})
+		"goto:home": Game.goto("home")
+		"goto:visit":
+			Social.get_doc("profiles/" + p[2], func(d: Dictionary): Game.goto("home", {"visit": Social.clean_island(d), "visit_id": p[2]}))
+		"soc:state":
+			var st := {"me": Social.me, "mode": Social.mode, "ok": Social.ok, "guild": Social.guild, "progress": Social.guild_progress,
+				"perks": Save.d.get("guild_perks", []), "gems": Save.d["gems"], "seeds": Save.d["seeds"], "crops": Save.d["crops"],
+				"listings": Save.d.get("listings", {}), "screen": str(current.get_script().resource_path) if current and current.get_script() else ""}
+			if current and "others" in current: st["others"] = (current.others as Dictionary).size()
+			if current and "members" in current: st["members"] = (current.members as Array).size()
+			if current and "project_nodes" in current: st["projects"] = (current.project_nodes as Dictionary).keys()
+			if current and "visit" in current: st["visiting"] = String((current.visit as Dictionary).get("name", ""))
+			_soc_reply(st)
+		"soc:name": Save.d["name"] = p[2]; _soc_reply(true)
+		"soc:give":
+			Save.d["gems"] = int(Save.d["gems"]) + int(p[2])
+			if p.size() > 3: Save.add_seed(p[3], 3)
+			_soc_reply(true)
+		"soc:publish": Social.publish_profile(true); _soc_reply(true)
+		"soc:create": Social.create_guild(p[2], "We test things", func(okk): _soc_reply(okk))
+		"soc:join": Social.join_guild(p[2], func(okk): _soc_reply(okk))
+		"soc:leave": Social.leave_guild(func(): _soc_reply(true))
+		"soc:guilds": Social.list_guilds(func(rows): _soc_reply(rows))
+		"soc:contrib": Social.contribute(p[2], int(p[3]), func(okk): _soc_reply(okk))
+		"soc:sell": Social.sell(p[2], p[3], int(p[4]), func(okk): _soc_reply(okk))
+		"soc:market": Social.list_market(func(rows): _soc_reply(rows))
+		"soc:buy": Social.buy(p[2], func(what): _soc_reply(what))
+		"soc:unlist": Social.unlist(p[2], func(okk): _soc_reply(okk))
+		"soc:notice": Social.post_notice(p[2], func(okk): _soc_reply(okk))
+		"soc:notices": Social.list_notices(func(rows): _soc_reply(rows))
+		"soc:gift": Social.send_gift(p[2], p[3], p[4], func(okk): _soc_reply(okk))
+		"soc:collect":
+			Social.collect_gifts(func(lines):
+				Social.collect_payouts(func(total): _soc_reply({"lines": lines, "paid": total})))
+		"soc:islands": Social.list_islands(func(rows): _soc_reply(rows.map(func(r): return r["id"])))
+		"soc:refresh": Social.refresh_guild(func(): _soc_reply(Social.guild))
+		"soc:open":
+			if current and current.has_method("_use"):
+				current._use({"kind": p[2], "data": p[3] if p.size() > 3 else null, "label": ""})
+			_soc_reply(true)
+		"soc:walk":
+			if current and "ppos" in current:
+				current.ppos = Vector3(float(p[2]), 0, float(p[3]))
+			_soc_reply(true)

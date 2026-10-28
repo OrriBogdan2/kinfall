@@ -73,6 +73,8 @@ func apply_result(r: Dictionary) -> Dictionary:
 	if won:
 		d["extracts"] = int(d.get("extracts", 0)) + 1
 		out["gems"] = int(r.get("gems", 0))
+		if d.get("guild_perks", []).has("hall"):
+			out["gems"] = int(round(out["gems"] * 1.1))
 		d["gems"] = int(d["gems"]) + out["gems"]
 		for s in r.get("seeds", {}):
 			Save.add_seed(s, int(r["seeds"][s]))
@@ -95,7 +97,7 @@ func apply_result(r: Dictionary) -> Dictionary:
 		var counts := {}
 		for e in r.get("kin_events", []):
 			counts[e["kind"]] = int(counts.get(e["kind"], 0)) + 1
-		k["trust"] = clampf(float(r.get("kin_trust", before)), 0.0, 100.0)
+		k["trust"] = clampf(float(r.get("kin_trust", before)) + (1.0 if d.get("guild_perks", []).has("shrine") else 0.0), 0.0, 100.0)
 		for kind in counts:
 			var ev: Dictionary = {}
 			for e in r["kin_events"]:

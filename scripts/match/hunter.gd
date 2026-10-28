@@ -55,6 +55,7 @@ var extract_prog := 0.0
 var kin: Ent = null
 var gems := 0
 var lost_gems := 0
+var free_tonics := 0          # the guild forge's tonic: used first, never taken home
 var seeds := {}
 var caught: Array = []        # kin records caught this match
 var kills := 0
@@ -297,6 +298,7 @@ func use_tonic() -> void:
 	if tonics <= 0 or downed or hp >= max_hp:
 		return
 	tonics -= 1
+	free_tonics = maxi(0, free_tonics - 1)
 	heal(45.0)
 	m.sfx("heal", pos, -2.0)
 

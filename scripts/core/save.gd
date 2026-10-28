@@ -30,6 +30,8 @@ func fresh() -> Dictionary:
 		"settings": {"volume": 0.8, "shake": 1.0, "cam_lead": 1.0},
 		"tutorial": {},
 		"buildings": [],
+		"music": [],
+		"guild_perks": [],
 		"bridges": [],
 		"gh_plots": _empty_plots(4),
 		"stats": {"kills": 0, "best_kills": 0, "best_gems": 0, "caught": 0, "knocks": 0},

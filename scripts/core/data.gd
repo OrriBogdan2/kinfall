@@ -81,6 +81,22 @@ const ABIL := {
 	"well": {"name": "Gravity Well", "desc": "A vortex at the cursor that drags foes in, then bursts."},
 }
 
+## The soundtrack. Tracks join your music list the first time you hear them; some only play in
+## rare places or moments.
+const MUSIC := {
+	"title": {"name": "Kinfall", "hint": "The title screen."},
+	"home_day": {"name": "Hearthwind", "hint": "Your home island by day."},
+	"home_night": {"name": "Hearthwind (Night)", "hint": "Your home island after dark."},
+	"orchard": {"name": "Orchard Light", "hint": "Cross the bridge to Orchard Isle."},
+	"meadow": {"name": "Tag in the Meadow", "hint": "Cross the bridge to Kin Meadow."},
+	"summit": {"name": "Lookout Wind", "hint": "Cross the bridge to Lookout Peak."},
+	"match": {"name": "Into the Isles", "hint": "Head out on an expedition."},
+	"hollow": {"name": "The Hollow", "hint": "Brave the Hollow."},
+	"hub": {"name": "Market Square", "hint": "Visit the town."},
+	"guild": {"name": "Banners", "hint": "Visit a guild isle."},
+	"lullaby": {"name": "Kin Lullaby", "hint": "Watch a kin evolve."},
+}
+
 ## One perk per loadout.
 const PERKS := {
 	"quickhands": {"name": "Quick Hands", "desc": "Reload 30% faster."},

@@ -34,6 +34,19 @@ var emote_labels: Array = []
 var pet_done := {}
 
 var lots := {}                 # building id -> {node, built}
+var visit: Dictionary = {}     # when visiting someone: their island snapshot (see Social.publish_profile)
+var visit_id := ""
+var petted := {}
+
+## The island being shown: yours, or the one you're visiting.
+func _d() -> Dictionary:
+	return visit if not visit.is_empty() else Save.d
+
+func _has_b(b: String) -> bool:
+	return _d().get("buildings", []).has(b)
+
+func _has_br(k: String) -> bool:
+	return _d().get("bridges", []).has(k)
 var bridges := {}              # isle id -> {tiles, node, built, label}
 var gh_plots: Array = []
 var building_now := false
@@ -50,8 +63,8 @@ var weather_t := 40.0
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	Sfx.play_music("home")
 	Sfx.play_ambience("home")
+	Sfx.new_track.connect(_on_new_track)
 	var dbg := OS.get_cmdline_user_args()
 	if "--evo-test" in dbg:
 		var ek := Save.active_kin()
@@ -102,11 +115,11 @@ func _ready() -> void:
 					world.kind[world.idx(x, z)] = World.T_GROUND
 	# bridges: work out which tiles they cover before any are opened
 	for k in Data.ISLES:
-		bridges[k] = {"tiles": world.bridge_tiles(Data.ISLES[k]["bridge"]), "built": Save.has_bridge(k)}
+		bridges[k] = {"tiles": world.bridge_tiles(Data.ISLES[k]["bridge"]), "built": _has_br(k)}
 		if bridges[k]["built"]:
 			world.open_bridge(bridges[k]["tiles"])
 	for b in Data.BUILDINGS:
-		if Save.has_building(b):
+		if _has_b(b):
 			var rc: Array = Data.BUILDINGS[b]["rect"]
 			world.set_block_rect(rc[0], rc[1], rc[2], rc[3])
 	world.build_meshes()
@@ -129,8 +142,10 @@ func _ready() -> void:
 			if ch is OmniLight3D: lamps.append(ch)
 	for fb in [Vector3(35.6, 0, 28.6), Vector3(40.4, 0, 28.6), Vector3(39.6, 0, 37.4)]:
 		var fbed := Models.flower_bed(drng); fbed.position = fb; add_child(fbed)
+	spots["ferry"] = Vector3(42.2, 0, 40.6)
+	var fpost := Models.ferry_post(); fpost.position = spots["ferry"]; fpost.rotation.y = -0.4; add_child(fpost)
 	var sign_post := Models.signpost(["Expeditions"]); sign_post.position = Vector3(39.8, 0, 38.2); sign_post.rotation.y = -0.3; add_child(sign_post)
-	var roster: Array = Save.d["roster"]
+	var roster: Array = _d()["roster"]
 	for i in mini(roster.size(), 6):
 		var bed := Models.kin_bed(Data.KIN[roster[i]["species"]]["color"])
 		bed.position = Vector3(33.4 + (i % 3) * 1.1, 0, 27.6 + (i / 3) * 1.1)
@@ -191,20 +206,31 @@ func _ready() -> void:
 			add_child(kn)
 	_build_ui()
 	_refresh_top()
-	if not Save.d["tutorial"].get("home", false):
+	if not visit.is_empty():
+		pass
+	elif not Save.d["tutorial"].get("home", false):
 		_open_welcome()
 	else:
 		_play_evolutions()
+	if visit.is_empty() and Social.available():
+		Social.publish_profile(true)
+		Social.collect_gifts(func(lines: Array):
+			if lines.size() > 0 and is_inside_tree():
+				_show_when_free(lines))
+		Social.collect_payouts(func(total: int):
+			if total > 0 and is_inside_tree():
+				_toast("The market paid you %d gems" % total)
+				_refresh_top())
 	# a kin with lines written by Claude keeps them fresh
 	var ak := Save.active_kin()
-	if Bridge.ai_ok and not ak.is_empty() and int(ak.get("matches", 0)) % 3 == 0:
+	if visit.is_empty() and Bridge.ai_ok and not ak.is_empty() and int(ak.get("matches", 0)) % 3 == 0:
 		Bridge.refresh_lines(ak)
 
 func _rect_center(rc: Array) -> Vector3:
 	return Vector3((rc[0] + rc[2] + 1) * 0.5, 0, (rc[1] + rc[3] + 1) * 0.5)
 
 func _isle_open(isle: String) -> bool:
-	return isle == "main" or Save.has_bridge(isle)
+	return isle == "main" or _has_br(isle)
 
 # ---- buildings and building sites
 func _build_lots() -> void:
@@ -213,7 +239,7 @@ func _build_lots() -> void:
 		var rc: Array = bd["rect"]
 		var at := _rect_center(rc)
 		var holder := Node3D.new(); holder.position = at; add_child(holder)
-		var built := Save.has_building(b)
+		var built := _has_b(b)
 		var n: Node3D
 		if built:
 			n = Models.building(b)
@@ -372,16 +398,16 @@ func _build_plots() -> void:
 	for n in gh_plots:
 		n.queue_free()
 	gh_plots.clear()
-	var cap := int(Save.d["plot_cap"])
-	while Save.d["plots"].size() < cap:
-		Save.d["plots"].append({"crop": "", "stage": 0})
+	var cap: int = int(Save.d["plot_cap"]) if visit.is_empty() else (_d()["plots"] as Array).size()
+	while _d()["plots"].size() < cap:
+		_d()["plots"].append({"crop": "", "stage": 0})
 	for i in cap:
 		var p := Models.plot()
 		p.position = Vector3(44.2 + (i % 2) * 2.2, 0, 30.8 + (i / 2) * 2.0)
 		add_child(p)
 		plots.append(p)
 		_refresh_plot("plots", i)
-	if Save.has_building("greenhouse"):
+	if _has_b("greenhouse") and _d().get("gh_plots", []).size() >= 4:
 		for i in 4:
 			var p := Models.plot()
 			p.position = Vector3(57.5 + i * 2.2, 0, 40.4)
@@ -397,7 +423,7 @@ func _refresh_plot(arr: String, i: int) -> void:
 	var holder: Node3D = p.get_node("Crop")
 	for ch in holder.get_children():
 		ch.queue_free()
-	var d: Dictionary = Save.d[arr][i]
+	var d: Dictionary = _d()[arr][i]
 	if d["crop"] != "":
 		var cd: Dictionary = Data.CROPS[d["crop"]]
 		holder.add_child(Models.crop(int(d["stage"]), int(cd["grow"]), cd["color"]))
@@ -411,10 +437,10 @@ func _spawn_kin() -> void:
 		if i > 0 and _isle_open(world.islands[i]["id"]):
 			open_isles.append(i)
 	var ri := 0
-	for rec in Save.d["roster"]:
+	for rec in _d()["roster"]:
 		var n := Models.kin(rec["species"], rec)
 		add_child(n)
-		var isl: int = 0 if rec["uid"] == Save.d.get("active", "") else open_isles[ri % open_isles.size()]
+		var isl: int = 0 if rec["uid"] == _d().get("active", "") else open_isles[ri % open_isles.size()]
 		ri += 1
 		var at := world.random_ground(isl)
 		n.position = at
@@ -424,14 +450,38 @@ func _spawn_kin() -> void:
 		lbl.position.y = 1.15; lbl.visible = false
 		n.add_child(lbl)
 		var kd := {"rec": rec, "node": n, "pos": at, "vel": Vector3.ZERO, "goal": Vector3.INF, "t": randf() * 3.0, "emote": lbl, "emote_t": 0.0, "hop": randf() * 6.0}
-		var ri2: int = Save.d["roster"].find(rec)
+		var ri2: int = _d()["roster"].find(rec)
 		if isl == 0 and ri2 >= 0 and ri2 < 6:
 			kd["bed"] = Vector3(33.4 + (ri2 % 3) * 1.1, 0, 27.6 + (ri2 / 3) * 1.1)
 		kins.append(kd)
 
 # ------------------------------------------------------------------ loop
 ## Sun, sky, lamps and the occasional rain shower.
+var _music_t := 0.0
+var music_hold := 0.0
+## The music follows where you're standing: each island has its own theme, home changes at night.
+func _update_music(d: float) -> void:
+	_music_t -= d
+	music_hold -= d
+	if _music_t > 0.0 or music_hold > 0.0:
+		return
+	_music_t = 0.5
+	var isle := world.island_id(ppos.x, ppos.z)
+	var night := sin((day_t - 0.25) * TAU) < -0.15
+	var want := "home_night" if night else "home_day"
+	if isle in ["orchard", "meadow", "summit"]:
+		want = isle
+	if Sfx.music_lock != "":
+		want = Sfx.music_lock
+	Sfx.play_music(want, 2.5)
+
+func _on_new_track(name: String) -> void:
+	if not is_inside_tree() or root_ui == null:
+		return
+	_toast("New track: %s" % Data.MUSIC.get(name, {}).get("name", name))
+
 func _update_sky(d: float) -> void:
+	_update_music(d)
 	day_t = fmod(day_t + d / DAY_LEN, 1.0)
 	var sun_h := sin((day_t - 0.25) * TAU)            # 1 at noon, -1 at midnight
 	var light := clampf(sun_h * 1.6 + 0.35, 0.0, 1.0)  # how much daylight
@@ -557,7 +607,7 @@ func _move_kin(d: float) -> void:
 		n.rotation.y = lerp_angle(n.rotation.y, face, minf(1.0, d * 8.0))
 		k["hop"] += d * (9.0 if hv.length() > 0.3 else 2.5)
 		n.get_node("Body").position.y = absf(sin(k["hop"])) * (0.14 if hv.length() > 0.3 else 0.03)
-		n.scale = Vector3.ONE * (1.05 if rec["uid"] == Save.d.get("active", "") else 0.9) * float(n.get_meta("evo_scale", 1.0))
+		n.scale = Vector3.ONE * (1.05 if rec["uid"] == _d().get("active", "") else 0.9) * float(n.get_meta("evo_scale", 1.0))
 		if k["emote_t"] > 0.0:
 			k["emote_t"] -= d
 			var lbl: Label3D = k["emote"]
@@ -579,7 +629,7 @@ func _find_interact() -> void:
 	for i in gh_plots.size():
 		var d := p2.distance_to(Vector2(gh_plots[i].position.x, gh_plots[i].position.z))
 		if d < bd: bd = d; best = {"kind": "plot", "arr": "gh_plots", "i": i}
-	for nm in ["pot", "stall", "portal", "house"]:
+	for nm in ["pot", "stall", "portal", "house", "ferry"]:
 		var sp: Vector3 = spots[nm]
 		var reach := 2.6 if nm in ["house", "portal"] else 1.9
 		var d := p2.distance_to(Vector2(sp.x, sp.z + (2.0 if nm == "house" else 0.0)))
@@ -609,7 +659,15 @@ func _find_interact() -> void:
 	prompt_box.position = Vector2((vp.x - prompt_box.size.x) * 0.5, vp.y - 110.0)
 
 func _label_for(it: Dictionary) -> String:
+	if not visit.is_empty():
+		match it["kind"]:
+			"kin": return ("Pet %s" % it["k"]["rec"]["name"]) if not petted.has(it["k"]["rec"]["uid"]) else "%s is happy you came" % it["k"]["rec"]["name"]
+			"house": return "Leave a gift"
+			"portal", "ferry": return "Go home"
+			"plot": return "%s's crops" % visit.get("name", "Their")
+		return "Look around"
 	match it["kind"]:
+		"ferry": return "Take the ferry"
 		"plot":
 			var d: Dictionary = Save.d[it["arr"]][it["i"]]
 			if d["crop"] == "": return "Plant something"
@@ -634,7 +692,11 @@ func _label_for(it: Dictionary) -> String:
 
 func _use(it: Dictionary) -> void:
 	Sfx.play("click")
+	if not visit.is_empty():
+		_use_visiting(it)
+		return
 	match it["kind"]:
+		"ferry": _open_ferry()
 		"plot": _open_plot(it["arr"], it["i"])
 		"lot": _open_lot(it["b"])
 		"bridge": _open_bridge(it["isle"])
@@ -689,6 +751,9 @@ func _build_ui() -> void:
 	root_ui.add_child(panel_host)
 
 func _refresh_top() -> void:
+	if not visit.is_empty():
+		topbar.text = "Visiting %s's island   ·   Pet their kin, leave a gift at the house   ·   The portal takes you home" % String(visit.get("name", "a friend")).substr(0, 16)
+		return
 	var crops := 0
 	for k in Save.d["crops"]: crops += int(Save.d["crops"][k])
 	var ak := Save.active_kin()
@@ -1168,6 +1233,8 @@ func _play_evolutions() -> void:
 		if e["kind"] == "form": big = true
 	var tint: Color = Evo.AFF[evs[evs.size() - 1]["aff"]]["tint"]
 	Sfx.play("skill")
+	music_hold = 25.0
+	Sfx.play_music("lullaby", 1.0)
 	var tw := create_tween()
 	tw.tween_interval(0.4)
 	tw.tween_property(n, "rotation:y", n.rotation.y + TAU * (3.0 if big else 1.0), 1.4).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
@@ -1430,6 +1497,139 @@ func _refresh_player_model() -> void:
 	player.position = at; player.rotation = rot
 	add_child(player)
 
+# ---- music list
+func _open_music() -> void:
+	var v := _new_panel("Music", 560)
+	var have: Array = Save.d.get("music", [])
+	v.add_child(UI.label("%d of %d tracks found. Pick one to play it here, or let the music follow where you are." % [have.size(), Data.MUSIC.size()], 14, UI.MUTED))
+	for id in Data.MUSIC:
+		var md: Dictionary = Data.MUSIC[id]
+		var row := UI.hbox(10)
+		var got: bool = have.has(id)
+		var nl := UI.label(String(md["name"]) if got else "???", 16, UI.INK if got else UI.MUTED)
+		nl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(nl)
+		if got:
+			var tid: String = id
+			var playing: bool = Sfx.music_name == id
+			var b := UI.button("Playing" if playing else "Play", func():
+				Sfx.music_lock = tid
+				Sfx.play_music(tid, 1.0)
+				_open_music(), 120)
+			b.disabled = playing
+			row.add_child(b)
+		else:
+			var hl := UI.label(String(md["hint"]), 13, UI.MUTED)
+			hl.autowrap_mode = TextServer.AUTOWRAP_OFF
+			row.add_child(hl)
+		v.add_child(row)
+	if Sfx.music_lock != "":
+		v.add_child(UI.button("Let the music follow where I am", func():
+			Sfx.music_lock = ""
+			Sfx.music_name = ""
+			_music_t = 0.0
+			_open_music(), 320))
+
+# ---- visiting and the ferry
+func _use_visiting(it: Dictionary) -> void:
+	var owner_name := String(visit.get("name", "Their owner")).substr(0, 16)
+	match it["kind"]:
+		"kin":
+			var rec: Dictionary = it["k"]["rec"]
+			if petted.has(rec["uid"]):
+				_emote(it["k"], "♥")
+				return
+			petted[rec["uid"]] = true
+			Social.send_gift(visit_id, "pet", String(rec["uid"]))
+			_emote(it["k"], "♥")
+			Sfx.play("kin_happy")
+			_toast("%s will remember your visit" % rec["name"])
+		"house":
+			_open_gift_panel(owner_name)
+		"portal", "ferry":
+			Game.goto("home")
+		_:
+			_toast("This belongs to %s" % owner_name)
+
+func _open_gift_panel(owner_name: String) -> void:
+	var v := _new_panel("Leave a gift for %s" % owner_name, 520)
+	v.add_child(UI.label("They'll find it next time they're home.", 14, UI.MUTED))
+	var any := false
+	for kind in ["seed", "crop"]:
+		var store: Dictionary = Save.d["seeds"] if kind == "seed" else Save.d["crops"]
+		for key in store:
+			if int(store[key]) <= 0 or not Data.CROPS.has(key):
+				continue
+			any = true
+			var row := UI.hbox(10)
+			var l := UI.label("%s%s  ×%d" % [Data.CROPS[key]["name"], " seed" if kind == "seed" else "", int(store[key])], 15, Data.CROPS[key]["color"])
+			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(l)
+			var kk: String = key
+			var kd: String = kind
+			row.add_child(UI.button("Give one", func():
+				var st: Dictionary = Save.d["seeds"] if kd == "seed" else Save.d["crops"]
+				if int(st.get(kk, 0)) <= 0:
+					return
+				st[kk] = int(st[kk]) - 1
+				Save.save_game()
+				_close_panel()
+				Social.send_gift(visit_id, kd, kk, func(okk: bool):
+					if okk:
+						Sfx.play("pickup")
+						if is_inside_tree(): _toast("Gift left for %s" % owner_name)
+					else:
+						st[kk] = int(st.get(kk, 0)) + 1      # it didn't arrive, so it's still yours
+						Save.save_game()
+						if is_inside_tree(): _toast("The gift couldn't be left. Try again in a moment.")), 140))
+			v.add_child(row)
+	if not any:
+		v.add_child(UI.label("You have nothing to give yet. Seeds and crops make good gifts.", 15))
+
+## The "while you were away" note waits until nothing else is on screen.
+func _show_when_free(lines: Array) -> void:
+	if not is_inside_tree():
+		return
+	if panel_open != "" or building_now or not Save.d["tutorial"].get("home", false):
+		get_tree().create_timer(1.0).timeout.connect(_show_when_free.bind(lines))
+		return
+	var v := _new_panel("While you were away", 520)
+	for l in lines: v.add_child(UI.label(l, 15))
+	_refresh_top()
+
+func _open_ferry() -> void:
+	var v := _new_panel("Ferry", 520)
+	if not Social.available():
+		v.add_child(UI.label("The ferry connects you with other players: the town, guilds and friends' islands. It runs in the web version of Kinfall.", 15))
+		return
+	v.add_child(UI.label("Where to?", 14, UI.MUTED))
+	v.add_child(UI.button("The town: market, notice board and guilds", func(): Game.goto("town", {"mode": "hub"}), 440))
+	if not Social.guild.is_empty():
+		var gname := String(Social.guild.get("name", "your guild"))
+		var gid := Social.my_guild_id()
+		v.add_child(UI.button("Your guild isle: %s" % gname, func(): Game.goto("town", {"mode": "guild", "gid": gid}), 440))
+	v.add_child(UI.label("Visit a friend's island", 14, UI.MUTED))
+	var list := UI.vbox(6)
+	v.add_child(list)
+	list.add_child(UI.label("Looking for islands...", 14, UI.MUTED))
+	Social.list_islands(func(rows: Array):
+		if not is_instance_valid(list):
+			return
+		for c in list.get_children():
+			c.queue_free()
+		if rows.is_empty():
+			list.add_child(UI.label("Nobody else has an island here yet. Share the game with a friend to visit each other.", 14, UI.MUTED))
+		for r in rows.slice(0, 12):
+			var d: Dictionary = r["d"]
+			var row := UI.hbox(10)
+			var l := UI.label("%s  ·  %d kin  ·  %d buildings" % [d["name"], d["roster"].size(), d["buildings"].size()], 15)
+			l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			row.add_child(l)
+			var rid: String = r["id"]
+			row.add_child(UI.button("Visit", func(): Game.goto("home", {"visit": d, "visit_id": rid}), 100))
+			list.add_child(row))
+
+
 # ---- house
 func _open_house() -> void:
 	var v := _new_panel("Your house", 620)
@@ -1453,7 +1653,10 @@ func _open_house() -> void:
 				_open_house()))
 		h.add_child(UI.button("Visit", func(): _open_kin(r)))
 		v.add_child(row)
-	v.add_child(UI.button("Settings", _open_settings, 180))
+	var hb := UI.hbox(8)
+	hb.add_child(UI.button("Music", _open_music, 160))
+	hb.add_child(UI.button("Settings", _open_settings, 160))
+	v.add_child(hb)
 
 # ---- settings
 func _open_settings() -> void:

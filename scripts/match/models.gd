@@ -682,3 +682,70 @@ static func plank(rng: RandomNumberGenerator, width: float) -> MeshInstance3D:
 	mi.material_override = toon(Color("a07a52").lerp(Color("7a5a3c"), rng.randf()))
 	mi.rotation.y = rng.randf_range(-0.04, 0.04)
 	return mi
+
+
+## The ferry stop at home: a post with a bell and a sign, and a short jetty.
+static func ferry_post() -> Node3D:
+	var root := Node3D.new()
+	var wood := toon(Color("7a5236"))
+	part(root, box(0.16, 2.2, 0.16), wood, Vector3(0, 1.1, 0))
+	part(root, box(0.9, 0.1, 0.1), wood, Vector3(0.38, 2.1, 0))
+	part(root, cyl(0.06, 0.18, 0.26, 12), toon(Color("f2c84a"), true, 0.3), Vector3(0.7, 1.86, 0))
+	part(root, box(1.2, 0.36, 0.08), toon(Color("c49a6a")), Vector3(0, 1.3, 0.1))
+	var l := Label3D.new(); l.text = "Ferry"; l.font = load("res://fonts/LilitaOne-Regular.ttf")
+	l.font_size = 48; l.pixel_size = 0.005; l.modulate = Color("3a2a1a"); l.outline_size = 0; l.position = Vector3(0, 1.3, 0.15)
+	root.add_child(l)
+	for i in 3:
+		part(root, box(1.4, 0.08, 0.36), wood, Vector3(0, 0.04, -0.6 - i * 0.38))
+	return root
+
+
+## Guild landmarks.
+static func lighthouse(col: Color) -> Node3D:
+	var root := Node3D.new()
+	var body := Node3D.new(); body.name = "Body"; root.add_child(body)
+	var white := toon(Color("f3eee2")); var red := toon(Color("c0443a"))
+	part(body, cyl(1.3, 1.5, 0.5, 18), toon(Color("8d8a86")), Vector3(0, 0.25, 0))
+	for i in 4:
+		part(body, cyl(0.95 - i * 0.12, 1.05 - i * 0.12, 1.4, 16), white if i % 2 == 0 else red, Vector3(0, 1.2 + i * 1.4, 0))
+	part(body, cyl(0.7, 0.7, 0.9, 12), toon(col, false, 1.4), Vector3(0, 6.6, 0))
+	part(body, cyl(0.0, 0.9, 0.8, 12), red, Vector3(0, 7.45, 0))
+	var l := OmniLight3D.new(); l.light_color = col; l.light_energy = 1.4; l.omni_range = 9.0; l.position = Vector3(0, 6.6, 0)
+	body.add_child(l)
+	return root
+
+static func banner(col: Color) -> Node3D:
+	var root := Node3D.new()
+	part(root, cyl(0.06, 0.06, 3.2, 8), toon(Color("5a4636")), Vector3(0, 1.6, 0))
+	part(root, box(0.7, 1.1, 0.04), toon(col), Vector3(0.38, 2.5, 0), Vector3.ONE, Vector3.ZERO, "Flag")
+	part(root, sphere(0.09, 8), toon(Color("f2c84a"), true, 0.4), Vector3(0, 3.25, 0))
+	return root
+
+static func notice_board() -> Node3D:
+	var root := Node3D.new()
+	var wood := toon(Color("7a5236"))
+	for x in [-1.0, 1.0]:
+		part(root, box(0.14, 2.0, 0.14), wood, Vector3(x, 1.0, 0))
+	part(root, box(2.3, 1.3, 0.1), toon(Color("c49a6a")), Vector3(0, 1.35, 0))
+	part(root, box(2.5, 0.14, 0.3), wood, Vector3(0, 2.05, 0))
+	var cols := [Color("f3eee2"), Color("ffe08a"), Color("cfe8ff"), Color("ffd0dc")]
+	for i in 5:
+		part(root, box(0.42, 0.5, 0.02), toon(cols[i % 4]), Vector3(-0.8 + i * 0.4, 1.35 + (0.12 if i % 2 else -0.1), 0.07), Vector3.ONE, Vector3(0, 0, (i - 2) * 0.06))
+	return root
+
+static func fountain() -> Node3D:
+	var root := Node3D.new()
+	var stone := toon(Color("b8b2a8"))
+	part(root, cyl(1.8, 1.9, 0.5, 24), stone, Vector3(0, 0.25, 0))
+	part(root, cyl(1.55, 1.55, 0.06, 24), toon(Color("3d78a8"), false, 0.15), Vector3(0, 0.48, 0))
+	part(root, cyl(0.3, 0.4, 1.3, 12), stone, Vector3(0, 1.0, 0))
+	part(root, cyl(0.7, 0.5, 0.2, 16), stone, Vector3(0, 1.7, 0))
+	var sp := CPUParticles3D.new(); sp.name = "Spray"
+	sp.amount = 40; sp.lifetime = 0.9
+	var m := SphereMesh.new(); m.radius = 0.05; m.height = 0.1; m.radial_segments = 6; m.rings = 3
+	var pm := StandardMaterial3D.new(); pm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; pm.albedo_color = Color(0.75, 0.9, 1.0, 0.8); pm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.material = pm; sp.mesh = m
+	sp.direction = Vector3.UP; sp.spread = 18.0; sp.initial_velocity_min = 2.5; sp.initial_velocity_max = 3.4
+	sp.gravity = Vector3(0, -9, 0); sp.position = Vector3(0, 1.8, 0)
+	root.add_child(sp)
+	return root

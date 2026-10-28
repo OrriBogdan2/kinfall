@@ -57,7 +57,46 @@ window.kinBridge=(function(){
   function matchEmit(topic,json){const d=JSON.parse(json);if(match&&match.r)match.r.emit(topic,d).catch(()=>{});else if(bc)bc.postMessage({k:'msg',t:topic,d,f:me,room:match&&match.name})}
   function leaveMatch(){if(match&&match.r&&match.r.leave)try{match.r.leave()}catch(e){}match=null}
   function whoami(){return me}
-  return {ask,netStart,presence,emit,joinMatch,matchEmit,leaveMatch,whoami,hasRoom:()=>!!room};
+  // ---- shared store for islands, guilds and the town: the artifact's db when the page has it,
+  // localStorage otherwise (one browser only, so tabs can still visit each other while testing).
+  let db=null,uid=null,storeMode='';
+  const LS='kfdb:';
+  function lsKey(p){return LS+p}
+  function lsKids(col){const out=[];const pre=lsKey(col)+'/';const depth=col.split('/').length+1;
+    for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(!k.startsWith(pre))continue;const path=k.slice(LS.length);
+      if(path.split('/').length!==depth)continue;try{out.push({id:path.split('/').pop(),data:JSON.parse(localStorage.getItem(k))})}catch(e){}}return out}
+  async function storeInit(cb){try{const c=window.claude;
+      if(c&&c.use){const [d,u]=await Promise.all([c.use('db'),c.use('user')]);if(d&&u){const id=await u.id();if(id){db=d;uid=id;storeMode='db'}}}}catch(e){db=null}
+    if(!db){storeMode='local';const hu=/uid=(\w+)/.exec(location.hash);uid=hu?hu[1]:localStorage.getItem('kf-uid');if(!uid){uid='u'+Math.random().toString(36).slice(2,12);localStorage.setItem('kf-uid',uid)}}
+    cb(JSON.stringify({mode:storeMode,me:uid}))}
+  function cmp(a,op,b){switch(op){case'==':return a===b;case'!=':return a!==b;case'<':return a<b;case'<=':return a<=b;case'>':return a>b;case'>=':return a>=b;case'array-contains':return Array.isArray(a)&&a.includes(b);case'in':return Array.isArray(b)&&b.includes(a)}return false}
+  async function dbGet(path,cb){try{if(db){const s=await db.doc(path).get();cb(s.exists?JSON.stringify(s.data()):'null')}else{cb(localStorage.getItem(lsKey(path))||'null')}}catch(e){cb('null')}}
+  async function dbSet(path,json,cb){try{const d=JSON.parse(json);if(db)await db.doc(path).set(d);else localStorage.setItem(lsKey(path),JSON.stringify(d));cb('ok')}catch(e){cb('err:'+((e&&e.code)||'x'))}}
+  async function dbDel(path,cb){try{if(db)await db.doc(path).delete();else localStorage.removeItem(lsKey(path));cb('ok')}catch(e){cb('err:'+((e&&e.code)||'x'))}}
+  async function dbAdd(col,json,cb){try{const d=JSON.parse(json);if(db){const r=await db.collection(col).add(d);cb(r.id)}else{const id=Date.now().toString(36)+Math.random().toString(36).slice(2,6);localStorage.setItem(lsKey(col+'/'+id),JSON.stringify(d));cb(id)}}catch(e){cb('')}}
+  async function dbQuery(col,qjson,cb){try{const q=JSON.parse(qjson);let rows;
+      if(db){let r=db.collection(col);for(const f of(q.where||[]))r=r.where(f[0],f[1],f[2]);if(q.order)r=r.orderBy(q.order,q.dir||'asc');r=r.limit(Math.min(q.limit||50,200));
+        const s=await r.get();rows=s.docs.map(d=>({id:d.id,data:d.data()}))}
+      else{rows=lsKids(col).filter(r=>(q.where||[]).every(f=>cmp(r.data[f[0]],f[1],f[2])));
+        if(q.order){const k=q.order,dir=q.dir==='desc'?-1:1;rows.sort((a,b)=>((a.data[k]??0)>(b.data[k]??0)?1:-1)*dir)}rows=rows.slice(0,q.limit||50)}
+      cb(JSON.stringify(rows))}catch(e){cb('[]')}}
+  // Claim a document before acting on it (buying a market listing): only one buyer gets it.
+  async function dbClaim(path,cb){try{if(db){const r=await db.doc(path).acquire({holder:uid+':'+Math.random().toString(36).slice(2,8),ttlMs:8000});if(!r.acquired){cb('0');return}const s=await db.doc(path).get();cb(s.exists?JSON.stringify(s.data()):'0')}
+      else{const v=localStorage.getItem(lsKey(path));cb(v||'0')}}catch(e){cb('0')}}
+  // ---- the town: who else is walking around right now
+  let hub=null,hubBc=null,hubPeers=new Map(),hubCb=null,hubMine={},hubT=null;
+  function hubEmit(){if(!hubCb)return;const arr=[];hubPeers.forEach((v,k)=>{if(k!==me&&k!==uid)arr.push({id:k,p:v})});hubCb(JSON.stringify(arr))}
+  let hubGen=0;
+  async function hubJoin(name,cb){hubLeave();const gen=++hubGen;hubCb=cb;hubPeers=new Map();
+    try{const c=window.claude;const r=c&&c.use?await c.use('room'):null;if(gen!==hubGen)return;if(r&&r.join){const h=await r.join(name);
+      if(gen!==hubGen){try{h.leave()}catch(e){}return}hub=h;
+      hub.onPeers(ch=>{hubPeers=new Map();for(const p of ch.peers){if(p.isMe)continue;const pr=p.presence||{};if(pr.kt)hubPeers.set(String(p.peer),pr)}hubEmit()});return}}catch(e){hub=null}
+    hubBc=new BroadcastChannel('kinfall-'+name);hubBc.onmessage=e=>{const m=e.data;if(!m)return;if(m.k==='p'){hubPeers.set(m.f,Object.assign({},m.d,{seen:Date.now()}));hubEmit()}else if(m.k==='bye'){hubPeers.delete(m.f);hubEmit()}};
+    hubT=setInterval(()=>{const now=Date.now();let ch=false;hubPeers.forEach((v,k)=>{if(now-v.seen>6000){hubPeers.delete(k);ch=true}});if(ch)hubEmit()},1000)}
+  function hubPresence(json){hubMine=JSON.parse(json);hubMine.kt=1;if(hub)hub.presence(hubMine).catch(()=>{});else if(hubBc)hubBc.postMessage({k:'p',f:uid||me,d:hubMine})}
+  function hubLeave(){hubGen++;try{if(hub&&hub.leave)hub.leave()}catch(e){}hub=null;if(hubBc){hubBc.postMessage({k:'bye',f:uid||me});hubBc.close();hubBc=null}if(hubT){clearInterval(hubT);hubT=null}hubCb=null}
+  return {ask,netStart,presence,emit,joinMatch,matchEmit,leaveMatch,whoami,hasRoom:()=>!!room,
+    storeInit,dbGet,dbSet,dbDel,dbAdd,dbQuery,dbClaim,hubJoin,hubPresence,hubLeave};
 })();
 </script>
 <script src="index.js"></script>

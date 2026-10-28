@@ -81,15 +81,6 @@ func kin_lines_for_match(m: Node) -> void:
 func net_available() -> bool:
 	return js != null
 
-func net_call(method: String, args: Array) -> void:
-	if js == null:
-		return
-	match args.size():
-		0: js.call(method)
-		1: js.call(method, args[0])
-		2: js.call(method, args[0], args[1])
-		_: js.call(method, args[0], args[1], args[2])
-
 func make_callback(f: Callable):
 	var cb := JavaScriptBridge.create_callback(f)
 	_keep.append(cb)
