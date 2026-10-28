@@ -1199,32 +1199,64 @@ func on_wall_slam(e: Ent, st: float) -> void:
 	if e == player and hud: hud.toast_small("WALL SLAM", Color("fff27a"))
 	elif player and e.last_hit_by == player and hud: hud.toast_small("WALL SLAM  ·  stunned %.1fs" % st, Color("fff27a"))
 
-## What a team can see: rival hunters in tall grass stay hidden unless someone is right next to
-## them or they've just fired or been hit, and walls and high ground block sight entirely.
+## Sight. Each hunter sees a cone in front of them (where they aim) out to VIEW_RANGE, plus a
+## small circle all around; a team shares what its members see. Walls and high ground block
+## sight, tall grass hides you from anyone outside it, and crouching shrinks both distances.
+## Firing or getting hit gives you away to anyone with a clear line, whichever way they face.
+const VIEW_RANGE := 24.0
+const VIEW_COS := 0.6          # about 106 degrees wide
+const NEAR_SENSE := 3.2
+
 func can_see(team_i: int, target: Hunter) -> bool:
-	if target.team == team_i or target.reveal_t > 0.0 or target.downed:
+	if target.team == team_i or target.downed:
 		return true
-	var hidden_in_grass := world.in_bush(target.pos.x, target.pos.z)
+	return sees(team_i, target.pos, target.crouch, target.reveal_t > 0.0)
+
+func sees(team_i: int, p: Vector3, crouched := false, revealed := false) -> bool:
+	var in_grass := world.in_bush(p.x, p.z)
+	var near := 1.6 if crouched else NEAR_SENSE
+	var rng := VIEW_RANGE + 2.0 if revealed else (14.0 if crouched else VIEW_RANGE)
 	for h in hunters:
 		if h.team != team_i or h.out or h.extracted or h.riding:
 			continue
-		var d: float = h.flat_dist(target)
-		if d < 2.6:
+		var rel := Vector2(p.x - h.pos.x, p.z - h.pos.z)
+		var d := rel.length()
+		if d < near:
 			return true
-		if hidden_in_grass or d > 24.0:
+		if d > rng or (in_grass and not revealed):
 			continue
-		if world.los(h.pos, target.pos, h.pos.y + 1.1) or world.los(h.pos, target.pos + Vector3(0, 0.6, 0), h.pos.y + 1.6):
+		if not revealed and rel.normalized().dot(h.aim_dir()) < VIEW_COS:
+			continue
+		if world.los(h.pos, p, h.pos.y + 1.1) or world.los(h.pos, p + Vector3(0, 0.6, 0), h.pos.y + 1.6):
 			return true
 	return false
 
 var _vis_t := 0.0
+var crouch_on := false
+var _vis_tex_done := false
 func _update_vision() -> void:
+	# the dimming outside your view cone, drawn by the toon shaders
+	var looking := player != null and not player.out and not player.extracted and not player.dropping and not player.riding
+	if looking and not _vis_tex_done:
+		_vis_tex_done = true
+		RenderingServer.global_shader_parameter_set("vis_blocks", world.vis_texture())
+		RenderingServer.global_shader_parameter_set("vis_size", Vector2(world.w, world.h))
+	RenderingServer.global_shader_parameter_set("vis_on", 1.0 if looking else 0.0)
+	if looking:
+		RenderingServer.global_shader_parameter_set("vis_focus", player.model.global_position if player.model else player.pos)
+		RenderingServer.global_shader_parameter_set("vis_dir", player.aim_dir())
 	_vis_t -= get_process_delta_time()
 	if _vis_t > 0.0:
 		return
-	_vis_t = 0.1
+	_vis_t = 0.05
 	for h in hunters:
-		h.unseen = player != null and h != player and not player.out and not can_see(player.team, h)
+		h.unseen = looking and h != player and not can_see(player.team, h)
+	for k in kins:
+		var o: Hunter = k.owner_h
+		k.unseen = looking and o != null and o.team != player.team and k.state != "shoulder" and not sees(player.team, k.pos)
+
+func _exit_tree() -> void:
+	RenderingServer.global_shader_parameter_set("vis_on", 0.0)
 
 func on_perfect_dodge(h: Hunter) -> void:
 	fx.ring(h.pos, 1.3, Color("9af0ff"), 0.3)
@@ -1449,14 +1481,6 @@ func _shot_end(s: Dictionary, at: Vector3, e: Ent) -> void:
 		o["slow"] = 2.0
 		fx.bolt(by.pos + Vector3(0, 0.95, 0), e.pos + Vector3(0, 0.8, 0), Color("e0b05a"))
 		net_fx(["bolt", _r(by.pos.x), _r(by.pos.y + 0.95), _r(by.pos.z), _r(e.pos.x), _r(e.pos.y + 0.8), _r(e.pos.z), "e0b05a"])
-	if x.get("bolas", false):
-		# a second foe close by gets tangled too, and both are stunned
-		for f in foes_of(int(s["team"])):
-			if f != e and f.flat_dist(e) < 2.2 and absf(f.pos.y - e.pos.y) < 1.5:
-				o["stun"] = 1.0
-				f.hurt(dmg, by, o.duplicate())
-				fx.bolt(e.pos + Vector3(0, 0.8, 0), f.pos + Vector3(0, 0.8, 0), Color("d8c9b0"))
-				break
 	e.hurt(dmg, by, o)
 	if x.get("blinkto", false) and by is Hunter and not by.remote and not by.downed:
 		# Shadow Knife: appear behind whoever it hit
@@ -1520,7 +1544,7 @@ func _process(delta: float) -> void:
 	for e in hunters: e.render(delta, alpha)
 	for e in kins:
 		e.render(delta, alpha)
-		if e.owner_h and (e.owner_h as Hunter).unseen and e.state == "shoulder":
+		if e.unseen or (e.owner_h and (e.owner_h as Hunter).unseen and e.state == "shoulder"):
 			e.visible = false
 	for e in mobs: e.render(delta, alpha)
 	for s in shots:
@@ -1584,6 +1608,16 @@ func _gather_input() -> void:
 	player.inp["glide"] = Input.is_action_pressed("jump") and not paused
 	var quick: bool = Settings.get_v("quick_cast")
 	player.inp["sec_hold"] = Input.is_action_pressed("secondary") and not paused
+	# crouch: hold by default, or tap to toggle (the web version defaults to toggle, so you never
+	# hold Ctrl while pressing W, which closes the browser tab)
+	if Settings.get_v("crouch_toggle"):
+		if Input.is_action_just_pressed("crouch") and not paused:
+			crouch_on = not crouch_on
+		if Input.is_action_just_pressed("jump") or Input.is_action_just_pressed("dash"):
+			crouch_on = false
+	else:
+		crouch_on = Input.is_action_pressed("crouch") and not paused
+	player.inp["crouch"] = crouch_on
 	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["kin_skill", "skill"], ["ultimate", "ult"], ["secondary", "sec"]]:
 		var aimable: bool = a[0] in ["signature", "ultimate", "kin_skill"] and not quick
 		if aimable:
@@ -1651,6 +1685,9 @@ func step(dt: float) -> void:
 	if opts.has("aim_demo") and player:
 		aim_hold = String(opts["aim_demo"])
 		player.inp["aim"] = player.pos + Vector3(4.0, 0, -3.0)
+	if opts.get("cone_demo", false) and player:
+		player.inp["aim"] = player.pos + Vector3(4.0, 0.95, -5.0)
+		player.inp["crouch"] = opts.get("crouch_demo", false)
 	if opts.get("wall_behind", false) and player and time < 0.05:
 		for wi in world.walls:
 			var wx: int = int(wi) % world.w; var wz: int = int(wi) / world.w
@@ -1983,6 +2020,7 @@ const TUT := ["Steer with WASD to choose where you land", "Walk around with WASD
 const TRAIN := [["move", "Walk around", "up"], ["dash", "Dash", "dash"], ["glide", "Jump, then hold it in the air to glide", "jump"],
 	["shoot", "Shoot a target dummy", "fire"], ["ability", "Use your hero ability", "signature"], ["ult", "Use your ultimate (it charges fast here)", "ultimate"],
 	["secondary", "Use your hero's secondary", "secondary"],
+	["crouch", "Crouch: slower, steadier aim, harder to spot", "crouch"],
 	["throw", "Throw your kin at a dummy", "throw"], ["kinskill", "Use your kin's skill", "kin_skill"], ["tonic", "Drink a tonic to heal", "tonic"],
 	["stagger", "Stagger a big dummy: hit it with an ability while it has a purple ring", "signature"],
 	["smash", "Break a crate or pot", "fire"], ["weapon", "Take a found weapon off the ground", "interact"],
@@ -2013,7 +2051,8 @@ func _update_training(dt: float) -> void:
 		"glide": player.gliding and not player.dropping,
 		"shoot": player.dmg_done > 0.0,
 		"ability": player.sig_cd > 0.0,
-		"secondary": player.sec_cd > 0.0 or player.sec_ch < 3 or player.bshield_on or not player.satchel.is_empty(),
+		"crouch": player.crouch,
+		"secondary": player.sec_cd > 0.0 or player.bshield_on or not player.satchel.is_empty(),
 		"ult": was_ult and player.ult < 0.5,
 		"throw": player.kin != null and player.kin.st_throws > 0,
 		"kinskill": player.kin != null and player.kin.skill_cd > 0.0,
@@ -2029,7 +2068,7 @@ func _update_training(dt: float) -> void:
 		if marks[k] and not train.has(k):
 			train[k] = true
 			Sfx.play("unlock", null, -8.0)
-			var left := TRAIN.filter(func(t): return not train.has(t[0])).size()
+			var left := train_rows().filter(func(t): return not train.has(t[0])).size()
 			if hud: hud.toast(("Done: %s" % _train_label(k)) if left > 0 else "Training complete. Press Esc to head home whenever you like", Color("8ff0a0"))
 			if left == 0:
 				Save.d["tutorial"]["training"] = true
@@ -2039,6 +2078,10 @@ func _update_training(dt: float) -> void:
 		var at := world.random_ground(world.island_of(player.pos.x, player.pos.z))
 		if Vector2(at.x - player.pos.x, at.z - player.pos.z).length() > 3.0:
 			spawn_mob(["skitter", "spitter", "brute", "sentinel"][randi() % 4], at)
+
+## The checklist for this hero: the secondary step only shows for heroes that have one.
+func train_rows() -> Array:
+	return TRAIN.filter(func(t): return t[0] != "secondary" or (player != null and Abil.s_id(player) != ""))
 
 func _train_label(k: String) -> String:
 	for t in TRAIN:
@@ -2549,6 +2592,7 @@ func _flags(h: Hunter) -> int:
 	if h.riding: f |= 1024
 	if h.bshield_on: f |= 2048
 	if h.reveal_t > 0.0: f |= 4096
+	if h.crouch: f |= 8192
 	return f
 
 const KIN_STATES := ["shoulder", "flying", "flying_home", "active", "returning", "fainted", "reviving", "wild", "dazed"]
@@ -2674,6 +2718,7 @@ func _net_apply(e: Ent, it: Array) -> void:
 			h.riding = f & 1024 != 0
 			h.bshield_on = f & 2048 != 0
 			if f & 4096 != 0: h.reveal_t = maxf(h.reveal_t, 0.3)
+			h.crouch = f & 8192 != 0
 			h.down_hp = it[12]; h.revive = maxf(h.revive if h.revive > float(it[13]) and _rev_out.has(h.nid) else 0.0, float(it[13]))
 			h.shield = it[17]; h.extract_prog = it[18]
 			h.kills = int(it[19]); h.knocks = int(it[20]); h.dmg_done = float(it[21])

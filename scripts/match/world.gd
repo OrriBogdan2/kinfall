@@ -285,6 +285,15 @@ func _place_blockers() -> void:
 					if inb(q.x, q.y) and kind[idx(q.x, q.y)] == T_GROUND and island[idx(q.x, q.y)] == ii and edge_dist(q.x, q.y, 2) >= 2:
 						bush[idx(q.x, q.y)] = true
 
+## Which tiles block sight, for the view-cone shading (red = blocked).
+func vis_texture() -> ImageTexture:
+	var img := Image.create(w, h, false, Image.FORMAT_R8)
+	for z in h:
+		for x in w:
+			if kind[idx(x, z)] == T_BLOCK:
+				img.set_pixel(x, z, Color(1, 0, 0))
+	return ImageTexture.create_from_image(img)
+
 func in_bush(x: float, z: float) -> bool:
 	var ix := int(floor(x)); var iz := int(floor(z))
 	return inb(ix, iz) and bush.has(idx(ix, iz)) and kind[idx(ix, iz)] == T_GROUND

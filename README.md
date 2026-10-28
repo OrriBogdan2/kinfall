@@ -19,13 +19,14 @@ The project uses the Compatibility renderer so the same build runs on the web.
 | WASD | Move |
 | Mouse | Aim |
 | Left click | Shoot |
-| Right click | Hero secondary (each hero has their own) |
+| Right click | Hero secondary (Veil, Marlow, Pyra and Bastion) |
 | C | Throw your kin at the cursor, or call it back |
 | Q | Your kin's skill at the cursor (throws it first if it's on your shoulder) |
 | E | Hero ability |
 | R | Ultimate |
 | Shift | Dash |
 | Space | Jump; hold it in the air to glide |
+| Ctrl | Crouch (hold; tap to toggle on the web version, since Ctrl+W closes browser tabs) |
 | F (hold) | Catch a dazed wild kin, revive a teammate, open a chest |
 | F (tap) | Swap to a found weapon on the ground |
 | 1 | Tonic |
@@ -47,8 +48,9 @@ Touch the side of an island while you're falling (or gliding) and you float back
 - **Events.** A meteor shower comes down about a quarter of the way in (the stars leave gems), the Warden wakes on the center island, and halfway through a Glimmerkin appears and runs. Bring it down before it slips away.
 - **Islands and flight.** Every island has a shape of its own: crescents, atolls with a hole to the sky, twin lobes on a narrow neck, mesas, stepped terraces, split canyons, highlands, some with ruined walls to fight around. Close islands are crossed by gliding: jump off the edge and glide through the air rings between them for a burst of speed. The glider runs on fuel, and speed is what keeps you up: fast gliders barely sink, slow ones drift down. Steer hard against your heading to brake. Jump pads only cover the long gaps.
 - **Combat.** You have armor over your health (40 light, 50 medium, 65 heavy). It soaks hits first, shatters with a blue flash, and snaps back a few seconds after you stop taking damage; health only regenerates once armor is full. Armor shards drop from crates and big monsters. Shots spread more while you move, jump or dash, so plant your feet for accuracy. Hold E, R or Q to see where an ability will land and let go to cast it (right click cancels; "Quick cast" in Settings fires on press instead). Red arcs around the middle of the screen point at whoever is hitting you.
-- **Secondaries.** Every hero has a right-click tool in the spirit of Supervive: Veil shadowsteps behind a target, Nyx throws bolas, Kestrel calls a divehawk, Sage rides a breeze (3 charges), Marlow throws a haymaker, Pyra plants a satchel you set off with a second click (ride the blast), Bastion holds up a frontal shield, Tusk cleaves, Halo binds.
-- **Walls and grass.** Islands have stone walls, corners, pillars and small keeps to fight around. Walls block shots and sight, so you can peek and duck back. Jump at a wall in the air to kick off it (light heroes get two kicks). Anyone knocked hard into a wall is stunned, monsters too. Tall grass hides you from rivals and monsters outside it; firing, getting hit or someone stepping right next to you gives you away. A HIDDEN tag shows while you're unseen.
+- **Secondaries.** A few heroes have a right-click tool, the way some Supervive hunters do: Veil throws a shadow knife and appears behind whoever it hits, Marlow throws a haymaker, Pyra plants a satchel you set off with a second click (ride the blast), and Bastion holds up a frontal shield.
+- **Walls and grass.** Islands have stone walls, corners, pillars and small keeps to fight around. Walls block shots and sight, so you can peek and duck back. Jump at a wall in the air to kick off it (light heroes get two kicks). Anyone knocked hard into a wall is stunned, monsters too.
+- **Sight.** You see a cone in front of you (where you aim) plus a small circle around you; everything else is dimmed and rival hunters there are hidden. Walls cast sight shadows. Teammates share what they see. Tall grass hides you from anyone outside it, and firing or getting hit gives you away for a moment. Crouching (Ctrl) slows you down and steadies your aim, and rivals only spot you at close range.
 - **Stagger.** Big monsters (Brutes, Sentinels, the Warden, the Glimmerkin) open short purple-ring windows, always while winding up a slam. Hit one with an ability (E, R, your kin's skill or a throw) in that window, not a regular shot: it takes a big hit, is stunned for a few seconds, takes extra damage the whole time, and your E or kin skill comes straight back.
 - **The Hollow.** If you fall there and your partner's trust is below 80, it stays behind.
 

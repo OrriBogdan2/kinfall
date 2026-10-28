@@ -229,6 +229,7 @@ func _show_settings() -> void:
 			_toggle(v, "Damage numbers", "damage_numbers")
 			_toggle(v, "Tips during matches", "tips")
 			_toggle(v, "Quick cast (abilities fire on press, no aiming preview)", "quick_cast")
+			_toggle(v, "Tap to crouch (instead of holding the crouch key)", "crouch_toggle")
 		"Accessibility":
 			_slider(v, "Interface size", "ui_scale", 0.75, 1.5, 0.05)
 			_slider(v, "Screen shake", "shake", 0.0, 1.5)

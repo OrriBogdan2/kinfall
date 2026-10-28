@@ -29,6 +29,29 @@ window/vsync/vsync_mode=1
 [gui]
 theme/custom_font="res://fonts/Rubik.ttf"
 
+[shader_globals]
+
+vis_on={
+"type": "float",
+"value": 0.0
+}
+vis_focus={
+"type": "vec3",
+"value": Vector3(0, 0, 0)
+}
+vis_dir={
+"type": "vec2",
+"value": Vector2(0, -1)
+}
+vis_size={
+"type": "vec2",
+"value": Vector2(1, 1)
+}
+vis_blocks={
+"type": "sampler2D",
+"value": ""
+}
+
 [physics]
 common/physics_ticks_per_second=60
 

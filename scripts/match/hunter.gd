@@ -31,7 +31,7 @@ var wpn: Dictionary = {}
 var ctrl := "bot"             # local | bot | remote
 var inp := {"move": Vector2.ZERO, "aim": Vector3.ZERO, "fire": false, "dash": false, "jump": false,
 	"throw": false, "skill": false, "sig": false, "interact": false, "reload": false, "tonic": false, "glide": false, "ult": false,
-	"sec": false, "sec_hold": false}
+	"sec": false, "sec_hold": false, "crouch": false}
 var base_speed := 5.4
 var ammo := 12
 var reload_t := 0.0
@@ -81,9 +81,9 @@ var armor := 0.0
 var max_armor := 50.0
 var armor_wait := 0.0
 var bloom := 0.0              # extra spread from moving, jumping and dashing
+var crouch := false           # slower, steadier aim, and much harder to spot
+var crouch_k := 0.0
 var sec_cd := 0.0             # right-click ability
-var sec_ch := 3               # its charges, for heroes that have them
-var sec_ch_t := 0.0
 var satchel := {}             # Pyra's thrown charge, waiting to be set off
 var bshield_on := false       # Bastion's Brightshield is up
 var bshield_t := 0.0
@@ -475,9 +475,11 @@ func sim(dt: float) -> void:
 	elif not downed and regen_wait <= 0.0 and hp < max_hp and not remote:
 		hp = minf(max_hp, hp + REGEN * dt)
 	# shots spread more while you move, jump or have just dashed, and settle when you stand still
-	var want_bloom := 0.0
+	if not remote:
+		crouch = bool(inp.get("crouch", false)) and grounded and not downed and roll_t <= 0.0 and not gliding and not dropping and not riding and charge.is_empty()
+	var want_bloom := -0.3 if crouch else 0.0
 	if not grounded: want_bloom = 1.0
-	elif Vector2(vel.x, vel.z).length() > 1.5: want_bloom = 0.45
+	elif Vector2(vel.x, vel.z).length() > 1.5 and not crouch: want_bloom = 0.45
 	if roll_t > 0.0: want_bloom = 1.4
 	bloom = lerpf(bloom, want_bloom, 1.0 - exp(-(10.0 if want_bloom > bloom else 4.0) * dt))
 	if remote:
@@ -546,7 +548,7 @@ func _physics(dt: float) -> void:
 		_grapple(dt)
 		return
 	var mv: Vector2 = inp["move"] if stun_t <= 0.0 and root_t <= 0.0 else Vector2.ZERO
-	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * (0.6 if bshield_on else 1.0)
+	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * (0.6 if bshield_on else 1.0) * (0.55 if crouch else 1.0)
 	var hv := Vector2(vel.x, vel.z)
 	var cur := hv.length()
 	if charge.size() > 0:
@@ -825,7 +827,7 @@ func render(delta: float, alpha: float) -> void:
 	var spd := hv.length()
 	var ph0 := walk_ph
 	walk_ph += delta * spd * 2.2
-	if grounded and spd > 1.0 and int(walk_ph / PI) != int(ph0 / PI) and not downed:
+	if grounded and spd > 1.0 and int(walk_ph / PI) != int(ph0 / PI) and not downed and not crouch:
 		Sfx.step(pos, -14.0 if is_local() else -20.0)
 	var sw := sin(walk_ph) * clampf(spd / 5.0, 0.0, 1.0) * 0.6 if grounded else 0.35
 	legs.get_node("LegL").rotation.x = sw
@@ -883,7 +885,9 @@ func render(delta: float, alpha: float) -> void:
 		if step_t <= 0.0:
 			step_t = 0.32
 			m.fx.dust(pos, 2)
-	rig.scale = Vector3(1.0 + sq * 0.35 - stretch * 0.3, 1.0 - sq * 0.4 + stretch * 0.15, 1.0 + sq * 0.35 + stretch * 0.5)
+	crouch_k = move_toward(crouch_k, 1.0 if crouch else 0.0, delta * 8.0)
+	torso.rotation.x += crouch_k * 0.3
+	rig.scale = Vector3(1.0 + sq * 0.35 - stretch * 0.3 + crouch_k * 0.06, 1.0 - sq * 0.4 + stretch * 0.15 - crouch_k * 0.3, 1.0 + sq * 0.35 + stretch * 0.5 + crouch_k * 0.06)
 	if downed:
 		rig.rotation.x = lerpf(rig.rotation.x, -1.35, delta * 8.0)
 		rig.position.y = 0.15

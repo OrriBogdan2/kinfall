@@ -281,7 +281,7 @@ func _draw_top(sz: Vector2) -> void:
 		_ctext(Vector2(sz.x * 0.5, 34), "TRAINING AREA", 12, Color("8fe3c8"))
 		_ctext(Vector2(sz.x * 0.5, 56), "Nothing can hurt you here  ·  Esc to leave", 15, INK)
 		# the checklist
-		var lines: Array = m.TRAIN
+		var lines: Array = m.train_rows()
 		var box := Rect2(Vector2(16, 90), Vector2(330, 34 + lines.size() * 24))
 		_panel(box, Color(0.06, 0.07, 0.1, 0.82), 12)
 		_text(box.position + Vector2(14, 24), "Try everything", 15, GOLD, big)
@@ -505,13 +505,15 @@ func _draw_vitals(sz: Vector2, p: Hunter) -> void:
 	if p.armor > 0.5:
 		_text(Vector2(x0 + w + 10, y0 + 8), str(int(ceil(p.armor))), 13, ARMOR_COL, big)
 	# hidden in the grass
-	if m.world.in_bush(p.pos.x, p.pos.z):
+	var grass := m.world.in_bush(p.pos.x, p.pos.z)
+	if grass or p.crouch:
 		var hid := p.reveal_t <= 0.0
-		var txt := "HIDDEN" if hid else "SPOTTED"
+		var txt := ("HIDDEN" if hid else "SPOTTED") if grass else ("CROUCHED" if hid else "SPOTTED")
+		var fg: Color = (Color("8fe0a0") if grass else Color("c9d2e0")) if hid else HP_LOW
 		var tw := big.get_string_size(txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
 		var hr := Rect2(Vector2(sz.x * 0.5 - tw * 0.5 - 12, y0 - 34), Vector2(tw + 24, 20))
-		_rounded(hr, Color(0.05, 0.12, 0.06, 0.85) if hid else Color(0.25, 0.06, 0.05, 0.85), 10)
-		_text(hr.position + Vector2(12, 15), txt, 13, Color("8fe0a0") if hid else HP_LOW, big)
+		_rounded(hr, (Color(0.05, 0.12, 0.06, 0.85) if grass else Color(0.08, 0.09, 0.12, 0.85)) if hid else Color(0.25, 0.06, 0.05, 0.85), 10)
+		_text(hr.position + Vector2(12, 15), txt, 13, fg, big)
 	# glider cloth, while it matters
 	if p.gliding or p.glide_fuel < 0.999:
 		var gr := Rect2(Vector2(x0 + w * 0.25, y0 - 9), Vector2(w * 0.5, 3))
@@ -546,9 +548,7 @@ func _draw_abilities(sz: Vector2, p: Hunter) -> void:
 	if s_id != "":
 		var s_ab: Dictionary = Data.ABIL[s_id]
 		var sr := Rect2(Vector2(x, y), Vector2(s, s))
-		if s_id == "breeze":
-			_ab_slot("sec", sr, s_id, Settings.key_cap("secondary"), hc, (p.sec_ch_t / float(s_ab["cd"])) if p.sec_ch == 0 else 0.0, p.sec_ch_t if p.sec_ch == 0 else 0.0, p.sec_ch > 0, p.sec_ch, 3)
-		elif s_id == "satchel" and not p.satchel.is_empty():
+		if s_id == "satchel" and not p.satchel.is_empty():
 			_ab_slot("sec", sr, s_id, Settings.key_cap("secondary"), Color("ff7a5a"), 0.0, 0.0, true, -1, 0, "Set off")
 		elif s_id == "brightshield" and p.bshield_on:
 			_ab_slot("sec", sr, "fortify", Settings.key_cap("secondary"), Color("fff6c0"), 1.0 - p.bshield_t / 3.0, 0.0, true, -1, 0, "Holding")

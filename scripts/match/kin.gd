@@ -7,6 +7,7 @@ var species := "cindle"
 var sp: Dictionary = {}
 var rec: Dictionary = {}          # the saved record (player kin) or a generated one (bots, wild)
 var owner_h: Hunter = null
+var unseen := false             # a rival's kin out of the local player's sight
 var state := "shoulder"           # shoulder | flying | active | returning | fainted | reviving | wild | dazed
 var settle := 1.0                 # 0..1 while settling onto the shoulder
 var traits := {}

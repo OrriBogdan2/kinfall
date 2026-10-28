@@ -5,6 +5,7 @@ uniform float rim_amount = 0.12;
 uniform float shade = 0.42;
 uniform vec3 focus = vec3(0.0, -999.0, 0.0);
 uniform float radius = 0.13;
+#include "res://shaders/vis.gdshaderinc"
 
 void fragment() {
 	vec3 c = COLOR.rgb;
@@ -21,6 +22,7 @@ void fragment() {
 			if (fade * 0.8 > th) { discard; }
 		}
 	}
+	c = vis_apply(c, vis_fog((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz));
 	ALBEDO = c;
 	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
 	EMISSION = vec3(1.0, 0.96, 0.88) * rim * rim_amount * 0.35;

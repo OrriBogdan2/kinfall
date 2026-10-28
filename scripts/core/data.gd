@@ -71,15 +71,15 @@ func roll_rarity(r: RandomNumberGenerator, bonus := 0) -> int:
 	return clampi(rar + bonus, 1, RARITY.size() - 1)
 
 ## Heroes: three per weight class. Each has a passive, an E ability and an R ultimate that charges
-## as you deal damage, plus a right-click secondary. Your kin (C to throw, Q, shoulder) stays the same whoever you play.
+## as you deal damage. A few also have a right-click secondary. Your kin (C to throw, Q, shoulder) stays the same whoever you play.
 const HEROES := {
 	"veil": {"name": "Veil", "cls": "light", "weapon": "stinger", "e": "cloak", "r": "vanish", "s": "shadowstep", "color": Color("c9bcff"),
 		"role": "Slippery scout", "passive": "Your first shot after leaving cloak always crits."},
-	"nyx": {"name": "Nyx", "cls": "light", "weapon": "stinger", "e": "blink", "r": "dance", "s": "bolas", "color": Color("b06ae0"),
+	"nyx": {"name": "Nyx", "cls": "light", "weapon": "stinger", "e": "blink", "r": "dance", "color": Color("b06ae0"),
 		"role": "Blink assassin", "passive": "Knocking down a hunter refreshes Blink."},
-	"kestrel": {"name": "Kestrel", "cls": "light", "weapon": "rail", "e": "tether", "r": "skypierce", "s": "divehawk", "color": Color("6ad0e0"),
+	"kestrel": {"name": "Kestrel", "cls": "light", "weapon": "rail", "e": "tether", "r": "skypierce", "color": Color("6ad0e0"),
 		"role": "Long-range sniper", "passive": "Shots from more than 9 tiles away deal 25% more damage."},
-	"sage": {"name": "Sage", "cls": "medium", "weapon": "repeater", "e": "mend", "r": "sanctuary", "s": "breeze", "color": Color("9ee2a0"),
+	"sage": {"name": "Sage", "cls": "medium", "weapon": "repeater", "e": "mend", "r": "sanctuary", "color": Color("9ee2a0"),
 		"role": "Healer", "passive": "Revives teammates 30% faster."},
 	"marlow": {"name": "Marlow", "cls": "medium", "weapon": "repeater", "e": "hook", "r": "anchor", "s": "haymaker", "color": Color("e0b05a"),
 		"role": "Hook and slam", "passive": "Hooked foes are slowed for 2 seconds."},
@@ -87,9 +87,9 @@ const HEROES := {
 		"role": "Rocket jumper", "passive": "Your blasts knock foes 20% further."},
 	"bastion": {"name": "Bastion", "cls": "heavy", "weapon": "thumper", "e": "fortify", "r": "bulwark", "s": "brightshield", "color": Color("e6dbc4"),
 		"role": "Unmovable wall", "passive": "Takes 10% less damage while above half health."},
-	"tusk": {"name": "Tusk", "cls": "heavy", "weapon": "thumper", "e": "ram", "r": "quake", "s": "cleave", "color": Color("c08a5a"),
+	"tusk": {"name": "Tusk", "cls": "heavy", "weapon": "thumper", "e": "ram", "r": "quake", "color": Color("c08a5a"),
 		"role": "Charging brawler", "passive": "Hitting someone with Ram refunds half its cooldown."},
-	"halo": {"name": "Halo", "cls": "heavy", "weapon": "thumper", "e": "dome", "r": "well", "s": "binding", "color": Color("f2d47a"),
+	"halo": {"name": "Halo", "cls": "heavy", "weapon": "thumper", "e": "dome", "r": "well", "color": Color("f2d47a"),
 		"role": "Bubble protector", "passive": "Allies inside your dome heal 4 health per second."},
 }
 
@@ -114,14 +114,9 @@ const ABIL := {
 	"well": {"name": "Gravity Well", "desc": "A vortex at the cursor that drags foes in, then bursts."},
 	# right click: each hero's second tool, in the spirit of Supervive's secondaries
 	"shadowstep": {"name": "Shadow Knife", "cd": 8.0, "desc": "A knife. On a hit you appear behind the foe and your next shots crit."},
-	"bolas": {"name": "Chain Bolas", "cd": 9.0, "desc": "Roots the first foe hit. Catch two close together to stun both."},
-	"divehawk": {"name": "Dive Hawk", "cd": 10.0, "desc": "A hawk dives on the cursor: damage, knockback and a short stun."},
-	"breeze": {"name": "Mending Breeze", "cd": 5.0, "desc": "Heals you and every ally in its path. Three charges."},
 	"haymaker": {"name": "Haymaker", "cd": 7.0, "desc": "A heavy punch that sends a foe flying. Into a wall, it's stunned."},
 	"satchel": {"name": "Satchel Charge", "cd": 8.0, "desc": "Throw a charge, click again to blow it. It launches you too: ride it."},
 	"brightshield": {"name": "Brightshield", "cd": 6.0, "desc": "Hold to block everything from the front for up to 3s. You move slower."},
-	"cleave": {"name": "Cleave", "cd": 6.0, "desc": "A sweeping slam. Hits wounded foes harder; from the air it stuns."},
-	"binding": {"name": "Binding Orb", "cd": 9.0, "desc": "An orb at the cursor that roots every foe near it a moment later."},
 }
 
 ## The soundtrack. Tracks join your music list the first time you hear them; some only play in

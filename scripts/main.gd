@@ -32,6 +32,8 @@ func _ready() -> void:
 		if a.begins_with("--aim-demo="): opts["aim_demo"] = a.substr(11); opts["no_drop"] = true
 		if a == "--ring-demo": opts["ring_demo"] = true; opts["no_drop"] = true
 		if a == "--wall-demo": opts["wall_demo"] = true; opts["no_drop"] = true
+		if a == "--cone-demo": opts["cone_demo"] = true
+		if a == "--crouch-demo": opts["cone_demo"] = true; opts["crouch_demo"] = true
 		if a == "--wall-behind": opts["wall_behind"] = true; opts["no_drop"] = true
 		if a == "--meteor-test": opts["meteor_test"] = true; opts["no_drop"] = true
 		if a == "--break-demo": opts["break_demo"] = true; opts["no_drop"] = true
