@@ -135,10 +135,20 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 	var centers: Array = [{"c": Vector2(w / 2.0, h / 2.0), "r": rng.randf_range(8.5, 9.8)}]
 	var n_outer := n_islands - 1
 	var a0 := rng.randf() * TAU
-	for k in n_outer:
+	# big maps get a second, wider ring of islands beyond the first
+	var n_inner := mini(n_outer, 6)
+	var n_far := n_outer - n_inner
+	for k in n_inner:
 		var r := rng.randf_range(5.4, 7.2)
-		var ang := a0 + TAU * k / n_outer + rng.randf_range(-0.22, 0.22)
+		var ang := a0 + TAU * k / n_inner + rng.randf_range(-0.22, 0.22)
 		var dist: float = centers[0]["r"] + r + rng.randf_range(4.0, 6.0)
+		var c := Vector2(w / 2.0, h / 2.0) + Vector2(cos(ang), sin(ang)) * dist
+		c.x = clampf(c.x, r + 2, w - r - 2); c.y = clampf(c.y, r + 2, h - r - 2)
+		centers.append({"c": c, "r": r})
+	for k in n_far:
+		var r := rng.randf_range(6.0, 8.6)
+		var ang := a0 + PI / maxf(1.0, n_far) + TAU * k / n_far + rng.randf_range(-0.12, 0.12)
+		var dist: float = centers[0]["r"] + 32.0 + r * 0.5 + rng.randf_range(0.0, 5.0)
 		var c := Vector2(w / 2.0, h / 2.0) + Vector2(cos(ang), sin(ang)) * dist
 		c.x = clampf(c.x, r + 2, w - r - 2); c.y = clampf(c.y, r + 2, h - r - 2)
 		centers.append({"c": c, "r": r})
@@ -167,7 +177,7 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 					cells.append(Vector2i(x, z))
 		islands.append({"c": c, "r": r, "base": base, "cells": cells, "role": "heart" if ii == 0 else ""})
 	var roles: Array = ["camp", "camp", "nest", "nest", "grove", "shrine"]
-	while roles.size() < n_outer: roles.append(["camp", "nest", "grove"][roles.size() % 3])
+	while roles.size() < n_outer: roles.append(["camp", "nest", "grove", "shrine", "camp"][roles.size() % 5])
 	roles = roles.slice(0, n_outer)
 	roles.shuffle()
 	# shuffle with our own rng so maps stay deterministic per seed
@@ -395,16 +405,17 @@ func _place_spots() -> void:
 	# exits on three outer islands spread around the ring
 	var outer: Array = range(1, islands.size())
 	outer.sort_custom(func(x, y): return a0_of(x) < a0_of(y))
-	var step := maxi(1, outer.size() / 3)
+	var n_exits := 3 if islands.size() <= 8 else 5
+	var step := maxi(1, outer.size() / n_exits)
 	var off := rng.randi_range(0, outer.size() - 1)
 	var order: Array = []
-	for k in 3:
+	for k in n_exits:
 		var cand: int = outer[(off + k * step) % outer.size()]
 		if not order.has(cand): order.append(cand)
 	for ii in outer:
 		if not order.has(ii): order.append(ii)
 	for ii in order:
-		if portal_spots.size() >= 3:
+		if portal_spots.size() >= n_exits:
 			break
 		var p: Vector3 = pick.call(ii, 2, 7)
 		if p != Vector3.INF:

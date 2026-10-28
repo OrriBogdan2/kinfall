@@ -57,6 +57,7 @@ func follow(p: Vector3, delta: float, mouse_lead := true) -> void:
 func _apply(shake: Vector3) -> void:
 	kick = maxf(0.0, kick - get_process_delta_time() * 0.5)
 	var z := zoom * (1.0 - kick)
+	far = 120.0 * maxf(1.0, z) + 30.0
 	position = focus + Vector3(0, HEIGHT * z, BACK * z) + shake
 	look_at(focus + shake, Vector3.UP)
 

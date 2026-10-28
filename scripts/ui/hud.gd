@@ -141,9 +141,13 @@ func _draw_all() -> void:
 	if p:
 		_draw_player(sz, p)
 		_draw_bar(sz, p)
-		_draw_kit(sz, p)
-		_draw_prompt(sz, p)
-		_draw_crosshair(p)
+		if not p.riding:
+			_draw_kit(sz, p)
+		else:
+			_draw_ship_prompt(sz)
+		if not p.riding:
+			_draw_prompt(sz, p)
+			_draw_crosshair(p)
 		if p.downed:
 			_draw_downed(sz, p)
 	for i in toasts.size():
@@ -299,7 +303,8 @@ func _draw_feed(sz: Vector2) -> void:
 		y += 30
 
 func _draw_minimap(sz: Vector2) -> void:
-	var s := 200.0
+	var riding: bool = m.player != null and m.player.riding
+	var s := 340.0 if riding else 200.0
 	var r := Rect2(Vector2(sz.x - s - 16, 16), Vector2(s, s))
 	_panel(r, Color(0.05, 0.06, 0.09, 0.7), 12)
 	var w := m.world
@@ -310,6 +315,11 @@ func _draw_minimap(sz: Vector2) -> void:
 		var pp: Vector3 = p["pos"]
 		var col := Color("8fe3c8") if p["open"] else Color(0.6, 0.65, 0.7, 0.6)
 		c.draw_arc(o + Vector2(pp.x, pp.z) * k, 5, 0, TAU, 16, col, 2.0, true)
+	if not m.ship.is_empty() and not m.ship.get("gone", false):
+		var sa: Vector3 = m.ship["a"]; var sb: Vector3 = m.ship["b"]
+		c.draw_line(o + Vector2(sa.x, sa.z) * k, o + Vector2(sb.x, sb.z) * k, Color(1, 1, 1, 0.35), 2.0, true)
+		var sp: Vector3 = m.ship_pos()
+		c.draw_circle(o + Vector2(sp.x, sp.z) * k, 5.0, GOLD)
 	for pg in m.pings:
 		var pp: Vector3 = pg["pos"]
 		c.draw_circle(o + Vector2(pp.x, pp.z) * k, 3.5, pg["col"])
@@ -430,13 +440,38 @@ func _draw_bar(sz: Vector2, p: Hunter) -> void:
 	x += 10
 	_slot(Vector2(x, y), Settings.key_cap("tonic"), "Tonic", 0.0, "×%d" % p.tonics, p.tonics > 0, GOOD)
 
+## Aboard the skyship: when to jump.
+func _draw_ship_prompt(sz: Vector2) -> void:
+	var left := maxf(0.0, float(m.ship.get("ride", 0.0)) - m.time)
+	var w := 460.0
+	var cam := m.cam
+	# where you'd come down if you jumped now: a ring on the ground under the ship
+	var sp: Vector3 = m.ship_pos()
+	if not m.world.is_void(sp.x, sp.z):
+		var g := Vector3(sp.x, m.world.ground_at(sp.x, sp.z), sp.z)
+		var gp := cam.unproject_position(g)
+		var top := cam.unproject_position(sp)
+		var dash := 0.0
+		var L := gp.distance_to(top)
+		while dash < L:
+			c.draw_line(top.lerp(gp, dash / L), top.lerp(gp, minf(1.0, (dash + 6.0) / L)), Color(1, 0.85, 0.4, 0.55), 2.0)
+			dash += 12.0
+		var pul := 1.0 + sin(m.time * 5.0) * 0.08
+		c.draw_arc(gp, 22.0 * pul, 0, TAU, 40, GOLD, 3.0, true)
+		c.draw_arc(gp, 8.0, 0, TAU, 20, Color(GOLD, 0.6), 2.0, true)
+	var rr := Rect2(Vector2(sz.x * 0.5 - w * 0.5, 92), Vector2(w, 92))
+	_panel(rr, Color(0.06, 0.07, 0.1, 0.88), 14)
+	_ctext(Vector2(sz.x * 0.5, rr.position.y + 36), "Press %s to jump" % Settings.key_cap("jump"), 26, GOLD, big)
+	_ctext(Vector2(sz.x * 0.5, rr.position.y + 62), "Pick your spot on the map. Everyone left aboard drops in %ds" % int(ceil(left)), 14, INK)
+	_bar(Rect2(Vector2(rr.position.x + 20, rr.position.y + 76), Vector2(w - 40, 4)), clampf(m.time / maxf(1.0, float(m.ship.get("ride", 1.0))), 0.0, 1.0), GOLD)
+
 ## For the first seconds of every match: what each of your buttons does.
 func _draw_kit(sz: Vector2, p: Hunter) -> void:
 	if not Settings.get_v("tips") or m.opts.get("tutorial", false) or p.out:
 		return
 	var show_t := 14.0 if not m.opts.get("training", false) else 1e9
 	var t := m.time - kit_t0
-	if p.dropping:
+	if p.dropping or p.riding:
 		kit_t0 = m.time
 		t = 0.0
 	if t > show_t:

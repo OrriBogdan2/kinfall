@@ -47,9 +47,20 @@ func _ready() -> void:
 		print("CHECK DONE, failures: ", bad)
 		get_tree().quit()
 		return
+	if "--gentime" in args:
+		for sz in [[64, 7], [128, 16]]:
+			var t0 := Time.get_ticks_msec()
+			var w := World.new()
+			w.generate(int(OS.get_environment("GSEED")) if OS.get_environment("GSEED") != "" else 5, sz[0], sz[1])
+			var t1 := Time.get_ticks_msec()
+			print("GEN ", sz, " ms=", t1 - t0, " islands=", w.islands.size(), " pads=", w.pads.size(), " portals=", w.portal_spots.size(), " spawns=", w.spawns.size())
+			w.free()
+		get_tree().quit()
+		return
 	if "--mapcheck" in args:
 		var MC = load("res://tools/mapcheck.gd")
-		MC.new().run(range(1, 201))
+		if not "--big" in args: MC.new().run(range(1, 201))
+		MC.new().run(range(1, 61), 128, 16)
 		get_tree().quit()
 		return
 	if "--simtest" in args:

@@ -628,7 +628,7 @@ func _callouts() -> void:
 # ------------------------------------------------------------------ visuals
 func render(delta: float, alpha: float) -> void:
 	super.render(delta, alpha)
-	visible = not dead and not (owner_h and (owner_h.out or owner_h.extracted))
+	visible = not dead and not (owner_h and (owner_h.out or owner_h.extracted or owner_h.riding))
 	if not model:
 		return
 	var body: Node3D = model.get_node("Body")

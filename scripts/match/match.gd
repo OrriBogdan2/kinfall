@@ -74,7 +74,9 @@ func start(o: Dictionary) -> void:
 	seed_val = int(o.get("seed", randi()))
 	rng.seed = seed_val
 	seed(seed_val)
-	length = float(o.get("length", Data.MATCH["length"]))
+	# real expeditions happen on the big map and start from the skyship
+	big = not (o.get("tutorial", false) or o.get("training", false)) and o.get("big", true)
+	length = float(o.get("length", Data.MATCH["length"] * (1.35 if big else 1.0)))
 	tier = clampi(int(o.get("tier", 0)), 0, Data.TIERS.size() - 1)
 	T = Data.TIERS[tier]
 	_build_env()
@@ -85,7 +87,7 @@ func start(o: Dictionary) -> void:
 	world.biome = T["biome"].duplicate()
 	world.clouds = T["clouds"]
 	add_child(world)
-	world.generate(seed_val, 64, 7)
+	world.generate(seed_val, 128 if big else 64, 16 if big else 7)
 	world.build_meshes()
 	fx = Fx.new(); fx.name = "Fx"; add_child(fx)
 	cam = CamRig.new(); cam.name = "Cam"; add_child(cam)
@@ -305,6 +307,17 @@ func _spawn_hunters() -> void:
 func _start_drop(h: Hunter, at: Vector3) -> void:
 	if opts.get("no_drop", false):
 		return
+	if big and time < 1.0:
+		# everyone boards the skyship; bots plan to jump when it passes nearest their spot
+		if ship.is_empty(): _setup_ship()
+		h.riding = true
+		h.ai["land"] = at
+		var a: Vector3 = ship["a"]; var b: Vector3 = ship["b"]
+		var ab := Vector2(b.x - a.x, b.z - a.z)
+		var k := clampf(Vector2(at.x - a.x, at.z - a.z).dot(ab) / ab.length_squared(), 0.04, 0.97)
+		h.ai["jump_at"] = clampf(k * float(ship["dur"]) - 2.2 + rng.randf_range(-0.8, 0.8), 0.6, float(ship["ride"]) - 0.5)
+		h.teleport(ship_pos())
+		return
 	# straight above your squad's landing spot, so letting go of the keys still lands you safely
 	var off := Vector3(rng.randf_range(-1.0, 1.0), 0, rng.randf_range(-1.0, 1.0))
 	if world.is_void(at.x + off.x, at.z + off.z):
@@ -315,6 +328,64 @@ func _start_drop(h: Hunter, at: Vector3) -> void:
 	h.gliding = true
 	h.glide_k = 1.0
 	h.ai["land"] = at
+
+# ---- the skyship
+const SHIP_Y := 26.0
+const SHIP_SPEED := 11.0
+var big := false
+var ship := {}
+
+func _setup_ship() -> void:
+	var ang := rng.randf() * TAU
+	var c := Vector3(world.w / 2.0 + rng.randf_range(-10, 10), SHIP_Y, world.h / 2.0 + rng.randf_range(-10, 10))
+	var dir := Vector3(cos(ang), 0, sin(ang))
+	var half := world.w * 0.6
+	# "ride" is the last moment to jump: still over the islands on the far side
+	ship = {"a": c - dir * half, "b": c + dir * half, "dur": 2.0 * half / SHIP_SPEED, "ride": (half + 34.0) / SHIP_SPEED, "dir": dir}
+	var n := Models.skyship()
+	n.rotation.y = atan2(-dir.x, -dir.z)
+	add_child(n)
+	ship["node"] = n
+
+func ship_pos() -> Vector3:
+	if ship.is_empty() or not ship.has("a"):
+		return Vector3.ZERO
+	return (ship["a"] as Vector3).lerp(ship["b"], clampf(time / float(ship["dur"]), 0.0, 1.0))
+
+func ship_jump(h: Hunter) -> void:
+	if not h.riding:
+		return
+	h.riding = false
+	var off := Vector3(rng.randf_range(-0.8, 0.8), 0, rng.randf_range(-0.8, 0.8))
+	h.teleport(ship_pos() + Vector3(0, -1.5, 0) + off)
+	h.dropping = true
+	h.gliding = true
+	h.glide_k = 1.0
+	h.grounded = false
+	h.vel = ship["dir"] * 6.0
+	if h == player:
+		sfx("whoosh", null, -2.0)
+		if hud: hud.toast("Steer with %s%s%s%s to pick where you land" % [Settings.key_cap("up"), Settings.key_cap("left"), Settings.key_cap("down"), Settings.key_cap("right")], Color("cfeaff"))
+
+func _update_ship(dt: float) -> void:
+	if ship.is_empty():
+		return
+	var n: Node3D = ship["node"]
+	# drawn along the line past the end too, so it sails off over the clouds
+	n.position = (ship["a"] as Vector3).lerp(ship["b"], time / float(ship["dur"])) + Vector3(0, 1.4 + sin(time * 1.3) * 0.25, 0)
+	for pn in ["PropL", "PropR"]:
+		(n.get_node(pn) as Node3D).rotation.z += dt * 14.0
+	var done := time >= float(ship["ride"])
+	for h in hunters:
+		if not h.riding or h.remote:
+			continue
+		var auto: bool = h.ctrl == "bot" or opts.get("autoplay", false)
+		if done or (auto and time >= float(h.ai.get("jump_at", 0.0))):
+			ship_jump(h)
+	if done and time > float(ship["dur"]) * 1.5:
+		n.queue_free()
+		ship["node"] = null
+		ship["gone"] = true
 
 func on_drop_landed(h: Hunter) -> void:
 	h.inv_t = maxf(h.inv_t, 2.0)     # a moment to get your bearings after landing
@@ -1049,7 +1120,11 @@ func _process(delta: float) -> void:
 				mi.look_at(mi.global_position + Vector3(v.x, 0, v.y), Vector3.UP)
 				var r: float = s["r"]
 				mi.scale = Vector3(r * 2.0, r * 2.0, r * 2.0 + v.length() * 0.025)
-	if player and not player.out and not player.downed:
+	if player and player.riding:
+		# aboard the skyship: a wide view of the whole map below
+		cam.zoom_to = 2.4
+		cam.follow(Vector3(player.pos.x, 16.0 / 0.6, player.pos.z), delta, false)
+	elif player and not player.out and not player.downed:
 		cam.zoom_to = 1.45 if player.dropping else 1.0
 		cam.follow(player.prev.lerp(player.pos, alpha), delta, true)
 	elif player and (player.downed or player.out):
@@ -1180,6 +1255,8 @@ func step(dt: float) -> void:
 	_update_shots(dt)
 	_update_pickups(dt)
 	_update_pads(dt)
+	if not ship.is_empty() and not ship.get("gone", false):
+		_update_ship(dt)
 	_update_interact(dt)
 	_update_portals(dt)
 	_update_events()
@@ -1857,6 +1934,7 @@ func _flags(h: Hunter) -> int:
 	if h.reload_t > 0.0: f |= 128
 	if h.gliding: f |= 256
 	if h.dropping: f |= 512
+	if h.riding: f |= 1024
 	return f
 
 const KIN_STATES := ["shoulder", "flying", "flying_home", "active", "returning", "fainted", "reviving", "wild", "dazed"]
@@ -1975,6 +2053,7 @@ func _net_apply(e: Ent, it: Array) -> void:
 			h.fortify_t = 0.3 if f & 64 != 0 else 0.0
 			h.gliding = f & 256 != 0
 			h.dropping = f & 512 != 0
+			h.riding = f & 1024 != 0
 			h.down_hp = it[12]; h.revive = maxf(h.revive if h.revive > float(it[13]) and _rev_out.has(h.nid) else 0.0, float(it[13]))
 			h.shield = it[17]; h.extract_prog = it[18]
 			h.kills = int(it[19]); h.knocks = int(it[20]); h.dmg_done = float(it[21])
@@ -2161,7 +2240,7 @@ func _tip(key: String, text: String) -> void:
 	hud.tip(text)
 
 func _tips() -> void:
-	if player == null or player.out or opts.get("autoplay", false) or not Settings.get_v("tips"):
+	if player == null or player.out or player.riding or opts.get("autoplay", false) or not Settings.get_v("tips"):
 		return
 	_tip_t += get_process_delta_time()
 	if _tip_t < 1.0:

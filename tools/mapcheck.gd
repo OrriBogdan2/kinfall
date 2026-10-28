@@ -1,10 +1,12 @@
 extends RefCounted
 ## Checks generated maps: every island must be reachable from every other through jump pads.
-func run(seeds: Array) -> void:
+func run(seeds: Array, size := 64, n_isl := 7) -> void:
 	var bad := 0
 	for sd in seeds:
 		var w := World.new()
-		w.generate(sd, 64, 7)
+		var t0 := Time.get_ticks_msec()
+		w.generate(sd, size, n_isl)
+		if Time.get_ticks_msec() - t0 > 2000: print("SLOW seed=", sd, " ms=", Time.get_ticks_msec() - t0)
 		var n := w.islands.size()
 		var ok := true
 		for a in n:

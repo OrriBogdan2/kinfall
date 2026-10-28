@@ -850,3 +850,31 @@ static func furniture(id: String) -> Node3D:
 			part(root, sphere(0.18), toon(Color("ff6a5a")), Vector3(0.5, 0.18, 0.5))
 			part(root, cyl(0.185, 0.185, 0.04, 16), toon(Color("fff0d8")), Vector3(0.5, 0.18, 0.5), Vector3.ONE, Vector3(0, 0, PI / 2))
 	return root
+
+
+## The skyship that carries everyone over the islands at the start of an expedition.
+static func skyship() -> Node3D:
+	var root := Node3D.new()
+	var wood := toon(Color("7a5236")); var dark := toon(Color("4e3424")); var cloth := toon(Color("f2e6cf"))
+	var stripe := toon(Color("d9604a")); var brass := toon(Color("e0b84a"), true, 0.3)
+	# the balloon
+	part(root, sphere(2.6, 22), cloth, Vector3(0, 4.2, 0), Vector3(1.0, 0.8, 1.9))
+	for i in 3:
+		part(root, cyl(2.08 * (1.0 - absf(i - 1) * 0.18), 2.08 * (1.0 - absf(i - 1) * 0.18), 0.32, 22), stripe, Vector3(0, 4.2, -2.2 + i * 2.2), Vector3(1, 1, 0.82), Vector3(PI / 2, 0, 0))
+	# ropes
+	for x in [-1.0, 1.0]:
+		for z in [-1.6, 1.6]:
+			part(root, cyl(0.03, 0.03, 2.4, 6), dark, Vector3(x * 0.9, 2.0, z), Vector3.ONE, Vector3(0, 0, x * 0.25))
+	# the hull
+	part(root, box(2.0, 0.7, 4.4), wood, Vector3(0, 0.35, 0))
+	part(root, box(2.2, 0.18, 4.6), dark, Vector3(0, 0.75, 0))
+	part(root, cyl(0.6, 0.2, 2.0, 12), wood, Vector3(0, 0.35, -2.8), Vector3(1.6, 1, 0.5), Vector3(PI / 2, 0, 0))
+	# propellers at the back
+	for x in [-1.3, 1.3]:
+		var hub := Node3D.new(); hub.name = "Prop%s" % ("L" if x < 0 else "R"); hub.position = Vector3(x, 0.6, 2.4)
+		root.add_child(hub)
+		part(hub, cyl(0.12, 0.12, 0.3, 10), brass, Vector3.ZERO, Vector3.ONE, Vector3(PI / 2, 0, 0))
+		for b in 3:
+			part(hub, box(0.12, 1.1, 0.04), wood, Vector3.ZERO, Vector3.ONE, Vector3(0, 0, TAU * b / 3.0))
+	part(root, box(0.1, 1.2, 0.8), stripe, Vector3(0, 1.3, 2.3))
+	return root

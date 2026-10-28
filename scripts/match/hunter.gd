@@ -87,6 +87,7 @@ var acts: Array = []          # queued ability pieces, see Abil.tick
 var acts_tele: Node3D = null
 var idle_fire := 0.0
 var dropping := false         # gliding down from the sky at the start of a match
+var riding := false           # aboard the skyship, waiting to jump
 var bless_t := 0.0
 var lives := 1                # comes back this many times minus one before it's really out
 
@@ -129,7 +130,7 @@ func mass() -> float:
 	return float(cdat.get("mass", 1.0)) * (2.0 if shoulder() == "bedrock" else 1.0)
 
 func hittable() -> bool:
-	return not dead and not out and not extracted
+	return not dead and not out and not extracted and not riding
 
 func targetable() -> bool:
 	return hittable() and not downed and cloak_t <= 0.0 and not dropping
@@ -342,6 +343,18 @@ func launch_to(target: Vector3, t: float) -> void:
 func sim(dt: float) -> void:
 	prev = pos
 	if out or extracted:
+		return
+	if riding:
+		# aboard the skyship: you go where it goes until you jump
+		if remote:
+			net_follow(dt)
+		else:
+			pos = m.ship_pos() + Vector3(0, -1.2, 0)
+			prev = pos
+			vel = Vector3.ZERO
+			if ctrl == "local" and inp["jump"]:
+				m.ship_jump(self)
+			inp["jump"] = false
 		return
 	tick_status(dt)
 	for k in ["inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t"]:
@@ -639,7 +652,7 @@ func _grapple(dt: float) -> void:
 # ------------------------------------------------------------------ visuals
 func render(delta: float, alpha: float) -> void:
 	super.render(delta, alpha)
-	visible = not out and not extracted
+	visible = not out and not extracted and not riding
 	if not model:
 		return
 	model.rotation.y = face
