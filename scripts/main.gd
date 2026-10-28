@@ -136,11 +136,17 @@ func _has_arg(prefix: String) -> bool:
 		if a.begins_with(prefix): return true
 	return false
 
+var _gen := 0
+
 func show_screen(screen: String, opts: Dictionary) -> void:
+	_gen += 1
+	var gen := _gen
 	if current:
 		current.queue_free()
 		current = null
 	await get_tree().process_frame
+	if gen != _gen:
+		return    # another screen was asked for while this one was still on its way
 	match screen:
 		"match":
 			# a loading screen covers building the world; tests that screenshot by frame count skip it
@@ -151,6 +157,9 @@ func show_screen(screen: String, opts: Dictionary) -> void:
 				add_child(ld)
 				await ld.shown
 				await ld.step(0.2)
+				if gen != _gen:
+					ld.queue_free()
+					return
 			var m := Match.new()
 			m.name = "Match"
 			add_child(m)

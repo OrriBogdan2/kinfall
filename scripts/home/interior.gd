@@ -162,7 +162,19 @@ func _rebuild_decor() -> void:
 		if typeof(e) == TYPE_DICTIONARY and Data.FURN.has(e.get("id", "")):
 			keep.append(e)
 	decor.clear()
-	decor.append_array(keep)
+	if visit.is_empty():
+		decor.append_array(keep)
+	else:
+		# someone else's room: drop anything that overlaps, sits in the doorway or is out of bounds
+		for e in keep:
+			var r := int(e.get("r", 0)) % 4
+			if _fits(String(e["id"]), int(e["x"]), int(e["z"]), r):
+				decor.append(e)
+				if not Data.FURN[e["id"]].get("walk", false):
+					var fp := footprint(e["id"], r)
+					for dz in fp.y:
+						for dx in fp.x:
+							occ[Vector2i(int(e["x"]) + dx, int(e["z"]) + dz)] = decor.size() - 1
 	for i in decor.size():
 		var e: Dictionary = decor[i]
 		var r := int(e.get("r", 0)) % 4
@@ -188,6 +200,8 @@ func _fits(id: String, x: int, z: int, r: int, ignore := -1) -> bool:
 				return false            # keep the doorway clear
 			if not walk and occ.has(c) and occ[c] != ignore:
 				return false
+			if decorating and not walk and absf(c.x + 0.5 - ppos.x) < 0.85 and absf(c.y + 0.5 - ppos.z) < 0.85:
+				return false            # not on top of yourself
 	if walk:
 		# rugs can't overlap other rugs
 		for i in decor.size():
@@ -240,6 +254,10 @@ func _process(delta: float) -> void:
 			k["t"] = randf_range(2.0, 4.5)
 			k["goal"] = _free_spot() if randf() < 0.7 else ppos + Vector3(randf_range(-1, 1), 0, randf_range(-1, 1))
 		var pos: Vector3 = k["pos"]
+		if _blocked(pos.x, pos.z):
+			# something got put down on top of it: hop out to open floor
+			pos = _free_spot()
+			k["goal"] = pos
 		var to := Vector2(k["goal"].x - pos.x, k["goal"].z - pos.z)
 		var n: Node3D = k["node"]
 		if to.length() > 0.3:
@@ -319,7 +337,7 @@ func _leave() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("menu") and not Overlay.is_open():
 		if decorating and not held.is_empty():
-			_drop_held(true)
+			_drop_held(false)
 		elif decorating:
 			_toggle_decorate()
 		elif panel_open != "":
@@ -351,7 +369,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _toggle_decorate() -> void:
 	decorating = not decorating
 	if not decorating:
-		if not held.is_empty(): _drop_held(true)
+		if not held.is_empty(): _drop_held(false)
 		if is_instance_valid(deco_bar): deco_bar.queue_free()
 		deco_bar = null
 		Save.save_game()

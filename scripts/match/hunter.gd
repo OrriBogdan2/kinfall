@@ -122,10 +122,11 @@ func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, n
 	set_model(Models.hunter(cls, Data.TEAM_COLORS[team % Data.TEAM_COLORS.size()], wid, hero))
 
 ## Swap to a found weapon for the rest of the expedition.
-func equip(w: String, rar: int) -> void:
+func equip(w: String, rar: int, with_ammo := -1) -> void:
 	wid = w; wrar = rar
 	wpn = Data.weapon_stats(w, rar)
-	ammo = int(wpn["mag"]); reload_t = 0.0; fire_cd = 0.25
+	ammo = int(wpn["mag"]) if with_ammo < 0 else mini(with_ammo, int(wpn["mag"])); reload_t = 0.0; fire_cd = 0.25
+	if ammo <= 0 and not remote: start_reload()
 	var gun: Node3D = model.find_child("Gun", true, false) if model else null
 	if gun:
 		for ch in gun.get_children():
@@ -219,7 +220,7 @@ func do_jump() -> void:
 		return
 	if pad.size() > 0:
 		# press jump mid-flight off a jump pad and the glider opens, keeping the launch's speed
-		if float(pad["t"]) > 0.12 and can_glide():
+		if not pad.get("ledge", false) and float(pad["t"]) > 0.12 and can_glide():
 			pad = {}
 			vel.y = minf(vel.y, 2.0)
 			_open_glider()
@@ -230,8 +231,10 @@ func do_jump() -> void:
 		coyote = 0.0
 		m.sfx("jump", pos, -6.0)
 		return
-	# already in the air: a second press opens the glider straight away, rising or falling
-	if not gliding and can_glide():
+	# already in the air: a second press opens the glider straight away, rising or falling,
+	# unless you're about to land, where it buffers a jump instead
+	var near_ground := vel.y < 0.0 and pos.y - ground() < 0.9 and not over_void()
+	if not gliding and can_glide() and not near_ground:
 		_open_glider()
 		return
 	jump_buf = 0.12
@@ -379,7 +382,8 @@ func sim(dt: float) -> void:
 			vel = Vector3.ZERO
 			if ctrl == "local" and inp["jump"]:
 				m.ship_jump(self)
-			inp["jump"] = false
+			for k in ["jump", "dash", "sig", "reload", "tonic", "ult", "fire"]:
+				inp[k] = false
 		return
 	tick_status(dt)
 	for k in ["inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t"]:
@@ -693,7 +697,7 @@ func _grapple(dt: float) -> void:
 		pos = Vector3(grap["ex"], maxf(pos.y, tz), grap["ez"])
 		var land: Vector3 = grap["land"]
 		grap = {}
-		pad = {"from": pos, "to": land, "t": 0.0, "dur": 0.22, "h": 0.4}
+		pad = {"from": pos, "to": land, "t": 0.0, "dur": 0.22, "h": 0.4, "ledge": true}
 
 # ------------------------------------------------------------------ visuals
 func render(delta: float, alpha: float) -> void:

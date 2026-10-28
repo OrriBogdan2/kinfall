@@ -394,6 +394,11 @@ func _update_ship(dt: float) -> void:
 		(n.get_node(pn) as Node3D).rotation.z += dt * 14.0
 	var done := time >= float(ship["ride"])
 	for h in hunters:
+		if h.riding and h.remote and is_host and time > float(ship["ride"]) + 6.0:
+			# someone who dropped connection aboard: stop counting them as still in the match
+			h.riding = false
+			eliminate(h, null, "left", true)
+			continue
 		if not h.riding or h.remote:
 			continue
 		var auto: bool = h.ctrl == "bot" or opts.get("autoplay", false)
@@ -524,16 +529,16 @@ func _add_break(kind_s: String, at: Vector3) -> void:
 	add_child(n)
 	breaks.append({"i": breaks.size(), "pos": at, "kind": kind_s, "hp": BREAK_HP[kind_s], "node": n, "dead": false})
 
-func spawn_weapon(w: String, rar: int, at: Vector3, id := "", send := true) -> void:
+func spawn_weapon(w: String, rar: int, at: Vector3, id := "", send := true, ammo := -1) -> void:
 	if id == "":
 		wdrop_n += 1
 		id = "w%s_%d" % [player.nid if player else "x", wdrop_n]
 	var n := Models.weapon_drop(w, rar)
 	n.position = at
 	add_child(n)
-	wpicks.append({"id": id, "pos": at, "wid": w, "rar": rar, "node": n})
+	wpicks.append({"id": id, "pos": at, "wid": w, "rar": rar, "node": n, "ammo": ammo})
 	if net_on and send:
-		net_event(["wdrop", id, w, rar, _r(at.x), _r(at.y), _r(at.z)])
+		net_event(["wdrop", id, w, rar, _r(at.x), _r(at.y), _r(at.z), ammo])
 
 func _take_weapon(h: Hunter, wp: Dictionary, from_net := false) -> void:
 	wpicks.erase(wp)
@@ -543,10 +548,11 @@ func _take_weapon(h: Hunter, wp: Dictionary, from_net := false) -> void:
 	if net_on:
 		net_event(["wtake", wp["id"], h.nid, wp["wid"], wp["rar"]])
 	var old_w := h.wid; var old_r := h.wrar
-	h.equip(String(wp["wid"]), int(wp["rar"]))
+	var old_ammo := h.ammo if h.reload_t <= 0.0 else 0
+	h.equip(String(wp["wid"]), int(wp["rar"]), int(wp.get("ammo", -1)))
 	var ba := randf() * TAU
 	var back := Vector3(cos(ba), 0, sin(ba)) * 0.9
-	spawn_weapon(old_w, old_r, Vector3(h.pos.x + back.x, h.ground(), h.pos.z + back.z))
+	spawn_weapon(old_w, old_r, Vector3(h.pos.x + back.x, h.ground(), h.pos.z + back.z), "", true, old_ammo)
 	var col: Color = Data.RARITY[int(wp["rar"])]["color"]
 	sfx("reload", h.pos, 0.0, 0.8)
 	fx.ring(h.pos, 1.4, col, 0.35)
@@ -612,10 +618,10 @@ func _break(b: Dictionary, by: Ent, from_net := false) -> void:
 				var keys: Array = Data.WEAPONS.keys()
 				spawn_weapon(String(keys[randi() % keys.size()]), Data.roll_rarity(rng), at)
 		"barrel":
-			_barrel_boom(at, by)
+			_barrel_boom(at, by, from_net)
 
 ## An exploding barrel: hurts and throws everyone nearby, its breaker included.
-func _barrel_boom(at: Vector3, by: Ent) -> void:
+func _barrel_boom(at: Vector3, by: Ent, from_net := false) -> void:
 	var radius := 2.6
 	var c := at + Vector3(0, 0.4, 0)
 	fx.ring(c, radius, Color("ff8a4a"), 0.35)
@@ -642,7 +648,9 @@ func _barrel_boom(at: Vector3, by: Ent) -> void:
 	# chain into other barrels nearby
 	for b in breaks:
 		if not b["dead"] and Vector2(b["pos"].x - c.x, b["pos"].z - c.z).length() < radius + 0.4 and absf(b["pos"].y - at.y) < 2.0:
-			hit_break(b, 30.0, by)
+			# every peer sees the same chain, so only the one that set it off rolls for loot
+			if from_net: _break(b, by, true)
+			else: hit_break(b, 30.0, by)
 
 ## Breakables are solid: push bodies out, and dashing straight through one smashes it.
 func _collide_breaks() -> void:
@@ -1061,7 +1069,7 @@ func on_mob_dead(mb: Mob, by: Ent, _o: Dictionary) -> void:
 			drop("gem", mb.pos + Vector3(0, 0.6, 0), int(round(3 * float(T["loot"]))))
 		if mb.mkind == "glimmer":
 			var keys: Array = Data.WEAPONS.keys()
-			spawn_weapon(String(keys[randi() % keys.size()]), Data.roll_rarity(rng, 2), mb.pos)
+			spawn_weapon(String(keys[randi() % keys.size()]), Data.roll_rarity(rng, 1), mb.pos)
 			if credit is Hunter: add_feed("%s caught the Glimmerkin's treasure" % credit.pname)
 		if rng.randf() < (0.35 if mb.mkind == "brute" else 0.12):
 			drop("seed", mb.pos + Vector3(0, 0.6, 0), 1, Data.pick_seed())
@@ -1469,7 +1477,7 @@ func step(dt: float) -> void:
 			_player_throw()
 		if pending_input["skill"]:
 			pending_input["skill"] = false
-			if player.kin and not player.downed and not player.dropping:
+			if player.kin and not player.downed and not player.dropping and not player.riding:
 				player.kin.command_skill(_ground_aim(player))
 	for h in hunters:
 		if h.ctrl == "bot" and not h.remote and not h.out and not h.extracted:
@@ -1516,7 +1524,7 @@ func _ground_aim(h: Hunter) -> Vector3:
 
 func _player_throw() -> void:
 	var k: Kin = player.kin
-	if k == null or player.downed or player.dropping:
+	if k == null or player.downed or player.dropping or player.riding:
 		return
 	if k.state == "shoulder":
 		k.throw_to(_ground_aim(player))
@@ -1696,7 +1704,7 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 	if not from_net and randf() < [0.25, 0.6, 1.0][t]:
 		var keys: Array = Data.WEAPONS.keys()
 		var a := randf() * TAU
-		spawn_weapon(String(keys[randi() % keys.size()]), Data.roll_rarity(rng, t), c["pos"] + Vector3(cos(a) * 1.1, 0, sin(a) * 1.1))
+		spawn_weapon(String(keys[randi() % keys.size()]), Data.roll_rarity(rng, maxi(0, t - 1)), c["pos"] + Vector3(cos(a) * 1.1, 0, sin(a) * 1.1))
 	if h and not h.remote and h.tonics < 3 and randf() < [0.35, 0.7, 1.0][t]:
 		h.tonics += 1
 		if h == player: hud.toast("+1 tonic", Color("8ff0a0"))
@@ -2021,6 +2029,7 @@ func _update_meteors() -> void:
 		return
 	if time - dt < meteor_at:
 		_announce("A meteor shower is coming down. Stars leave gems where they land", Color("ffcf8a"))
+		if net_on: net_event(["anc", "meteor", 0, 0, 0])
 	meteor_next -= dt
 	if meteor_next > 0.0:
 		return
@@ -2056,9 +2065,10 @@ func _meteor_hit(at: Vector3) -> void:
 		var to := Vector2(e.pos.x - at.x, e.pos.z - at.z)
 		if to.length() < 1.7 + e.r and absf(e.pos.y - at.y) < 1.6:
 			e.hurt(14.0, null, {"src": "boom", "kb": to.normalized() * 6.0, "lift": 5.0})
-	for b in breaks:
-		if not b["dead"] and Vector2(b["pos"].x - at.x, b["pos"].z - at.z).length() < 1.9:
-			hit_break(b, 30.0, null)
+	if not net_on or is_host:
+		for b in breaks:
+			if not b["dead"] and Vector2(b["pos"].x - at.x, b["pos"].z - at.z).length() < 1.9:
+				hit_break(b, 30.0, null)
 	if rng.randf() < 0.6:
 		drop("gem", at + Vector3(0, 0.6, 0), maxi(1, int(round(3 * float(T["loot"])))))
 
@@ -2534,6 +2544,9 @@ func _net_ev(x, from: String) -> void:
 		"met":
 			_meteor_start(Vector3(x[1], x[2], x[3]))
 		"anc":
+			if String(x[1]) == "meteor":
+				_announce("A meteor shower is coming down. Stars leave gems where they land", Color("ffcf8a"))
+				return
 			var aat := Vector3(x[2], x[3], x[4])
 			ping(aat, Color("ffd25a"))
 			_announce("A Glimmerkin appeared %s. Catch it before it escapes" % (direction_word(player.pos, aat) if player else ""), Color("ffd25a"))
@@ -2546,7 +2559,7 @@ func _net_ev(x, from: String) -> void:
 			for wp in wpicks:
 				if wp["id"] == String(x[1]): seen = true
 			if not seen:
-				spawn_weapon(String(x[2]), int(x[3]), Vector3(x[4], x[5], x[6]), String(x[1]), false)
+				spawn_weapon(String(x[2]), int(x[3]), Vector3(x[4], x[5], x[6]), String(x[1]), false, int(x[7]) if x.size() > 7 else -1)
 		"wtake":
 			for wp in wpicks:
 				if wp["id"] == String(x[1]):

@@ -43,8 +43,8 @@ const RARITY := [
 	{"name": "Common", "color": Color("d6d2c8"), "dmg": 1.0, "mag": 1.0, "reload": 1.0, "rate": 1.0},
 	{"name": "Fine", "color": Color("8fe0a0"), "dmg": 1.15, "mag": 1.15, "reload": 0.92, "rate": 0.95},
 	{"name": "Rare", "color": Color("6ab8ff"), "dmg": 1.3, "mag": 1.3, "reload": 0.85, "rate": 0.9},
-	{"name": "Epic", "color": Color("c08aff"), "dmg": 1.45, "mag": 1.45, "reload": 0.75, "rate": 0.86},
-	{"name": "Legendary", "color": Color("ffb64a"), "dmg": 1.65, "mag": 1.6, "reload": 0.65, "rate": 0.8},
+	{"name": "Epic", "color": Color("c08aff"), "dmg": 1.38, "mag": 1.4, "reload": 0.78, "rate": 0.9},
+	{"name": "Legendary", "color": Color("ffb64a"), "dmg": 1.5, "mag": 1.5, "reload": 0.7, "rate": 0.86},
 ]
 
 ## A weapon's stats at a rarity. "short" is the plain name for the ability bar.
@@ -65,9 +65,9 @@ func weapon_stats(wid: String, rar := 0) -> Dictionary:
 func roll_rarity(r: RandomNumberGenerator, bonus := 0) -> int:
 	var x := r.randf()
 	var rar := 1
-	if x > 0.55: rar = 2
-	if x > 0.85: rar = 3
-	if x > 0.97: rar = 4
+	if x > 0.6: rar = 2
+	if x > 0.88: rar = 3
+	if x > 0.98: rar = 4
 	return clampi(rar + bonus, 1, RARITY.size() - 1)
 
 ## Heroes: three per weight class. Each has a passive, an E ability and an R ultimate that charges
