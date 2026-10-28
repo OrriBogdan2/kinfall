@@ -11,7 +11,7 @@ const DEFAULTS := {
 	# video
 	"fullscreen": false, "vsync": true, "max_fps": 0, "msaa": 2, "shadows": true, "ui_scale": 1.0, "show_fps": false,
 	# gameplay
-	"shake": 1.0, "cam_lead": 1.0, "damage_numbers": true, "tips": true,
+	"shake": 1.0, "cam_lead": 1.0, "damage_numbers": true, "tips": true, "quick_cast": false,
 	# accessibility
 	"reduce_flashes": false, "hud_opacity": 1.0,
 	# controls: action -> list of "key:<physical keycode>" / "mouse:<button>"

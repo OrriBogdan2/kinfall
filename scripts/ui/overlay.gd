@@ -228,6 +228,7 @@ func _show_settings() -> void:
 			_slider(v, "Camera lean toward the cursor", "cam_lead", 0.0, 1.5)
 			_toggle(v, "Damage numbers", "damage_numbers")
 			_toggle(v, "Tips during matches", "tips")
+			_toggle(v, "Quick cast (abilities fire on press, no aiming preview)", "quick_cast")
 		"Accessibility":
 			_slider(v, "Interface size", "ui_scale", 0.75, 1.5, 0.05)
 			_slider(v, "Screen shake", "shake", 0.0, 1.5)

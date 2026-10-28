@@ -17,6 +17,11 @@ const GLIDE_MAX := 19.0
 const DROP_FALL := 5.0
 const DROP_SPEED := 9.0
 const REGEN := 7.0            # health per second once you've gone a while without getting hit
+## Armor: a layer over health that soaks hits first and comes back on its own, fast, once you've
+## been out of the fight for a few seconds. Health only regenerates once armor is full.
+const ARMOR := {"light": 40.0, "medium": 50.0, "heavy": 65.0}
+const ARMOR_WAIT := 4.0
+const ARMOR_REGEN := 22.0
 
 var pname := "Hunter"
 var cls := "medium"
@@ -71,6 +76,10 @@ var tonics := 0
 var ai: Dictionary = {}
 var muzzle_t := 0.0
 var regen_wait := 0.0
+var armor := 0.0
+var max_armor := 50.0
+var armor_wait := 0.0
+var bloom := 0.0              # extra spread from moving, jumping and dashing
 var land_t := 0.0
 var ghost_t := 0.0
 var step_t := 0.0
@@ -116,6 +125,7 @@ func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, n
 	pname = name_txt
 	ctrl = control
 	max_hp = cdat["hp"] + (15 if perk == "toughskin" else 0); hp = max_hp
+	max_armor = float(ARMOR.get(cls, 50.0)); armor = max_armor
 	if perk == "featherfall": glide_max = GLIDE_TIME * 1.6
 	base_speed = cdat["speed"]
 	dashes = max_dashes()
@@ -195,6 +205,18 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 			m.fx.number(pos + Vector3(0, 1.6, 0), a, Color("cfe8ff"), false)
 			return 0.0
 	regen_wait = 5.0
+	armor_wait = ARMOR_WAIT
+	if armor > 0.0 and opts.get("src", "") not in ["fall", "burn"]:
+		var a := minf(armor, d)
+		armor -= a; d -= a
+		var ao := opts.duplicate(); ao["armor"] = true
+		m.on_damage(self, by, a, ao)
+		if armor <= 0.0:
+			m.on_armor_break(self, by)
+		if d <= 0.0:
+			flash_t = 0.05
+			if opts.has("kb"): impulse(opts["kb"] * 0.7, opts.get("lift", -1.0))
+			return 0.0
 	if gliding and d > 0.0:
 		gliding = false
 		glide_cd = 0.8
@@ -297,7 +319,7 @@ func fire() -> void:
 	recoil = 1.0
 	muzzle_t = 0.05
 	var dir := aim_dir()
-	var a := atan2(dir.y, dir.x) + randf_range(-1.0, 1.0) * float(wpn["spread"])
+	var a := atan2(dir.y, dir.x) + randf_range(-1.0, 1.0) * (float(wpn["spread"]) * (1.0 + bloom * 1.6) + bloom * 0.025)
 	var shot_y := pos.y + 0.95 * float(cdat["scale"])
 	var start := Vector3(pos.x + cos(a) * 0.6, shot_y, pos.z + sin(a) * 0.6)
 	var spd: float = wpn["speed"]
@@ -412,9 +434,18 @@ func sim(dt: float) -> void:
 		dashes = minf(max_dashes(), dashes + dt / DASH_REGEN)
 	if shoulder() == "spring" and not downed:
 		hp = minf(max_hp, hp + 3.0 * dt)
-	# out of the fight for a few seconds, you patch yourself up
-	if not downed and regen_wait <= 0.0 and hp < max_hp and not remote:
+	# out of the fight for a few seconds, armor snaps back, then you patch yourself up
+	armor_wait = maxf(0.0, armor_wait - dt)
+	if not downed and not remote and armor_wait <= 0.0 and armor < max_armor:
+		armor = minf(max_armor, armor + ARMOR_REGEN * dt)
+	elif not downed and regen_wait <= 0.0 and hp < max_hp and not remote:
 		hp = minf(max_hp, hp + REGEN * dt)
+	# shots spread more while you move, jump or have just dashed, and settle when you stand still
+	var want_bloom := 0.0
+	if not grounded: want_bloom = 1.0
+	elif Vector2(vel.x, vel.z).length() > 1.5: want_bloom = 0.45
+	if roll_t > 0.0: want_bloom = 1.4
+	bloom = lerpf(bloom, want_bloom, 1.0 - exp(-(10.0 if want_bloom > bloom else 4.0) * dt))
 	if remote:
 		net_follow(dt)
 		return

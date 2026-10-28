@@ -622,6 +622,8 @@ func _break(b: Dictionary, by: Ent, from_net := false) -> void:
 				drop("gem", at + Vector3(0, 0.5, 0), maxi(1, int(round(2 * loot))))
 			if randf() < 0.3:
 				drop("tonic", at + Vector3(0, 0.5, 0), 1)
+			if randf() < 0.4:
+				drop("armor", at + Vector3(0, 0.5, 0), 25)
 			if not from_net and randf() < 0.16:
 				var keys: Array = Data.WEAPONS.keys()
 				spawn_weapon(String(keys[randi() % keys.size()]), Data.roll_rarity(rng), at)
@@ -672,7 +674,7 @@ func _update_rings(dt: float) -> void:
 		var n: Node3D = rg["node"]
 		(n.get_node("Ring") as Node3D).rotation.z += dt * 0.8
 		for h in hunters:
-			if h.remote or h.grounded or h.out or h.downed or h.riding:
+			if h.remote or h.grounded or h.out or h.downed or h.riding or not h.pad.is_empty():
 				continue
 			var c: Vector3 = rg["pos"]
 			var body: Vector3 = h.pos + Vector3(0, 0.8, 0)
@@ -691,7 +693,6 @@ func _update_rings(dt: float) -> void:
 			h.vel.x = d.x * spd; h.vel.z = d.y * spd
 			h.vel.y = maxf(h.vel.y, 2.0)
 			h.glide_fuel = minf(1.0, h.glide_fuel + 0.35)
-			h.pad = {}
 			if not h.gliding and not h.dropping:
 				h.glide_cd = 0.0
 				h.gliding = true
@@ -725,9 +726,8 @@ func _collide_breaks() -> void:
 			if e is Hunter and (e as Hunter).roll_t > 0.0 and not e.remote:
 				_break(b, e)
 				continue
-			if l < 0.0001:
-				d = Vector2(1, 0); l = 0.0001
-			var push := d / l * (mind - l)
+			var nrm := d / l if l > 0.0001 else Vector2(1, 0)
+			var push := nrm * (mind - l)
 			if world.occupy(e.pos.x + push.x, e.pos.z + push.y, e.r, e.pos.y, e.grounded) == 0.0:
 				e.pos.x += push.x; e.pos.z += push.y
 
@@ -830,15 +830,19 @@ func on_damage(target: Ent, by: Ent, d: float, o: Dictionary) -> void:
 		if not credit.remote and target.team != credit.team and src != "burn":
 			credit.ult = minf(1.0, credit.ult + d / 320.0 * (1.3 if credit.perk == "overcharge" else 1.0))
 	var mine := credit == player or (target == player)
+	var armor_hit: bool = o.get("armor", false) or (target is Hunter and (target as Hunter).remote and (target as Hunter).armor > 0.5)
 	var col := Color("fff4d6")
-	if crit: col = Color("ffd23f")
+	if armor_hit: col = Color("7ac8ff")
+	if crit: col = Color("ffd23f") if not armor_hit else Color("b0e4ff")
 	if target == player: col = Color("ff6a5a")
 	elif target is Kin and target.owner_h == player: col = Color("ffa08a")
 	if mine or (player and target.flat_dist(player) < 12.0):
 		fx.number(target.pos + Vector3(0, 1.5 if target is Hunter else 1.0, 0), d, col, crit)
 	if credit == player and target != player and src != "burn":
-		sfx("crit" if crit else "hit", target.pos, -2.0)
-		if hud: hud.hitmarker(crit)
+		sfx("crit" if crit else "hit", target.pos, -2.0, 1.25 if armor_hit else 1.0)
+		if hud: hud.hitmarker(crit, armor_hit)
+	if target == player and by and hud:
+		hud.hurt_from(by.pos)
 	if target == player:
 		sfx("hurt", null, -4.0)
 		cam.add_trauma(clampf(d / 40.0, 0.12, 0.45))
@@ -948,6 +952,7 @@ func revive_hunter(h: Hunter, by: Ent) -> void:
 		net_event(["up", h.nid])
 	h.downed = false
 	h.hp = h.max_hp * 0.4
+	h.armor = 0.0
 	h.revive = 0.0
 	h.inv_t = 1.5
 	sfx("revive", h.pos, 0.0)
@@ -1042,6 +1047,7 @@ func _lose_life(h: Hunter, by: Ent, why: String) -> void:
 	h.down_hp = 0.0
 	h.revive = 0.0
 	h.hp = h.max_hp
+	h.armor = h.max_armor
 	h.inv_t = 3.0
 	h.vel = Vector3.ZERO
 	h.grap = {}; h.pad = {}; h.charge = {}; h.roll_t = 0.0
@@ -1117,6 +1123,8 @@ func on_mob_dead(mb: Mob, by: Ent, _o: Dictionary) -> void:
 	if not world.is_void(mb.pos.x, mb.pos.z) and not _o.get("self", false):
 		for i in int(mb.md["gems"]):
 			drop("gem", mb.pos + Vector3(0, 0.6, 0), int(round(3 * float(T["loot"]))))
+		if mb.md.get("stag", false) and rng.randf() < 0.6:
+			drop("armor", mb.pos + Vector3(0, 0.6, 0), 25)
 		if mb.mkind == "glimmer":
 			var keys: Array = Data.WEAPONS.keys()
 			spawn_weapon(String(keys[randi() % keys.size()]), Data.roll_rarity(rng, 1), mb.pos)
@@ -1170,6 +1178,18 @@ func _stagger_reward(mb: Mob, hunter: Hunter, ab: String) -> void:
 		hud.toast("Staggered %s!%s" % [mb.md["name"], ("  " + what) if what != "" else ""], Color("e0b0ff"))
 		train["_stagger"] = true
 
+## Someone's armor just shattered: a clear sound and burst so the attacker knows to push.
+func on_armor_break(h: Hunter, by: Ent) -> void:
+	fx.burst(h.pos + Vector3(0, 1.0, 0), Color("7ac8ff"), 22, 5.0, 0.5, 6.0, 1.0)
+	fx.ring(h.pos, 1.4, Color("7ac8ff"), 0.3)
+	sfx("shield", h.pos, 0.0, 1.6)
+	var credit: Ent = by.owner_h if by is Kin and by.owner_h else by
+	if credit == player and hud:
+		hud.toast_small("ARMOR BROKEN", Color("7ac8ff"))
+		hud.hitmarker(true, true)
+	elif h == player and hud:
+		hud.toast_small("Armor down", Color("7ac8ff"))
+
 func on_perfect_dodge(h: Hunter) -> void:
 	fx.ring(h.pos, 1.3, Color("9af0ff"), 0.3)
 	fx.burst(h.pos + Vector3(0, 0.9, 0), Color("cff6ff"), 12, 3.5, 0.4)
@@ -1194,6 +1214,7 @@ func drop(kind_s: String, at: Vector3, v: int, key := "", pid := "", vel0 = null
 		"gem": n = Models.gem()
 		"seed": n = Models.seed_bag(Data.CROPS[key]["color"])
 		"tonic": n = Models.tonic()
+		"armor": n = Models.armor_shard()
 		_: n = Models.gem()
 	add_child(n)
 	n.position = at
@@ -1250,6 +1271,9 @@ func _collect(h: Hunter, p: Dictionary) -> void:
 		"tonic":
 			h.tonics = mini(3, h.tonics + 1)
 			if h == player: hud.toast("+1 tonic", Color("8ff0a0"))
+		"armor":
+			h.armor = minf(h.max_armor, h.armor + float(p["v"]))
+			if h == player: hud.toast_small("+%d armor" % int(p["v"]), Color("7ac8ff"))
 	if h == player:
 		sfx("pickup", null, -8.0, 1.0 + minf(0.4, h.gems * 0.004))
 		if p["kind"] == "seed":
@@ -1497,7 +1521,20 @@ func _gather_input() -> void:
 		player.inp["move"] = Vector2.ZERO
 	player.inp["interact"] = Input.is_action_pressed("interact")
 	player.inp["glide"] = Input.is_action_pressed("jump") and not paused
+	var quick: bool = Settings.get_v("quick_cast")
 	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["kin_skill", "skill"], ["ultimate", "ult"]]:
+		var aimable: bool = a[0] in ["signature", "ultimate", "kin_skill"] and not quick
+		if aimable:
+			# hold to see where it will land, let go to cast it
+			if Input.is_action_just_pressed(a[0]) and not paused:
+				aim_hold = a[0]
+			if aim_hold == a[0] and not Input.is_action_pressed(a[0]):
+				aim_hold = ""
+				pending_input[a[1]] = true
+			continue
+		if a[0] == "throw" and aim_hold != "" and Input.is_action_just_pressed("throw"):
+			aim_hold = ""          # right click while aiming cancels the cast
+			continue
 		if Input.is_action_just_pressed(a[0]):
 			pending_input[a[1]] = true
 
@@ -1549,6 +1586,9 @@ func step(dt: float) -> void:
 			if world.is_void(q.x, q.z):
 				player.teleport(Vector3(q.x + 1.0, player.pos.y - 4.0, q.z)); player.grounded = false
 				break
+	if opts.has("aim_demo") and player:
+		aim_hold = String(opts["aim_demo"])
+		player.inp["aim"] = player.pos + Vector3(4.0, 0, -3.0)
 	if opts.get("ring_demo", false) and player and time < 0.05 and not air_rings.is_empty():
 		var rg: Dictionary = air_rings[0]
 		var rd: Vector2 = rg["dir"]
@@ -2422,7 +2462,7 @@ func _ser(e: Ent) -> Array:
 	if e is Hunter:
 		var h: Hunter = e
 		return ["h", h.nid, _r(h.pos.x), _r(h.pos.y), _r(h.pos.z), _r(h.vel.x), _r(h.vel.y), _r(h.vel.z), _r(h.face), _r(h.hp), h.max_hp, _flags(h),
-			_r(h.down_hp), _r(h.revive), h.team, h.cls, h.pname, _r(h.shield), _r(h.extract_prog), h.kills, h.knocks, int(h.dmg_done)]
+			_r(h.down_hp), _r(h.revive), h.team, h.cls, h.pname, _r(h.shield), _r(h.extract_prog), h.kills, h.knocks, int(h.dmg_done), _r(h.armor), h.max_armor]
 	if e is Kin:
 		var k: Kin = e
 		return ["k", k.nid, _r(k.pos.x), _r(k.pos.y), _r(k.pos.z), _r(k.face), _r(k.hp), _r(k.max_hp), KIN_STATES.find(k.state), k.species,
@@ -2539,6 +2579,8 @@ func _net_apply(e: Ent, it: Array) -> void:
 			h.down_hp = it[12]; h.revive = maxf(h.revive if h.revive > float(it[13]) and _rev_out.has(h.nid) else 0.0, float(it[13]))
 			h.shield = it[17]; h.extract_prog = it[18]
 			h.kills = int(it[19]); h.knocks = int(it[20]); h.dmg_done = float(it[21])
+			if it.size() > 23:
+				h.armor = float(it[22]); h.max_armor = float(it[23])
 		"k":
 			var k: Kin = e
 			k.face = it[5]; k.hp = it[6]; k.max_hp = it[7]
@@ -2793,6 +2835,112 @@ func _tips() -> void:
 		_tip("down", "You're down. Your kin will try to pick you up if it trusts you enough.")
 
 # ------------------------------------------------------------------ aim indicators
+# ---- ability previews: hold E, R or Q to see the reach and where it lands
+var aim_hold := ""
+var ind_range: MeshInstance3D
+var ind_area: MeshInstance3D
+var ind_fill: MeshInstance3D
+var ind_line: MeshInstance3D
+var ind_fan: MeshInstance3D
+## [shape, reach, size]: self (around you), dash (where you'll end up), line (length, width),
+## area (a circle at the cursor within reach), cone (length, cosine of the half angle)
+const AIM := {
+	"cloak": ["self", 0.0, 1.2], "mend": ["self", 0.0, 5.0], "fortify": ["self", 0.0, 1.6], "dome": ["self", 0.0, 3.6],
+	"blink": ["dash", 6.0, 0.8], "rocketjump": ["dash", 7.0, 2.4], "tether": ["line", 14.0, 0.35], "hook": ["line", 9.0, 0.45],
+	"ram": ["line", 6.0, 1.3], "vanish": ["self", 0.0, 1.2], "dance": ["self", 0.0, 9.0], "skypierce": ["line", 26.0, 1.8],
+	"sanctuary": ["self", 0.0, 4.2], "anchor": ["dash", 10.0, 3.6], "barrage": ["area", 11.0, 3.0], "bulwark": ["self", 0.0, 4.0],
+	"quake": ["cone", 8.0, 0.55], "well": ["area", 10.0, 4.5],
+	"fireball": ["area", 9.0, 1.9], "wave": ["cone", 5.0, 0.55], "snare": ["area", 9.0, 2.2], "chain": ["area", 9.0, 1.2],
+	"slam": ["area", 7.0, 2.0], "gust": ["self", 0.0, 2.8],
+}
+
+func _build_indicators() -> void:
+	var mk := func(mesh: Mesh, mat: Material) -> MeshInstance3D:
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh; mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.visible = false
+		add_child(mi)
+		return mi
+	ind_range = mk.call(Models.flat_quad(2.0), Models.ring_mat(Color(1, 1, 1, 0.35), 0.015))
+	ind_area = mk.call(Models.flat_quad(2.0), Models.ring_mat(Color(1, 1, 1, 0.9), 0.06))
+	ind_fill = mk.call(Models.cyl(1.0, 1.0, 0.01, 40), Models.glow_mat(Color(1, 1, 1, 0.14)))
+	ind_line = mk.call(Models.box(1.0, 0.01, 1.0), Models.glow_mat(Color(1, 1, 1, 0.22)))
+	ind_fan = mk.call(ArrayMesh.new(), Models.glow_mat(Color(1, 1, 1, 0.2)))
+
+func _fan_mesh(length: float, cos_half: float) -> ArrayMesh:
+	var half := acos(clampf(cos_half, -1.0, 1.0))
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := 20
+	for i in n:
+		var a0 := -half + 2.0 * half * i / n
+		var a1 := -half + 2.0 * half * (i + 1) / n
+		st.add_vertex(Vector3.ZERO)
+		st.add_vertex(Vector3(sin(a1), 0, -cos(a1)) * length)
+		st.add_vertex(Vector3(sin(a0), 0, -cos(a0)) * length)
+	var am := ArrayMesh.new()
+	st.commit(am)
+	return am
+
+func _update_indicators(alpha: float) -> void:
+	if ind_range == null:
+		_build_indicators()
+	for n in [ind_range, ind_area, ind_fill, ind_line, ind_fan]: n.visible = false
+	var p := player
+	if aim_hold == "" or p == null or p.out or p.downed or paused:
+		return
+	var id := ""
+	var col := Color.WHITE
+	match aim_hold:
+		"signature": id = Abil.e_id(p); col = Data.HEROES[p.hero]["color"]
+		"ultimate": id = Abil.r_id(p); col = Color("f2c84a")
+		"kin_skill":
+			if p.kin == null: return
+			id = String(Data.KIN[p.kin.species]["skill"]); col = Data.KIN[p.kin.species]["color"]
+	if not AIM.has(id):
+		return
+	var spec: Array = AIM[id]
+	var at := p.prev.lerp(p.pos, alpha)
+	var aim: Vector3 = p.inp["aim"]
+	var d := Vector2(aim.x - at.x, aim.z - at.z)
+	var dir := d.normalized() if d.length() > 0.1 else p.aim_dir()
+	var reach: float = spec[1]
+	var size: float = spec[2]
+	var gy := at.y + 0.07
+	var set_col := func(mi: MeshInstance3D, a: float) -> void:
+		var mat = mi.material_override
+		if mat is ShaderMaterial:
+			mat.set_shader_parameter("color", Color(col, a))
+	match String(spec[0]):
+		"self":
+			ind_area.visible = true; ind_fill.visible = true
+			ind_area.global_position = Vector3(at.x, gy, at.z); ind_area.scale = Vector3.ONE * size
+			ind_fill.global_position = Vector3(at.x, gy, at.z); ind_fill.scale = Vector3(size, 1, size)
+		"area", "dash":
+			var dist := minf(d.length(), reach)
+			var c2 := Vector2(at.x, at.z) + dir * dist
+			var g := world.ground_at(c2.x, c2.y)
+			var cy: float = (g if g > World.VOID + 1.0 else at.y) + 0.07
+			ind_range.visible = true
+			ind_range.global_position = Vector3(at.x, gy, at.z); ind_range.scale = Vector3.ONE * reach
+			ind_area.visible = true; ind_fill.visible = true
+			ind_area.global_position = Vector3(c2.x, cy, c2.y); ind_area.scale = Vector3.ONE * size
+			ind_fill.global_position = Vector3(c2.x, cy, c2.y); ind_fill.scale = Vector3(size, 1, size)
+		"line":
+			ind_line.visible = true
+			var mid := Vector2(at.x, at.z) + dir * reach * 0.5
+			ind_line.global_position = Vector3(mid.x, gy, mid.y)
+			ind_line.rotation = Vector3(0, atan2(-dir.x, -dir.y), 0)
+			ind_line.scale = Vector3(size, 1, reach)
+		"cone":
+			ind_fan.mesh = _fan_mesh(reach, size)
+			ind_fan.visible = true
+			ind_fan.global_position = Vector3(at.x, gy, at.z)
+			ind_fan.rotation = Vector3(0, atan2(-dir.x, -dir.y), 0)
+	for mi in [ind_range, ind_area, ind_fill, ind_line, ind_fan]:
+		set_col.call(mi, 0.35 if mi == ind_range else (0.9 if mi == ind_area else 0.22))
+
 func _build_aim() -> void:
 	aim_line = MeshInstance3D.new()
 	aim_line.mesh = Models.box(0.05, 0.02, 1.0)
@@ -2811,6 +2959,7 @@ func _build_aim() -> void:
 	add_child(muzzle_light)
 
 func _update_aim(alpha: float) -> void:
+	_update_indicators(alpha)
 	if aim_line == null:
 		return
 	var p := player

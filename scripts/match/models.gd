@@ -612,6 +612,14 @@ static func gem() -> Node3D:
 	part(root, p, m, Vector3(0, -0.15, 0), Vector3.ONE, Vector3(PI, 0, 0))
 	return root
 
+static func armor_shard() -> Node3D:
+	var root := Node3D.new()
+	var pm := PrismMesh.new(); pm.size = Vector3(0.22, 0.34, 0.08)
+	var m := toon(Color("7ac8ff"), false, 0.8)
+	part(root, pm, m, Vector3(0, 0.2, 0))
+	part(root, pm, m, Vector3(0, 0.05, 0), Vector3(0.7, 0.7, 1), Vector3(PI, 0, 0))
+	return root
+
 static func tonic() -> Node3D:
 	var root := Node3D.new()
 	part(root, sphere(0.16, 12), toon(Color("8ff0a0"), false, 0.6), Vector3(0, 0.16, 0))
