@@ -1085,6 +1085,41 @@ func on_wild_dazed(k: Kin) -> void:
 	if player and k.flat_dist(player) < 10.0:
 		add_feed("The wild %s is dazed. Hold F to catch it!" % Data.KIN[k.species]["name"])
 
+## A monster's stagger window opened.
+func on_stag_open(mb: Mob) -> void:
+	if player and not player.out and player.flat_dist(mb) < 14.0:
+		sfx("warn", mb.pos, -10.0, 1.5)
+		_tip("stagger", "A purple ring means %s can be staggered. Hit it with an ability (%s, %s or your kin's %s) for a big hit, a long stun and your cooldown back." % [mb.md["name"], Settings.key_cap("signature"), Settings.key_cap("ultimate"), Settings.key_cap("kin_skill")])
+
+## Someone landed an ability in a stagger window. Runs where the monster lives (the host online).
+var stag_n := 0
+
+func on_stagger(mb: Mob, by: Ent, ab: String) -> void:
+	stag_n += 1
+	fx.ring(mb.pos, mb.r + 1.8, Color("c47aff"), 0.4)
+	fx.burst(mb.pos + Vector3(0, 1.0, 0), Color("e0b0ff"), 30, 6.0, 0.6, 2.0, 1.2)
+	fx.flash(mb.pos + Vector3(0, 1.0, 0), Color("e0b0ff"), 1.4, 0.1)
+	sfx("crit", mb.pos, 2.0, 0.7)
+	sfx("boom", mb.pos, -4.0, 1.6)
+	shake(0.45, mb.pos)
+	freeze_frame(0.08)
+	var hunter: Hunter = by as Hunter if by is Hunter else (by.owner_h if by is Kin else null)
+	if net_on:
+		net_event(["stg", mb.nid, hunter.nid if hunter else "", ab])
+	_stagger_reward(mb, hunter, ab)
+
+func _stagger_reward(mb: Mob, hunter: Hunter, ab: String) -> void:
+	if hunter == null or hunter.remote:
+		return
+	if ab == "e":
+		hunter.sig_cd = 0.0
+	elif ab == "kin" and hunter.kin:
+		hunter.kin.skill_cd = 0.0
+	if hunter == player:
+		var what: String = {"e": Data.ABIL[Abil.e_id(player)]["name"] + " is ready again", "kin": (player.kin.rec.get("name", "Your kin") if player.kin else "Your kin") + "'s skill is ready again"}.get(ab, "")
+		hud.toast("Staggered %s!%s" % [mb.md["name"], ("  " + what) if what != "" else ""], Color("e0b0ff"))
+		train["_stagger"] = true
+
 func on_perfect_dodge(h: Hunter) -> void:
 	fx.ring(h.pos, 1.3, Color("9af0ff"), 0.3)
 	fx.burst(h.pos + Vector3(0, 0.9, 0), Color("cff6ff"), 12, 3.5, 0.4)
@@ -1295,6 +1330,7 @@ func _shot_end(s: Dictionary, at: Vector3, e: Ent) -> void:
 	if x.has("slow"): o["slow"] = x["slow"]
 	if x.has("root"): o["root"] = x["root"]
 	if x.has("stun"): o["stun"] = x["stun"]
+	if x.has("ab"): o["ab"] = x["ab"]
 	if x.get("hook", false) and by:
 		# drag it back toward whoever threw the hook
 		var back := Vector2(by.pos.x - e.pos.x, by.pos.z - e.pos.z)
@@ -1324,6 +1360,7 @@ func _boom(s: Dictionary, at: Vector3) -> void:
 			var f := 1.0 - 0.45 * minf(1.0, d / radius)
 			var dir := Vector2(e.pos.x - at.x, e.pos.z - at.z).normalized()
 			var o := {"src": "boom", "kb": dir * float(x.get("boom_kb", 8.0)) * f, "lift": 7.0 * f}
+			if x.has("ab"): o["ab"] = x["ab"]
 			if x.has("burn"): o["burn"] = x["burn"]
 			e.hurt(float(s["dmg"]) * f, by, o)
 
@@ -1739,6 +1776,7 @@ const TUT := ["Steer with WASD to choose where you land", "Walk around with WASD
 const TRAIN := [["move", "Walk around", "up"], ["dash", "Dash", "dash"], ["glide", "Jump, then hold it in the air to glide", "jump"],
 	["shoot", "Shoot a target dummy", "fire"], ["ability", "Use your hero ability", "signature"], ["ult", "Use your ultimate (it charges fast here)", "ultimate"],
 	["throw", "Throw your kin at a dummy", "throw"], ["kinskill", "Use your kin's skill", "kin_skill"], ["tonic", "Drink a tonic to heal", "tonic"],
+	["stagger", "Stagger a big dummy: hit it with an ability while it has a purple ring", "signature"],
 	["smash", "Break a crate or pot", "fire"], ["weapon", "Take a found weapon off the ground", "interact"],
 	["ledge", "Dash off an edge and float back up", ""]]
 var train := {}
@@ -1772,6 +1810,7 @@ func _update_training(dt: float) -> void:
 		"tonic": player.tonics < int(train.get("_tonics", player.tonics)),
 		"ledge": player.grap.size() > 0,
 		"smash": train.get("_smash", false),
+		"stagger": train.get("_stagger", false),
 		"weapon": train.get("_weapon", false),
 	}
 	train["_ult_full"] = player.ult >= 0.99
@@ -1789,7 +1828,7 @@ func _update_training(dt: float) -> void:
 	if alive.size() < 4 and int(train_t * 10.0) % 20 == 0:
 		var at := world.random_ground(world.island_of(player.pos.x, player.pos.z))
 		if Vector2(at.x - player.pos.x, at.z - player.pos.z).length() > 3.0:
-			spawn_mob(["skitter", "spitter", "brute"][randi() % 3], at)
+			spawn_mob(["skitter", "spitter", "brute", "sentinel"][randi() % 4], at)
 
 func _train_label(k: String) -> String:
 	for t in TRAIN:
@@ -2280,7 +2319,7 @@ func net_send_hit(target: Ent, dmg: float, by: Ent, o: Dictionary) -> bool:
 	var kb: Vector2 = o.get("kb", Vector2.ZERO)
 	Net.hit(target.nid, [_r(dmg), _r(kb.x), _r(kb.y), _r(float(o.get("lift", -1.0))), 1 if o.get("crit", false) else 0,
 		_r(float(o.get("stun", 0.0))), _r(float(o.get("burn", 0.0))), _r(float(o.get("slow", 0.0))), _r(float(o.get("root", 0.0))),
-		by.nid if by else "", String(o.get("src", ""))])
+		by.nid if by else "", String(o.get("src", "")), String(o.get("ab", ""))])
 	return true
 
 func _flags(h: Hunter) -> int:
@@ -2312,7 +2351,7 @@ func _ser(e: Ent) -> Array:
 			k.owner_h.nid if k.owner_h else "", int(k.rec.get("level", 1)), String(k.rec.get("name", "")), _r(k.catch_prog), _r(k.vel.x), _r(k.vel.z)]
 	var mb: Mob = e
 	return ["m", mb.nid, _r(mb.pos.x), _r(mb.pos.y), _r(mb.pos.z), _r(mb.face), _r(mb.hp), _r(mb.max_hp), MOB_STATES.find(mb.st), mb.mkind,
-		_r(mb.atk_dir.x), _r(mb.atk_dir.y), _r(mb.st_t), _r(mb.vel.x), _r(mb.vel.z)]
+		_r(mb.atk_dir.x), _r(mb.atk_dir.y), _r(mb.st_t), _r(mb.vel.x), _r(mb.vel.z), _r(mb.stag_open), _r(mb.stagger_t)]
 
 ## Snapshot of what this game owns: its player (mine=true), or the host's world (mine=false).
 func net_snapshot(mine: bool) -> Array:
@@ -2436,6 +2475,8 @@ func _net_apply(e: Ent, it: Array) -> void:
 			mb.atk_dir = Vector2(it[10], it[11])
 			mb.st_t = it[12]
 			mb.net_vel = Vector3(it[13], 0, it[14])
+			if it.size() > 16:
+				mb.stag_open = float(it[15]); mb.stagger_t = float(it[16])
 
 func _net_hit_in(x) -> void:
 	if typeof(x) != TYPE_ARRAY or x.size() < 12:
@@ -2454,6 +2495,7 @@ func _net_hit_in(x) -> void:
 	if float(x[7]) > 0.0: o["burn"] = float(x[7])
 	if float(x[8]) > 0.0: o["slow"] = float(x[8])
 	if float(x[9]) > 0.0: o["root"] = float(x[9])
+	if x.size() > 12 and String(x[12]) != "": o["ab"] = String(x[12])
 	e.hurt(float(x[1]), by, o)
 
 func _net_ev(x, from: String) -> void:
@@ -2543,6 +2585,15 @@ func _net_ev(x, from: String) -> void:
 				net_event(["gone", String(x[1])])
 		"met":
 			_meteor_start(Vector3(x[1], x[2], x[3]))
+		"stg":
+			var smb: Ent = ents_by_id.get(String(x[1]), null)
+			if smb is Mob:
+				(smb as Mob).stagger_t = 2.2 if (smb as Mob).mkind == "warden" else 3.0
+				(smb as Mob).stag_open = 0.0
+				fx.ring(smb.pos, smb.r + 1.8, Color("c47aff"), 0.4)
+				fx.burst(smb.pos + Vector3(0, 1.0, 0), Color("e0b0ff"), 30, 6.0, 0.6, 2.0, 1.2)
+				sfx("crit", smb.pos, 2.0, 0.7)
+				_stagger_reward(smb, ents_by_id.get(String(x[2]), null) as Hunter, String(x[3]))
 		"anc":
 			if String(x[1]) == "meteor":
 				_announce("A meteor shower is coming down. Stars leave gems where they land", Color("ffcf8a"))

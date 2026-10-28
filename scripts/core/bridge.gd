@@ -57,11 +57,38 @@ func kin_brief(k: Dictionary) -> String:
 		"Trust in your hunter: %d out of 100 (below 30 you are wary and a bit cold, above 70 you are warm and devoted). " +
 		"You are level %d and have been on %d expeditions, made it out of %d. " +
 		"What you remember, oldest first:\n%s") % [k["name"], sp["name"], sp["type"], sp["voice"], tr["bravery"], tr["loyalty"], tr["temper"], tr["curiosity"],
-		int(k["trust"]), int(k["level"]), int(k.get("matches", 0)), int(k.get("wins", 0)), "\n".join(mem) if mem.size() > 0 else "- nothing yet, you are new here"]
+		int(k["trust"]), int(k["level"]), int(k.get("matches", 0)), int(k.get("wins", 0)), "\n".join(mem) if mem.size() > 0 else "- nothing yet, you are new here"] + "\n\n" + speech_rule(k) + "\n" + needs_note(k)
+
+## How this kin is able to talk right now. Young kin only say their own name, like the creatures in
+## the old monster games, and get their meaning across with tone and one small action.
+func speech_rule(k: Dictionary) -> String:
+	var sp: String = k["species"]
+	var syl: Array = KinSpeak.SYL.get(sp, ["Kin", "kin"])
+	var nm: String = Data.KIN[sp]["name"]
+	match Care.speech(k):
+		0: return ("IMPORTANT: you are still young and cannot speak any human words. You only make sounds from your own species name: %s, %s, %s (for example \"%s!\", \"%s?\", \"%s-%s...\"). " +
+			"Use one to six of these sounds, with punctuation, repetition and capitals to show how you feel, then add at most one short action in parentheses that hints at what you mean, like \"(eyes the cooking pot)\". " +
+			"Never say what you mean outright, never translate yourself, never use any other words.") % [syl[0], nm, String(syl[1]).to_lower(), syl[0], nm, String(syl[0]).to_lower(), String(syl[0]).to_lower()]
+		1: return ("You are young. You mostly speak in sounds from your species name (%s, %s), and you know only a handful of human words: food, play, sleepy, bath, yes, no, hi, bye, love, home, fight, friend. " +
+			"Use at most two of those words per reply, mixed with your name sounds, and you may add one short action in parentheses that hints at what you mean. Don't explain yourself.") % [syl[0], nm]
+		2: return ("You are learning to talk. Speak in very short, simple, broken sentences (\"Me hungry. Food?\"), often adding your name sound \"%s!\". No long words, no complex grammar.") % syl[0]
+	return "You talk freely now."
+
+## What its body is telling it, so replies can hint at it.
+func needs_note(k: Dictionary) -> String:
+	Care.ensure(k)
+	var bits: Array = []
+	var nd: Dictionary = k["needs"]
+	if float(nd["food"]) < 35.0: bits.append("hungry")
+	if float(nd["energy"]) < 30.0: bits.append("very tired")
+	if float(nd["clean"]) < 30.0: bits.append("dirty and itchy")
+	if float(nd["joy"]) < 35.0: bits.append("bored and a little lonely")
+	if bits.is_empty(): return "Right now you feel well looked after."
+	return "Right now you are " + ", ".join(bits) + ". Let that show (hint at it rather than announcing it)."
 
 ## Writes a set of short voice lines in this kin's personality, stored on the kin for its next matches.
 func refresh_lines(k: Dictionary, cb := Callable()) -> void:
-	if js == null or not ai_ok:
+	if js == null or not ai_ok or Care.speech(k) < 3:
 		return
 	var prompt := kin_brief(k) + "\n\nWrite short in-match voice lines (2 to 7 words each, no emoji, no quotes) as JSON with these keys, 3 lines each: " + \
 		"throw (being thrown into a fight), refuse (refusing a dangerous throw), hesitate (going reluctantly), scared (retreating hurt), " + \

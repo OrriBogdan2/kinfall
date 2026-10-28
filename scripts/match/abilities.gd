@@ -78,14 +78,14 @@ static func use_e(h: Hunter) -> void:
 			m.fx.burst(h.pos + Vector3(0, 0.8, 0), tc, 18, 4.0, 0.4, 0.0)
 		"tether":
 			var d := h.aim_dir()
-			m.spawn_shot(h, h.pos + Vector3(d.x * 0.6, 0.95 * float(h.cdat["scale"]), d.y * 0.6), d * 34.0, 12.0, 14.0 / 34.0, 0.14, tc, {"root": 1.5, "kb": 1.0})
+			m.spawn_shot(h, h.pos + Vector3(d.x * 0.6, 0.95 * float(h.cdat["scale"]), d.y * 0.6), d * 34.0, 12.0, 14.0 / 34.0, 0.14, tc, {"root": 1.5, "kb": 1.0, "ab": "e"})
 			m.sfx("rifle", h.pos, -2.0, 1.5)
 		"hook":
 			var d := h.aim_dir()
-			m.spawn_shot(h, h.pos + Vector3(d.x * 0.6, 0.95, d.y * 0.6), d * 30.0, 10.0, 9.0 / 30.0, 0.16, tc, {"hook": true, "stun": 0.5})
+			m.spawn_shot(h, h.pos + Vector3(d.x * 0.6, 0.95, d.y * 0.6), d * 30.0, 10.0, 9.0 / 30.0, 0.16, tc, {"hook": true, "stun": 0.5, "ab": "e"})
 			m.sfx("throw", h.pos, -2.0, 0.8)
 		"rocketjump":
-			_blast(h, h.pos, 2.4, 10.0, 11.0, tc)
+			_blast(h, h.pos, 2.4, 10.0, 11.0, tc, 4.0, "e")
 			var to := reach(m, h.pos, aim_point(h, 7.0))
 			if to.distance_to(h.pos) > 1.0:
 				h.pad_launch(to)
@@ -178,7 +178,7 @@ static func tick(h: Hunter, dt: float) -> void:
 				m.fx.ghost(h.position, h.face, tc, float(h.cdat["scale"]))
 				h.teleport(Vector3(behind.x, m.world.ground_at(behind.x, behind.z), behind.z))
 				h.face = atan2(-(t.pos.x - h.pos.x), -(t.pos.z - h.pos.z))
-				t.hurt(28.0 * m.dmg_mult(h), h, {"stun": 0.4, "kb": Vector2(t.pos.x - h.pos.x, t.pos.z - h.pos.z).normalized() * 4.0, "src": "abil", "crit": true})
+				t.hurt(28.0 * m.dmg_mult(h), h, {"stun": 0.4, "kb": Vector2(t.pos.x - h.pos.x, t.pos.z - h.pos.z).normalized() * 4.0, "src": "abil", "crit": true, "ab": "r"})
 				m.fx.burst(t.pos + Vector3(0, 0.9, 0), tc, 16, 4.0, 0.3)
 				m.sfx("crit", t.pos, -2.0)
 			"beam":
@@ -196,22 +196,22 @@ static func tick(h: Hunter, dt: float) -> void:
 					var rel := Vector2(f.pos.x - h.pos.x, f.pos.z - h.pos.z)
 					var along := rel.dot(d)
 					if along > 0.0 and along < 26.0 and absf(rel.cross(d)) < 0.9 + f.r:
-						f.hurt(62.0 * m.dmg_mult(h), h, {"kb": d * 12.0, "lift": 4.0, "src": "abil"})
+						f.hurt(62.0 * m.dmg_mult(h), h, {"kb": d * 12.0, "lift": 4.0, "src": "abil", "ab": "r"})
 			"slam":
 				var at: Vector3 = h.pos
-				_blast(h, at, 3.6, 40.0, 12.0, tc, 6.0)
+				_blast(h, at, 3.6, 40.0, 12.0, tc, 6.0, "r")
 				m.shake(0.5, at)
 			"rocket":
 				var c: Vector3 = a["at"]
 				var from := h.pos + Vector3(0, 0.95, 0)
 				var dv := Vector2(c.x - from.x, c.z - from.z)
 				var spd := 18.0
-				m.spawn_shot(h, from, dv.normalized() * spd, 18.0 * m.dmg_mult(h), dv.length() / spd, 0.2, Color("ff7a5a"), {"boom": 2.0, "boom_kb": 9.0 * (1.2 if h.hero == "pyra" else 1.0)})
+				m.spawn_shot(h, from, dv.normalized() * spd, 18.0 * m.dmg_mult(h), dv.length() / spd, 0.2, Color("ff7a5a"), {"boom": 2.0, "boom_kb": 9.0 * (1.2 if h.hero == "pyra" else 1.0), "ab": "r"})
 				m.sfx("thump", h.pos, -4.0)
 			"aura":
 				for f in m.foes_of(h.team):
 					if f.flat_dist(h) < 4.0:
-						f.hurt(2.0, h, {"slow": 0.8, "src": "abil"})
+						f.hurt(2.0, h, {"slow": 0.8, "src": "abil", "ab": "r"})
 				m.fx.ring(h.pos, 4.0, Color(tc, 0.5), 0.4)
 			"quake":
 				var d: Vector2 = a["dir"]
@@ -222,10 +222,10 @@ static func tick(h: Hunter, dt: float) -> void:
 				for f in m.foes_of(h.team):
 					var rel := Vector2(f.pos.x - h.pos.x, f.pos.z - h.pos.z)
 					if rel.length() < 8.0 and rel.length() > 0.01 and rel.normalized().dot(d) > 0.55:
-						f.hurt(45.0 * m.dmg_mult(h), h, {"stun": 0.6, "kb": rel.normalized() * 10.0, "lift": 5.0, "src": "abil"})
+						f.hurt(45.0 * m.dmg_mult(h), h, {"stun": 0.6, "kb": rel.normalized() * 10.0, "lift": 5.0, "src": "abil", "ab": "r"})
 
 ## A burst around a point that knocks foes away from it.
-static func _blast(h: Hunter, at: Vector3, radius: float, dmg: float, kb: float, col: Color, lift := 4.0) -> void:
+static func _blast(h: Hunter, at: Vector3, radius: float, dmg: float, kb: float, col: Color, lift := 4.0, ab := "e") -> void:
 	var m: Match = h.m
 	m.fx.ring(at, radius, col, 0.3)
 	m.fx.burst(at + Vector3(0, 0.4, 0), col, 24, 6.0, 0.5, 6.0, 1.2)
@@ -237,7 +237,7 @@ static func _blast(h: Hunter, at: Vector3, radius: float, dmg: float, kb: float,
 		var rel := Vector2(f.pos.x - at.x, f.pos.z - at.z)
 		if rel.length() < radius + f.r and absf(f.pos.y - at.y) < 2.0:
 			var dir := rel.normalized() if rel.length() > 0.05 else Vector2(1, 0)
-			f.hurt(dmg * m.dmg_mult(h), h, {"kb": dir * kb, "lift": lift, "src": "abil"})
+			f.hurt(dmg * m.dmg_mult(h), h, {"kb": dir * kb, "lift": lift, "src": "abil", "ab": ab})
 
 ## Ram: while charging, bowl over anyone in the way.
 static func charge_hits(h: Hunter) -> void:
@@ -248,7 +248,7 @@ static func charge_hits(h: Hunter) -> void:
 		if f.flat_dist(h) < h.r + f.r + 0.5 and absf(f.pos.y - h.pos.y) < 1.5:
 			h.charge["hit"][f.nid] = true
 			var d: Vector2 = h.charge["dir"]
-			f.hurt(22.0 * m.dmg_mult(h), h, {"kb": d * 12.5, "lift": 4.0, "src": "abil"})
+			f.hurt(22.0 * m.dmg_mult(h), h, {"kb": d * 12.5, "lift": 4.0, "src": "abil", "ab": "e"})
 			m.shake(0.35, f.pos)
 			m.fx.burst(f.pos + Vector3(0, 0.8, 0), Color("c08a5a"), 18, 5.0, 0.4)
 			if h.hero == "tusk" and h.charge["hit"].size() == 1:

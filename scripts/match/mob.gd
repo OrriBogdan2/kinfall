@@ -16,7 +16,17 @@ var wander := Vector3.INF
 var lunge_hit := {}
 var anim := 0.0
 var dmg_mult := 1.0
-var calm_t := 0.0           # a treasure kin slips away if nobody hurts it for a while
+var calm_t := 0.0
+## Stagger, as in Supervive: elites and bosses open short "staggerable" windows (a purple ring),
+## always while winding up a slam. Land an ability in one (not a regular shot) and it takes a big
+## hit, is stunned for a few seconds, takes extra damage the whole time, and the ability that did
+## it comes straight back off cooldown.
+const STAGGER_DMG := 2.5
+var stag_open := 0.0
+var stag_next := 0.0
+var stagger_t := 0.0
+var stag_ring: MeshInstance3D = null
+var stag_stars: Node3D = null           # a treasure kin slips away if nobody hurts it for a while
 
 func init_mob(match_node: Node, id: String, k: String, at: Vector3, tier := 1.0) -> void:
 	setup(match_node, id)
@@ -32,6 +42,17 @@ func init_mob(match_node: Node, id: String, k: String, at: Vector3, tier := 1.0)
 	cd = randf_range(0.5, 1.5)
 	set_model(Models.mob(k))
 	teleport(at)
+	if md.get("stag", false):
+		stag_next = randf_range(3.0, 7.0)
+		stag_ring = MeshInstance3D.new(); stag_ring.mesh = Models.flat_quad(r * 2.0 + 1.4)
+		stag_ring.material_override = Models.ring_mat(Color("c47aff"), 0.12)
+		stag_ring.position.y = 0.06; stag_ring.visible = false
+		add_child(stag_ring)
+		stag_stars = Node3D.new(); stag_stars.visible = false
+		stag_stars.position.y = 1.2 + r
+		for i in 3:
+			Models.part(stag_stars, Models.sphere(0.09, 8), Models.toon(Color("fff27a"), false, 1.4), Vector3(cos(TAU * i / 3.0) * 0.45, 0, sin(TAU * i / 3.0) * 0.45))
+		add_child(stag_stars)
 
 func mass() -> float:
 	if mkind == "sentinel": return 50.0
@@ -48,6 +69,12 @@ func _cancel_tele() -> void:
 		tele = null
 
 func hurt(d: float, by: Ent, opts := {}) -> float:
+	if not remote and not dead and d > 0.0:
+		if stagger_t > 0.0:
+			d *= STAGGER_DMG
+		elif stag_open > 0.0 and opts.has("ab"):
+			d += max_hp * (0.08 if mkind == "warden" else 0.2)
+			_stagger(by, opts)
 	var dealt := super.hurt(d, by, opts)
 	if dealt > 0.0: calm_t = 0.0
 	if dealt > 0.0 and by and not dead:
@@ -59,6 +86,31 @@ func hurt(d: float, by: Ent, opts := {}) -> float:
 			if st == "idle":
 				st = "chase"
 	return dealt
+
+func _stagger(by: Ent, opts: Dictionary) -> void:
+	stagger_t = 2.2 if mkind == "warden" else 3.0
+	stun_t = maxf(stun_t, stagger_t)
+	stag_open = 0.0
+	stag_next = randf_range(10.0, 14.0)
+	_cancel_tele()
+	st = "recover"; st_t = stagger_t
+	m.on_stagger(self, by, String(opts.get("ab", "")))
+
+## Opens and closes stagger windows. Runs on whoever owns the monster.
+func _tick_stagger(dt: float) -> void:
+	if stagger_t > 0.0:
+		stagger_t -= dt
+		return
+	if stag_open > 0.0:
+		stag_open -= dt
+		return
+	if st == "idle":
+		return
+	stag_next -= dt
+	if stag_next <= 0.0:
+		stag_open = 3.0
+		stag_next = randf_range(9.0, 13.0)
+		m.on_stag_open(self)
 
 func _find_target() -> Ent:
 	var best: Ent = null; var bd := 7.5 if st == "idle" else 11.0
@@ -88,6 +140,8 @@ func sim(dt: float) -> void:
 		return
 	cd -= dt
 	st_t -= dt
+	if md.get("stag", false):
+		_tick_stagger(dt)
 	if md.get("flee", false):
 		calm_t += dt
 		if calm_t > 30.0:
@@ -184,6 +238,9 @@ func _begin_attack() -> void:
 		"slam":
 			atk_at = pos + Vector3(atk_dir.x, 0, atk_dir.y) * 0.9
 			tele = m.fx.telegraph_circle(atk_at, float(md.get("slam_r", 2.3)), Color("ff4a3a"))
+			if md.get("stag", false) and stagger_t <= 0.0:
+				if stag_open <= 0.0: m.on_stag_open(self)
+				stag_open = maxf(stag_open, float(md["windup"]) + 0.15)
 		"fuse":
 			atk_at = pos
 			tele = m.fx.telegraph_circle(atk_at, float(md.get("slam_r", 2.3)), Color("ff8a2a"))
@@ -237,6 +294,14 @@ func _strike() -> void:
 func render(delta: float, alpha: float) -> void:
 	super.render(delta, alpha)
 	visible = not dead
+	if stag_ring:
+		stag_ring.visible = stag_open > 0.0 and stagger_t <= 0.0
+		if stag_ring.visible:
+			var pul := 1.0 + sin(m.time * 10.0) * 0.08
+			stag_ring.scale = Vector3(pul, 1.0, pul)
+		stag_stars.visible = stagger_t > 0.0
+		if stag_stars.visible:
+			stag_stars.rotation.y += delta * 5.0
 	if not model:
 		return
 	model.rotation.y = face

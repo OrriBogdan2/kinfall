@@ -52,6 +52,11 @@ static func dominant(k) -> String:
 	return best
 
 static func line(k, cat: String, extra := "") -> String:
+	# young kin can only say their own name (and a word or two once they trust you)
+	var stage := Care.speech(k.rec) if k.rec.size() > 0 else 3
+	if stage < 2 or (stage == 2 and randf() < 0.5):
+		var rc: Dictionary = k.rec if k.rec.size() > 0 else {"species": k.species}
+		return KinSpeak.bark(rc, cat if not (cat == "revive" and k.trust < 25.0) else "revive_low")
 	var c := cat
 	if cat == "revive" and k.trust < 25.0:
 		c = "revive_low"

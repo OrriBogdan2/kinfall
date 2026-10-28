@@ -180,10 +180,19 @@ func _draw_world_labels() -> void:
 			if h.shield > 0.0:
 				_bar(Rect2(sp + Vector2(-26, 4), Vector2(52, 3)), h.shield / 60.0, Color("cfe8ff"), Color(0, 0, 0, 0))
 	for mb in m.mobs:
-		if mb.dead or mb.hp >= mb.max_hp or cam.is_position_behind(mb.position):
+		if mb.dead or cam.is_position_behind(mb.position):
 			continue
-		var sp := cam.unproject_position(mb.position + Vector3(0, 1.4 if mb.mkind != "brute" else 2.4, 0))
-		_bar(Rect2(sp + Vector2(-20, 0), Vector2(40, 4)), mb.hp / mb.max_hp, Color("ff8a6a"))
+		var hy := 1.4
+		if mb.mkind == "brute": hy = 2.4
+		elif mb.mkind == "warden": hy = 3.4
+		var sp := cam.unproject_position(mb.position + Vector3(0, hy, 0))
+		if mb.stagger_t > 0.0:
+			_ctext(sp + Vector2(0, -10), "STAGGERED", 15, Color("fff27a"), big)
+		elif mb.stag_open > 0.0:
+			var a := 0.75 + 0.25 * sin(m.time * 12.0)
+			_ctext(sp + Vector2(0, -10), "STAGGERABLE", 14, Color(0.85, 0.6, 1.0, a), big)
+		if mb.hp < mb.max_hp:
+			_bar(Rect2(sp + Vector2(-20, 0), Vector2(40, 4)), mb.hp / mb.max_hp, Color("e0b0ff") if mb.stagger_t > 0.0 else Color("ff8a6a"))
 	# found weapons: name and rarity when you're close enough to care
 	var pp: Vector3 = m.player.pos if m.player else cam.focus
 	for wp in m.wpicks:

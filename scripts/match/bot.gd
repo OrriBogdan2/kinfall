@@ -207,6 +207,9 @@ func _use_sig(m: Match, h: Hunter, tgt: Ent) -> void:
 					h.inp["aim"] = Vector3(h.pos.x - to.x * 6.0, h.pos.y, h.pos.z - to.y * 6.0)
 			"ram": go = d < 5.5 and d > 1.0 and _safe(m, h, to, d + 1.5)
 			"dome": go = tgt is Hunter and h.hp < h.max_hp * 0.65
+		# a staggerable monster in reach: any damaging ability will do
+		if tgt is Mob and (tgt as Mob).stag_open > 0.0 and d < 6.0 and Abil.e_id(h) in ["tether", "hook", "rocketjump", "ram"]:
+			go = true
 		if go:
 			h.inp["sig"] = true
 	if h.ult >= 1.0 and tgt:

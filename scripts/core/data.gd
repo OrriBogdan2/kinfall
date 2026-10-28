@@ -205,15 +205,15 @@ const MOBS := {
 	"spitter": {"name": "Spitter", "hp": 44.0, "speed": 2.2, "dmg": 11.0, "range": 8.0, "windup": 0.65, "cd": 2.2,
 		"r": 0.55, "gems": 3, "color": Color("4f9e6e"), "attack": "spit"},
 	"brute": {"name": "Brute", "hp": 170.0, "speed": 3.0, "dmg": 24.0, "range": 2.2, "windup": 0.95, "cd": 2.6,
-		"r": 0.9, "gems": 9, "color": Color("8a5a48"), "attack": "slam"},
+		"r": 0.9, "gems": 9, "color": Color("8a5a48"), "attack": "slam", "stag": true},
 	"bomber": {"name": "Puffbomb", "hp": 26.0, "speed": 4.4, "dmg": 16.0, "range": 1.7, "windup": 1.0, "cd": 1.0,
 		"r": 0.5, "gems": 2, "color": Color("e07a3a"), "attack": "fuse", "slam_r": 2.5},
 	"sentinel": {"name": "Sentinel", "hp": 70.0, "speed": 0.0, "dmg": 8.0, "range": 10.0, "windup": 0.8, "cd": 2.6,
-		"r": 0.55, "gems": 4, "color": Color("5ab0c8"), "attack": "volley"},
+		"r": 0.55, "gems": 4, "color": Color("5ab0c8"), "attack": "volley", "stag": true},
 	"glimmer": {"name": "Glimmerkin", "hp": 110.0, "speed": 5.9, "dmg": 0.0, "range": 0.0, "windup": 1.0, "cd": 99.0,
-		"r": 0.45, "gems": 22, "color": Color("ffd25a"), "attack": "none", "flee": true},
+		"r": 0.45, "gems": 22, "color": Color("ffd25a"), "attack": "none", "flee": true, "stag": true},
 	"warden": {"name": "The Warden", "hp": 820.0, "speed": 3.3, "dmg": 30.0, "range": 2.8, "windup": 0.85, "cd": 2.1,
-		"r": 1.3, "gems": 30, "color": Color("5a4a7a"), "attack": "slam", "slam_r": 3.3},
+		"r": 1.3, "gems": 30, "color": Color("5a4a7a"), "attack": "slam", "slam_r": 3.3, "stag": true},
 }
 
 ## Crops grow on the farm while you play matches. Each becomes something for your next match.

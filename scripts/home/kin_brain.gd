@@ -80,7 +80,7 @@ static func reply(rec: Dictionary, text: String) -> String:
 			else: lines = ["We haven't done much together yet. Let's make some memories."]
 		"who":
 			var sp: Dictionary = Data.KIN[rec["species"]]
-			lines = ["I'm %s! A %s %s, level %d." % [rec["name"], sp["type"], sp["name"], int(rec["level"])]]
+			lines = ["I'm %s! A %s-type %s, level %d." % [rec["name"], sp["type"], sp["name"], int(rec["level"])]]
 		"friends":
 			lines = ["Other kin are nice, but you're my hunter.", "Can we go visit someone? I want to show off."]
 		"play":

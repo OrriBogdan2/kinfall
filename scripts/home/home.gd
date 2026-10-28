@@ -1214,7 +1214,7 @@ func _pet_kin(k: Dictionary) -> void:
 		pet_done[rec["uid"]] = int(Save.d["matches"])
 		Save.remember(rec, "petted", "got a long scratch behind the ears", 1.5)
 		Save.save_game()
-		_say(k, ["Hehe!", "More!", "That's the spot.", "♥"][randi() % 4], 1.6)
+		_say(k, KinSpeak.say(rec, "love") if Care.speech(rec) < 3 else ["Hehe!", "More!", "That's the spot.", "♥"][randi() % 4], 1.6)
 
 ## Fetch: you toss a ball toward the cursor, the kin runs it down and brings it back.
 func _play_with_kin(k: Dictionary) -> void:
@@ -1449,6 +1449,9 @@ func _close_chat() -> void:
 
 func _greeting(rec: Dictionary) -> String:
 	var t := float(rec["trust"])
+	if Care.speech(rec) < 3:
+		var w := Care.want(rec)
+		return KinSpeak.say(rec, "sad" if t < 30.0 else ("question" if w != "" else "happy"), "cold" if t < 30.0 else (w if w != "" else "hello"))
 	if t > 70.0: return "Hi! I was hoping you'd come say hi."
 	if t < 30.0: return "...oh. It's you."
 	return "Hey. What's up?"
@@ -1482,7 +1485,8 @@ func _send_chat() -> void:
 		dots.tween_interval(0.35)
 	var t0 := Time.get_ticks_msec() / 1000.0
 	var msgs := []
-	var brief := Bridge.kin_brief(rec) + "\n\nYou are chatting with your hunter at home on the farm. Stay in character and answer what they actually said, in one to three short sentences, plain text, no emoji, no stage directions. " + \
+	var brief := Bridge.kin_brief(rec) + "\n\nYou are chatting with your hunter at home on the farm. Stay in character and respond to what they actually said. " + \
+		("Answer in one to three short sentences, plain text, no emoji, no stage directions. " if Care.speech(rec) >= 3 else "Follow the rule above about how you can talk. Keep it short. ") + \
 		"If they apologise or are kind, you can warm up a little. If they ask you to do something in a match, you can agree or set conditions based on your trust."
 	var turns: Array = chat_log.slice(1)
 	turns = turns.slice(maxi(0, turns.size() - 10))
@@ -1497,7 +1501,7 @@ func _send_chat() -> void:
 	Bridge.ask(msgs, func(reply: String):
 		var offline := reply.strip_edges() == ""
 		if offline:
-			reply = KinBrain.reply(rec, txt)
+			reply = KinSpeak.reply(rec, txt)
 		# a kin takes a moment to answer: at least 2 seconds, longer for longer replies
 		var want := clampf(2.0 + reply.length() * 0.03, 2.0, 6.0)
 		var wait := want - (Time.get_ticks_msec() / 1000.0 - t0)

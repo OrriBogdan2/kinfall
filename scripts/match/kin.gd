@@ -196,7 +196,7 @@ func cast(p: Vector3) -> void:
 		"fireball":
 			var d := Vector2(p.x - pos.x, p.z - pos.z)
 			var spd := 13.0
-			m.spawn_shot(self, pos + Vector3(0, 0.5, 0), d.normalized() * spd, 22.0 * pw, clampf(d.length(), 1.0, 9.0) / spd, 0.32, Color("ff7a3d"), {"boom": 1.9, "boom_kb": 6.0, "burn": 6.0, "kin": true})
+			m.spawn_shot(self, pos + Vector3(0, 0.5, 0), d.normalized() * spd, 22.0 * pw, clampf(d.length(), 1.0, 9.0) / spd, 0.32, Color("ff7a3d"), {"boom": 1.9, "boom_kb": 6.0, "burn": 6.0, "kin": true, "ab": "kin"})
 		"wave":
 			var d := Vector2(p.x - pos.x, p.z - pos.z).normalized()
 			m.fx.cone(pos, d, 5.0, Color("6cc8ff"))
@@ -204,14 +204,14 @@ func cast(p: Vector3) -> void:
 			for f in foes:
 				var to := Vector2(f.pos.x - pos.x, f.pos.z - pos.z)
 				if to.length() < 5.0 and to.normalized().dot(d) > 0.55:
-					f.hurt(12.0 * pw, owner_h if owner_h else self, {"kb": d * 10.0, "slow": 1.6, "src": "kin"})
+					f.hurt(12.0 * pw, owner_h if owner_h else self, {"kb": d * 10.0, "slow": 1.6, "src": "kin", "ab": "kin"})
 		"snare":
 			m.fx.ring(p, 2.2, Color("8fd16a"), 0.5)
 			m.net_fx(["ring", m._r(p.x), m._r(p.y), m._r(p.z), 2.2, "8fd16a"])
 			m.fx.burst(p + Vector3(0, 0.3, 0), Color("6fbf5a"), 22, 3.0)
 			for f in foes:
 				if Vector2(f.pos.x - p.x, f.pos.z - p.z).length() < 2.2:
-					f.hurt(8.0 * pw, owner_h if owner_h else self, {"root": 1.6, "src": "kin"})
+					f.hurt(8.0 * pw, owner_h if owner_h else self, {"root": 1.6, "src": "kin", "ab": "kin"})
 		"chain":
 			var hit := []
 			var from := pos
@@ -228,7 +228,7 @@ func cast(p: Vector3) -> void:
 				hit.append(best)
 				m.fx.bolt(from + Vector3(0, 0.6, 0), best.pos + Vector3(0, 0.8, 0), Color("fff27a"))
 				m.net_fx(["bolt", m._r(from.x), m._r(from.y + 0.6), m._r(from.z), m._r(best.pos.x), m._r(best.pos.y + 0.8), m._r(best.pos.z), "fff27a"])
-				best.hurt(18.0 * pw, owner_h if owner_h else self, {"stun": 0.4, "src": "kin"})
+				best.hurt(18.0 * pw, owner_h if owner_h else self, {"stun": 0.4, "src": "kin", "ab": "kin"})
 				from = best.pos; near = best.pos
 		"slam":
 			var g: float = m.world.ground_at(p.x, p.z)
@@ -247,7 +247,7 @@ func cast(p: Vector3) -> void:
 			for f in foes:
 				var to := Vector2(f.pos.x - pos.x, f.pos.z - pos.z)
 				if to.length() < 2.8:
-					f.hurt(8.0 * pw, owner_h if owner_h else self, {"kb": to.normalized() * 10.5, "lift": 5.0, "src": "kin"})
+					f.hurt(8.0 * pw, owner_h if owner_h else self, {"kb": to.normalized() * 10.5, "lift": 5.0, "src": "kin", "ab": "kin"})
 
 func _slam_land() -> void:
 	m.fx.ring(pos, 2.0, Color("d8c9b0"), 0.35)
@@ -258,7 +258,7 @@ func _slam_land() -> void:
 	for f in m.foes_of(team):
 		var to := Vector2(f.pos.x - pos.x, f.pos.z - pos.z)
 		if to.length() < 2.0:
-			f.hurt(20.0 * power, owner_h if owner_h else self, {"kb": to.normalized() * 10.0, "lift": 6.0, "src": "kin"})
+			f.hurt(20.0 * power, owner_h if owner_h else self, {"kb": to.normalized() * 10.0, "lift": 6.0, "src": "kin", "ab": "kin"})
 
 # ------------------------------------------------------------------ simulation
 func sim(dt: float) -> void:
@@ -318,7 +318,7 @@ func _sim_fly(dt: float) -> void:
 			if Vector2(f.pos.x - pos.x, f.pos.z - pos.z).length() < f.r + 0.5 and absf(f.pos.y + 0.6 - pos.y) < 1.6:
 				fly["hit"][f.nid] = true
 				var dirv := Vector2(b.x - a.x, b.z - a.z).normalized()
-				var extra := {"kb": dirv * (7.0 if species == "pebbit" else 4.0), "stun": 0.6, "src": "throw"}
+				var extra := {"kb": dirv * (7.0 if species == "pebbit" else 4.0), "stun": 0.6, "src": "throw", "ab": "throw"}
 				match sp["type"]:
 					"ember": extra["burn"] = 5.0
 					"tide": extra["slow"] = 1.5

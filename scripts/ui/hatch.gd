@@ -413,7 +413,8 @@ func _show_name() -> void:
 	var card := UI.card(UI.CARD, 16, 18)
 	card.custom_minimum_size = Vector2(520, 0)
 	var v := UI.vbox(10); card.add_child(v)
-	v.add_child(UI.label("Your %s is %s. Give it a name." % [sp["name"], String(sp["voice"]).split(",")[0]], 16))
+	v.add_child(UI.label("\"%s\"" % KinSpeak.babble(sp_id, "happy"), 26, sp["color"]))
+	v.add_child(UI.label("Your %s is %s. It can only say its own name for now. Give it a name." % [sp["name"], String(sp["voice"]).split(",")[0]], 16))
 	var name_row := UI.hbox(8)
 	var nl := UI.label("Its name", 15, UI.MUTED); nl.custom_minimum_size.x = 120
 	name_row.add_child(nl)

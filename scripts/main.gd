@@ -65,6 +65,10 @@ func _ready() -> void:
 		MC.new().run(range(1, 61), 128, 16)
 		get_tree().quit()
 		return
+	if "--speak-test" in args:
+		load("res://tools/speaktest.gd").new().run()
+		get_tree().quit()
+		return
 	if "--simtest" in args:
 		_simtest(opts)
 		return
@@ -242,7 +246,7 @@ func _simtest(opts: Dictionary) -> void:
 	for b in m.breaks: nb += int(b["dead"])
 	var wr: Array = []
 	for h in m.hunters: wr.append(h.wrar)
-	print("SIMSTAT breaks %d/%d weapons left %d rarities %s" % [nb, m.breaks.size(), m.wpicks.size(), str(wr)])
+	print("SIMSTAT breaks %d/%d weapons left %d rarities %s staggers %d" % [nb, m.breaks.size(), m.wpicks.size(), str(wr), m.stag_n])
 	print("SIMTEST done in %dms, sim time %d, result %s" % [Time.get_ticks_msec() - t0, m.time, str(m.result)])
 	for h in m.hunters:
 		print("  %s team %d %s knocks %d kills %d dmg %d gems %d %s" % [h.pname, h.team, h.cls, h.knocks, h.kills, h.dmg_done, h.gems, "OUT" if h.out else ("EXTRACTED" if h.extracted else "alive")])
