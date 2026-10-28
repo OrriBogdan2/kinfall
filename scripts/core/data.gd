@@ -181,6 +181,18 @@ const KIN := {
 		"voice": "airy, teasing, dramatic"},
 }
 
+## Things a kin can wear. Bought at the stall, put on from the kin's card, worn into matches too.
+const ACCS := {
+	"bell": {"name": "Little bell", "price": 25, "col": Color("f2c84a")},
+	"bow": {"name": "Ribbon bow", "price": 30, "col": Color("ff7aa8")},
+	"leafhat": {"name": "Leaf hat", "price": 35, "col": Color("5aa84a")},
+	"scarf": {"name": "Cozy scarf", "price": 40, "col": Color("d9604a")},
+	"crown": {"name": "Flower crown", "price": 45, "col": Color("ffd0e8")},
+	"goggles": {"name": "Flight goggles", "price": 55, "col": Color("8b6d52")},
+	"cape": {"name": "Hero cape", "price": 70, "col": Color("5a7ae0")},
+	"tophat": {"name": "Tiny top hat", "price": 80, "col": Color("2b2a33")},
+}
+
 const KIN_SKILLS := {
 	"fireball": {"name": "Fireball", "cd": 6.0, "desc": "A fireball that explodes and sets foes burning."},
 	"wave": {"name": "Tidal Wave", "cd": 7.0, "desc": "A wave that shoves and slows everything in front of it."},

@@ -179,6 +179,31 @@ func _ready() -> void:
 			var cb := a.substr(17)
 			Save.d["buildings"].append(cb)
 			get_tree().create_timer(0.3).timeout.connect(func(): _construct(cb))
+		if a.begins_with("--kin-needs="):
+			var nv := a.substr(12).split(",")
+			var nk := Save.active_kin()
+			Care.ensure(nk)
+			for i in mini(4, nv.size()): nk["needs"][Care.NEEDS[i]] = float(nv[i])
+			nk["needs_t"] = Time.get_unix_time_from_system()
+			get_tree().create_timer(0.3).timeout.connect(func():
+				var ke := _kin_entry(nk)
+				if not ke.is_empty():
+					ke["pos"] = ppos + Vector3(1.2, 0, -0.4); (ke["node"] as Node3D).position = ke["pos"]; ke["hold_t"] = 30.0)
+		if a == "--care-test":
+			# test: feed, brush, bath, nap and dress in a row
+			Save.d["items"]["kibble"] = 2; Save.d["crops"]["sunroot"] = 1
+			Save.d["accs"] = ["scarf"]
+			var ck := Save.active_kin()
+			get_tree().create_timer(0.6).timeout.connect(func(): _care_feed(ck, "kibble"))
+			get_tree().create_timer(4.0).timeout.connect(func(): _care_feed(ck, "sunroot"))
+			get_tree().create_timer(7.5).timeout.connect(func(): _care_brush(ck))
+			get_tree().create_timer(10.5).timeout.connect(func(): _set_acc(ck, "scarf"))
+			get_tree().create_timer(11.5).timeout.connect(func(): _care_bath(ck))
+			get_tree().create_timer(19.0).timeout.connect(func(): _care_nap(ck); print("CARETEST ", ck["needs"], " known ", ck["known"], " items ", Save.d["items"]))
+			get_tree().create_timer(22.0).timeout.connect(func(): print("CARETEST2 nap ", _kin_entry(ck).get("nap_t", 0), " acc ", ck.get("acc", "")); get_tree().quit())
+		if a.begins_with("--drill="):
+			var dstat := a.substr(8)
+			get_tree().create_timer(0.4).timeout.connect(func(): _start_drill(Save.active_kin(), dstat))
 		if a == "--home-night": day_t = 0.97
 		if a == "--home-noon": day_t = 0.5
 		if a == "--home-rain":
@@ -215,6 +240,7 @@ func _ready() -> void:
 			var xy := a.substr(10).split(",")
 			ppos = Vector3(float(xy[0]), 0, float(xy[1])); player.position = ppos; cam.snap(ppos)
 	_spawn_kin()
+	_setup_care()
 	if "--hero-lineup" in dbg:
 		var hi := 0
 		for hid in Data.HEROES:
@@ -551,9 +577,12 @@ func _process(delta: float) -> void:
 	_update_sky(d)
 	_move_player(d)
 	_move_kin(d)
-	cam.follow(ppos, d, panel_open == "")
+	_care_tick(d)
+	_update_bubbles(d)
+	_train_process(d)
+	cam.follow(ppos, d, panel_open == "" and train.is_empty())
 	_find_interact()
-	if panel_open == "" and not building_now and not Overlay.is_open() and not chat_open and not interact.is_empty():
+	if panel_open == "" and not building_now and not Overlay.is_open() and not chat_open and train.is_empty() and not interact.is_empty():
 		if Input.is_action_just_pressed("interact"):
 			_use(interact)
 		elif interact["kind"] == "kin" and visit.is_empty():
@@ -563,7 +592,7 @@ func _process(delta: float) -> void:
 
 func _move_player(d: float) -> void:
 	var mv := Vector2.ZERO
-	if panel_open == "" and not Overlay.is_open() and not chat_open:
+	if panel_open == "" and not Overlay.is_open() and not chat_open and train.is_empty():
 		mv = Vector2(Input.get_axis("left", "right"), Input.get_axis("up", "down"))
 		if mv.length() > 1.0: mv = mv.normalized()
 	var hv := Vector2(pvel.x, pvel.z)
@@ -578,7 +607,7 @@ func _move_player(d: float) -> void:
 	else: hv.y = 0.0
 	pvel = Vector3(hv.x, 0, hv.y)
 	# jumping, just for fun
-	if panel_open == "" and not Overlay.is_open() and not chat_open and not air and Input.is_action_just_pressed("jump"):
+	if panel_open == "" and not Overlay.is_open() and not chat_open and train.is_empty() and not air and Input.is_action_just_pressed("jump"):
 		pvy = JUMP_V
 		Sfx.play("jump", null, -12.0)
 	if air or pvy > 0.0:
@@ -621,6 +650,9 @@ func _move_kin(d: float) -> void:
 		var pos: Vector3 = k["pos"]
 		var rec: Dictionary = k["rec"]
 		var trust := float(rec["trust"])
+		var locked: bool = float(k.get("nap_t", 0.0)) > 0.0 or k.has("bath")
+		if locked:
+			k.erase("chase"); k.erase("task")
 		var here := world.island_of(pos.x, pos.z)
 		# playing tag: chase a friend, then it's their turn
 		var other = k.get("chase", null)
@@ -651,16 +683,18 @@ func _move_kin(d: float) -> void:
 					_emote(k, "♪")
 					rec["trust"] = minf(100.0, float(rec["trust"]) + 0.2)
 				k["t"] = randf_range(1.0, 2.0)
-		elif k["t"] <= 0.0 and rec.get("farmhand", false) and visit.is_empty() and (k["farm_t"] if k.has("farm_t") else 0.0) <= 0.0 and _dry_plot() != []:
+		elif k["t"] <= 0.0 and not locked and rec.get("farmhand", false) and visit.is_empty() and (k["farm_t"] if k.has("farm_t") else 0.0) <= 0.0 and _dry_plot() != []:
 			k["task"] = _dry_plot()
 			k["task_t"] = 15.0
 			k["farm_t"] = 6.0
 		if k.has("farm_t"): k["farm_t"] = float(k["farm_t"]) - d
-		if k["t"] <= 0.0 and not k.has("chase") and not k.has("task"):
+		if k["t"] <= 0.0 and not locked and not k.has("chase") and not k.has("task") and not k.has("fetch"):
 			k["t"] = randf_range(2.0, 5.0)
 			var night := sin((day_t - 0.25) * TAU) < -0.2
 			var friends: Array = kins.filter(func(o): return o != k and not o.get("busy", false) and world.island_of(o["pos"].x, o["pos"].z) == here)
-			if night and randf() < 0.6:
+			if _care_goal(k):
+				pass
+			elif night and randf() < 0.6:
 				# at night they head for bed and doze
 				k["goal"] = k.get("bed", world.random_ground(maxi(here, 0)))
 				if randf() < 0.5: _emote(k, "z")
@@ -677,6 +711,7 @@ func _move_kin(d: float) -> void:
 				_emote(k, "♥" if trust > 65.0 else ("?" if trust < 30.0 else "★"))
 		if k.has("fetch"):
 			_fetch_step(k, d)
+		_care_step(k, d)
 		var hold := float(k.get("hold_t", 0.0))
 		if hold > 0.0:
 			# being petted or talked to: it stays put and looks at you
@@ -687,7 +722,7 @@ func _move_kin(d: float) -> void:
 		if goal != Vector3.INF:
 			var to := Vector2(goal.x - pos.x, goal.z - pos.z)
 			if to.length() > 0.4:
-				wish = to.normalized() * (4.4 if k.has("fetch") else (3.6 if k.has("chase") else 2.4))
+				wish = to.normalized() * (4.4 if k.has("fetch") else (3.6 if k.has("chase") else 2.4)) * _care_speed(rec)
 		var hv := Vector2(k["vel"].x, k["vel"].z)
 		hv += (wish - hv) * (1.0 - exp(-8.0 * d))
 		var nx := pos.x + hv.x * d
@@ -751,8 +786,12 @@ func _find_interact() -> void:
 	for k in kins:
 		var d := p2.distance_to(Vector2(k["pos"].x, k["pos"].z))
 		if d < bd: bd = d; best = {"kind": "kin", "k": k}
+	if is_instance_valid(nest) and p2.distance_to(Vector2(NEST_AT.x, NEST_AT.z)) < 1.5:
+		best = {"kind": "egg"}
+	if p2.distance_to(Vector2(YARD_AT.x, YARD_AT.z)) < 1.6 and best.is_empty():
+		best = {"kind": "yard"}
 	interact = best
-	if panel_open != "" or best.is_empty() or building_now or chat_open:
+	if panel_open != "" or best.is_empty() or building_now or chat_open or not train.is_empty():
 		prompt_box.visible = false
 		return
 	prompt_box.visible = true
@@ -794,6 +833,8 @@ func _label_for(it: Dictionary) -> String:
 		"kin":
 			var rec: Dictionary = it["k"]["rec"]
 			return "Spend time with %s" % rec["name"]
+		"egg": return "Help it hatch!" if _egg_ready() else "Warm the egg"
+		"yard": return "Train your partner"
 	return ""
 
 func _use(it: Dictionary) -> void:
@@ -811,8 +852,30 @@ func _use(it: Dictionary) -> void:
 		"portal": _open_expedition()
 		"house": Game.goto("interior", {"room": "house"})
 		"kin": _pet_kin(it["k"])
+		"egg":
+			if _egg_ready():
+				_hatch_nest_egg()
+			else:
+				fx.burst(NEST_AT + Vector3(0, 0.5, 0), Color("ffd28a"), 8, 1.4)
+				_toast("Warm and still. It hatches after your next expedition, or in a few minutes")
+		"yard":
+			var ak := Save.active_kin()
+			if not ak.is_empty(): _open_train(ak)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if not train.is_empty():
+		if event.is_action_pressed("interact") or event.is_action_pressed("jump") or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
+			_train_hit()
+			get_viewport().set_input_as_handled()
+			return
+		if event.is_action_pressed("menu"):
+			# walk away from the drill
+			var tk: Dictionary = train["k"]
+			tk["busy"] = false
+			train = {}
+			if is_instance_valid(train_bar): train_bar.queue_free()
+			get_viewport().set_input_as_handled()
+			return
 	if event is InputEventMouseButton and event.pressed and panel_open == "":
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP: cam.zoom_to = clampf(cam.zoom_to - 0.08, 0.55, 1.6)
 		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: cam.zoom_to = clampf(cam.zoom_to + 0.08, 0.55, 1.6)
@@ -1139,39 +1202,71 @@ func _open_kitchen() -> void:
 	if Save.d.get("treat", "") != "":
 		v.add_child(UI.label("Ready for the next match: " + _treat_name(Save.d["treat"]), 15, UI.GOLD))
 
+var shop_tab := "Seeds"
+
 func _open_shop() -> void:
-	var v := _new_panel("Market stall", 520)
-	v.add_child(UI.label("You have %d gems." % int(Save.d["gems"]), 16, UI.GOLD))
-	for s in Data.CROPS:
-		var cd: Dictionary = Data.CROPS[s]
-		var sk: String = s
-		_shop_row(v, "%s seed" % cd["name"], cd["desc"], int(cd["price"]), func(): Save.add_seed(sk, 1))
-	_shop_row(v, "Tonic", "Heals 45 in a match (key 1).", 30, func(): Save.add_item("tonic", 1))
-	var sell_any := false
-	for s in Data.CROPS:
-		var n := int(Save.d["crops"].get(s, 0))
-		if n <= 0: continue
-		if not sell_any:
-			v.add_child(UI.section("Sell your harvest"))
-			sell_any = true
-		var sk: String = s
-		var gain := maxi(1, int(round(int(Data.CROPS[s]["price"]) * 0.4)))
-		var row := UI.hbox(10)
-		var l := UI.label("%s  ×%d" % [Data.CROPS[s]["name"], n], 16, Data.CROPS[s]["color"]); l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		row.add_child(l)
-		row.add_child(UI.button("Sell 1 for %d" % gain, func():
-			if int(Save.d["crops"].get(sk, 0)) <= 0: return
-			Save.d["crops"][sk] = int(Save.d["crops"][sk]) - 1
-			Save.d["gems"] = int(Save.d["gems"]) + gain
-			Sfx.play("pickup")
-			Save.save_game()
-			_refresh_top()
-			_open_shop(), 140))
-		v.add_child(row)
-	if int(Save.d["plot_cap"]) < 8:
-		_shop_row(v, "Two more plots", "Grow more at once.", 120 + 80 * (int(Save.d["plot_cap"]) - 4), func():
-			Save.d["plot_cap"] = int(Save.d["plot_cap"]) + 2
-			_build_plots())
+	var v := _new_panel("Market stall", 560)
+	var top := UI.hbox(6)
+	for t in ["Seeds", "Kin care", "Wear", "Sell"]:
+		var tn: String = t
+		top.add_child(UI.choice(t, t == shop_tab, func(): shop_tab = tn; UI._page_of.erase("Market stall"); _open_shop()))
+	top.set_meta("pg_keep", true)
+	v.add_child(top)
+	var gl := UI.label("You have %d gems." % int(Save.d["gems"]), 15, UI.GOLD)
+	gl.set_meta("pg_keep", true)
+	v.add_child(gl)
+	match shop_tab:
+		"Seeds":
+			for s in Data.CROPS:
+				var cd: Dictionary = Data.CROPS[s]
+				var sk: String = s
+				_shop_row(v, "%s seed" % cd["name"], cd["desc"], int(cd["price"]), func(): Save.add_seed(sk, 1))
+			_shop_row(v, "Tonic", "Heals 45 in a match (key 1).", 30, func(): Save.add_item("tonic", 1))
+			if int(Save.d["plot_cap"]) < 8:
+				_shop_row(v, "Two more plots", "Grow more at once.", 120 + 80 * (int(Save.d["plot_cap"]) - 4), func():
+					Save.d["plot_cap"] = int(Save.d["plot_cap"]) + 2
+					_build_plots())
+		"Kin care":
+			for f in Care.FOODS:
+				var fd: Dictionary = Care.FOODS[f]
+				var fk: String = f
+				_shop_row(v, "%s  (have %d)" % [fd["name"], int(Save.d["items"].get(f, 0))], fd["desc"], int(fd["price"]), func(): Save.add_item(fk, 1))
+		"Wear":
+			var owned: Array = Save.d.get("accs", [])
+			for a in Data.ACCS:
+				var ad: Dictionary = Data.ACCS[a]
+				var ak: String = a
+				if owned.has(a):
+					var row := UI.hbox(10)
+					var l := UI.label("%s  ·  yours" % ad["name"], 16, ad["col"]); l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+					row.add_child(l)
+					v.add_child(row)
+				else:
+					_shop_row(v, ad["name"], "Put it on from a kin's card (Dress). Worn into matches too.", int(ad["price"]), func():
+						if not Save.d.has("accs"): Save.d["accs"] = []
+						Save.d["accs"].append(ak))
+		"Sell":
+			var sell_any := false
+			for s in Data.CROPS:
+				var n := int(Save.d["crops"].get(s, 0))
+				if n <= 0: continue
+				sell_any = true
+				var sk: String = s
+				var gain := maxi(1, int(round(int(Data.CROPS[s]["price"]) * 0.4)))
+				var row := UI.hbox(10)
+				var l := UI.label("%s  ×%d" % [Data.CROPS[s]["name"], n], 16, Data.CROPS[s]["color"]); l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				row.add_child(l)
+				row.add_child(UI.button("Sell 1 for %d" % gain, func():
+					if int(Save.d["crops"].get(sk, 0)) <= 0: return
+					Save.d["crops"][sk] = int(Save.d["crops"][sk]) - 1
+					Save.d["gems"] = int(Save.d["gems"]) + gain
+					Sfx.play("pickup")
+					Save.save_game()
+					_refresh_top()
+					_open_shop(), 140))
+				v.add_child(row)
+			if not sell_any:
+				v.add_child(UI.label("Nothing to sell. Harvest your plots first.", 15, UI.MUTED))
 
 func _shop_row(v: VBoxContainer, name_txt: String, desc: String, price: int, on_buy: Callable) -> void:
 	var row := UI.hbox(10)
@@ -1203,6 +1298,12 @@ func _face(at: Vector3) -> void:
 
 func _pet_kin(k: Dictionary) -> void:
 	var rec: Dictionary = k["rec"]
+	if float(k.get("nap_t", 0.0)) > 0.0:
+		# a gentle pat wakes it up
+		k["nap_t"] = 0.01
+	var loves_pet: bool = rec["likes"]["play"] == "pet"
+	Care.change(rec, "joy", 12.0 if loves_pet else 5.0)
+	if loves_pet and Care.discover(rec, "play"): _toast("%s loves scratches" % rec["name"])
 	k["hold_t"] = 1.0
 	k["joy_t"] = 0.9
 	_day1("pet")
@@ -1268,6 +1369,11 @@ func _fetch_step(k: Dictionary, d: float) -> void:
 				_day1("fetch")
 				Sfx.play("kin_happy", null, -6.0)
 				var rec: Dictionary = k["rec"]
+				var loves_fetch: bool = rec["likes"]["play"] == "fetch"
+				Care.change(rec, "joy", 24.0 if loves_fetch else 14.0)
+				Care.change(rec, "energy", -6.0)
+				Care.change(rec, "clean", -4.0)
+				if loves_fetch and Care.discover(rec, "play"): _toast("%s loves playing fetch" % rec["name"])
 				if int(rec.get("played", -1)) != int(Save.d["matches"]):
 					rec["played"] = int(Save.d["matches"])
 					Save.remember(rec, "played", "played fetch with you on the farm", 1.5)
@@ -1292,95 +1398,98 @@ func _say(k: Dictionary, text: String, secs := 4.0) -> void:
 	k["say_t"] = secs
 	(k["say"] as Label3D).visible = true
 
-## The details card: everything about one kin, laid out to fit on screen.
+## The details card: everything about one kin, laid out to fit on screen without scrolling.
 func _open_kin(rec: Dictionary) -> void:
 	var sp: Dictionary = Data.KIN[rec["species"]]
 	Evo.ensure(rec)
-	var v := _new_panel("%s the %s" % [rec["name"], Evo.form_name(rec)], 860)
-	var cols := UI.hbox(18)
+	Care.ensure(rec)
+	var col: Color = Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"]
+	var v := _new_panel("%s the %s%s" % [rec["name"], "shimmering " if rec.get("shimmer", false) else "", Evo.form_name(rec)], 920)
+	var cols := UI.hbox(22)
 	v.add_child(cols)
-	# who it is
-	var c1 := UI.vbox(6); c1.custom_minimum_size.x = 250
-	c1.add_child(UI.label("Level %d %s kin" % [int(rec["level"]), String(sp["type"]).capitalize()], 16, sp["color"]))
-	if rec["uid"] == Save.d.get("active", ""): c1.add_child(UI.label("Your partner", 13, UI.GOLD))
-	for t in [["Trust", float(rec["trust"]) / 100.0, Color("ffb3c6")], ["Bravery", float(rec["traits"]["bravery"]), sp["color"]],
-			["Loyalty", float(rec["traits"]["loyalty"]), sp["color"]], ["Temper", float(rec["traits"]["temper"]), sp["color"]],
-			["Curiosity", float(rec["traits"]["curiosity"]), sp["color"]]]:
+	var row := func(parent: Control, label_txt: String, frac: float, c: Color, right := "", lw := 64.0, bw := 130.0) -> void:
 		var r := UI.hbox(8)
-		var l := UI.label(t[0], 13, UI.MUTED); l.custom_minimum_size.x = 70
-		r.add_child(l); r.add_child(UI.bar(t[1], t[2], 150, 7))
-		c1.add_child(r)
+		var l := UI.label(label_txt, 13, UI.MUTED); l.custom_minimum_size.x = lw
+		r.add_child(l)
+		r.add_child(UI.bar(frac, c, bw, 7))
+		if right != "": r.add_child(UI.label(right, 12, UI.MUTED))
+		parent.add_child(r)
+	# who it is and how it's doing
+	var c1 := UI.vbox(5); c1.custom_minimum_size.x = 270
+	c1.add_child(UI.label("Level %d %s kin  ·  %s" % [int(rec["level"]), String(sp["type"]).capitalize(), Care.stage_name(rec)], 15, col))
+	c1.add_child(UI.label("%s nature%s" % [Care.nature(rec), "  ·  your partner" if rec["uid"] == Save.d.get("active", "") else ""], 13, UI.GOLD if rec["uid"] == Save.d.get("active", "") else UI.MUTED))
+	var bd: Array = Care.bond(rec)
+	var nb: Array = Care.next_bond(rec)
+	c1.add_child(UI.section("Bond: %s" % bd[1]))
+	var lo := float(bd[0]); var hi := float(nb[0]) if nb.size() > 0 else 100.0
+	row.call(c1, "Trust", clampf((float(rec["trust"]) - lo) / maxf(1.0, hi - lo), 0.0, 1.0), Color("ffb3c6"), ("next: %s" % nb[1]) if nb.size() > 0 else "max")
+	var bl := UI.label(String(bd[2]), 12, UI.MUTED); bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c1.add_child(bl)
+	c1.add_child(UI.section(Care.condition_name(rec)))
+	for n in Care.NEEDS:
+		row.call(c1, Care.NEED_INFO[n]["name"], Care.need(rec, n) / 100.0, Care.NEED_INFO[n]["col"], str(int(Care.need(rec, n))))
 	cols.add_child(c1)
-	# what it does
-	var c2 := UI.vbox(4); c2.custom_minimum_size.x = 250
+	# trained stats and what it does in a match
+	var c2 := UI.vbox(5); c2.custom_minimum_size.x = 270
+	c2.add_child(UI.section("Training  (cap %d)" % Care.stat_cap(rec)))
+	for s in Care.STATS:
+		row.call(c2, Care.STATS[s]["name"], float(rec["stats"][s]) / float(Care.stat_cap(rec)), Care.STATS[s]["col"], str(int(rec["stats"][s])))
 	var sk: Dictionary = Data.KIN_SKILLS[sp["skill"]]
 	var sh: Dictionary = Data.SHOULDER[sp["shoulder"]]
 	c2.add_child(UI.section("In a match"))
-	c2.add_child(UI.label("%s  (Q)" % sk["name"], 15))
-	var skd := UI.label(sk["desc"], 13, UI.MUTED); skd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c2.add_child(skd)
-	c2.add_child(UI.label("On your shoulder: %s" % sh["name"], 15))
-	var shd := UI.label(sh["desc"], 13, UI.MUTED); shd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c2.add_child(shd)
+	var skl := UI.label("%s (%s): %s" % [sk["name"], Settings.key_cap("kin_skill"), sk["desc"]], 12); skl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c2.add_child(skl)
+	var shl := UI.label("On your shoulder, %s: %s" % [sh["name"], sh["desc"]], 12, UI.MUTED); shl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c2.add_child(shl)
 	cols.add_child(c2)
-	# how it's growing
-	var c3 := UI.vbox(4); c3.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	# how it's growing, and what you know about it
+	var c3 := UI.vbox(5); c3.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var lead := Evo.leading(rec)
 	var lv := int(rec["level"])
 	var next_form := (lv / 4 + 1) * 4
 	var next_mut := lv + ((2 - lv % 4) + 4) % 4
 	if next_mut == lv: next_mut += 4
 	c3.add_child(UI.section("Growing"))
-	c3.add_child(UI.label("%s. New form at %d, mutation at %d." % [String(Evo.AFF[lead]["name"]), next_form, next_mut], 14, Evo.AFF[lead]["tint"]))
+	c3.add_child(UI.label("%s. Form at %d, mutation at %d." % [String(Evo.AFF[lead]["name"]), next_form, next_mut], 13, Evo.AFF[lead]["tint"]))
 	var tot := 0.0
 	for a in Evo.AFF: tot += maxf(0.0, float(rec["aff"][a]))
 	for a in Evo.AFF:
-		var r := UI.hbox(8)
-		var al := UI.label(Evo.AFF[a]["name"], 12, UI.MUTED); al.custom_minimum_size.x = 76
-		r.add_child(al); r.add_child(UI.bar(float(rec["aff"][a]) / maxf(tot, 1.0), Evo.AFF[a]["tint"], 120, 6))
-		c3.add_child(r)
-	var parts: Array = []
-	for mu in rec["muts"]:
-		parts.append(String(Evo.PART_NAMES.get(mu["id"], mu["id"])) + ("" if int(mu["lv"]) == 1 else " x%d" % int(mu["lv"])))
-	if parts.size() > 0:
-		var pl := UI.label("Has " + ", ".join(parts.slice(0, 5)), 12, UI.MUTED); pl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		c3.add_child(pl)
+		row.call(c3, Evo.AFF[a]["name"], float(rec["aff"][a]) / maxf(tot, 1.0), Evo.AFF[a]["tint"], "", 70.0, 110.0)
+	c3.add_child(UI.section("Likes"))
+	var known: Array = rec["known"]
+	var lk: Dictionary = rec["likes"]
+	c3.add_child(UI.label("Loves  %s" % (Care.food_name(lk["food"]) if known.has("food") else "???"), 13, UI.INK if known.has("food") else UI.MUTED))
+	c3.add_child(UI.label("Won't eat  %s" % (Care.food_name(lk["hates"]) if known.has("hates") else "???"), 13, UI.INK if known.has("hates") else UI.MUTED))
+	c3.add_child(UI.label("Favourite  %s" % (Care.PLAY_NAMES[lk["play"]] if known.has("play") else "???"), 13, UI.INK if known.has("play") else UI.MUTED))
+	if rec.has("parents"):
+		c3.add_child(UI.label("Child of %s and %s" % [rec["parents"][0], rec["parents"][1]], 12, UI.MUTED))
 	cols.add_child(c3)
-	# memories
+	# the latest memory
 	var mem: Array = rec.get("memory", [])
 	if mem.size() > 0:
-		var mc := UI.card(UI.CARD, 10, 12)
-		var mv := UI.vbox(3); mc.add_child(mv)
-		mv.add_child(UI.section("Remembers"))
-		for i in range(maxi(0, mem.size() - 3), mem.size()):
-			mv.add_child(UI.label(String(mem[i]["text"]).capitalize().substr(0, 1) + String(mem[i]["text"]).substr(1), 14))
-		v.add_child(mc)
-	# what you can do from here
+		var t := String(mem[-1]["text"])
+		v.add_child(UI.label("Remembers: %s" % (t.substr(0, 1).to_upper() + t.substr(1)), 13, UI.MUTED))
+	# looking after it
 	var btns := HFlowContainer.new()
 	btns.add_theme_constant_override("h_separation", 8); btns.add_theme_constant_override("v_separation", 8)
+	btns.add_child(UI.primary("Feed", func(): _open_feed(rec), 90))
+	btns.add_child(UI.button("Brush", func(): _care_brush(rec), 90))
+	btns.add_child(UI.button("Bath", func(): _care_bath(rec), 90))
+	btns.add_child(UI.button("Nap", func(): _care_nap(rec), 90))
+	btns.add_child(UI.button("Train", func(): _open_train(rec), 90))
+	btns.add_child(UI.button("Dress", func(): _open_wear(rec), 90))
+	var why := _can_pair(rec)
+	var pb := UI.button("Pair", func(): _open_pair(rec), 90)
+	pb.disabled = why != ""
+	pb.tooltip_text = why
+	btns.add_child(pb)
 	if rec["uid"] != Save.d.get("active", ""):
-		btns.add_child(UI.primary("Bring on expeditions", func():
+		btns.add_child(UI.button("Make partner", func():
 			Save.d["active"] = rec["uid"]
 			Save.save_game()
-			_open_kin(rec)))
-	var fed := 0
-	for s in Data.CROPS:
-		if int(Save.d["crops"].get(s, 0)) > 0 and fed < 3:
-			fed += 1
-			var crop_k: String = s
-			btns.add_child(UI.button("Feed %s" % Data.CROPS[s]["name"], func():
-				Save.d["crops"][crop_k] = int(Save.d["crops"][crop_k]) - 1
-				for af in Evo.AFF:
-					if Evo.AFF[af]["food"] == crop_k: Evo.add(rec, af, 6.0)
-				Save.remember(rec, "fed", "was fed a %s" % Data.CROPS[crop_k]["name"].to_lower(), 4.0)
-				Sfx.play("kin_happy")
-				var ke := _kin_entry(rec)
-				if not ke.is_empty(): ke["joy_t"] = 0.8; _emote(ke, "♥")
-				Save.save_game()
-				_open_kin(rec)))
+			_open_kin(rec), 130))
 	if rec.get("farmhand", false):
 		btns.add_child(UI.button("Stop farming", func():
 			rec.erase("farmhand")
 			Save.save_game()
-			_open_kin(rec)))
+			_open_kin(rec), 130))
 	else:
 		btns.add_child(UI.button("Make farmhand", func():
 			for r2 in Save.d["roster"]: r2.erase("farmhand")
@@ -1388,9 +1497,8 @@ func _open_kin(rec: Dictionary) -> void:
 			Save.remember(rec, "farm", "was put in charge of watering the farm", 1.0)
 			Save.save_game()
 			_toast("%s will water your plants" % rec["name"])
-			_open_kin(rec)))
+			_open_kin(rec), 130))
 	v.add_child(btns)
-	v.add_child(UI.label("Food shapes how it grows: Emberberry fierce, Sunroot steadfast, Mindmint curious, Tidebloom swift.", 12, UI.MUTED))
 
 # ---- talking: speech bubbles over the kin and a slim bar to type in
 var chat_open := false
@@ -1519,6 +1627,9 @@ func _send_chat() -> void:
 			if offline and not chat_offline_noted and is_instance_valid(chat_hist):
 				chat_offline_noted = true
 				_toast(_offline_reason())
+		var loves_chat: bool = rec["likes"]["play"] == "chat"
+		Care.change(rec, "joy", 6.0 if loves_chat else 2.0)
+		if loves_chat and Care.discover(rec, "play"): _toast("%s loves chatting with you" % rec["name"])
 		# talking builds a little trust, once per match
 		if int(rec.get("talked", -1)) != int(Save.d["matches"]):
 			rec["talked"] = int(Save.d["matches"])
@@ -2090,3 +2201,665 @@ func _open_settings() -> void:
 	_close_panel()
 	Overlay.ctx = "home"
 	Overlay.open_settings()
+
+# ------------------------------------------------------------------ raising: needs, care, training, eggs
+const YARD_AT := Vector3(40.9, 0, 32.7)
+const YARD_KIN := Vector3(40.6, 0, 32.9)
+const NEST_AT := Vector3(32.1, 0, 28.1)
+const POND_EDGE := Vector3(35.7, 0, 37.4)
+var care_acc := 0.0
+var care_save := 0.0
+var yard: Node3D = null
+var nest: Node3D = null
+var train := {}                 # the training session in progress
+var train_bar: Control = null
+var train_lbl: Label = null
+var train_draw: Control = null
+
+## Builds the yard and the nest, and catches every kin up on the time you were away.
+func _setup_care() -> void:
+	yard = Models.training_yard()
+	yard.position = YARD_AT
+	add_child(yard)
+	if not visit.is_empty():
+		return
+	for rec in _d()["roster"]:
+		Care.catch_up(rec)
+	Care.dex_sync()
+	_refresh_nest()
+
+func _refresh_nest() -> void:
+	if is_instance_valid(nest):
+		nest.queue_free()
+	nest = null
+	var egg: Dictionary = Save.d.get("egg", {})
+	if egg.is_empty() or not visit.is_empty():
+		return
+	var a := Save.kin(String(egg.get("a", "")))
+	var col: Color = Data.KIN[a["species"]]["color"] if not a.is_empty() else Color("f2e6cf")
+	nest = Models.nest_egg(col, Color("fff6c0"))
+	nest.position = NEST_AT
+	add_child(nest)
+
+func _egg_ready() -> bool:
+	var egg: Dictionary = Save.d.get("egg", {})
+	if egg.is_empty():
+		return false
+	return int(Save.d["matches"]) >= int(egg.get("m", 0)) or Time.get_unix_time_from_system() >= float(egg.get("t", 0.0))
+
+## Needs drift every second; kin asleep in bed (or napping) get their energy back.
+func _care_tick(d: float) -> void:
+	if not visit.is_empty():
+		return
+	care_acc += d
+	care_save += d
+	if care_acc >= 1.0:
+		var night := sin((day_t - 0.25) * TAU) < -0.2
+		for k in kins:
+			var rec: Dictionary = k["rec"]
+			var in_bed: bool = k.has("bed") and Vector2(k["pos"].x - k["bed"].x, k["pos"].z - k["bed"].z).length() < 0.6
+			Care.tick(rec, care_acc, float(k.get("nap_t", 0.0)) > 0.0 or (night and in_bed))
+		care_acc = 0.0
+	if care_save > 20.0:
+		care_save = 0.0
+		Save.save_game()
+	# a little life: an egg wobbles when it's close, dusty kin shed a little dust
+	if is_instance_valid(nest) and _egg_ready():
+		var sh: Node3D = nest.get_node("Shell")
+		sh.rotation.z = sin(Time.get_ticks_msec() / 90.0) * 0.12 * (1.0 if fmod(Time.get_ticks_msec() / 1000.0, 3.0) < 0.6 else 0.0)
+
+## The thought bubble over each kin: what it wants, shown now and then rather than all the time.
+func _update_bubbles(d: float) -> void:
+	var now := Time.get_ticks_msec() / 1000.0
+	for k in kins:
+		var rec: Dictionary = k["rec"]
+		if not k.has("bubble"):
+			var b := Models.want_bubble()
+			b.position = Vector3(0.25, 1.45, 0)
+			b.visible = false
+			(k["node"] as Node3D).add_child(b)
+			k["bubble"] = b
+		var bub: Node3D = k["bubble"]
+		if not is_instance_valid(bub):
+			k.erase("bubble")
+			continue
+		var w := Care.want(rec) if visit.is_empty() else ""
+		var cyc := fmod(now + float(absi(String(rec["uid"]).hash()) % 97) * 0.1, 9.0) < 3.6
+		var show: bool = w != "" and cyc and not k.get("busy", false) and not k.has("fetch") and float(k.get("nap_t", 0.0)) <= 0.0 and float(k.get("say_t", 0.0)) <= 0.0
+		bub.visible = show
+		if show:
+			for nm in ["food", "energy", "clean", "joy"]:
+				(bub.get_node(nm) as Node3D).visible = nm == w
+			bub.position.y = 1.45 + sin(now * 2.2) * 0.04
+			# face the camera like a cartoon thought bubble
+			bub.look_at(cam.global_position, Vector3.UP)
+			bub.scale = Vector3.ONE * 1.4
+		# dusty kin shed a little dust as they go
+		if visit.is_empty() and Care.need(rec, "clean") < 22.0 and randf() < d * 0.4:
+			fx.dust(k["pos"], 3)
+		# saying hello when you walk up to it
+		k["hi_cd"] = float(k.get("hi_cd", 0.0)) - d
+		if visit.is_empty() and float(k["hi_cd"]) <= 0.0 and panel_open == "" and not chat_open and train.is_empty() and not k.get("busy", false):
+			if Vector2(ppos.x - k["pos"].x, ppos.z - k["pos"].z).length() < 2.0:
+				k["hi_cd"] = randf_range(18.0, 30.0)
+				if randf() < 0.5 and float(k.get("nap_t", 0.0)) <= 0.0:
+					var trust := float(rec["trust"])
+					if Care.speech(rec) < 3:
+						_say(k, KinSpeak.say(rec, "sad" if trust < 30.0 else ("question" if w != "" else "happy"), w if w != "" else ("cold" if trust < 30.0 else "")), 2.8)
+					else:
+						_say(k, _greeting(rec), 2.8)
+
+## Gentle routines driven by how it's feeling. Returns true if it chose where to go.
+func _care_goal(k: Dictionary) -> bool:
+	var rec: Dictionary = k["rec"]
+	if not visit.is_empty():
+		return false
+	if Care.need(rec, "energy") < 22.0 and k.has("bed"):
+		k["goal"] = k["bed"]
+		k["nap_go"] = true
+		return true
+	if Care.need(rec, "food") < 30.0 and randf() < 0.4:
+		k["goal"] = spots["pot"] + Vector3(randf_range(0.8, 1.4), 0, randf_range(0.8, 1.2))
+		k["stare"] = spots["pot"]
+		return true
+	if Care.need(rec, "joy") < 30.0 and randf() < 0.6 and world.island_of(ppos.x, ppos.z) == world.island_of(k["pos"].x, k["pos"].z):
+		k["goal"] = ppos + Vector3(randf_range(-1.2, 1.2), 0, randf_range(-1.2, 1.2))
+		return true
+	return false
+
+## Per-frame care states: napping, bathing, staring at the pot.
+func _care_step(k: Dictionary, d: float) -> void:
+	var rec: Dictionary = k["rec"]
+	var pos: Vector3 = k["pos"]
+	if float(k.get("nap_t", 0.0)) > 0.0:
+		k["nap_t"] = float(k["nap_t"]) - d
+		k["goal"] = pos
+		k["z_t"] = float(k.get("z_t", 0.0)) - d
+		if float(k["z_t"]) <= 0.0:
+			k["z_t"] = 2.2
+			_emote(k, "z")
+		if float(k["nap_t"]) <= 0.0:
+			Care.change(rec, "energy", 40.0)
+			Care.change(rec, "joy", 4.0)
+			k["t"] = 1.0
+			_emote(k, "!")
+		return
+	if k.get("nap_go", false) and k.has("bed") and Vector2(pos.x - k["bed"].x, pos.z - k["bed"].z).length() < 0.5:
+		k.erase("nap_go")
+		k["nap_t"] = 30.0
+		k["z_t"] = 0.5
+	if k.has("stare") and Vector2(pos.x - k["goal"].x, pos.z - k["goal"].z).length() < 0.5:
+		var at: Vector3 = k["stare"]
+		k.erase("stare")
+		k["hold_t"] = 3.0
+		_emote(k, "?")
+		(k["node"] as Node3D).rotation.y = atan2(-(at.x - pos.x), -(at.z - pos.z))
+	if k.has("bath"):
+		var b: Dictionary = k["bath"]
+		if b["phase"] == "go":
+			k["goal"] = POND_EDGE
+			b["t"] = float(b["t"]) + d
+			if Vector2(pos.x - POND_EDGE.x, pos.z - POND_EDGE.z).length() < 0.6 or float(b["t"]) > 10.0:
+				b["phase"] = "splash"; b["t"] = 3.0
+				Sfx.play("plant", POND_EDGE, -4.0, 0.1, 1.4)
+		else:
+			k["goal"] = pos
+			b["t"] = float(b["t"]) - d
+			k["hop"] = float(k["hop"]) + d * 14.0
+			if randf() < d * 6.0:
+				fx.burst(pos + Vector3(randf_range(-0.3, 0.3), 0.5, randf_range(-0.3, 0.3)), Color("8fd0ff"), 6, 2.2, 0.4)
+			if float(b["t"]) <= 0.0:
+				k.erase("bath")
+				_finish_bath(k)
+
+## Speed multiplier for a tired kin.
+func _care_speed(rec: Dictionary) -> float:
+	return 0.7 if Care.need(rec, "energy") < 25.0 else 1.0
+
+# ---- care actions, from the kin's card; they play out in the world, not in a menu
+func _care_start(k: Dictionary) -> bool:
+	if k.is_empty():
+		return false
+	_close_panel()
+	k.erase("chase"); k.erase("task"); k.erase("stare"); k.erase("nap_go")
+	k["nap_t"] = 0.0
+	return true
+
+func _care_feed(rec: Dictionary, f: String) -> void:
+	var k := _kin_entry(rec)
+	if not _care_start(k):
+		return
+	var have := int(Save.d["crops"].get(f, 0)) if Data.CROPS.has(f) else int(Save.d["items"].get(f, 0))
+	if have <= 0:
+		return
+	# it comes over to you and you put the food down in front of it
+	var at := ppos + Vector3(sin(pface) * -1.0, 0, cos(pface) * -1.0)
+	if world.is_void(at.x, at.z) or world.is_block(at.x, at.z): at = ppos + Vector3(0.9, 0, 0.4)
+	k["pos"] = at
+	(k["node"] as Node3D).position = at
+	k["hold_t"] = 3.2
+	_face(at)
+	var food := MeshInstance3D.new()
+	food.mesh = Models.sphere(0.11, 10)
+	food.material_override = Models.toon(Care.food_col(f))
+	var fp := at + Vector3((ppos.x - at.x) * 0.35, 0.12, (ppos.z - at.z) * 0.35)
+	food.position = fp
+	add_child(food)
+	(k["node"] as Node3D).rotation.y = atan2(-(fp.x - at.x), -(fp.z - at.z))
+	var res := Care.feed(rec, f)
+	var body: Node3D = (k["node"] as Node3D).get_node("Body")
+	var tw := create_tween()
+	if res["ok"]:
+		for i in 3:
+			tw.tween_property(body, "scale", Vector3(1.12, 0.86, 1.12), 0.14)
+			tw.tween_property(body, "scale", Vector3.ONE, 0.14)
+			tw.tween_callback(func(): fx.burst(fp, Care.food_col(f), 4, 1.2, 0.3); Sfx.play("pickup", fp, -16.0, 0.1, 1.4))
+		tw.tween_callback(func(): food.queue_free())
+	else:
+		# a sniff, then a firm no
+		tw.tween_interval(0.4)
+		var n: Node3D = k["node"]
+		var r0 := n.rotation.y
+		for i in 3:
+			tw.tween_property(n, "rotation:y", r0 + 0.5, 0.08)
+			tw.tween_property(n, "rotation:y", r0 - 0.5, 0.08)
+		tw.tween_property(n, "rotation:y", r0, 0.08)
+		tw.tween_interval(0.6)
+		tw.tween_callback(func(): food.queue_free())
+	tw.tween_callback(func(): _after_feed(k, f, res))
+
+func _after_feed(k: Dictionary, f: String, res: Dictionary) -> void:
+	var rec: Dictionary = k["rec"]
+	var nm: String = rec["name"]
+	if res["hate"]:
+		_say(k, KinSpeak.say(rec, "angry", "mean") if Care.speech(rec) < 3 else "Ugh. No. Not that.", 3.0)
+		if res["new"]: _toast("You found out %s won't eat %s" % [nm, Care.food_name(f)])
+		return
+	if res["full"] and not res["ok"]:
+		_say(k, KinSpeak.say(rec, "content", "full") if Care.speech(rec) < 3 else "I'm full, thanks!", 3.0)
+		return
+	if Data.CROPS.has(f):
+		Save.d["crops"][f] = int(Save.d["crops"][f]) - 1
+		for af in Evo.AFF:
+			if Evo.AFF[af]["food"] == f: Evo.add(rec, af, 6.0)
+	else:
+		Save.d["items"][f] = int(Save.d["items"][f]) - 1
+	if res["love"]:
+		k["joy_t"] = 1.2
+		_emote(k, "♥")
+		fx.burst(k["pos"] + Vector3(0, 0.9, 0), Color("ff8fb0"), 16, 2.2)
+		Sfx.play("kin_happy", null, -2.0, 0.1)
+		_say(k, KinSpeak.say(rec, "love", "love") if Care.speech(rec) < 3 else "My favourite! Thank you!", 3.0)
+		if res["new"]: _toast("%s loves %s!" % [nm, Care.food_name(f)])
+	else:
+		_emote(k, "♪")
+		Sfx.play("kin_happy", null, -8.0)
+		_say(k, KinSpeak.say(rec, "happy") if Care.speech(rec) < 3 else "Mm, thanks.", 2.4)
+	if res.get("hungry", false):
+		Save.remember(rec, "fed", "was fed when it was hungry", 2.0)
+	elif int(rec.get("fed_m", -1)) != int(Save.d["matches"]):
+		rec["fed_m"] = int(Save.d["matches"])
+		Save.remember(rec, "fed", "was fed %s by you" % Care.food_name(f).to_lower(), 1.0)
+	Save.save_game()
+	_refresh_top()
+
+func _care_brush(rec: Dictionary) -> void:
+	var k := _kin_entry(rec)
+	if not _care_start(k):
+		return
+	if Vector2(ppos.x - k["pos"].x, ppos.z - k["pos"].z).length() > 1.4:
+		k["pos"] = ppos + Vector3(0.9, 0, 0.3)
+		(k["node"] as Node3D).position = k["pos"]
+	k["hold_t"] = 2.2
+	_face(k["pos"])
+	var tw := create_tween()
+	for i in 5:
+		tw.tween_callback(func(): fx.burst(k["pos"] + Vector3(randf_range(-0.2, 0.2), 0.5, randf_range(-0.2, 0.2)), Color("fff6c0"), 5, 1.4, 0.35); Sfx.play("click", null, -18.0, 0.1, 1.6))
+		tw.tween_interval(0.32)
+	tw.tween_callback(func():
+		var clean_before := Care.need(rec, "clean")
+		Care.change(rec, "clean", 32.0)
+		var loves: bool = rec["likes"]["play"] == "brush"
+		Care.change(rec, "joy", 18.0 if loves else 6.0)
+		k["joy_t"] = 0.8
+		_emote(k, "♥" if loves else "★")
+		_say(k, KinSpeak.say(rec, "love" if loves else "content") if Care.speech(rec) < 3 else ("Ooh, that's lovely." if loves else "Thanks, that's better."), 2.6)
+		if loves and Care.discover(rec, "play"): _toast("%s loves being brushed" % rec["name"])
+		if clean_before < 30.0: Save.remember(rec, "brushed", "got brushed clean when it was a mess", 1.5)
+		Save.save_game())
+
+func _care_bath(rec: Dictionary) -> void:
+	var k := _kin_entry(rec)
+	if not _care_start(k):
+		return
+	k["bath"] = {"phase": "go", "t": 0.0}
+	_emote(k, "!")
+
+func _finish_bath(k: Dictionary) -> void:
+	var rec: Dictionary = k["rec"]
+	Care.change(rec, "clean", 100.0)
+	Care.change(rec, "energy", -4.0)
+	var loves: bool = rec["likes"]["play"] == "bath"
+	var grumpy: bool = not loves and float(rec["traits"].get("curiosity", 0.5)) < 0.45
+	Care.change(rec, "joy", 16.0 if loves else (-5.0 if grumpy else 4.0))
+	fx.burst(k["pos"] + Vector3(0, 0.6, 0), Color("8fd0ff"), 18, 3.0, 0.5)
+	if loves:
+		_emote(k, "♥")
+		_say(k, KinSpeak.say(rec, "excited", "love") if Care.speech(rec) < 3 else "Again! Again!", 2.8)
+		if Care.discover(rec, "play"): _toast("%s loves baths" % rec["name"])
+	elif grumpy:
+		_emote(k, "!")
+		_say(k, (KinSpeak.babble(rec["species"], "angry") + " (shakes water everywhere)") if Care.speech(rec) < 3 else "Brr. I'm soaked.", 2.8)
+	else:
+		_emote(k, "★")
+	k["t"] = 1.5
+	Save.save_game()
+
+func _care_nap(rec: Dictionary) -> void:
+	var k := _kin_entry(rec)
+	if not _care_start(k):
+		return
+	if k.has("bed"):
+		k["goal"] = k["bed"]
+		k["nap_go"] = true
+	else:
+		k["nap_t"] = 30.0
+	_say(k, KinSpeak.say(rec, "sleepy") if Care.speech(rec) < 3 else "Just a little nap...", 2.0)
+
+# ---- training: a timing game at the yard; three rounds, each a little faster
+func _start_drill(rec: Dictionary, stat: String) -> void:
+	var k := _kin_entry(rec)
+	if k.is_empty():
+		return
+	if Care.need(rec, "energy") < 20.0 or Care.need(rec, "food") < 12.0:
+		_close_panel()
+		var why := "energy" if Care.need(rec, "energy") < 20.0 else "food"
+		_say(k, KinSpeak.say(rec, "sleepy" if why == "energy" else "sad", why), 3.0)
+		_toast("%s is too %s to train. %s first" % [rec["name"], "tired" if why == "energy" else "hungry", "Let it nap" if why == "energy" else "Feed it"])
+		return
+	if int(rec["stats"][stat]) >= Care.stat_cap(rec):
+		_toast("%s can't train %s any further until it levels up" % [rec["name"], Care.STATS[stat]["name"]])
+		return
+	if not _care_start(k):
+		return
+	k["busy"] = true
+	k["pos"] = YARD_KIN
+	var n: Node3D = k["node"]
+	n.position = YARD_KIN
+	var dummy := yard.get_node("Dummy") as Node3D
+	var dpos := dummy.global_position
+	n.rotation.y = atan2(-(dpos.x - YARD_KIN.x), -(dpos.z - YARD_KIN.z))
+	ppos = YARD_KIN + Vector3(-0.6, 0, 1.4)
+	player.position = ppos
+	_face(YARD_KIN)
+	train = {"k": k, "stat": stat, "round": 0, "results": [], "m": 0.0, "dir": 1.0, "speed": 0.85, "zone": randf_range(0.3, 0.7), "wait": 0.0}
+	_build_train_bar()
+	Sfx.play("whoosh", null, -8.0)
+
+func _build_train_bar() -> void:
+	if is_instance_valid(train_bar): train_bar.queue_free()
+	var bar := UI.card(Color(0.06, 0.07, 0.1, 0.92), 12, 14)
+	bar.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	bar.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	bar.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	bar.offset_top = -64; bar.offset_bottom = -64
+	bar.custom_minimum_size.x = minf(560.0, get_viewport().get_visible_rect().size.x - 32.0)
+	var col := UI.vbox(8); bar.add_child(col)
+	train_lbl = UI.label("", 15)
+	col.add_child(train_lbl)
+	train_draw = Control.new()
+	train_draw.custom_minimum_size = Vector2(0, 26)
+	train_draw.draw.connect(_draw_train)
+	col.add_child(train_draw)
+	col.add_child(UI.label("Press %s (or click) when the marker is in the gold" % Settings.key_cap("interact"), 12, UI.MUTED))
+	root_ui.add_child(bar)
+	train_bar = bar
+	_train_label()
+
+func _train_label() -> void:
+	if not is_instance_valid(train_lbl) or train.is_empty():
+		return
+	var st: Dictionary = Care.STATS[train["stat"]]
+	var res: Array = train["results"]
+	var marks := ""
+	for r in res: marks += {"great": "  ★", "good": "  ●", "miss": "  ✕"}[r]
+	train_lbl.text = "%s  ·  round %d of 3%s" % [st["drill"], mini(int(train["round"]) + 1, 3), marks]
+	train_lbl.add_theme_color_override("font_color", st["col"])
+
+func _draw_train() -> void:
+	if train.is_empty() or not is_instance_valid(train_draw):
+		return
+	var w := train_draw.size.x
+	var h := train_draw.size.y
+	train_draw.draw_rect(Rect2(0, h * 0.3, w, h * 0.4), Color(1, 1, 1, 0.1))
+	var z: float = train["zone"]
+	train_draw.draw_rect(Rect2(w * (z - 0.16), h * 0.3, w * 0.32, h * 0.4), Color(UI.ACCENT, 0.45))
+	train_draw.draw_rect(Rect2(w * (z - 0.06), h * 0.2, w * 0.12, h * 0.6), UI.GOLD)
+	var mx := w * float(train["m"])
+	train_draw.draw_rect(Rect2(mx - 3, 0, 6, h), UI.INK)
+
+func _train_process(d: float) -> void:
+	if train.is_empty():
+		return
+	if float(train["wait"]) > 0.0:
+		train["wait"] = float(train["wait"]) - d
+		if float(train["wait"]) <= 0.0 and int(train["round"]) >= 3:
+			_finish_training()
+		return
+	var m := float(train["m"]) + float(train["dir"]) * float(train["speed"]) * d
+	if m > 1.0: m = 2.0 - m; train["dir"] = -1.0
+	if m < 0.0: m = -m; train["dir"] = 1.0
+	train["m"] = m
+	if is_instance_valid(train_draw): train_draw.queue_redraw()
+
+func _train_hit() -> void:
+	if train.is_empty() or float(train["wait"]) > 0.0:
+		return
+	var off := absf(float(train["m"]) - float(train["zone"]))
+	var r := "great" if off < 0.06 else ("good" if off < 0.16 else "miss")
+	train["results"].append(r)
+	train["round"] = int(train["round"]) + 1
+	train["wait"] = 1.1
+	train["speed"] = float(train["speed"]) * 1.35
+	train["zone"] = randf_range(0.2, 0.8)
+	_train_anim(train["k"], String(train["stat"]), r)
+	_train_label()
+
+## What the kin does each round.
+func _train_anim(k: Dictionary, stat: String, r: String) -> void:
+	var n: Node3D = k["node"]
+	var body: Node3D = n.get_node("Body")
+	var dummy := yard.get_node("Dummy") as Node3D
+	var tw := create_tween()
+	var col: Color = Care.STATS[stat]["col"]
+	match stat:
+		"power":
+			var to := YARD_KIN.lerp(dummy.global_position, 0.55)
+			tw.tween_property(n, "position", to, 0.12)
+			tw.tween_callback(func():
+				if r != "miss":
+					fx.burst(dummy.global_position + Vector3(0, 1.0, 0), Color("e2c47a"), 12 if r == "great" else 6, 3.0, 0.4)
+					Sfx.play("kinhit", dummy.global_position, -6.0)
+					var dt := create_tween()
+					dt.tween_property(dummy, "rotation:z", 0.35 if r == "great" else 0.18, 0.08)
+					dt.tween_property(dummy, "rotation:z", 0.0, 0.3)
+				else:
+					Sfx.play("whoosh", null, -10.0))
+			tw.tween_property(n, "position", YARD_KIN, 0.2)
+		"guard":
+			tw.tween_property(body, "scale", Vector3(1.2, 0.72, 1.2), 0.12)
+			tw.tween_callback(func(): if r != "miss": fx.ring(YARD_KIN, 1.2, col, 0.3); Sfx.play("shield", null, -10.0))
+			tw.tween_interval(0.3)
+			tw.tween_property(body, "scale", Vector3.ONE, 0.15)
+		"speed":
+			var hoop := yard.global_position + Vector3(-1.4, 0, 0.2)
+			tw.tween_property(n, "position", hoop, 0.18 if r != "miss" else 0.35)
+			tw.tween_callback(func(): if r != "miss": fx.burst(hoop + Vector3(0, 0.4, 0), col, 8, 2.5, 0.3))
+			tw.tween_property(n, "position", YARD_KIN, 0.18 if r != "miss" else 0.35)
+		"focus":
+			tw.tween_property(n, "rotation:y", n.rotation.y + TAU, 0.6)
+			tw.tween_callback(func(): if r != "miss": fx.burst(YARD_KIN + Vector3(0, 0.5, 0), col, 14 if r == "great" else 7, 1.6, 0.6, -3.0))
+	_emote(k, {"great": "★", "good": "♪", "miss": "?"}[r])
+
+func _finish_training() -> void:
+	var k: Dictionary = train["k"]
+	var rec: Dictionary = k["rec"]
+	var stat: String = train["stat"]
+	var pts := 0
+	for r in train["results"]:
+		pts += {"great": 3, "good": 2, "miss": 0}[r]
+		if r != "miss" and Save.has_building("dojo"): pts += 1
+	var mult := 1.0
+	if Care.need(rec, "joy") >= 60.0: mult *= 1.25
+	if Care.need(rec, "energy") < 35.0: mult *= 0.7
+	var gained := Care.add_stat(rec, stat, int(round(pts * mult)))
+	Care.change(rec, "energy", -18.0)
+	Care.change(rec, "food", -6.0)
+	Care.change(rec, "joy", 4.0 if (train["results"] as Array).has("great") else -2.0)
+	var aff: String = {"power": "fierce", "guard": "steadfast", "speed": "swift", "focus": "curious"}[stat]
+	Evo.add(rec, aff, 2.0)
+	if int(rec.get("trained_m", -1)) != int(Save.d["matches"]):
+		rec["trained_m"] = int(Save.d["matches"])
+		Save.remember(rec, "trained", "trained %s with you at the yard" % String(Care.STATS[stat]["name"]).to_lower(), 1.0)
+	Save.save_game()
+	_toast("+%d %s  (%d of %d)" % [gained, Care.STATS[stat]["name"], int(rec["stats"][stat]), Care.stat_cap(rec)] if gained > 0 else "No gain this time. Try again after a rest")
+	_say(k, KinSpeak.say(rec, "excited" if gained >= 6 else ("happy" if gained > 0 else "sad")) if Care.speech(rec) < 3 else ("I'm getting stronger!" if gained > 0 else "Again. I'll get it."), 2.6)
+	k["busy"] = false
+	k["t"] = 1.5
+	train = {}
+	if is_instance_valid(train_bar): train_bar.queue_free()
+	train_bar = null
+
+# ---- eggs: two kin who are close leave an egg in the nest; you hatch and name it
+func _can_pair(rec: Dictionary) -> String:
+	if not Save.d.get("egg", {}).is_empty(): return "There's already an egg in the nest"
+	if int(rec["level"]) < 5: return "Needs to be level 5"
+	if float(rec["trust"]) < 55.0: return "Needs a Close bond (trust 55)"
+	if int(rec.get("bred_m", -99)) > int(Save.d["matches"]) - 3: return "Needs a few more expeditions' rest"
+	if Save.d["roster"].size() >= 12: return "Your farm is full (12 kin)"
+	return ""
+
+func _open_pair(rec: Dictionary) -> void:
+	var v := _new_panel("Pair %s" % rec["name"], 560)
+	v.add_child(UI.label("Two kin who are close leave an egg in the nest by the beds. It hatches after your next expedition (or about ten minutes at home).", 14, UI.MUTED))
+	var any := false
+	for o in Save.d["roster"]:
+		if o == rec or _can_pair(o) != "":
+			continue
+		any = true
+		var row := UI.hbox(10)
+		var l := UI.label("%s  ·  Lv %d %s" % [o["name"], int(o["level"]), Evo.form_name(o)], 16, Data.KIN[o["species"]]["color"])
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+		var ok: Dictionary = o
+		row.add_child(UI.primary("Pair them", func():
+			Save.d["egg"] = {"a": rec["uid"], "b": ok["uid"], "m": int(Save.d["matches"]) + 1, "t": Time.get_unix_time_from_system() + 600.0}
+			rec["bred_m"] = int(Save.d["matches"]); ok["bred_m"] = int(Save.d["matches"])
+			Save.remember(rec, "egg", "had an egg with %s" % ok["name"], 2.0)
+			Save.remember(ok, "egg", "had an egg with %s" % rec["name"], 2.0)
+			Save.save_game()
+			_close_panel()
+			_refresh_nest()
+			fx.burst(NEST_AT + Vector3(0, 0.6, 0), Color("ff8fb0"), 24, 3.0)
+			Sfx.play("unlock")
+			_toast("An egg appeared in the nest by the beds"), 150))
+		v.add_child(row)
+	if not any:
+		v.add_child(UI.label("No other kin is ready yet. Partners need level 5, a Close bond and a few expeditions' rest.", 15))
+
+func _hatch_nest_egg() -> void:
+	var egg: Dictionary = Save.d.get("egg", {})
+	var a := Save.kin(String(egg.get("a", "")))
+	var b := Save.kin(String(egg.get("b", "")))
+	if a.is_empty() or b.is_empty():
+		Save.d["egg"] = {}
+		_refresh_nest()
+		return
+	var rng := RandomNumberGenerator.new(); rng.randomize()
+	var baby := Care.breed(a, b, rng)
+	Save.d["egg"] = {}
+	building_now = true
+	var tw := create_tween()
+	var sh: Node3D = nest.get_node("Shell")
+	for i in 4:
+		tw.tween_property(sh, "rotation:z", 0.3, 0.07)
+		tw.tween_property(sh, "rotation:z", -0.3, 0.07)
+	tw.tween_callback(func():
+		fx.burst(NEST_AT + Vector3(0, 0.5, 0), Data.KIN[baby["species"]]["color"], 34, 4.0, 0.7, 3.0)
+		fx.ring(NEST_AT, 2.0, Color("fff6c0"), 0.4)
+		Sfx.play("unlock")
+		Sfx.play("kin_happy", null, 0.0, 0.1)
+		_refresh_nest()
+		building_now = false
+		_name_baby(baby))
+
+func _name_baby(baby: Dictionary) -> void:
+	var sp: Dictionary = Data.KIN[baby["species"]]
+	var v := _new_panel("It hatched!", 520)
+	v.add_child(UI.label("\"%s\"" % KinSpeak.babble(baby["species"], "happy"), 24, Care.shimmer_col(sp["color"]) if baby.get("shimmer", false) else sp["color"]))
+	v.add_child(UI.label("A %s%s, child of %s and %s. %s nature." % ["shimmering " if baby.get("shimmer", false) else "", sp["name"], baby["parents"][0], baby["parents"][1], Care.nature(baby)], 15))
+	var row := UI.hbox(8)
+	var ne := LineEdit.new(); ne.text = Data.KIN_NAMES.pick_random(); ne.max_length = 14; ne.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(ne)
+	v.add_child(row)
+	var picks := UI.hbox(6)
+	var pool: Array = Data.KIN_NAMES.duplicate(); pool.shuffle()
+	for nm in pool.slice(0, 4):
+		var n2: String = nm
+		picks.add_child(UI.button(n2, func(): ne.text = n2))
+	v.add_child(picks)
+	v.add_child(UI.primary("Welcome home", func():
+		baby["name"] = ne.text.strip_edges() if ne.text.strip_edges() != "" else Data.KIN_NAMES.pick_random()
+		Save.remember(baby, "born", "hatched in the nest on your farm", 0.0)
+		Save.d["roster"].append(baby)
+		Care.dex_mark(baby["species"], "caught")
+		if baby.get("shimmer", false): Care.dex_mark(baby["species"], "shimmer")
+		Save.save_game()
+		_close_panel()
+		_spawn_kin()
+		var ke := _kin_entry(baby)
+		if not ke.is_empty():
+			ke["pos"] = NEST_AT + Vector3(0.8, 0, 0.6)
+			(ke["node"] as Node3D).position = ke["pos"]
+			_say(ke, KinSpeak.say(baby, "excited", "hello"), 3.0), 220))
+
+# ---- what it wears
+func _open_wear(rec: Dictionary) -> void:
+	var v := _new_panel("Dress %s" % rec["name"], 520)
+	var owned: Array = Save.d.get("accs", [])
+	if owned.is_empty():
+		v.add_child(UI.label("You don't own anything for kin to wear yet. The market stall sells bells, bows, hats and more.", 15))
+		return
+	var grid := GridContainer.new(); grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 8); grid.add_theme_constant_override("v_separation", 8)
+	v.add_child(grid)
+	var cur: String = rec.get("acc", "")
+	grid.add_child(UI.choice("Nothing", cur == "", func(): _set_acc(rec, ""), 220))
+	for a in owned:
+		var ak: String = a
+		var worn_by := ""
+		for o in Save.d["roster"]:
+			if o != rec and String(o.get("acc", "")) == ak: worn_by = o["name"]
+		grid.add_child(UI.choice(Data.ACCS[ak]["name"] + ("  (on %s)" % worn_by if worn_by != "" else ""), cur == ak, func(): _set_acc(rec, ak), 220))
+
+func _set_acc(rec: Dictionary, a: String) -> void:
+	for o in Save.d["roster"]:
+		if o != rec and a != "" and String(o.get("acc", "")) == a:
+			o["acc"] = ""
+	rec["acc"] = a
+	Save.save_game()
+	_close_panel()
+	_spawn_kin()
+	var ke := _kin_entry(rec)
+	if not ke.is_empty():
+		ke["pos"] = ppos + Vector3(1.0, 0, 0.4)
+		(ke["node"] as Node3D).position = ke["pos"]
+		ke["joy_t"] = 0.8
+		_emote(ke, "★")
+		if a != "": Care.change(rec, "joy", 5.0)
+
+func _open_feed(rec: Dictionary) -> void:
+	var v := _new_panel("Feed %s" % rec["name"], 560)
+	var known: Array = rec["known"]
+	var any := false
+	var row_for := func(f: String, n: int, desc: String) -> void:
+		any = true
+		var row := UI.hbox(10)
+		var info := UI.vbox(2); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var tag := ""
+		if known.has("food") and rec["likes"]["food"] == f: tag = "  ♥ loves it"
+		elif known.has("hates") and rec["likes"]["hates"] == f: tag = "  ✕ won't eat it"
+		info.add_child(UI.label("%s  ×%d%s" % [Care.food_name(f), n, tag], 16, Care.food_col(f)))
+		info.add_child(UI.label(desc, 12, UI.MUTED))
+		row.add_child(info)
+		row.add_child(UI.button("Feed", func(): _care_feed(rec, f), 100))
+		v.add_child(row)
+	for f in Care.FOODS:
+		var n := int(Save.d["items"].get(f, 0))
+		if n > 0: row_for.call(f, n, Care.FOODS[f]["desc"])
+	for f in Data.CROPS:
+		var n := int(Save.d["crops"].get(f, 0))
+		if n > 0:
+			var aff := ""
+			for af in Evo.AFF:
+				if Evo.AFF[af]["food"] == f: aff = "Grows it %s. " % String(Evo.AFF[af]["name"]).to_lower()
+			row_for.call(f, n, aff + "Fills it up.")
+	if not any:
+		v.add_child(UI.label("Nothing to feed it. Harvest crops, or buy kibble and buns at the market stall.", 15))
+
+func _open_train(rec: Dictionary) -> void:
+	var v := _new_panel("Train %s" % rec["name"], 560)
+	v.add_child(UI.label("A short drill at the yard. Time your presses: gold is great, orange is good. Costs some energy and food; a happy kin learns faster.", 14, UI.MUTED))
+	for s in Care.STATS:
+		var st: Dictionary = Care.STATS[s]
+		var row := UI.hbox(10)
+		var info := UI.vbox(2); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		info.add_child(UI.label("%s  ·  %d of %d" % [st["name"], int(rec["stats"][s]), Care.stat_cap(rec)], 16, st["col"]))
+		info.add_child(UI.label("%s. %s." % [st["drill"], st["desc"]], 12, UI.MUTED))
+		row.add_child(info)
+		var sk: String = s
+		var b := UI.button("Train", func(): _start_drill(rec, sk), 100)
+		b.disabled = int(rec["stats"][s]) >= Care.stat_cap(rec)
+		row.add_child(b)
+		v.add_child(row)
+	v.add_child(UI.label("Energy %d  ·  Full %d" % [int(Care.need(rec, "energy")), int(Care.need(rec, "food"))], 13, UI.MUTED))

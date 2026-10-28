@@ -88,7 +88,7 @@ func new_kin(species: String, kname := "") -> Dictionary:
 	var tr := {}
 	for k in sp["traits"]:
 		tr[k] = clampf(float(sp["traits"][k]) + randf_range(-0.15, 0.15), 0.05, 0.95)
-	return {
+	var rec := {
 		"uid": "k%d%d" % [Time.get_ticks_usec() % 1000000, randi() % 1000],
 		"species": species,
 		"name": kname if kname != "" else Data.KIN_NAMES.pick_random(),
@@ -98,6 +98,8 @@ func new_kin(species: String, kname := "") -> Dictionary:
 		"memory": [],
 		"matches": 0, "wins": 0, "kos": 0,
 	}
+	Care.ensure(rec)
+	return rec
 
 func load_game() -> void:
 	d = fresh()

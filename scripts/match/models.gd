@@ -275,8 +275,9 @@ static func kin(species: String, rec := {}) -> Node3D:
 	var sp: Dictionary = Data.KIN[species]
 	var root := Node3D.new()
 	var mats: Array = []
-	var m_body := toon(sp["color"]); mats.append(m_body)
-	var m_belly := toon(sp["belly"]); mats.append(m_belly)
+	var shimmer: bool = rec.get("shimmer", false)
+	var m_body := toon(Care.shimmer_col(sp["color"]) if shimmer else sp["color"]); mats.append(m_body)
+	var m_belly := toon(Care.shimmer_col(sp["belly"]) if shimmer else sp["belly"]); mats.append(m_belly)
 	var m_eye := toon(Color("1a1620"), false); mats.append(m_eye)
 	var m_white := toon(Color.WHITE, false, 0.6)
 	var body := Node3D.new(); body.name = "Body"; root.add_child(body)
@@ -319,6 +320,103 @@ static func kin(species: String, rec := {}) -> Node3D:
 				part(body, sphere(0.06, 8), m_w, Vector3(cos(a) * 0.3, 0.72 + sin(a * 2.0) * 0.04, sin(a) * 0.3), Vector3.ONE, Vector3.ZERO, "Orb%d" % i)
 	root.set_meta("mats", mats)
 	Evo.dress(root, rec)
+	if shimmer:
+		# a shimmer sparkles a little, all the time
+		for i in 3:
+			var a := TAU * i / 3.0
+			part(body, sphere(0.035, 6), toon(Color("fff6c0"), false, 1.6), Vector3(cos(a) * 0.42, 0.62 + i * 0.08, sin(a) * 0.42), Vector3.ONE, Vector3.ZERO, "Spark%d" % i)
+	var acc: String = rec.get("acc", "")
+	if acc != "" and Data.ACCS.has(acc):
+		accessory(body, acc)
+	if int(rec.get("level", 1)) < 4 and (rec.get("forms", []) as Array).is_empty() and not rec.is_empty():
+		# hatchlings are small
+		root.set_meta("evo_scale", 0.82)
+		root.scale = Vector3.ONE * 0.82
+	return root
+
+## Something a kin wears, on its body at head height.
+static func accessory(body: Node3D, id: String) -> void:
+	var c: Color = Data.ACCS[id]["col"]
+	var m := toon(c)
+	match id:
+		"bell":
+			part(body, sphere(0.07, 10), toon(c, true, 0.4), Vector3(0, 0.2, -0.33))
+			part(body, cyl(0.2, 0.2, 0.04, 16), toon(Color("d9604a")), Vector3(0, 0.25, -0.02), Vector3(1.05, 1, 1.05))
+		"bow":
+			for sx in [-1.0, 1.0]:
+				part(body, sphere(0.09, 8), m, Vector3(0.1 * sx + 0.16, 0.66, -0.06), Vector3(1.2, 0.7, 0.5), Vector3(0, 0, 0.5 * sx))
+			part(body, sphere(0.04, 6), m, Vector3(0.16, 0.66, -0.07))
+		"leafhat":
+			part(body, sphere(0.2, 10), m, Vector3(0, 0.66, 0), Vector3(1.3, 0.25, 1.3))
+			part(body, cyl(0.01, 0.015, 0.14, 6), toon(Color("6b4a33")), Vector3(0, 0.76, 0))
+		"scarf":
+			part(body, cyl(0.29, 0.31, 0.09, 16), m, Vector3(0, 0.24, -0.02))
+			part(body, box(0.09, 0.2, 0.04), m, Vector3(0.12, 0.13, -0.29), Vector3.ONE, Vector3(0.2, 0, 0.2))
+		"crown":
+			for i in 7:
+				var a := TAU * i / 7.0
+				part(body, sphere(0.05, 6), toon(Color("ffd0e8") if i % 2 == 0 else Color("fff27a"), false, 0.3), Vector3(cos(a) * 0.2, 0.68, sin(a) * 0.2))
+		"goggles":
+			part(body, cyl(0.3, 0.3, 0.05, 16), toon(Color("4e3424")), Vector3(0, 0.53, 0), Vector3(1.0, 1, 1.0), Vector3(0.25, 0, 0))
+			for sx in [-1.0, 1.0]:
+				part(body, cyl(0.07, 0.07, 0.05, 12), toon(Color("9af0ff"), false, 0.5), Vector3(0.11 * sx, 0.58, -0.27), Vector3.ONE, Vector3(PI / 2 + 0.25, 0, 0))
+		"cape":
+			part(body, box(0.42, 0.36, 0.03), m, Vector3(0, 0.3, 0.3), Vector3.ONE, Vector3(-0.35, 0, 0))
+			part(body, cyl(0.2, 0.2, 0.04, 14), m, Vector3(0, 0.46, 0.05))
+		"tophat":
+			part(body, cyl(0.17, 0.17, 0.03, 14), m, Vector3(0, 0.68, 0))
+			part(body, cyl(0.11, 0.11, 0.2, 14), m, Vector3(0, 0.79, 0))
+			part(body, cyl(0.113, 0.113, 0.04, 14), toon(Color("d9604a")), Vector3(0, 0.72, 0))
+
+## A thought bubble over a kin's head with what it wants in it.
+static func want_bubble() -> Node3D:
+	var root := Node3D.new()
+	var white := toon(Color("f6f2ea"), true)
+	part(root, sphere(0.22, 14), white, Vector3(0, 0, 0), Vector3(1.15, 0.95, 0.5))
+	part(root, sphere(0.06, 8), white, Vector3(-0.17, -0.24, 0))
+	part(root, sphere(0.035, 6), white, Vector3(-0.25, -0.34, 0))
+	var food := Node3D.new(); food.name = "food"; root.add_child(food)
+	part(food, sphere(0.085, 10), toon(Color("ff6a4a"), false, 0.2), Vector3(0, -0.01, -0.1))
+	part(food, sphere(0.04, 6), toon(Color("5aa84a"), false), Vector3(0.03, 0.08, -0.1), Vector3(1.4, 0.6, 0.6))
+	var energy := Label3D.new(); energy.name = "energy"; energy.text = "z z"; energy.font = UI.big; energy.font_size = 36
+	energy.pixel_size = 0.006; energy.modulate = Color("5a7ae0"); energy.outline_size = 0; energy.position = Vector3(0, 0, -0.12)
+	energy.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	root.add_child(energy)
+	var clean := Node3D.new(); clean.name = "clean"; root.add_child(clean)
+	part(clean, sphere(0.07, 10), toon(Color("5ab8f0"), false, 0.4), Vector3(0, -0.03, -0.1), Vector3(1, 1.25, 1))
+	part(clean, cyl(0.0, 0.05, 0.08, 8), toon(Color("5ab8f0"), false, 0.4), Vector3(0, 0.08, -0.1))
+	var joy := Node3D.new(); joy.name = "joy"; root.add_child(joy)
+	part(joy, sphere(0.08, 10), toon(Color("ff6a5a"), false, 0.2), Vector3(0, 0, -0.1))
+	part(joy, cyl(0.081, 0.081, 0.025, 12), toon(Color("f6f2ea"), false), Vector3(0, 0, -0.1), Vector3.ONE, Vector3(0, 0, 0.5))
+	return root
+
+## The training yard: a straw dummy on a post, a mat and a couple of hoops.
+static func training_yard() -> Node3D:
+	var root := Node3D.new()
+	var wood := toon(Color("8b6d52")); var straw := toon(Color("e2c47a")); var mat := toon(Color("c9604a"))
+	part(root, cyl(0.07, 0.08, 1.3, 8), wood, Vector3(1.0, 0.65, -0.6))
+	var dummy := Node3D.new(); dummy.name = "Dummy"; dummy.position = Vector3(1.0, 0.0, -0.6); root.add_child(dummy)
+	part(dummy, sphere(0.28, 12), straw, Vector3(0, 0.95, 0), Vector3(1, 1.3, 1))
+	part(dummy, sphere(0.16, 10), straw, Vector3(0, 1.45, 0))
+	part(dummy, box(0.7, 0.08, 0.08), wood, Vector3(0, 1.1, 0))
+	part(root, cyl(0.75, 0.75, 0.04, 20), mat, Vector3(0, 0.02, 0))
+	var ring_m := toon(Color("f2c84a"))
+	for i in 2:
+		var t := TorusMesh.new(); t.inner_radius = 0.26; t.outer_radius = 0.32
+		part(root, t, ring_m, Vector3(-1.1 - i * 0.6, 0.34, 0.3 - i * 0.2), Vector3.ONE, Vector3(PI / 2, 0.3, 0))
+		part(root, cyl(0.025, 0.025, 0.34, 6), wood, Vector3(-1.1 - i * 0.6, 0.0, 0.3 - i * 0.2))
+	return root
+
+## An egg in a straw nest, for kin you raise from an egg at home.
+static func nest_egg(c: Color, spot: Color) -> Node3D:
+	var root := Node3D.new()
+	part(root, cyl(0.42, 0.34, 0.16, 16), toon(Color("c9a46a")), Vector3(0, 0.08, 0))
+	var shell := Node3D.new(); shell.name = "Shell"; root.add_child(shell)
+	part(shell, sphere(0.26, 16), toon(c.lightened(0.15)), Vector3(0, 0.36, 0), Vector3(0.92, 1.25, 0.92))
+	var rng := RandomNumberGenerator.new(); rng.seed = int(c.r * 1000 + spot.g * 100)
+	for i in 6:
+		var a := rng.randf() * TAU; var y := rng.randf_range(0.2, 0.55)
+		part(shell, sphere(0.05, 8), toon(spot), Vector3(cos(a) * 0.22, y, sin(a) * 0.22), Vector3(1, 1, 0.5))
 	return root
 
 # ---------------------------------------------------------------- monsters

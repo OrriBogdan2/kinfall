@@ -297,26 +297,207 @@ static func spacer(h := 8.0) -> Control:
 	return c
 
 ## Wraps content in a scroll box that grows with it up to the window height minus `margin`.
-static func scroll_box(content: Control, margin := 120.0) -> ScrollContainer:
-	var sc := ScrollContainer.new()
-	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sc.add_child(content)
-	var fit := func():
-		if is_instance_valid(sc) and sc.is_inside_tree():
-			sc.custom_minimum_size.y = minf(content.get_combined_minimum_size().y, maxf(140.0, sc.get_viewport_rect().size.y - margin))
-	content.minimum_size_changed.connect(fit)
-	sc.tree_entered.connect(func():
-		fit.call_deferred()
-		var vpt := sc.get_viewport()
-		if vpt and not vpt.size_changed.is_connected(fit): vpt.size_changed.connect(fit))
-	sc.tree_exiting.connect(func():
-		var vpt := sc.get_viewport()
-		if vpt and vpt.size_changed.is_connected(fit): vpt.size_changed.disconnect(fit))
-	return sc
+## Nothing in the game scrolls. When a menu has more than fits on screen, it splits into pages
+## with a small "Page 1 of 2" control, and it remembers which page you were on when it's rebuilt,
+## so clicking a button never jumps you somewhere else.
+static var _page_of := {}       # menu key -> page shown
+static var _tall := {}          # menu key -> tallest the menu has been, so it never jumps around
+static var _live := {}          # menu key -> how many of it are open
 
-## A menu panel: a title row with a Close button, and a body that scrolls whenever it's taller than
-## the window, so nothing can end up off screen. Returns [panel, body]; add content to body.
+## Wraps a VBox of content so it pages instead of overflowing. margin: room left for the rest of
+## the screen. Returns the wrapper to add where the content would have gone.
+static func paged(content: VBoxContainer, margin: float, key: String, head: Control = null, width_hint := 600.0) -> VBoxContainer:
+	var wrap := vbox(8)
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	wrap.add_child(content)
+	var pager := hbox(10)
+	pager.alignment = BoxContainer.ALIGNMENT_CENTER
+	pager.visible = false
+	var prev := button("‹  Back", Callable(), 110)
+	var lbl := label("", 14, MUTED)
+	var next := button("Next  ›", Callable(), 110)
+	pager.add_child(prev); pager.add_child(lbl); pager.add_child(next)
+	wrap.add_child(pager)
+	var state := {"busy": false, "t0": 0}
+	var fit := func() -> void:
+		if state["busy"] or not is_instance_valid(content) or not content.is_inside_tree():
+			return
+		state["busy"] = true
+		var vp := content.get_viewport_rect().size
+		var maxh := maxf(160.0, vp.y - margin - (head.get_combined_minimum_size().y if head else 0.0))
+		var w := content.size.x if content.size.x > 60.0 else width_hint
+		_paginate(content, maxh - pager.get_combined_minimum_size().y - 8.0, key, pager, lbl, prev, next, w)
+		# never shrink while it's open, so the menu doesn't hop as its contents change. Sizes are
+		# only trusted once the layout has settled (wrapped text measures tall at first).
+		content.custom_minimum_size.y = 0.0
+		var h := content.get_combined_minimum_size().y
+		if Time.get_ticks_msec() - int(state["t0"]) > 300:
+			_tall[key] = maxf(float(_tall.get(key, 0.0)), h)
+		content.custom_minimum_size.y = minf(float(_tall.get(key, 0.0)), maxh)
+		state["busy"] = false
+	var refit := func() -> void:
+		if not state["busy"]: fit.call_deferred()
+	prev.pressed.connect(func(): _page_of[key] = maxi(0, int(_page_of.get(key, 0)) - 1); Sfx.play("click"); fit.call())
+	next.pressed.connect(func(): _page_of[key] = int(_page_of.get(key, 0)) + 1; Sfx.play("click"); fit.call())
+	content.minimum_size_changed.connect(refit)
+	content.child_entered_tree.connect(func(_c): refit.call())
+	wrap.tree_entered.connect(func():
+		_live[key] = int(_live.get(key, 0)) + 1
+		state["t0"] = Time.get_ticks_msec()
+		refit.call()
+		wrap.get_tree().create_timer(0.35).timeout.connect(func(): if is_instance_valid(wrap): refit.call())
+		var vpt := wrap.get_viewport()
+		if vpt and not vpt.size_changed.is_connected(refit): vpt.size_changed.connect(refit))
+	wrap.tree_exiting.connect(func():
+		_live[key] = int(_live.get(key, 1)) - 1
+		# closed for good (not just rebuilt this frame): forget its size and page
+		var ml := Engine.get_main_loop() as SceneTree
+		if ml: ml.process_frame.connect(func():
+			if int(_live.get(key, 0)) <= 0:
+				_tall.erase(key); _page_of.erase(key), CONNECT_ONE_SHOT)
+		var vpt := wrap.get_viewport()
+		if vpt and vpt.size_changed.is_connected(refit): vpt.size_changed.disconnect(refit))
+	return wrap
+
+## Splits a VBox's children (and the rows of any grid among them) into pages that fit maxh.
+static func _paginate(content: VBoxContainer, maxh: float, key: String, pager: Control, lbl: Label, prev: Button, next: Button, w := 600.0) -> void:
+	var units: Array = []          # each: {nodes: [...], h}
+	for c in content.get_children():
+		if not (c is Control):
+			continue
+		if c.has_meta("pg_off"):
+			c.visible = true; c.remove_meta("pg_off")
+		if c is GridContainer:
+			var g := c as GridContainer
+			var cols := maxi(1, g.columns)
+			var items: Array = []
+			for gc in g.get_children():
+				if gc is Control:
+					if gc.has_meta("pg_off"): gc.visible = true; gc.remove_meta("pg_off")
+					if gc.visible: items.append(gc)
+			var vs := float(g.get_theme_constant("v_separation"))
+			for i in range(0, items.size(), cols):
+				var row: Array = items.slice(i, i + cols)
+				var rh := 0.0
+				for it in row: rh = maxf(rh, est_h(it as Control, (w - (cols - 1) * float(g.get_theme_constant("h_separation"))) / cols))
+				units.append({"nodes": row, "h": rh + (vs if i > 0 else 0.0), "grid": g})
+			continue
+		if not c.visible:
+			continue
+		if c.has_meta("pg_keep"):
+			# headers and tab rows stay on every page
+			maxh -= est_h(c as Control, w) + float(content.get_theme_constant("separation"))
+			continue
+		units.append({"nodes": [c], "h": est_h(c as Control, w)})
+	var sep := float(content.get_theme_constant("separation"))
+	var total := 0.0
+	for u in units: total += float(u["h"]) + sep
+	if total - sep <= maxh or units.size() <= 1:
+		pager.visible = false
+		return
+	# fill pages greedily
+	var pages: Array = [[]]
+	var used := 0.0
+	for u in units:
+		var h := float(u["h"]) + sep
+		if used + h > maxh and not (pages[-1] as Array).is_empty():
+			pages.append([])
+			used = 0.0
+		pages[-1].append(u)
+		used += h
+	var pg := clampi(int(_page_of.get(key, 0)), 0, pages.size() - 1)
+	_page_of[key] = pg
+	for i in pages.size():
+		if i == pg:
+			continue
+		for u in pages[i]:
+			for n in u["nodes"]:
+				(n as Control).visible = false
+				(n as Control).set_meta("pg_off", true)
+	pager.visible = true
+	lbl.text = "Page %d of %d" % [pg + 1, pages.size()]
+	prev.disabled = pg == 0
+	next.disabled = pg >= pages.size() - 1
+
+## How tall a control will be at a given width, worked out from the text itself so wrapped labels
+## measure right before the layout has run (they report huge heights until then).
+static func est_h(c: Control, w: float) -> float:
+	if c == null or (not c.visible and not c.has_meta("pg_off")):
+		return 0.0
+	var own := c.custom_minimum_size.y
+	if c is Label:
+		var l := c as Label
+		if l.autowrap_mode == TextServer.AUTOWRAP_OFF:
+			return l.get_combined_minimum_size().y
+		var f := l.get_theme_font("font")
+		var fs := l.get_theme_font_size("font_size")
+		var ls := float(l.get_theme_constant("line_spacing"))
+		var lines := 0
+		for para in l.text.split("\n"):
+			var tw := f.get_string_size(para, HORIZONTAL_ALIGNMENT_LEFT, -1, fs).x
+			lines += maxi(1, int(ceil(tw / maxf(20.0, w - 4.0) + 0.0001)))
+		return maxf(own, lines * (f.get_height(fs) + ls))
+	if c is GridContainer:
+		var g := c as GridContainer
+		var cols := maxi(1, g.columns)
+		var cw := (w - (cols - 1) * float(g.get_theme_constant("h_separation"))) / cols
+		var items: Array = g.get_children().filter(func(x): return x is Control and (x.visible or x.has_meta("pg_off")))
+		var total := 0.0
+		for i in range(0, items.size(), cols):
+			var rh := 0.0
+			for it in items.slice(i, i + cols): rh = maxf(rh, est_h(it, cw))
+			total += rh + (float(g.get_theme_constant("v_separation")) if i > 0 else 0.0)
+		return maxf(own, total)
+	if c is VBoxContainer:
+		var sep := float(c.get_theme_constant("separation"))
+		var total := 0.0; var n := 0
+		for ch in c.get_children():
+			if ch is Control and ch.visible:
+				total += est_h(ch, w); n += 1
+		return maxf(own, total + sep * maxi(0, n - 1))
+	if c is HBoxContainer:
+		var sep := float(c.get_theme_constant("separation"))
+		var kids: Array = c.get_children().filter(func(x): return x is Control and x.visible)
+		var fixed := 0.0; var expanders := 0
+		for ch in kids:
+			if (ch as Control).size_flags_horizontal & Control.SIZE_EXPAND: expanders += 1
+			else: fixed += (ch as Control).get_combined_minimum_size().x
+		var free := maxf(40.0, w - fixed - sep * maxi(0, kids.size() - 1))
+		var hmax := 0.0
+		for ch in kids:
+			var cw: float = free / maxi(1, expanders) if (ch as Control).size_flags_horizontal & Control.SIZE_EXPAND else (ch as Control).get_combined_minimum_size().x
+			hmax = maxf(hmax, est_h(ch, cw))
+		return maxf(own, hmax)
+	if c is PanelContainer or c is MarginContainer:
+		var pad := Vector2.ZERO
+		if c is PanelContainer:
+			var sb := c.get_theme_stylebox("panel")
+			if sb: pad = sb.get_minimum_size()
+		var hmax := 0.0
+		for ch in c.get_children():
+			if ch is Control and ch.visible: hmax = maxf(hmax, est_h(ch, w - pad.x))
+		return maxf(own, hmax + pad.y)
+	if c is HFlowContainer:
+		var hs := float(c.get_theme_constant("h_separation")); var vs := float(c.get_theme_constant("v_separation"))
+		var x := 0.0; var rows := 1; var rh := 0.0; var total := 0.0
+		for ch in c.get_children():
+			if not (ch is Control and ch.visible): continue
+			var ms := (ch as Control).get_combined_minimum_size()
+			if x > 0.0 and x + ms.x > w:
+				total += rh + vs; rows += 1; x = 0.0; rh = 0.0
+			x += ms.x + hs
+			rh = maxf(rh, ms.y)
+		return maxf(own, total + rh)
+	return c.get_combined_minimum_size().y
+
+## Old name, kept for the results screen: the content, paged rather than scrolled.
+static func scroll_box(content: Control, margin := 120.0) -> Control:
+	if content is VBoxContainer:
+		return paged(content as VBoxContainer, margin, "box")
+	return content
+
+## A menu panel: a title row with a Close button, and a body that pages whenever it's taller than
+## the window, so nothing ends up off screen and nothing scrolls. Returns [panel, body].
 static func scroll_panel(title_txt: String, width: float, on_close: Callable, close_txt := "Close") -> Array:
 	var p := PanelContainer.new()
 	p.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -334,31 +515,11 @@ static func scroll_panel(title_txt: String, width: float, on_close: Callable, cl
 	rule.custom_minimum_size = Vector2(0, 2)
 	rule.color = Color(ACCENT, 0.35)
 	outer.add_child(rule)
-	var sc := ScrollContainer.new()
-	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	sc.name = "Scroll"
 	var body := vbox(12)
-	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sc.add_child(body)
-	outer.add_child(sc)
-	var fit := func():
-		if not is_instance_valid(sc) or not sc.is_inside_tree():
-			return
-		var vp := sc.get_viewport_rect().size
-		var w := minf(width, vp.x - 32.0)
-		p.custom_minimum_size.x = w
-		t.custom_minimum_size.x = 0
-		var maxh := maxf(140.0, vp.y - 150.0 - head.get_combined_minimum_size().y)
-		sc.custom_minimum_size.y = minf(body.get_combined_minimum_size().y, maxh)
-	body.minimum_size_changed.connect(fit)
-	p.tree_entered.connect(func():
-		fit.call_deferred()
-		var vpt := p.get_viewport()
-		if vpt and not vpt.size_changed.is_connected(fit):
-			vpt.size_changed.connect(fit))
-	p.tree_exiting.connect(func():
-		var vpt := p.get_viewport()
-		if vpt and vpt.size_changed.is_connected(fit):
-			vpt.size_changed.disconnect(fit))
+	outer.add_child(paged(body, 170.0, title_txt, head, width - 56.0))
+	var fitw := func():
+		if is_instance_valid(p) and p.is_inside_tree():
+			p.custom_minimum_size.x = minf(width, p.get_viewport_rect().size.x - 32.0)
+	p.tree_entered.connect(func(): fitw.call_deferred())
 	p.custom_minimum_size.x = width
 	return [p, body]

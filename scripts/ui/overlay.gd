@@ -179,8 +179,9 @@ func _show_settings() -> void:
 	var tabs := UI.hbox(6)
 	for t in ["Audio", "Video", "Controls", "Gameplay", "Accessibility"]:
 		var tn: String = t
-		var b := UI.choice(t, t == tab, func(): tab = tn; _show_settings())
+		var b := UI.choice(t, t == tab, func(): tab = tn; UI._page_of.erase("Settings"); _show_settings())
 		tabs.add_child(b)
+	tabs.set_meta("pg_keep", true)
 	v.add_child(tabs)
 	match tab:
 		"Audio":
@@ -300,9 +301,10 @@ func open_inventory() -> void:
 			Save.save_game()
 	var v := _page("inventory", "Inventory", 720)
 	var tabs := UI.hbox(6)
-	for t in ["Items", "Seeds", "Crops", "Furniture", "Kin"]:
+	for t in ["Items", "Seeds", "Crops", "Furniture", "Kin", "Kindex"]:
 		var tn: String = t
-		tabs.add_child(UI.choice(t, t == inv_tab, func(): inv_tab = tn; open_inventory()))
+		tabs.add_child(UI.choice(t, t == inv_tab, func(): inv_tab = tn; UI._page_of.erase("Inventory"); open_inventory()))
+	tabs.set_meta("pg_keep", true)
 	v.add_child(tabs)
 	var grid := GridContainer.new(); grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 10); grid.add_theme_constant_override("v_separation", 10)
@@ -365,7 +367,22 @@ func open_inventory() -> void:
 			for rec in Save.d["roster"]:
 				empty = false
 				var sp: Dictionary = Data.KIN[rec["species"]]
-				cell.call(String(rec["name"]), "Lv %d" % int(rec["level"]), "%s · trust %d%s" % [Evo.form_name(rec), int(rec["trust"]), "  · partner" if rec["uid"] == Save.d.get("active", "") else ""], sp["color"])
+				cell.call(String(rec["name"]), "Lv %d" % int(rec["level"]), "%s%s · %s bond · %s%s" % ["Shimmering " if rec.get("shimmer", false) else "", Evo.form_name(rec), Care.bond(rec)[1], Care.condition_name(rec).to_lower(), "  · partner" if rec["uid"] == Save.d.get("active", "") else ""], Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"])
+		"Kindex":
+			empty = false
+			Care.dex_sync()
+			var dx: Dictionary = Save.d.get("dex", {})
+			for spk in Data.KIN:
+				var e: Dictionary = dx.get(spk, {})
+				var sp: Dictionary = Data.KIN[spk]
+				if e.is_empty() or not e.get("seen", false):
+					cell.call("???", "", "Not seen yet. Look for it on expeditions.", Color(0.3, 0.32, 0.4))
+					continue
+				var forms: Array = e.get("forms", [])
+				var desc := "%s type. %s." % [String(sp["type"]).capitalize(), "Caught" if e.get("caught", false) else "Seen, not caught"]
+				if forms.size() > 0: desc += " Forms: " + ", ".join(forms.slice(0, 3)) + ("..." if forms.size() > 3 else "")
+				if e.get("shimmer", false): desc += " Shimmer found!"
+				cell.call(String(sp["name"]), "★" if e.get("shimmer", false) else ("✓" if e.get("caught", false) else ""), desc, sp["color"])
 	if empty:
 		v.add_child(UI.label({"Seeds": "No seeds. Find them on expeditions or buy them at the stall.", "Crops": "No crops yet. Harvest your plots.", "Furniture": "Nothing stored. Furniture you buy or put away lands here.", "Kin": "No kin yet."}.get(inv_tab, ""), 14, UI.MUTED))
 

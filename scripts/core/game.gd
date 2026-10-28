@@ -89,7 +89,11 @@ func apply_result(r: Dictionary) -> Dictionary:
 			nk["name"] = Data.KIN_NAMES.pick_random()
 			nk["memory"] = []
 			Save.remember(nk, "caught", "was caught by you in the islands and brought home")
+			Care.ensure(nk)
+			nk["needs"] = {"food": 45.0, "energy": 40.0, "joy": 45.0, "clean": 30.0}
 			d["roster"].append(nk)
+			Care.dex_mark(nk["species"], "caught")
+			if nk.get("shimmer", false): Care.dex_mark(nk["species"], "shimmer")
 			out["caught"].append(nk)
 	d["items"]["tonic"] = int(r.get("tonics", d["items"].get("tonic", 0)))
 	var treat: String = d.get("treat", "")
@@ -118,6 +122,11 @@ func apply_result(r: Dictionary) -> Dictionary:
 		else:
 			Save.remember(k, "lost", "lost a match with you (%s)" % _why(r.get("why", "")), -1.0)
 		Evo.learn(k, r.get("kin_stats", {}))
+		# an expedition is hungry, tiring, muddy work
+		Care.catch_up(k)
+		for nd in Care.MATCH_COST:
+			Care.change(k, nd, Care.MATCH_COST[nd])
+		Care.change(k, "joy", 8.0 if won else -8.0)
 		var xp := 40 + (40 if won else 0) + int(r.get("knocks", 0)) * 10
 		if treat == "treat_xp": xp = int(xp * 1.5)
 		k["xp"] = int(k.get("xp", 0)) + xp
@@ -190,6 +199,7 @@ func _evolve(k: Dictionary, out: Dictionary) -> void:
 	if ev.is_empty():
 		return
 	ev["text"] = Evo.describe(ev, k)
+	if ev["kind"] == "form": Care.dex_mark(k["species"], "form", String(ev["to"]))
 	if not k.has("pending_evo"):
 		k["pending_evo"] = []
 	k["pending_evo"].append(ev)

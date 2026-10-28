@@ -35,6 +35,16 @@ func _ready() -> void:
 		if a.begins_with("--hero="): Save.d["hero"] = a.substr(7); Save.d["weapon"] = ""
 		if a == "--ability-demo": opts["ability_demo"] = true
 		if a == "--fresh": Save.d = Save.fresh()
+		if a.begins_with("--test-kin="):
+			# test: a save with one kin "species:level:trust", ready to play at home
+			var tk := a.substr(11).split(":")
+			if Save.d["roster"].is_empty():
+				var nk := Save.new_kin(tk[0], "Pip")
+				nk["level"] = int(tk[1]) if tk.size() > 1 else 1
+				nk["trust"] = float(tk[2]) if tk.size() > 2 else 50.0
+				Save.d["roster"].append(nk); Save.d["active"] = nk["uid"]
+			Save.d["tutorial"]["home"] = true
+			Save.d["tutorial"]["day1_done"] = true
 		if a == "--skip-tutorial": Save.d["tutorial"]["home"] = true
 		if a.begins_with("--teams="): opts["teams"] = int(a.substr(8))
 		if a.begins_with("--tier="): opts["tier"] = int(a.substr(7))

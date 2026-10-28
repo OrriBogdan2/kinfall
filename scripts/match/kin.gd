@@ -62,6 +62,15 @@ func init_kin(match_node: Node, id: String, species_id: String, record: Dictiona
 	dmg *= em["dmg"]
 	speed *= em["speed"]
 	cd_mult = em["cd"]
+	if owner_h:
+		# how well it's been raised: trained stats, how it's feeling, how close you are
+		var cm := Care.match_mods(rec)
+		max_hp *= float(cm["hp"]); hp = max_hp
+		dmg *= float(cm["dmg"])
+		speed *= float(cm["speed"])
+		cd_mult *= float(cm["cd"])
+		power *= float(cm["skill"])
+		mood = float(cm["mood"])
 	r = 0.36 * (1.0 + minf(rec.get("forms", []).size() * 0.08, 0.4))
 	state = "shoulder" if owner_h else "wild"
 	settle = 1.0
@@ -96,6 +105,8 @@ func danger_at(p: Vector3) -> float:
 
 ## The owner asks it to jump into a fight. Returns "go", "hesitate" or "refuse".
 func consider_throw(p: Vector3) -> String:
+	if trust >= 90.0:
+		return "go"          # soulbound: it goes wherever you send it
 	var danger := danger_at(p)
 	var c := courage()
 	if danger > c + 1.1:

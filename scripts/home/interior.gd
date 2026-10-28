@@ -32,6 +32,7 @@ var panel_host: CenterContainer
 var panel_open := ""
 var deco_bar: Control = null
 var deco_hint: Label = null
+var deco_page := 0
 var decorating := false
 var held := {}                  # the piece in your hand: {id, r, from (index or -1)}
 var ghost: Node3D = null
@@ -535,17 +536,25 @@ func _build_deco_bar() -> void:
 	deco_hint = UI.label("Pick something to place. Click a piece in the room to move it.   Left click place  ·  Right click or R turn  ·  Del put away  ·  Esc cancel", 13, UI.MUTED)
 	deco_hint.autowrap_mode = TextServer.AUTOWRAP_OFF
 	col.add_child(deco_hint)
-	var sc := ScrollContainer.new()
-	sc.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	sc.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var row := UI.hbox(8)
-	sc.add_child(row)
-	col.add_child(sc)
+	# no scrolling: the catalog shows a page at a time
+	var line := UI.hbox(8)
+	line.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	col.add_child(line)
 	var inv: Dictionary = Save.d["furniture"]
 	# what you own first, then the catalog
 	var ids: Array = Data.FURN.keys()
 	ids.sort_custom(func(a, b): return int(inv.get(a, 0)) > int(inv.get(b, 0)))
-	for id in ids:
+	var vpw := get_viewport().get_visible_rect().size.x
+	var per := maxi(2, int((vpw - 232.0 - 16.0 - 28.0 - 2.0 * 60.0) / 140.0))
+	var pages := int(ceil(ids.size() / float(per)))
+	deco_page = clampi(deco_page, 0, pages - 1)
+	var prev := UI.button("‹", func(): deco_page -= 1; _build_deco_bar(), 52)
+	prev.custom_minimum_size.y = 78; prev.disabled = deco_page == 0
+	line.add_child(prev)
+	var row := UI.hbox(8)
+	row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.add_child(row)
+	for id in ids.slice(deco_page * per, deco_page * per + per):
 		var f: Dictionary = Data.FURN[id]
 		var n := int(inv.get(id, 0))
 		var fid: String = id
@@ -554,6 +563,9 @@ func _build_deco_bar() -> void:
 		if n > 0: b.theme_type_variation = "Chosen"
 		elif int(Save.d["gems"]) < int(f["price"]): b.disabled = true
 		row.add_child(b)
+	var next := UI.button("›", func(): deco_page += 1; _build_deco_bar(), 52)
+	next.custom_minimum_size.y = 78; next.disabled = deco_page >= pages - 1
+	line.add_child(next)
 	root_ui.add_child(bar)
 	deco_bar = bar
 

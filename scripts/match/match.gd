@@ -440,7 +440,7 @@ func _apply_home_perks(h: Hunter) -> void:
 
 func _apply_treat(k: Kin) -> void:
 	match String(Save.d.get("treat", "")):
-		"treat_power": k.power = 1.25
+		"treat_power": k.power *= 1.25
 		"treat_hardy": k.max_hp *= 1.4; k.hp = k.max_hp
 		"treat_calm": k.trust = minf(100.0, k.trust + 12.0)
 
@@ -690,6 +690,7 @@ func _spawn_wild() -> void:
 		var rec := Save.new_kin(sp)
 		rec["level"] = rng.randi_range(T["kin_lvl"][0], T["kin_lvl"][1])
 		Evo.simulate(rec, rng)
+		rec["shimmer"] = rng.randf() < 1.0 / 25.0   # a rare colour you'll want to catch
 		spawn_wild(rec, p)
 
 func spawn_wild(rec: Dictionary, at: Vector3, dazed := false) -> Kin:
@@ -1537,6 +1538,7 @@ func step(dt: float) -> void:
 	if not ship.is_empty() and not ship.get("gone", false):
 		_update_ship(dt)
 	_update_interact(dt)
+	_update_dex(dt)
 	_update_portals(dt)
 	_update_events()
 	_update_zones(dt)
@@ -1613,6 +1615,23 @@ func _update_pads(dt: float) -> void:
 		for k in kins:
 			if k.state == "active" and Vector2(k.pos.x - pd["pos"].x, k.pos.z - pd["pos"].z).length() < 0.7:
 				k.state = "returning"
+
+var _dex_t := 0.0
+var _shimmer_told := {}
+
+## Wild kin you get a look at go in the Kindex. A shimmer gets called out.
+func _update_dex(dt: float) -> void:
+	_dex_t -= dt
+	if _dex_t > 0.0 or player == null or player.out or opts.get("autoplay", false):
+		return
+	_dex_t = 1.0
+	for k in kins:
+		if k.is_wild() and not k.dead and player.flat_dist(k) < 11.0:
+			Care.dex_mark(k.species, "seen")
+			if k.rec.get("shimmer", false) and not _shimmer_told.has(k.nid):
+				_shimmer_told[k.nid] = true
+				hud.toast("A shimmering %s! Its colours are rare" % Data.KIN[k.species]["name"], Color("fff6c0"))
+				sfx("unlock", k.pos, -6.0, 1.3)
 
 func _update_interact(dt: float) -> void:
 	for h in hunters:
@@ -2348,7 +2367,8 @@ func _ser(e: Ent) -> Array:
 	if e is Kin:
 		var k: Kin = e
 		return ["k", k.nid, _r(k.pos.x), _r(k.pos.y), _r(k.pos.z), _r(k.face), _r(k.hp), _r(k.max_hp), KIN_STATES.find(k.state), k.species,
-			k.owner_h.nid if k.owner_h else "", int(k.rec.get("level", 1)), String(k.rec.get("name", "")), _r(k.catch_prog), _r(k.vel.x), _r(k.vel.z)]
+			k.owner_h.nid if k.owner_h else "", int(k.rec.get("level", 1)), String(k.rec.get("name", "")), _r(k.catch_prog), _r(k.vel.x), _r(k.vel.z),
+			1 if k.rec.get("shimmer", false) else 0, String(k.rec.get("acc", ""))]
 	var mb: Mob = e
 	return ["m", mb.nid, _r(mb.pos.x), _r(mb.pos.y), _r(mb.pos.z), _r(mb.face), _r(mb.hp), _r(mb.max_hp), MOB_STATES.find(mb.st), mb.mkind,
 		_r(mb.atk_dir.x), _r(mb.atk_dir.y), _r(mb.st_t), _r(mb.vel.x), _r(mb.vel.z), _r(mb.stag_open), _r(mb.stagger_t)]
@@ -2410,6 +2430,9 @@ func _net_make(it: Array) -> Ent:
 		"k":
 			var owner: Hunter = ents_by_id.get(String(it[10]), null)
 			var rec := {"species": String(it[9]), "level": int(it[11]), "name": String(it[12]), "traits": Data.KIN[String(it[9])]["traits"].duplicate(), "trust": 50.0}
+			if it.size() > 17:
+				rec["shimmer"] = int(it[16]) == 1
+				rec["acc"] = String(it[17])
 			var k := Kin.new()
 			k.init_kin(self, nid, rec["species"], rec, owner)
 			add_child(k)
