@@ -195,6 +195,41 @@ const CROPS := {
 		"use": "levelup", "desc": "Rare. Your partner gains a level right away (once a day)."},
 }
 
+## Furniture for decorating the insides of buildings. size is in floor tiles (w, d); "walk" lets you
+## walk over it (rugs). Prices are in gems at the stall or the decorating catalog.
+const FURN := {
+	"bed": {"name": "Bed", "price": 60, "size": [2, 3]},
+	"kin_bed": {"name": "Kin basket", "price": 25, "size": [1, 1]},
+	"table": {"name": "Table", "price": 40, "size": [2, 1]},
+	"chair": {"name": "Chair", "price": 15, "size": [1, 1]},
+	"stool": {"name": "Stool", "price": 10, "size": [1, 1]},
+	"rug": {"name": "Rug", "price": 30, "size": [3, 2], "walk": true},
+	"rug_round": {"name": "Round rug", "price": 30, "size": [2, 2], "walk": true},
+	"lamp": {"name": "Floor lamp", "price": 25, "size": [1, 1]},
+	"plant": {"name": "Potted plant", "price": 15, "size": [1, 1]},
+	"big_plant": {"name": "Big plant", "price": 35, "size": [1, 1]},
+	"shelf": {"name": "Bookshelf", "price": 45, "size": [2, 1]},
+	"chest": {"name": "Chest", "price": 30, "size": [1, 1]},
+	"stove": {"name": "Stove", "price": 55, "size": [1, 1]},
+	"fireplace": {"name": "Fireplace", "price": 90, "size": [2, 1]},
+	"wardrobe": {"name": "Wardrobe", "price": 50, "size": [2, 1]},
+	"fishbowl": {"name": "Fish bowl", "price": 35, "size": [1, 1]},
+	"easel": {"name": "Painting", "price": 40, "size": [1, 1]},
+	"trophy": {"name": "Trophy stand", "price": 70, "size": [1, 1]},
+	"cushion": {"name": "Floor cushion", "price": 12, "size": [1, 1], "walk": true},
+	"toy_ball": {"name": "Kin toy", "price": 8, "size": [1, 1], "walk": true},
+}
+
+## Rooms you can go into: floor size in tiles and what's in them to begin with.
+const ROOMS := {
+	"house": {"name": "Your house", "w": 10, "d": 8, "floor": Color("8f6644"), "wall": Color("efe2c8"),
+		"start": [["bed", 1, 1, 0], ["rug", 4, 4, 0], ["table", 6, 1, 0], ["chair", 6, 2, 0], ["lamp", 0, 6, 0], ["stove", 9, 1, 0], ["kin_bed", 8, 6, 0], ["plant", 9, 6, 0]]},
+	"cottage": {"name": "Kin Cottage", "w": 8, "d": 6, "floor": Color("86603f"), "wall": Color("e8d8b8"),
+		"start": [["kin_bed", 1, 1, 0], ["kin_bed", 3, 1, 0], ["rug_round", 4, 3, 0], ["toy_ball", 6, 4, 0]]},
+	"cottage2": {"name": "Meadow Cottage", "w": 8, "d": 6, "floor": Color("86603f"), "wall": Color("dfe8c8"),
+		"start": [["kin_bed", 1, 1, 0], ["kin_bed", 6, 1, 0], ["cushion", 3, 3, 0], ["plant", 7, 4, 0]]},
+}
+
 ## Farming: a watered plant grows a stage after this long at home (half in the greenhouse).
 const WATER_TIME := 90.0
 

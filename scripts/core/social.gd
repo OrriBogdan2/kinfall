@@ -173,6 +173,7 @@ func publish_profile(force := false) -> void:
 		"plots": Save.d["plots"], "gh_plots": Save.d.get("gh_plots", []),
 		"extracts": int(Save.d.get("extracts", 0)), "matches": int(Save.d.get("matches", 0)),
 		"guild": String(Save.d.get("guild_id", "")), "updated": now_ms(),
+		"decor": Save.d.get("decor", {}).get("house", []),
 	}
 	set_doc("profiles/" + me, d)
 
@@ -634,4 +635,14 @@ static func clean_island(d: Dictionary) -> Dictionary:
 	return {"name": say_of(d.get("name"), "Hunter", 16), "active": txt_of(d.get("active"), "", 24), "roster": roster,
 		"hero": hero if Data.HEROES.has(hero) else "sage", "buildings": pick.call(d.get("buildings"), Data.BUILDINGS),
 		"bridges": pick.call(d.get("bridges"), Data.ISLES), "plots": plots.call(d.get("plots")), "gh_plots": gh.slice(0, 4),
-		"guild": txt_of(d.get("guild"), "", 40)}
+		"guild": txt_of(d.get("guild"), "", 40), "decor": _clean_decor(d.get("decor"))}
+
+static func _clean_decor(src) -> Array:
+	var out: Array = []
+	for ev in arr_of(src):
+		var e := dict_of(ev)
+		var id := txt_of(e.get("id"))
+		if not Data.FURN.has(id) or out.size() >= 60:
+			continue
+		out.append({"id": id, "x": clampi(int_of(e.get("x")), 0, 12), "z": clampi(int_of(e.get("z")), 0, 12), "r": clampi(int_of(e.get("r")), 0, 3)})
+	return out

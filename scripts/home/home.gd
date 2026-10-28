@@ -17,6 +17,7 @@ var hint: Label
 var player: Node3D
 var ppos := Vector3.ZERO
 var pvel := Vector3.ZERO
+var spawn := ""             # set when coming back out of a building: start at its door
 var py := 0.0               # height of a jump
 var farm_t := 0.0
 var pvy := 0.0
@@ -161,6 +162,10 @@ func _ready() -> void:
 	player = Models.hunter(Data.HEROES[hero0]["cls"], Data.TEAM_COLORS[0], _weapon(), hero0)
 	add_child(player)
 	ppos = Vector3(38.0, 0, 34.5)
+	if spawn == "house":
+		ppos = spots["house"] + Vector3(0, 0, 2.6)
+	elif lots.has(spawn):
+		ppos = lots[spawn]["door"]
 	player.position = ppos
 	cam.snap(ppos)
 	for a in dbg:
@@ -803,7 +808,7 @@ func _use(it: Dictionary) -> void:
 		"pot": _open_kitchen()
 		"stall": _open_shop()
 		"portal": _open_expedition()
-		"house": _open_house()
+		"house": Game.goto("interior", {"room": "house"})
 		"kin": _pet_kin(it["k"])
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -1629,6 +1634,10 @@ func _open_lot(b: String) -> void:
 		var v := _new_panel(bd["name"], 480)
 		v.add_child(UI.label(bd["desc"], 16))
 		if b in ["cottage", "cottage2"]:
+			_close_panel()
+			Game.goto("interior", {"room": b})
+			return
+		if false:
 			var resting: Array = []
 			for rec in Save.d["roster"]:
 				if rec["uid"] != Save.d.get("active", ""): resting.append(rec["name"])
@@ -1897,6 +1906,7 @@ func _use_visiting(it: Dictionary) -> void:
 
 func _open_gift_panel(owner_name: String) -> void:
 	var v := _new_panel("Leave a gift for %s" % owner_name, 520)
+	v.add_child(UI.primary("Go inside %s's house" % owner_name, func(): Game.goto("interior", {"room": "house", "visit": visit, "visit_id": visit_id}), 300))
 	v.add_child(UI.label("They'll find it next time they're home.", 14, UI.MUTED))
 	var any := false
 	for kind in ["seed", "crop"]:

@@ -752,3 +752,101 @@ static func fountain() -> Node3D:
 	sp.gravity = Vector3(0, -9, 0); sp.position = Vector3(0, 1.8, 0)
 	root.add_child(sp)
 	return root
+
+
+## Furniture for building interiors, built at the origin of its footprint's first tile and
+## spanning size[0] x size[1] tiles along +x / +z.
+static func furniture(id: String) -> Node3D:
+	var root := Node3D.new()
+	var wood := toon(Color("8a5a3a")); var dark := toon(Color("5e3c26")); var light := toon(Color("c99a6a"))
+	var cloth := toon(Color("d9604a")); var cream := toon(Color("f1e6cf")); var leaf := toon(Color("4f9a4a")); var pot := toon(Color("c0663e"))
+	var metal := toon(Color("3d3f4a"))
+	match id:
+		"bed":
+			part(root, box(1.8, 0.35, 2.8), wood, Vector3(1.0, 0.25, 1.5))
+			part(root, box(1.7, 0.18, 2.5), cream, Vector3(1.0, 0.5, 1.55))
+			part(root, box(1.72, 0.12, 1.6), cloth, Vector3(1.0, 0.62, 2.0))
+			part(root, box(0.9, 0.16, 0.45), toon(Color("fffaf0")), Vector3(1.0, 0.66, 0.5))
+			part(root, box(1.9, 0.9, 0.12), dark, Vector3(1.0, 0.55, 0.12))
+		"kin_bed":
+			part(root, cyl(0.42, 0.36, 0.22, 16), toon(Color("c9a46a")), Vector3(0.5, 0.11, 0.5))
+			part(root, cyl(0.32, 0.32, 0.06, 16), toon(Color("e8b0c0")), Vector3(0.5, 0.2, 0.5))
+		"table":
+			part(root, box(1.8, 0.1, 0.9), light, Vector3(1.0, 0.72, 0.5))
+			for p in [Vector3(0.2, 0.36, 0.15), Vector3(1.8, 0.36, 0.15), Vector3(0.2, 0.36, 0.85), Vector3(1.8, 0.36, 0.85)]:
+				part(root, box(0.1, 0.72, 0.1), wood, p)
+			part(root, cyl(0.1, 0.08, 0.14, 10), toon(Color("e0e8f0")), Vector3(0.6, 0.84, 0.5))
+		"chair":
+			part(root, box(0.55, 0.08, 0.55), light, Vector3(0.5, 0.45, 0.5))
+			part(root, box(0.55, 0.55, 0.08), wood, Vector3(0.5, 0.72, 0.25))
+			for p in [Vector3(0.28, 0.22, 0.28), Vector3(0.72, 0.22, 0.28), Vector3(0.28, 0.22, 0.72), Vector3(0.72, 0.22, 0.72)]:
+				part(root, box(0.07, 0.45, 0.07), wood, p)
+		"stool":
+			part(root, cyl(0.25, 0.25, 0.08, 12), light, Vector3(0.5, 0.45, 0.5))
+			part(root, cyl(0.06, 0.1, 0.42, 8), wood, Vector3(0.5, 0.21, 0.5))
+		"rug":
+			part(root, box(2.9, 0.03, 1.9), toon(Color("6a4c8c"), false), Vector3(1.5, 0.015, 1.0))
+			part(root, box(2.5, 0.035, 1.5), toon(Color("e0b25a"), false), Vector3(1.5, 0.02, 1.0))
+			part(root, box(2.1, 0.04, 1.1), toon(Color("6a4c8c"), false), Vector3(1.5, 0.025, 1.0))
+		"rug_round":
+			part(root, cyl(0.95, 0.95, 0.03, 28), toon(Color("3f7a8c"), false), Vector3(1.0, 0.015, 1.0))
+			part(root, cyl(0.6, 0.6, 0.035, 28), toon(Color("f2e8d2"), false), Vector3(1.0, 0.02, 1.0))
+		"lamp":
+			part(root, cyl(0.18, 0.22, 0.06, 12), metal, Vector3(0.5, 0.03, 0.5))
+			part(root, cyl(0.03, 0.03, 1.4, 8), metal, Vector3(0.5, 0.72, 0.5))
+			part(root, cyl(0.16, 0.28, 0.32, 14), toon(Color("ffe9b8"), false, 0.8), Vector3(0.5, 1.45, 0.5))
+			var ol := OmniLight3D.new(); ol.light_color = Color("ffd9a0"); ol.light_energy = 1.4; ol.omni_range = 4.5
+			ol.position = Vector3(0.5, 1.4, 0.5); root.add_child(ol)
+		"plant":
+			part(root, cyl(0.2, 0.15, 0.3, 12), pot, Vector3(0.5, 0.15, 0.5))
+			part(root, sphere(0.28), leaf, Vector3(0.5, 0.48, 0.5), Vector3(1, 0.9, 1))
+		"big_plant":
+			part(root, cyl(0.26, 0.2, 0.4, 12), pot, Vector3(0.5, 0.2, 0.5))
+			part(root, cyl(0.04, 0.05, 0.7, 6), dark, Vector3(0.5, 0.7, 0.5))
+			for i in 4:
+				var a := TAU * i / 4.0
+				part(root, sphere(0.26), leaf, Vector3(0.5 + cos(a) * 0.18, 1.1 + (i % 2) * 0.12, 0.5 + sin(a) * 0.18))
+		"shelf":
+			part(root, box(1.8, 1.8, 0.45), wood, Vector3(1.0, 0.9, 0.3))
+			for row in 3:
+				for b in 7:
+					part(root, box(0.17, 0.42, 0.3), toon([Color("c0443a"), Color("3f6a9c"), Color("d9b04a"), Color("4f8a5a")][(row + b) % 4]), Vector3(0.35 + b * 0.22, 0.42 + row * 0.55, 0.38))
+		"chest":
+			part(root, box(0.8, 0.5, 0.55), wood, Vector3(0.5, 0.25, 0.5))
+			part(root, box(0.84, 0.1, 0.6), dark, Vector3(0.5, 0.52, 0.5))
+			part(root, box(0.12, 0.14, 0.04), toon(Color("e0b84a"), false, 0.3), Vector3(0.5, 0.4, 0.78))
+		"stove":
+			part(root, box(0.85, 0.85, 0.75), metal, Vector3(0.5, 0.42, 0.45))
+			part(root, box(0.5, 0.3, 0.05), toon(Color("ff8a3a"), false, 0.9), Vector3(0.5, 0.35, 0.84))
+			part(root, cyl(0.08, 0.08, 0.8, 8), metal, Vector3(0.5, 1.2, 0.3))
+		"fireplace":
+			part(root, box(1.9, 1.2, 0.6), toon(Color("9a8f86")), Vector3(1.0, 0.6, 0.35))
+			part(root, box(1.0, 0.6, 0.3), toon(Color("2a2024")), Vector3(1.0, 0.35, 0.55))
+			part(root, sphere(0.22), toon(Color("ff9a3a"), false, 1.0), Vector3(1.0, 0.25, 0.6), Vector3(1.4, 0.8, 1))
+			var fl := OmniLight3D.new(); fl.light_color = Color("ffb070"); fl.light_energy = 1.6; fl.omni_range = 5.0
+			fl.position = Vector3(1.0, 0.5, 0.9); root.add_child(fl)
+		"wardrobe":
+			part(root, box(1.8, 2.0, 0.6), wood, Vector3(1.0, 1.0, 0.35))
+			part(root, box(0.04, 1.8, 0.02), dark, Vector3(1.0, 1.0, 0.66))
+			for x in [0.85, 1.15]:
+				part(root, sphere(0.04), toon(Color("e0b84a")), Vector3(x, 1.0, 0.68))
+		"fishbowl":
+			part(root, box(0.6, 0.6, 0.6), wood, Vector3(0.5, 0.3, 0.5))
+			part(root, sphere(0.28), toon(Color(0.6, 0.85, 1.0), false, 0.3), Vector3(0.5, 0.86, 0.5))
+			part(root, sphere(0.06), toon(Color("ff8a3a")), Vector3(0.55, 0.84, 0.5), Vector3(1.4, 1, 1))
+		"easel":
+			part(root, box(0.06, 1.4, 0.06), wood, Vector3(0.3, 0.7, 0.55), Vector3.ONE, Vector3(0.12, 0, 0.1))
+			part(root, box(0.06, 1.4, 0.06), wood, Vector3(0.7, 0.7, 0.55), Vector3.ONE, Vector3(0.12, 0, -0.1))
+			part(root, box(0.8, 0.6, 0.04), toon(Color("f6efe0")), Vector3(0.5, 1.05, 0.45), Vector3.ONE, Vector3(-0.12, 0, 0))
+			part(root, sphere(0.14), toon(Color("f2a24a")), Vector3(0.45, 1.08, 0.42), Vector3(1, 1, 0.2))
+			part(root, box(0.6, 0.12, 0.02), toon(Color("5aa04a")), Vector3(0.5, 0.86, 0.43))
+		"trophy":
+			part(root, box(0.6, 0.7, 0.6), dark, Vector3(0.5, 0.35, 0.5))
+			part(root, cyl(0.18, 0.08, 0.3, 12), toon(Color("f2c84a"), false, 0.5), Vector3(0.5, 0.95, 0.5))
+			part(root, cyl(0.1, 0.12, 0.08, 10), toon(Color("f2c84a"), false, 0.5), Vector3(0.5, 0.74, 0.5))
+		"cushion":
+			part(root, cyl(0.38, 0.4, 0.16, 16), toon(Color("e07a9a")), Vector3(0.5, 0.08, 0.5))
+		"toy_ball":
+			part(root, sphere(0.18), toon(Color("ff6a5a")), Vector3(0.5, 0.18, 0.5))
+			part(root, cyl(0.185, 0.185, 0.04, 16), toon(Color("fff0d8")), Vector3(0.5, 0.18, 0.5), Vector3.ONE, Vector3(0, 0, PI / 2))
+	return root

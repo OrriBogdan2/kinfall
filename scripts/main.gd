@@ -78,7 +78,16 @@ func _ready() -> void:
 	var town_arg := ""
 	for a in args:
 		if a.begins_with("--town="): town_arg = a.substr(7)
-	if town_arg != "":
+	var room_arg := ""
+	for a in args:
+		if a.begins_with("--interior="): room_arg = a.substr(11)
+	if room_arg != "":
+		show_screen("interior", {"room": room_arg})
+		if "--decorate" in args:
+			get_tree().create_timer(0.5).timeout.connect(func():
+				current._toggle_decorate()
+				current._take("plant"))
+	elif town_arg != "":
 		show_screen("town", {"mode": town_arg, "gid": "test"})
 	elif "--match" in args:
 		show_screen("match", opts)
@@ -139,6 +148,14 @@ func show_screen(screen: String, opts: Dictionary) -> void:
 		"home":
 			var H = load("res://scripts/home/home.gd")
 			current = H.new()
+			current.set("visit", opts.get("visit", {}))
+			current.set("visit_id", String(opts.get("visit_id", "")))
+			current.set("spawn", String(opts.get("spawn", "")))
+			add_child(current)
+		"interior":
+			var In = load("res://scripts/home/interior.gd")
+			current = In.new()
+			current.set("room", String(opts.get("room", "house")))
 			current.set("visit", opts.get("visit", {}))
 			current.set("visit_id", String(opts.get("visit_id", "")))
 			add_child(current)
