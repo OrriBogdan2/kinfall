@@ -22,6 +22,18 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 		# steer the opening glide toward the chosen landing spot
 		var land: Vector3 = a.get("land", h.pos)
 		var to := Vector2(land.x - h.pos.x, land.z - h.pos.z)
+		# too far to glide to from this height: settle for the closest island spot in reach
+		var reach := maxf(0.0, (h.pos.y + 1.0) / Hunter.DROP_FALL * Hunter.DROP_SPEED)
+		if to.length() > reach * 0.85 and not a.get("retarget", false):
+			a["retarget"] = true
+			var best := land; var bd := 1e9
+			for sp in m.world.spawns + m.world.portal_spots:
+				var d := Vector2(sp.x - h.pos.x, sp.z - h.pos.z).length()
+				var score := d if d < reach * 0.8 else d + 1000.0
+				if score < bd: bd = score; best = sp
+			a["land"] = best
+			land = best
+			to = Vector2(land.x - h.pos.x, land.z - h.pos.z)
 		inp["move"] = to.normalized() if to.length() > 0.6 else Vector2.ZERO
 		return
 	if a["think"] <= 0.0:

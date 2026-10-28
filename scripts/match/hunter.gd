@@ -90,7 +90,9 @@ var dropping := false         # gliding down from the sky at the start of a matc
 var riding := false           # aboard the skyship, waiting to jump
 var bless_t := 0.0
 var wrar := 0                 # rarity of the weapon in hand, 0 for the one you brought
-var swap_hold := false        # F has to be let go between weapon swaps
+var swap_hold := false
+var dash_at := -9.0           # when the last dash started, for perfect dodges
+var dodged := false        # F has to be let go between weapon swaps
 var lives := 1                # comes back this many times minus one before it's really out
 
 const DEFAULT_HERO := {"light": "veil", "medium": "sage", "heavy": "bastion"}
@@ -160,6 +162,12 @@ func aim_dir() -> Vector2:
 # ------------------------------------------------------------------ damage
 func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 	if (inv_t > 0.0 or dropping) and opts.get("src", "") != "fall":
+		# dashing through an attack right as it lands: a perfect dodge
+		if not dropping and not dodged and m.time - dash_at < 0.22 and by != null and by.team != team and dmg >= 4.0:
+			dodged = true
+			dashes = minf(max_dashes(), dashes + 0.6)
+			crit_t = maxf(crit_t, 1.5)
+			m.on_perfect_dodge(self)
 		return 0.0
 	if ctrl == "local" and Game.god:
 		return 0.0
@@ -248,6 +256,8 @@ func do_dash() -> void:
 	dashes -= 1.0
 	roll_t = DASH_TIME
 	inv_t = maxf(inv_t, 0.14)
+	dash_at = m.time
+	dodged = false
 	fly_t = 0.0
 	m.sfx("dash", pos, -4.0)
 	m.fx.dash_trail(self)
@@ -491,14 +501,35 @@ func _physics(dt: float) -> void:
 		vel.y -= GRAV * (1.3 if vel.y < 0.0 and fly_t <= 0.0 else 1.0) * dt
 	var guard := grounded and roll_t <= 0.0 and hv.length() <= spd * 1.25
 	# horizontal with walls; mantle onto ledges you run or fall into
+	var x0 := pos.x; var z0 := pos.z
+	var step_up := 0.0
 	var nx := pos.x + vel.x * dt
 	var b1: float = m.world.occupy(nx, pos.z, r, pos.y, guard)
 	if b1 == 0.0: pos.x = nx
+	elif grounded and b1 > 0.0 and b1 - pos.y <= World.LEVEL + 0.05: step_up = b1
 	elif b1 > 0.0 or b1 == -1.0: vel.x = 0.0 if b1 == -1.0 else vel.x * -0.1
 	var nz := pos.z + vel.z * dt
 	var b2: float = m.world.occupy(pos.x, nz, r, pos.y, guard)
 	if b2 == 0.0: pos.z = nz
+	elif grounded and b2 > 0.0 and b2 - pos.y <= World.LEVEL + 0.05: step_up = maxf(step_up, b2)
 	elif b2 > 0.0 or b2 == -1.0: vel.z = 0.0 if b2 == -1.0 else vel.z * -0.1
+	if step_up > 0.0 and mv.length() > 0.3:
+		# walking into a single terrace hops you up it instead of stopping you dead
+		vel.y = sqrt(2.0 * GRAV * (step_up - pos.y + 0.18))
+		grounded = false
+		coyote = 0.0
+	elif step_up == 0.0 and (b1 > 0.0 or b2 > 0.0) and hv.length() > 1.0:
+		# caught on a corner: slip sideways around it rather than sticking
+		var moved := Vector2(pos.x - x0, pos.z - z0).length()
+		var want := hv.length() * dt
+		if moved < want * 0.35:
+			var dn := hv.normalized()
+			for side in [Vector2(-dn.y, dn.x), Vector2(dn.y, -dn.x)]:
+				var tx: float = pos.x + (side.x * 0.8 + dn.x * 0.4) * want
+				var tz: float = pos.z + (side.y * 0.8 + dn.y * 0.4) * want
+				if m.world.occupy(tx, tz, r, pos.y, guard) == 0.0:
+					pos.x = tx; pos.z = tz
+					break
 	var blk := maxf(b1, b2)
 	if not grounded and blk > 0.0 and blk < pos.y + 2.4 and mantle_cd <= 0.0 and blk - pos.y < World.BLOCK_H - 0.1:
 		vel.y = sqrt(2.0 * GRAV * (blk - pos.y + 0.3))

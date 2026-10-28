@@ -345,6 +345,37 @@ static func mob(kind: String) -> Node3D:
 			for i in 4:
 				var a := float(i) / 4.0 * TAU + 0.4
 				part(body, sphere(0.2), m, Vector3(cos(a) * 0.32, 0.08, sin(a) * 0.32), Vector3(1.4, 0.25, 0.7), Vector3(0, -a, 0))
+		"bomber":
+			var puff := Node3D.new(); puff.name = "Puff"; body.add_child(puff)
+			part(puff, sphere(0.42, 16), m, Vector3(0, 0.5, 0))
+			for i in 6:
+				var a := TAU * i / 6.0
+				part(puff, sphere(0.12, 8), m_dark, Vector3(cos(a) * 0.36, 0.5 + sin(a * 2.0) * 0.12, sin(a) * 0.36))
+			part(puff, sphere(0.05, 6), m_eye, Vector3(-0.13, 0.6, -0.38))
+			part(puff, sphere(0.05, 6), m_eye, Vector3(0.13, 0.6, -0.38))
+			part(puff, cyl(0.03, 0.03, 0.22, 6), m_dark, Vector3(0, 0.98, 0))
+			part(puff, sphere(0.07, 8), toon(Color("ffd25a"), false, 1.4), Vector3(0, 1.11, 0))
+		"glimmer":
+			var gold := toon(md["color"], true, 0.8); mats.append(gold)
+			part(body, sphere(0.36, 16), gold, Vector3(0, 0.42, 0), Vector3(1, 0.9, 1.1))
+			part(body, sphere(0.14, 10), gold, Vector3(-0.22, 0.76, 0.02), Vector3(0.6, 1.4, 0.6))
+			part(body, sphere(0.14, 10), gold, Vector3(0.22, 0.76, 0.02), Vector3(0.6, 1.4, 0.6))
+			part(body, sphere(0.05, 6), toon(Color("2b2a33")), Vector3(-0.11, 0.5, -0.32))
+			part(body, sphere(0.05, 6), toon(Color("2b2a33")), Vector3(0.11, 0.5, -0.32))
+			var pm := PrismMesh.new(); pm.size = Vector3(0.2, 0.24, 0.2)
+			for i in 3:
+				var a := TAU * i / 3.0
+				part(body, pm, toon(Color("fff4c0"), false, 1.4), Vector3(cos(a) * 0.55, 0.9, sin(a) * 0.55))
+		"sentinel":
+			var stone := toon(Color("6a7080")); mats.append(stone)
+			part(body, cyl(0.42, 0.55, 0.35, 8), stone, Vector3(0, 0.18, 0))
+			part(body, cyl(0.22, 0.32, 0.6, 8), stone, Vector3(0, 0.6, 0))
+			var cr := Node3D.new(); cr.name = "Crystal"; cr.position = Vector3(0, 1.25, 0); body.add_child(cr)
+			var pm := PrismMesh.new(); pm.size = Vector3(0.42, 0.5, 0.42)
+			var cm := toon(md["color"], false, 0.9); mats.append(cm)
+			part(cr, pm, cm, Vector3(0, 0.25, 0))
+			part(cr, pm, cm, Vector3(0, -0.25, 0), Vector3.ONE, Vector3(PI, 0, 0))
+			part(cr, sphere(0.08, 8), m_eye, Vector3(0, 0, -0.2))
 		"brute", "warden":
 			if kind == "warden":
 				root.scale = Vector3.ONE * 1.5
