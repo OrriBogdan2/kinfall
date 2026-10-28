@@ -188,6 +188,29 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "") -> 
 	var arm_l := part(torso, capsule(0.07, 0.46), m_body, Vector3(-0.1, 0.46, -0.16), Vector3.ONE, Vector3(1.25, 0, -0.7), "ArmL")
 	part(arm_r, sphere(0.075, 8), m_skin, Vector3(0, -0.23, 0))
 	part(arm_l, sphere(0.075, 8), m_skin, Vector3(0, -0.25, 0))
+	gun_parts(gun, weapon, m_gun, m_dark, m_acc)
+	var muzzle := Node3D.new(); muzzle.name = "Muzzle"; muzzle.position = Vector3(0, 0.02, -0.75); gun.add_child(muzzle)
+	var shoulder := Node3D.new(); shoulder.name = "Shoulder"; shoulder.position = Vector3(-0.3, 0.78, 0.04); torso.add_child(shoulder)
+	# a folding cloth glider that pops out above the backpack
+	var glider := Node3D.new(); glider.name = "Glider"; glider.position = Vector3(0, 0.62, 0.12); glider.visible = false
+	torso.add_child(glider)
+	var m_cloth := toon(Color("f3eee2")); var m_frame := toon(Color("5a4636"))
+	part(glider, box(0.86, 0.04, 0.72), m_cloth, Vector3(-0.42, 0.98, 0), Vector3.ONE, Vector3(0, 0, 0.16))
+	part(glider, box(0.86, 0.04, 0.72), m_cloth, Vector3(0.42, 0.98, 0), Vector3.ONE, Vector3(0, 0, -0.16))
+	part(glider, box(0.3, 0.05, 0.74), m_acc, Vector3(-0.66, 0.94, 0), Vector3.ONE, Vector3(0, 0, 0.16))
+	part(glider, box(0.3, 0.05, 0.74), m_acc, Vector3(0.66, 0.94, 0), Vector3.ONE, Vector3(0, 0, -0.16))
+	part(glider, box(1.8, 0.05, 0.06), m_frame, Vector3(0, 1.0, -0.36))
+	part(glider, cyl(0.025, 0.025, 0.9), m_frame, Vector3(-0.22, 0.52, 0), Vector3.ONE, Vector3(0, 0, -0.3))
+	part(glider, cyl(0.025, 0.025, 0.9), m_frame, Vector3(0.22, 0.52, 0), Vector3.ONE, Vector3(0, 0, 0.3))
+	var ring := MeshInstance3D.new(); ring.name = "TeamRing"; ring.mesh = flat_quad(1.0)
+	ring.material_override = ring_mat(team_col, 0.16); ring.position = Vector3(0, 0.04, 0)
+	root.add_child(ring)
+	root.set_meta("mats", mats)
+	root.scale = Vector3.ONE * float(Data.CLASSES[cls]["scale"])
+	return root
+
+## The gun's pieces, shared by hunters and the weapons lying around on the islands.
+static func gun_parts(gun: Node3D, weapon: String, m_gun: Material, m_dark: Material, m_acc: Material) -> void:
 	match weapon:
 		"stinger":
 			part(gun, box(0.1, 0.12, 0.42), m_gun, Vector3(0, 0, -0.12))
@@ -209,24 +232,42 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "") -> 
 			part(gun, cyl(0.12, 0.12, 0.62), m_gun, Vector3(0, 0, -0.2), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			part(gun, cyl(0.14, 0.14, 0.08), m_acc, Vector3(0, 0, -0.52), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			part(gun, box(0.08, 0.18, 0.12), m_dark, Vector3(0, -0.15, -0.02))
-	var muzzle := Node3D.new(); muzzle.name = "Muzzle"; muzzle.position = Vector3(0, 0.02, -0.75); gun.add_child(muzzle)
-	var shoulder := Node3D.new(); shoulder.name = "Shoulder"; shoulder.position = Vector3(-0.3, 0.78, 0.04); torso.add_child(shoulder)
-	# a folding cloth glider that pops out above the backpack
-	var glider := Node3D.new(); glider.name = "Glider"; glider.position = Vector3(0, 0.62, 0.12); glider.visible = false
-	torso.add_child(glider)
-	var m_cloth := toon(Color("f3eee2")); var m_frame := toon(Color("5a4636"))
-	part(glider, box(0.86, 0.04, 0.72), m_cloth, Vector3(-0.42, 0.98, 0), Vector3.ONE, Vector3(0, 0, 0.16))
-	part(glider, box(0.86, 0.04, 0.72), m_cloth, Vector3(0.42, 0.98, 0), Vector3.ONE, Vector3(0, 0, -0.16))
-	part(glider, box(0.3, 0.05, 0.74), m_acc, Vector3(-0.66, 0.94, 0), Vector3.ONE, Vector3(0, 0, 0.16))
-	part(glider, box(0.3, 0.05, 0.74), m_acc, Vector3(0.66, 0.94, 0), Vector3.ONE, Vector3(0, 0, -0.16))
-	part(glider, box(1.8, 0.05, 0.06), m_frame, Vector3(0, 1.0, -0.36))
-	part(glider, cyl(0.025, 0.025, 0.9), m_frame, Vector3(-0.22, 0.52, 0), Vector3.ONE, Vector3(0, 0, -0.3))
-	part(glider, cyl(0.025, 0.025, 0.9), m_frame, Vector3(0.22, 0.52, 0), Vector3.ONE, Vector3(0, 0, 0.3))
-	var ring := MeshInstance3D.new(); ring.name = "TeamRing"; ring.mesh = flat_quad(1.0)
-	ring.material_override = ring_mat(team_col, 0.16); ring.position = Vector3(0, 0.04, 0)
+
+## A found weapon floating over the ground, with a light pillar in its rarity's colour.
+static func weapon_drop(weapon: String, rar: int) -> Node3D:
+	var root := Node3D.new()
+	var col: Color = Data.RARITY[rar]["color"]
+	var spin := Node3D.new(); spin.name = "Spin"; spin.position = Vector3(0, 0.7, 0); root.add_child(spin)
+	var gun := Node3D.new(); gun.scale = Vector3.ONE * 2.3; gun.rotation.z = 0.25; spin.add_child(gun)
+	gun_parts(gun, weapon, toon(Color("4a4d5c")), toon(Color("2b2a33")), toon(col, true, 0.5))
+	var beam := part(root, cyl(0.14, 0.26, 5.0, 10), glow_mat(Color(col, 0.34)), Vector3(0, 2.5, 0))
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var ring := MeshInstance3D.new(); ring.mesh = flat_quad(1.3)
+	ring.material_override = ring_mat(col, 0.12); ring.position.y = 0.05
 	root.add_child(ring)
-	root.set_meta("mats", mats)
-	root.scale = Vector3.ONE * float(Data.CLASSES[cls]["scale"])
+	return root
+
+## Things that break when shot or dashed through.
+static func breakable(kind_s: String) -> Node3D:
+	var root := Node3D.new()
+	match kind_s:
+		"crate":
+			var wood := toon(Color("a07448")); var dark := toon(Color("6a4a30"))
+			part(root, box(0.7, 0.6, 0.7), wood, Vector3(0, 0.3, 0))
+			for y in [0.06, 0.54]:
+				part(root, box(0.74, 0.08, 0.74), dark, Vector3(0, y, 0))
+			part(root, box(0.08, 0.6, 0.74), dark, Vector3(0, 0.3, 0), Vector3.ONE, Vector3(0, 0, 0.75))
+		"pot":
+			var clay := toon(Color("c9825a"))
+			part(root, sphere(0.3, 14), clay, Vector3(0, 0.3, 0), Vector3(1, 1.05, 1))
+			part(root, cyl(0.14, 0.18, 0.14, 12), clay, Vector3(0, 0.62, 0))
+			part(root, cyl(0.31, 0.31, 0.05, 14), toon(Color("e8c07a")), Vector3(0, 0.36, 0))
+		"barrel":
+			var red := toon(Color("c8483a"), true, 0.15); var band := toon(Color("3a3440"))
+			part(root, cyl(0.3, 0.3, 0.75, 14), red, Vector3(0, 0.375, 0))
+			for y in [0.12, 0.62]:
+				part(root, cyl(0.315, 0.315, 0.07, 14), band, Vector3(0, y, 0))
+			part(root, sphere(0.09, 8), toon(Color("ffd25a"), false, 0.9), Vector3(0, 0.8, 0), Vector3.ONE, Vector3.ZERO, "Fuse")
 	return root
 
 # ---------------------------------------------------------------- kin
@@ -430,6 +471,13 @@ static func gem() -> Node3D:
 	var m := toon(Color("7ef0d0"), false, 0.7)
 	part(root, p, m, Vector3(0, 0.15, 0))
 	part(root, p, m, Vector3(0, -0.15, 0), Vector3.ONE, Vector3(PI, 0, 0))
+	return root
+
+static func tonic() -> Node3D:
+	var root := Node3D.new()
+	part(root, sphere(0.16, 12), toon(Color("8ff0a0"), false, 0.6), Vector3(0, 0.16, 0))
+	part(root, cyl(0.05, 0.06, 0.14, 8), toon(Color("e6f2ea")), Vector3(0, 0.34, 0))
+	part(root, cyl(0.065, 0.065, 0.05, 8), toon(Color("8b6d52")), Vector3(0, 0.43, 0))
 	return root
 
 static func seed_bag(c: Color) -> Node3D:

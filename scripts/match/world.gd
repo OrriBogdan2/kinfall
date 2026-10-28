@@ -284,6 +284,8 @@ func _place_pads() -> void:
 	pads = pads.filter(func(pd): return pd["land"] != Vector3.INF)
 
 var shrine_spots: Array = []     # Vector3
+var break_spots: Array = []      # {pos, kind: crate | pot | barrel}
+var weapon_spots: Array = []     # Vector3, a found weapon lying in the open
 var heart_spot := Vector3.INF
 
 ## The island's point of interest: the open ground cell nearest its middle.
@@ -429,6 +431,25 @@ func _place_spots() -> void:
 				p = pick.call(ii, 1, 6)
 			if p != Vector3.INF:
 				spawns.append(p); got += 1
+	# crates, pots and barrels in little clusters, and a few better weapons lying around
+	break_spots.clear(); weapon_spots.clear()
+	for ii in islands.size():
+		var n_b := 2 + rng.randi_range(0, 2) + (1 if islands[ii]["cells"].size() > 140 else 0)
+		for _k in n_b:
+			var p: Vector3 = pick.call(ii, 2, 12)
+			if p == Vector3.INF:
+				continue
+			var roll := rng.randf()
+			var bk := "crate" if roll < 0.45 else ("pot" if roll < 0.75 else "barrel")
+			break_spots.append({"pos": p, "kind": bk})
+			if rng.randf() < 0.55:
+				var q := _near(p, 1.0, rng.randf() * TAU, ii, taken)
+				if q != Vector3.INF:
+					break_spots.append({"pos": q, "kind": "pot" if bk != "pot" else "crate"})
+		if ii > 0 and rng.randf() < 0.5:
+			var wp: Vector3 = pick.call(ii, 2, 10)
+			if wp != Vector3.INF:
+				weapon_spots.append(wp)
 
 ## Angle of an island around the map centre.
 func a0_of(isl: int) -> float:

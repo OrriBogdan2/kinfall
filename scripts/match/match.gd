@@ -18,6 +18,9 @@ var shots: Array = []
 var pickups: Array = []     # {pos, vel, kind:"gem"|"seed"|"tonic", v, key, node, t}
 var chests: Array = []      # {pos, open, prog, node, tier}
 var shrines: Array = []     # {pos, used, prog, node}
+var breaks: Array = []      # {i, pos, kind, hp, node, dead}
+var wpicks: Array = []      # found weapons on the ground {id, pos, wid, rar, node}
+var wdrop_n := 0
 var warden_done := false
 # ---- tutorial
 var tut_step := -1
@@ -101,6 +104,15 @@ func start(o: Dictionary) -> void:
 	_spawn_hunters()
 	_spawn_mobs()
 	_spawn_chests()
+	_spawn_breakables()
+	if o.get("break_demo", false) and player and not breaks.is_empty():
+		# test: stand by some breakables with two found weapons on the ground
+		var b0: Vector3 = breaks[0]["pos"]
+		for b in breaks:
+			if b["kind"] == "barrel": b0 = b["pos"]; break
+		player.teleport(b0 + Vector3(2.2, 0, 0.6))
+		spawn_weapon("rail", 3, b0 + Vector3(1.6, 0, 1.8), "", false)
+		spawn_weapon("stinger", 4, b0 + Vector3(3.0, 0, 1.6), "", false)
 	_spawn_wild()
 	var Hud = load("res://scripts/ui/hud.gd")
 	hud = Hud.new()
@@ -473,6 +485,169 @@ func _spawn_chests() -> void:
 			var n := Models.nest()
 			n.position = isl["nest"]
 			add_child(n)
+
+# ------------------------------------------------------------------ breakables and found weapons
+const BREAK_HP := {"pot": 6.0, "crate": 22.0, "barrel": 12.0}
+
+func _spawn_breakables() -> void:
+	for b in world.break_spots:
+		var n := Models.breakable(String(b["kind"]))
+		n.position = b["pos"]
+		n.rotation.y = rng.randf() * TAU
+		add_child(n)
+		breaks.append({"i": breaks.size(), "pos": b["pos"], "kind": b["kind"], "hp": BREAK_HP[b["kind"]], "node": n, "dead": false})
+	# the weapons lying in the open are the same for everyone in an online match
+	var wr := RandomNumberGenerator.new(); wr.seed = seed_val * 31 + 7
+	var keys: Array = Data.WEAPONS.keys()
+	for i in world.weapon_spots.size():
+		spawn_weapon(String(keys[wr.randi() % keys.size()]), Data.roll_rarity(wr, 1 if tier >= 2 else 0), world.weapon_spots[i], "ws%d" % i, false)
+
+func spawn_weapon(w: String, rar: int, at: Vector3, id := "", send := true) -> void:
+	if id == "":
+		wdrop_n += 1
+		id = "w%s_%d" % [player.nid if player else "x", wdrop_n]
+	var n := Models.weapon_drop(w, rar)
+	n.position = at
+	add_child(n)
+	wpicks.append({"id": id, "pos": at, "wid": w, "rar": rar, "node": n})
+	if net_on and send:
+		net_event(["wdrop", id, w, rar, _r(at.x), _r(at.y), _r(at.z)])
+
+func _take_weapon(h: Hunter, wp: Dictionary, from_net := false) -> void:
+	wpicks.erase(wp)
+	(wp["node"] as Node3D).queue_free()
+	if from_net:
+		return
+	if net_on:
+		net_event(["wtake", wp["id"], h.nid, wp["wid"], wp["rar"]])
+	var old_w := h.wid; var old_r := h.wrar
+	h.equip(String(wp["wid"]), int(wp["rar"]))
+	var ba := randf() * TAU
+	var back := Vector3(cos(ba), 0, sin(ba)) * 0.9
+	spawn_weapon(old_w, old_r, Vector3(h.pos.x + back.x, h.ground(), h.pos.z + back.z))
+	var col: Color = Data.RARITY[int(wp["rar"])]["color"]
+	sfx("reload", h.pos, 0.0, 0.8)
+	fx.ring(h.pos, 1.4, col, 0.35)
+	fx.burst(h.pos + Vector3(0, 0.9, 0), col, 14, 3.0, 0.5)
+	if h == player:
+		var r: Dictionary = Data.RARITY[int(wp["rar"])]
+		hud.toast("%s  ·  +%d%% damage" % [h.wpn["name"], int(round((float(r["dmg"]) - 1.0) * 100.0))] if int(wp["rar"]) > 0 else String(h.wpn["name"]), col)
+
+func _update_wpicks(dt: float) -> void:
+	for wp in wpicks:
+		var n: Node3D = wp["node"]
+		var sp: Node3D = n.get_node("Spin")
+		sp.rotation.y += dt * 1.6
+		sp.position.y = 0.7 + sin(time * 2.4 + float(wp["pos"].x)) * 0.08
+	# bots grab anything better that they walk past
+	for h in hunters:
+		if h.ctrl != "bot" or h.out or h.downed or h.dropping or h.riding or h.remote:
+			continue
+		for wp in wpicks:
+			if int(wp["rar"]) > h.wrar and h.flat_dist(wp["pos"]) < 1.4 and absf(h.pos.y - float(wp["pos"].y)) < 1.0:
+				_take_weapon(h, wp)
+				break
+
+## Damage a crate, pot or barrel. Breaking it is shared online; whoever broke it rolls for a weapon.
+func hit_break(b: Dictionary, dmg: float, by: Ent) -> void:
+	if b["dead"]:
+		return
+	b["hp"] = float(b["hp"]) - dmg
+	var n: Node3D = b["node"]
+	n.scale = Vector3(1.12, 0.9, 1.12)
+	create_tween().tween_property(n, "scale", Vector3.ONE, 0.12)
+	if float(b["hp"]) <= 0.0:
+		_break(b, by)
+
+func _break(b: Dictionary, by: Ent, from_net := false) -> void:
+	if b["dead"]:
+		return
+	b["dead"] = true
+	if net_on and not from_net:
+		net_event(["brk", b["i"], by.nid if by else ""])
+	var at: Vector3 = b["pos"]
+	var kind_s: String = b["kind"]
+	(b["node"] as Node3D).queue_free()
+	var col: Color = {"pot": Color("c9825a"), "crate": Color("a07448"), "barrel": Color("c8483a")}[kind_s]
+	fx.burst(at + Vector3(0, 0.4, 0), col, 16, 4.0, 0.5, 9.0, 0.8)
+	sfx("knock" if kind_s == "crate" else "hit", at, -4.0, 0.7 if kind_s == "crate" else 1.3)
+	var loot := float(T["loot"])
+	match kind_s:
+		"pot":
+			for i in randi_range(1, 2):
+				drop("gem", at + Vector3(0, 0.5, 0), maxi(1, int(round(2 * loot))))
+			if randf() < 0.2:
+				drop("seed", at + Vector3(0, 0.5, 0), 1, Data.pick_seed())
+		"crate":
+			for i in randi_range(2, 4):
+				drop("gem", at + Vector3(0, 0.5, 0), maxi(1, int(round(2 * loot))))
+			if randf() < 0.3:
+				drop("tonic", at + Vector3(0, 0.5, 0), 1)
+			if not from_net and randf() < 0.16:
+				var keys: Array = Data.WEAPONS.keys()
+				spawn_weapon(String(keys[randi() % keys.size()]), Data.roll_rarity(rng), at)
+		"barrel":
+			_barrel_boom(at, by)
+
+## An exploding barrel: hurts and throws everyone nearby, its breaker included.
+func _barrel_boom(at: Vector3, by: Ent) -> void:
+	var radius := 2.6
+	var c := at + Vector3(0, 0.4, 0)
+	fx.ring(c, radius, Color("ff8a4a"), 0.35)
+	fx.burst(c, Color("ffb070"), 34, 7.0, 0.6, 6.0, 1.5)
+	fx.flash(c, Color("ffd9a0"), radius * 0.5, 0.1)
+	sfx("boom", c, 2.0, 0.85)
+	shake(0.6, c)
+	var bodies: Array = []
+	for h in hunters:
+		if h.hittable(): bodies.append(h)
+	for mb in mobs:
+		if not mb.dead: bodies.append(mb)
+	for k in kins:
+		if k.hittable(): bodies.append(k)
+	for e in bodies:
+		if e.remote:
+			continue
+		var d := Vector2(e.pos.x - c.x, e.pos.z - c.z).length()
+		if d < radius + e.r and absf(e.pos.y + 0.5 - c.y) < 2.0:
+			var f := 1.0 - 0.5 * minf(1.0, d / radius)
+			var dir := Vector2(e.pos.x - c.x, e.pos.z - c.z).normalized()
+			var credit: Ent = by if by and by.team != e.team else null
+			e.hurt(22.0 * f, credit, {"src": "boom", "kb": dir * 10.0 * f, "lift": 7.5 * f})
+	# chain into other barrels nearby
+	for b in breaks:
+		if not b["dead"] and Vector2(b["pos"].x - c.x, b["pos"].z - c.z).length() < radius + 0.4 and absf(b["pos"].y - at.y) < 2.0:
+			hit_break(b, 30.0, by)
+
+## Breakables are solid: push bodies out, and dashing straight through one smashes it.
+func _collide_breaks() -> void:
+	if breaks.is_empty():
+		return
+	var bodies: Array = []
+	for h in hunters:
+		if h.hittable() and h.grap.is_empty(): bodies.append(h)
+	for mb in mobs:
+		if not mb.dead: bodies.append(mb)
+	for e in bodies:
+		for b in breaks:
+			if b["dead"]:
+				continue
+			var bp: Vector3 = b["pos"]
+			if absf(e.pos.y - bp.y) > 0.6:
+				continue
+			var d := Vector2(e.pos.x - bp.x, e.pos.z - bp.z)
+			var mind: float = e.r + 0.36
+			var l := d.length()
+			if l >= mind:
+				continue
+			if e is Hunter and (e as Hunter).roll_t > 0.0 and not e.remote:
+				_break(b, e)
+				continue
+			if l < 0.0001:
+				d = Vector2(1, 0); l = 0.0001
+			var push := d / l * (mind - l)
+			if world.occupy(e.pos.x + push.x, e.pos.z + push.y, e.r, e.pos.y, e.grounded) == 0.0:
+				e.pos.x += push.x; e.pos.z += push.y
 
 func _spawn_wild() -> void:
 	if net_on and not is_host:
@@ -888,6 +1063,7 @@ func drop(kind_s: String, at: Vector3, v: int, key := "", pid := "", vel0 = null
 	match kind_s:
 		"gem": n = Models.gem()
 		"seed": n = Models.seed_bag(Data.CROPS[key]["color"])
+		"tonic": n = Models.tonic()
 		_: n = Models.gem()
 	add_child(n)
 	n.position = at
@@ -941,6 +1117,9 @@ func _collect(h: Hunter, p: Dictionary) -> void:
 	match p["kind"]:
 		"gem": h.gems += int(round(float(p["v"]) * (1.25 if h.perk == "scavenger" else 1.0)))
 		"seed": h.seeds[p["key"]] = int(h.seeds.get(p["key"], 0)) + int(p["v"])
+		"tonic":
+			h.tonics = mini(3, h.tonics + 1)
+			if h == player: hud.toast("+1 tonic", Color("8ff0a0"))
 	if h == player:
 		sfx("pickup", null, -8.0, 1.0 + minf(0.4, h.gems * 0.004))
 		if p["kind"] == "seed":
@@ -983,6 +1162,12 @@ func _update_shots(dt: float) -> void:
 			if world.is_block(p.x, p.z) and world.ground_at(p.x, p.z) + World.BLOCK_H > p.y or world.ground_at(p.x, p.z) > p.y:
 				_shot_end(s, p, null)
 				hit = true; break
+			var bh := _shot_break(s, p)
+			if not bh.is_empty():
+				if not s["x"].get("cos", false) and not s["x"].has("boom") and not s["x"].get("mob", false):
+					hit_break(bh, float(s["dmg"]), s["by"])
+				_shot_end(s, p, null)
+				hit = true; break
 			for e in _shot_targets(s):
 				var ey: float = e.pos.y + (0.9 if e is Hunter else 0.5)
 				if Vector2(e.pos.x - p.x, e.pos.z - p.z).length() < e.r + s["r"] + 0.08 and absf(ey - p.y) < 1.1:
@@ -995,6 +1180,12 @@ func _update_shots(dt: float) -> void:
 		s["pos"] = p
 		if s["life"] <= 0.0:
 			_shot_end(s, p, null)
+
+func _shot_break(s: Dictionary, p: Vector3) -> Dictionary:
+	for b in breaks:
+		if not b["dead"] and absf(p.y - (float(b["pos"].y) + 0.4)) < 0.75 and Vector2(b["pos"].x - p.x, b["pos"].z - p.z).length() < 0.36 + float(s["r"]):
+			return b
+	return {}
 
 func _shot_targets(s: Dictionary) -> Array:
 	var x: Dictionary = s["x"]
@@ -1078,6 +1269,10 @@ func _boom(s: Dictionary, at: Vector3) -> void:
 	sfx("boom", at, 0.0)
 	shake(0.45, at)
 	var by: Ent = s["by"]
+	if not x.get("mob", false):
+		for b in breaks:
+			if not b["dead"] and Vector2(b["pos"].x - at.x, b["pos"].z - at.z).length() < radius + 0.36 and absf(float(b["pos"].y) + 0.4 - at.y) < 2.0:
+				hit_break(b, float(s["dmg"]), by)
 	for e in _shot_targets(s):
 		var d := Vector2(e.pos.x - at.x, e.pos.z - at.z).length()
 		if d < radius + e.r and absf(e.pos.y + 0.5 - at.y) < 2.0:
@@ -1252,8 +1447,10 @@ func step(dt: float) -> void:
 	for k in kins: k.sim(dt)
 	for mb in mobs: mb.sim(dt)
 	_separate()
+	_collide_breaks()
 	_update_shots(dt)
 	_update_pickups(dt)
+	_update_wpicks(dt)
 	_update_pads(dt)
 	if not ship.is_empty() and not ship.get("gone", false):
 		_update_ship(dt)
@@ -1340,6 +1537,8 @@ func _update_interact(dt: float) -> void:
 		if h.out or h.extracted or h.downed or h.dropping:
 			continue
 		var want: bool = h.inp.get("interact", false)
+		if not want:
+			h.swap_hold = false
 		var best := {}
 		# 1. revive a downed teammate
 		for o in hunters:
@@ -1352,7 +1551,18 @@ func _update_interact(dt: float) -> void:
 				if k.state == "dazed" and not k.dead and h.flat_dist(k) < 1.9:
 					best = {"kind": "catch", "ent": k, "label": "Hold F to catch the %s" % Data.KIN[k.species]["name"]}
 					break
-		# 3. open a chest
+		# 3. swap to a weapon on the ground
+		if best.is_empty():
+			var bd := 1.5
+			for wp in wpicks:
+				var d: float = h.flat_dist(wp["pos"])
+				if d < bd and absf(h.pos.y - float(wp["pos"].y)) < 1.2:
+					bd = d
+					var r: Dictionary = Data.RARITY[int(wp["rar"])]
+					var nm: String = Data.weapon_stats(String(wp["wid"]), int(wp["rar"]))["name"]
+					var extra := "  (+%d%% damage)" % int(round((float(r["dmg"]) - 1.0) * 100.0)) if int(wp["rar"]) > 0 else ""
+					best = {"kind": "weapon", "wp": wp, "label": "Press %s to take %s%s" % [Settings.key_cap("interact"), nm, extra], "col": r["color"]}
+		# 4. open a chest
 		if best.is_empty():
 			for c in chests:
 				if not c["open"] and h.flat_dist(c["pos"]) < 1.6:
@@ -1369,6 +1579,10 @@ func _update_interact(dt: float) -> void:
 		if best.is_empty() or not want:
 			continue
 		match best["kind"]:
+			"weapon":
+				if not h.swap_hold:
+					h.swap_hold = true
+					_take_weapon(h, best["wp"])
 			"revive":
 				var o: Hunter = best["ent"]
 				if o.remote:
@@ -1442,6 +1656,10 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 	var seeds_n: int = [1 if randf() < 0.6 else 0, 1, 2][t]
 	for i in seeds_n:
 		drop("seed", c["pos"] + Vector3(0, 0.8, 0), randi_range(1, 2), Data.pick_seed())
+	if not from_net and randf() < [0.25, 0.6, 1.0][t]:
+		var keys: Array = Data.WEAPONS.keys()
+		var a := randf() * TAU
+		spawn_weapon(String(keys[randi() % keys.size()]), Data.roll_rarity(rng, t), c["pos"] + Vector3(cos(a) * 1.1, 0, sin(a) * 1.1))
 	if h and not h.remote and h.tonics < 3 and randf() < [0.35, 0.7, 1.0][t]:
 		h.tonics += 1
 		if h == player: hud.toast("+1 tonic", Color("8ff0a0"))
@@ -2180,6 +2398,24 @@ func _net_ev(x, from: String) -> void:
 					break
 			if String(x[0]) == "take" and is_host:
 				net_event(["gone", String(x[1])])
+		"brk":
+			var bi := int(x[1])
+			if bi >= 0 and bi < breaks.size():
+				_break(breaks[bi], ents_by_id.get(String(x[2]), null), true)
+		"wdrop":
+			var seen := false
+			for wp in wpicks:
+				if wp["id"] == String(x[1]): seen = true
+			if not seen:
+				spawn_weapon(String(x[2]), int(x[3]), Vector3(x[4], x[5], x[6]), String(x[1]), false)
+		"wtake":
+			for wp in wpicks:
+				if wp["id"] == String(x[1]):
+					_take_weapon(ents_by_id.get(String(x[2]), null), wp, true)
+					break
+			var wh: Ent = ents_by_id.get(String(x[2]), null)
+			if wh is Hunter and wh.remote and x.size() > 4:
+				(wh as Hunter).equip(String(x[3]), int(x[4]))
 		"zone":
 			var zo: Ent = ents_by_id.get(String(x[8]), null)
 			if zo is Hunter:

@@ -89,6 +89,8 @@ var idle_fire := 0.0
 var dropping := false         # gliding down from the sky at the start of a match
 var riding := false           # aboard the skyship, waiting to jump
 var bless_t := 0.0
+var wrar := 0                 # rarity of the weapon in hand, 0 for the one you brought
+var swap_hold := false        # F has to be let go between weapon swaps
 var lives := 1                # comes back this many times minus one before it's really out
 
 const DEFAULT_HERO := {"light": "veil", "medium": "sage", "heavy": "bastion"}
@@ -105,7 +107,7 @@ func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, n
 	wid = String(kit.get("weapon", ""))
 	if not cdat["weapons"].has(wid):
 		wid = Data.HEROES[hero]["weapon"]
-	wpn = Data.WEAPONS[wid]
+	wpn = Data.weapon_stats(wid, 0)
 	perk = String(kit.get("perk", ""))
 	pname = name_txt
 	ctrl = control
@@ -116,6 +118,19 @@ func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, n
 	ammo = wpn["mag"]
 	r = 0.38 * float(cdat["scale"])
 	set_model(Models.hunter(cls, Data.TEAM_COLORS[team % Data.TEAM_COLORS.size()], wid, hero))
+
+## Swap to a found weapon for the rest of the expedition.
+func equip(w: String, rar: int) -> void:
+	wid = w; wrar = rar
+	wpn = Data.weapon_stats(w, rar)
+	ammo = int(wpn["mag"]); reload_t = 0.0; fire_cd = 0.25
+	var gun: Node3D = model.find_child("Gun", true, false) if model else null
+	if gun:
+		for ch in gun.get_children():
+			if ch.name != "Muzzle":
+				ch.queue_free()
+		var acc: Color = Data.RARITY[rar]["color"] if rar > 0 else Data.TEAM_COLORS[team % Data.TEAM_COLORS.size()]
+		Models.gun_parts(gun, w, Models.toon(Color("4a4d5c")), Models.toon(Color("2b2a33")), Models.toon(acc, true, 0.45 if rar > 0 else 0.0))
 
 func max_dashes() -> float:
 	return float(cdat["dashes"]) + (1.0 if shoulder() == "updraft" else 0.0) + (1.0 if perk == "secondwind" else 0.0)

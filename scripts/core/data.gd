@@ -37,6 +37,39 @@ const WEAPONS := {
 		"boom": 1.8, "boom_kb": 8.0},
 }
 
+## Weapons found out on the islands: any weapon with a rarity on top, always better than what you
+## brought, and only yours until the expedition ends.
+const RARITY := [
+	{"name": "Common", "color": Color("d6d2c8"), "dmg": 1.0, "mag": 1.0, "reload": 1.0, "rate": 1.0},
+	{"name": "Fine", "color": Color("8fe0a0"), "dmg": 1.15, "mag": 1.15, "reload": 0.92, "rate": 0.95},
+	{"name": "Rare", "color": Color("6ab8ff"), "dmg": 1.3, "mag": 1.3, "reload": 0.85, "rate": 0.9},
+	{"name": "Epic", "color": Color("c08aff"), "dmg": 1.45, "mag": 1.45, "reload": 0.75, "rate": 0.86},
+	{"name": "Legendary", "color": Color("ffb64a"), "dmg": 1.65, "mag": 1.6, "reload": 0.65, "rate": 0.8},
+]
+
+## A weapon's stats at a rarity. "short" is the plain name for the ability bar.
+func weapon_stats(wid: String, rar := 0) -> Dictionary:
+	var w: Dictionary = WEAPONS.get(wid, WEAPONS["repeater"]).duplicate()
+	var r: Dictionary = RARITY[clampi(rar, 0, RARITY.size() - 1)]
+	w["short"] = String(w["name"]).split(" ")[0]
+	if rar > 0:
+		w["name"] = "%s %s" % [r["name"], w["name"]]
+	w["dmg"] = float(w["dmg"]) * float(r["dmg"])
+	w["mag"] = maxi(int(w["mag"]) + (1 if rar > 0 else 0), int(round(int(w["mag"]) * float(r["mag"]))))
+	w["reload"] = float(w["reload"]) * float(r["reload"])
+	w["rate"] = float(w["rate"]) * float(r["rate"])
+	w["rar"] = rar
+	return w
+
+## Rarity of a found weapon. Better places and harder tiers lean higher.
+func roll_rarity(r: RandomNumberGenerator, bonus := 0) -> int:
+	var x := r.randf()
+	var rar := 1
+	if x > 0.55: rar = 2
+	if x > 0.85: rar = 3
+	if x > 0.97: rar = 4
+	return clampi(rar + bonus, 1, RARITY.size() - 1)
+
 ## Heroes: three per weight class. Each has a passive, an E ability and an R ultimate that charges
 ## as you deal damage. Your kin (RMB, Q, shoulder) stays the same whoever you play.
 const HEROES := {

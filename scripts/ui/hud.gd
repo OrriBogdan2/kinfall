@@ -184,6 +184,15 @@ func _draw_world_labels() -> void:
 			continue
 		var sp := cam.unproject_position(mb.position + Vector3(0, 1.4 if mb.mkind != "brute" else 2.4, 0))
 		_bar(Rect2(sp + Vector2(-20, 0), Vector2(40, 4)), mb.hp / mb.max_hp, Color("ff8a6a"))
+	# found weapons: name and rarity when you're close enough to care
+	var pp: Vector3 = m.player.pos if m.player else cam.focus
+	for wp in m.wpicks:
+		var wpos: Vector3 = wp["pos"]
+		if Vector2(wpos.x - pp.x, wpos.z - pp.z).length() > 7.0 or cam.is_position_behind(wpos):
+			continue
+		var r: Dictionary = Data.RARITY[int(wp["rar"])]
+		var sp := cam.unproject_position(wpos + Vector3(0, 1.45, 0))
+		_ctext(sp, String(Data.weapon_stats(String(wp["wid"]), int(wp["rar"]))["name"]), 13, r["color"], big)
 	for k in m.kins:
 		if k.dead or not k.visible or k.state == "shoulder" or cam.is_position_behind(k.position):
 			continue
@@ -415,7 +424,8 @@ func _draw_bar(sz: Vector2, p: Hunter) -> void:
 	# weapon
 	var ammo_txt := "%d/%d" % [p.ammo, int(p.wpn["mag"])]
 	var reload_f := p.reload_t / float(p.wpn["reload"]) if p.reload_t > 0.0 else 0.0
-	_slot(Vector2(x, y), Settings.key_cap("fire"), String(p.wpn["name"]).split(" ")[0], reload_f, "..." if p.reload_t > 0.0 else ammo_txt, p.ammo > 0 and p.reload_t <= 0.0, Color("ffe7a8")); x += 72
+	var wcol: Color = Data.RARITY[p.wrar]["color"] if p.wrar > 0 else Color("ffe7a8")
+	_slot(Vector2(x, y), Settings.key_cap("fire"), String(p.wpn.get("short", p.wpn["name"])), reload_f, "..." if p.reload_t > 0.0 else ammo_txt, p.ammo > 0 and p.reload_t <= 0.0, wcol); x += 72
 	# dash charges
 	var dmax := p.max_dashes()
 	_slot(Vector2(x, y), Settings.key_cap("dash"), "Dash", 1.0 - fposmod(p.dashes, 1.0) if p.dashes < dmax else 0.0, str(int(floor(p.dashes))), p.dashes >= 1.0, Color("bfe6ff")); x += 72
@@ -514,7 +524,7 @@ func _draw_prompt(sz: Vector2, p: Hunter) -> void:
 		var s: String = it["label"]
 		var w := body.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
 		_panel(Rect2(Vector2(sz.x * 0.5 - w * 0.5 - 16, y - 22), Vector2(w + 32, 32)))
-		_ctext(Vector2(sz.x * 0.5, y), s, 16, GOLD)
+		_ctext(Vector2(sz.x * 0.5, y), s, 16, it.get("col", GOLD))
 		if prog > 0.0:
 			_bar(Rect2(Vector2(sz.x * 0.5 - w * 0.5 - 16, y + 12), Vector2(w + 32, 4)), prog, GOLD)
 	if p.extract_prog > 0.0:
