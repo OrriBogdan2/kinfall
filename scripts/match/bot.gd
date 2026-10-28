@@ -48,14 +48,14 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 		a["cross_t"] = float(a.get("cross_t", 12.0)) - dt
 		if (h.grounded and m.world.island_of(h.pos.x, h.pos.z) == int(L["to"])) or float(a["cross_t"]) <= 0.0:
 			a.erase("cross"); a.erase("cross_t")
-		elif not h.grounded and a.get("cross_go", false):
+		elif not h.grounded and a.get("cross_go", false) and not (m.world.is_void(h.pos.x, h.pos.z) and h.pos.y < land.y - 1.2 and h.vel.y < 0.0):
 			inp["move"] = tol.normalized()
 			# over the landing: fold the glider and drop onto it
 			inp["glide"] = tol.length() > 1.6 or m.world.is_void(h.pos.x, h.pos.z)
 			if not h.gliding and h.vel.y < 1.0 and h.can_glide():
 				inp["jump"] = true
 			return
-		elif h.grounded and h.flat_dist(L["take"]) < 0.9:
+		elif h.grounded and h.flat_dist(L["take"]) < 0.9 and h.glide_fuel > 0.6:
 			inp["move"] = tol.normalized()
 			inp["jump"] = true
 			a["cross_go"] = true

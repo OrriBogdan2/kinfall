@@ -331,7 +331,10 @@ func _place_pads() -> void:
 	for e in edges:
 		var k := Vector2i(mini(e[0], e[1]), maxi(e[0], e[1]))
 		var g: Array = gaps[k]
-		if float(g[0]) > GLIDE_GAP:
+		# long gaps, and climbs of more than a terrace or so, get pads instead
+		var ga: Vector2i = g[1]; var gb: Vector2i = g[2]
+		var dy: float = absf(float(level[idx(ga.x, ga.y)]) - float(level[idx(gb.x, gb.y)])) * LEVEL
+		if float(g[0]) > GLIDE_GAP or dy > LEVEL * 2.2 or (dy > LEVEL * 1.2 and float(g[0]) > 10.0):
 			pad_edges.append(e)
 			continue
 		_glide_link(k.x, k.y, g)

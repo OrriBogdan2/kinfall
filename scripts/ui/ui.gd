@@ -205,6 +205,7 @@ static func section(text: String, col := Color("c9a46a")) -> Label:
 	l.add_theme_font_override("font", caps if caps else body)
 	l.add_theme_font_size_override("font_size", 12)
 	l.add_theme_color_override("font_color", col)
+	l.set_meta("pg_head", true)
 	return l
 
 static func label(text: String, size := 16, col := INK, font: Font = null) -> Label:
@@ -405,6 +406,11 @@ static func _paginate(content: VBoxContainer, maxh: float, key: String, pager: C
 			used = 0.0
 		pages[-1].append(u)
 		used += h
+	# a heading never sits alone at the bottom of a page: it moves over with what it introduces
+	for i in range(pages.size() - 1):
+		var pgi: Array = pages[i]
+		while pgi.size() > 1 and (pgi[-1]["nodes"][0] as Control).has_meta("pg_head"):
+			pages[i + 1].push_front(pgi.pop_back())
 	var pg := clampi(int(_page_of.get(key, 0)), 0, pages.size() - 1)
 	_page_of[key] = pg
 	for i in pages.size():

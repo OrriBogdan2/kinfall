@@ -650,7 +650,11 @@ func _move_kin(d: float) -> void:
 		var pos: Vector3 = k["pos"]
 		var rec: Dictionary = k["rec"]
 		var trust := float(rec["trust"])
-		var locked: bool = float(k.get("nap_t", 0.0)) > 0.0 or k.has("bath")
+		if k.get("nap_go", false):
+			k["nap_go_t"] = float(k.get("nap_go_t", 15.0)) - d
+			if float(k["nap_go_t"]) <= 0.0: k.erase("nap_go"); k.erase("nap_go_t")
+			elif k.has("bed"): k["goal"] = k["bed"]
+		var locked: bool = float(k.get("nap_t", 0.0)) > 0.0 or k.has("bath") or k.get("nap_go", false)
 		if locked:
 			k.erase("chase"); k.erase("task")
 		var here := world.island_of(pos.x, pos.z)
@@ -692,6 +696,7 @@ func _move_kin(d: float) -> void:
 			k["t"] = randf_range(2.0, 5.0)
 			var night := sin((day_t - 0.25) * TAU) < -0.2
 			var friends: Array = kins.filter(func(o): return o != k and not o.get("busy", false) and world.island_of(o["pos"].x, o["pos"].z) == here)
+			k.erase("stare")
 			if _care_goal(k):
 				pass
 			elif night and randf() < 0.6:
@@ -1302,7 +1307,10 @@ func _pet_kin(k: Dictionary) -> void:
 		# a gentle pat wakes it up
 		k["nap_t"] = 0.01
 	var loves_pet: bool = rec["likes"]["play"] == "pet"
-	Care.change(rec, "joy", 12.0 if loves_pet else 5.0)
+	var now_s := Time.get_ticks_msec() / 1000.0
+	if now_s >= float(k.get("pet_ok", 0.0)):
+		k["pet_ok"] = now_s + 20.0
+		Care.change(rec, "joy", 12.0 if loves_pet else 5.0)
 	if loves_pet and Care.discover(rec, "play"): _toast("%s loves scratches" % rec["name"])
 	k["hold_t"] = 1.0
 	k["joy_t"] = 0.9
@@ -1785,6 +1793,9 @@ func _play_evolutions() -> void:
 		var lbl: Label3D = k["emote"]
 		n.remove_child(lbl)
 		nn.add_child(lbl)
+		if k.has("say") and is_instance_valid(k["say"]):
+			n.remove_child(k["say"]); nn.add_child(k["say"])
+		k.erase("bubble")
 		add_child(nn)
 		n.queue_free()
 		k["node"] = nn
@@ -2338,14 +2349,17 @@ func _care_step(k: Dictionary, d: float) -> void:
 		if float(k["z_t"]) <= 0.0:
 			k["z_t"] = 2.2
 			_emote(k, "z")
+		k["slept"] = float(k.get("slept", 0.0)) + d
 		if float(k["nap_t"]) <= 0.0:
-			Care.change(rec, "energy", 40.0)
+			Care.change(rec, "energy", 40.0 * clampf(float(k["slept"]) / 30.0, 0.0, 1.0))
+			k["slept"] = 0.0
 			Care.change(rec, "joy", 4.0)
 			k["t"] = 1.0
 			_emote(k, "!")
 		return
 	if k.get("nap_go", false) and k.has("bed") and Vector2(pos.x - k["bed"].x, pos.z - k["bed"].z).length() < 0.5:
-		k.erase("nap_go")
+		k.erase("nap_go"); k.erase("nap_go_t")
+		k["slept"] = 0.0
 		k["nap_t"] = 30.0
 		k["z_t"] = 0.5
 	if k.has("stare") and Vector2(pos.x - k["goal"].x, pos.z - k["goal"].z).length() < 0.5:
@@ -2407,6 +2421,10 @@ func _care_feed(rec: Dictionary, f: String) -> void:
 	add_child(food)
 	(k["node"] as Node3D).rotation.y = atan2(-(fp.x - at.x), -(fp.z - at.z))
 	var res := Care.feed(rec, f)
+	if res["ok"]:
+		# taken out of the pantry now, so two quick feeds can't both use the last one
+		if Data.CROPS.has(f): Save.d["crops"][f] = int(Save.d["crops"][f]) - 1
+		else: Save.d["items"][f] = int(Save.d["items"][f]) - 1
 	var body: Node3D = (k["node"] as Node3D).get_node("Body")
 	var tw := create_tween()
 	if res["ok"]:
@@ -2439,11 +2457,8 @@ func _after_feed(k: Dictionary, f: String, res: Dictionary) -> void:
 		_say(k, KinSpeak.say(rec, "content", "full") if Care.speech(rec) < 3 else "I'm full, thanks!", 3.0)
 		return
 	if Data.CROPS.has(f):
-		Save.d["crops"][f] = int(Save.d["crops"][f]) - 1
 		for af in Evo.AFF:
 			if Evo.AFF[af]["food"] == f: Evo.add(rec, af, 6.0)
-	else:
-		Save.d["items"][f] = int(Save.d["items"][f]) - 1
 	if res["love"]:
 		k["joy_t"] = 1.2
 		_emote(k, "♥")
@@ -2522,8 +2537,10 @@ func _care_nap(rec: Dictionary) -> void:
 	if k.has("bed"):
 		k["goal"] = k["bed"]
 		k["nap_go"] = true
+		k["nap_go_t"] = 15.0
 	else:
 		k["nap_t"] = 30.0
+		k["slept"] = 0.0
 	_say(k, KinSpeak.say(rec, "sleepy") if Care.speech(rec) < 3 else "Just a little nap...", 2.0)
 
 # ---- training: a timing game at the yard; three rounds, each a little faster
@@ -2694,9 +2711,10 @@ func _finish_training() -> void:
 func _can_pair(rec: Dictionary) -> String:
 	if not Save.d.get("egg", {}).is_empty(): return "There's already an egg in the nest"
 	if int(rec["level"]) < 5: return "Needs to be level 5"
-	if float(rec["trust"]) < 55.0: return "Needs a Close bond (trust 55)"
+	if float(rec["trust"]) < 50.0: return "Needs a Close bond (trust 50)"
 	if int(rec.get("bred_m", -99)) > int(Save.d["matches"]) - 3: return "Needs a few more expeditions' rest"
 	if Save.d["roster"].size() >= 12: return "Your farm is full (12 kin)"
+	if not Save.d.get("egg", {}).is_empty(): return "There's already an egg in the nest"
 	return ""
 
 func _open_pair(rec: Dictionary) -> void:
@@ -2738,6 +2756,13 @@ func _hatch_nest_egg() -> void:
 	var rng := RandomNumberGenerator.new(); rng.randomize()
 	var baby := Care.breed(a, b, rng)
 	Save.d["egg"] = {}
+	# it's yours from the moment it hatches; the naming card only renames it
+	baby["name"] = Data.KIN_NAMES.pick_random()
+	Save.remember(baby, "born", "hatched in the nest on your farm", 0.0)
+	Save.d["roster"].append(baby)
+	Care.dex_mark(baby["species"], "caught")
+	if baby.get("shimmer", false): Care.dex_mark(baby["species"], "shimmer")
+	Save.save_game()
 	building_now = true
 	var tw := create_tween()
 	var sh: Node3D = nest.get_node("Shell")
@@ -2768,12 +2793,9 @@ func _name_baby(baby: Dictionary) -> void:
 		var n2: String = nm
 		picks.add_child(UI.button(n2, func(): ne.text = n2))
 	v.add_child(picks)
+	ne.text = String(baby["name"])
 	v.add_child(UI.primary("Welcome home", func():
-		baby["name"] = ne.text.strip_edges() if ne.text.strip_edges() != "" else Data.KIN_NAMES.pick_random()
-		Save.remember(baby, "born", "hatched in the nest on your farm", 0.0)
-		Save.d["roster"].append(baby)
-		Care.dex_mark(baby["species"], "caught")
-		if baby.get("shimmer", false): Care.dex_mark(baby["species"], "shimmer")
+		baby["name"] = ne.text.strip_edges() if ne.text.strip_edges() != "" else String(baby["name"])
 		Save.save_game()
 		_close_panel()
 		_spawn_kin()

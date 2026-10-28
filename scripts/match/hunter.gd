@@ -509,6 +509,7 @@ func _physics(dt: float) -> void:
 			brake = clampf(-head.dot(mv.normalized()) + 0.3, 0.0, 1.3) * 7.0
 		var keep := maxf(gs * 0.7, cur - (GLIDE_DRAG + brake) * dt) if cur > gs * 0.7 else gs * 0.7
 		if dropping: keep = gs
+		keep = minf(keep, GLIDE_MAX)
 		if mv.length() > 0.1:
 			head = head.slerp(mv.normalized(), 1.0 - exp(-3.2 * dt)) if head.length() > 0.1 else mv.normalized()
 		hv = head * keep

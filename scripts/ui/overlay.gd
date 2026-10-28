@@ -332,6 +332,9 @@ func open_inventory() -> void:
 			empty = false
 			cell.call("Gems", str(int(Save.d["gems"])), "Spend them at the stall, on buildings and furniture.", Color("7ef0d0"))
 			cell.call("Tonics", "×%d" % int(Save.d["items"].get("tonic", 0)), "Heal 45 in a match (key %s)." % Settings.key_cap("tonic"), Color("8ff0a0"))
+			for f in Care.FOODS:
+				var fn := int(Save.d["items"].get(f, 0))
+				if fn > 0: cell.call(Care.FOODS[f]["name"], "×%d" % fn, Care.FOODS[f]["desc"] + " Feed it from a kin's card.", Care.FOODS[f]["col"])
 			var tr: String = Save.d.get("treat", "")
 			if tr != "":
 				cell.call("Treat ready", "", "Your partner eats it before the next expedition.", Color("f2c84a"))
