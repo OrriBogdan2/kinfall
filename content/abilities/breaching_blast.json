@@ -1,0 +1,19 @@
+{
+	"id": "breaching_blast",
+	"name": "Breaching Blast",
+	"desc": "A point-blank blast in front of you that knocks everyone in it well back.",
+	"icon": "concussion",
+	"color": "#ffd28a",
+	"cooldown": 8,
+	"effects": [
+		{
+			"type": "cone",
+			"radius": 4.0,
+			"arc": 0.5,
+			"dmg": 18,
+			"kb": 10,
+			"color": "#ffd28a"
+		}
+	],
+	"charges": 1
+}

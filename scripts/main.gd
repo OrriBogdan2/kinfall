@@ -161,6 +161,8 @@ func _ready() -> void:
 		show_screen("town", {"mode": town_arg, "gid": "test"})
 	elif "--visit-test" in args:
 		show_screen("home", {"visit": Social.clean_island(Social.profile_doc()), "visit_id": "test"})    # test: visiting an island
+	elif "--feel-lab" in args:
+		get_tree().change_scene_to_file.call_deferred("res://tests/feel_test.tscn")    # the Supervive feel playground
 	elif "--prologue" in args:
 		show_screen("prologue", {"then": "title"})    # test: the opening story
 	elif "--creator" in args:

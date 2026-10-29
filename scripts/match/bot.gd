@@ -95,6 +95,7 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 		a["aim_err"] = (a["aim_err"] as Vector2).lerp(a.get("aim_goal", Vector2.ZERO), 1.0 - exp(-3.0 * dt))
 		var aim: Vector2 = Vector2(tgt.pos.x, tgt.pos.z) + lead + a["aim_err"]
 		inp["aim"] = Vector3(aim.x, tgt.pos.y + 0.9, aim.y)
+		inp["aim_y"] = tgt.pos.y
 		var los: bool = m.world.los(h.pos, tgt.pos, h.pos.y + 0.95)
 		# fast guns fire in bursts with a beat between them (to reposition); slow ones on cooldown
 		a["burst"] = float(a.get("burst", 0.0)) - dt
@@ -133,6 +134,7 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 		if goal != Vector3.INF:
 			move = _path_dir(m, h, goal)
 			inp["aim"] = Vector3(h.pos.x + move.x * 3.0, h.pos.y + 0.9, h.pos.z + move.y * 3.0)
+			inp["aim_y"] = h.pos.y
 			if h.flat_dist(goal) < 1.5 and a["goal_kind"] in ["chest", "catch", "revive"]:
 				inp["interact"] = true
 				move = Vector2.ZERO
@@ -177,12 +179,10 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 		if h.vel.y < 0.0 and h.coyote > 0.0:
 			inp["jump"] = true
 		var back := _nearest_ground(m, h)
+		# hold the glider: below the lip it lifts you back up to ground level
+		inp["glide"] = h.ai["skill"] > 0.15
 		if back != Vector2.ZERO:
 			inp["move"] = back
-			inp["glide"] = h.ai["skill"] > 0.15
-			# below the lip: flick the glider shut and open again to feather back up
-			if h.below_lip and h.gliding and h.vel.y < -0.5 and h.glide_fuel > 0.25:
-				inp["glide"] = false
 	# unstick
 	if Vector2(h.pos.x - a["last_pos"].x, h.pos.z - a["last_pos"].z).length() < 0.03 and move.length() > 0.5:
 		a["stuck"] += dt
@@ -202,9 +202,10 @@ func _nearest_ground(m: Match, h: Hunter) -> Vector2:
 	for a in 16:
 		var ang := TAU * a / 16.0
 		var dv := Vector2(cos(ang), sin(ang))
-		for r in [2.0, 4.0, 6.0, 9.0, 12.0]:
+		for r in [2.0, 4.0, 6.0, 9.0, 12.0, 16.0, 22.0, 30.0]:
 			var x: float = h.pos.x + dv.x * r; var z: float = h.pos.z + dv.y * r
-			if not m.world.is_void(x, z) and not m.world.is_block(x, z) and m.world.ground_at(x, z) < h.pos.y + 1.5:
+			# the glider's abyss lift carries you up to ground level, so higher ground counts too
+			if not m.world.is_void(x, z) and not m.world.is_block(x, z) and m.world.ground_at(x, z) < h.pos.y + 4.0:
 				if r < bd: bd = r; best = dv
 				break
 	return best

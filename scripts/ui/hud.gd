@@ -147,6 +147,7 @@ func _draw_all() -> void:
 	_draw_minimap(sz)
 	if p and not p.out and not p.extracted:
 		_draw_overhead(p)
+		_draw_glider_heat(p)
 	if p:
 		_draw_hurt_dirs(sz)
 		if not p.out and not p.extracted:
@@ -604,18 +605,34 @@ func _draw_vitals(sz: Vector2, p: Hunter) -> void:
 		var hr := Rect2(Vector2(sz.x * 0.5 - tw * 0.5 - 12, y0 - 46), Vector2(tw + 24, 20))
 		_rounded(hr, (Color(0.05, 0.12, 0.06, 0.85) if grass else Color(0.08, 0.09, 0.12, 0.85)) if hid else Color(0.25, 0.06, 0.05, 0.85), 10)
 		_text(hr.position + Vector2(12, 15), txt, 13, fg, big)
-	# glider heat, while it matters: it climbs as you glide and jumps when you're hit; overheated,
-	# you glide slowly and the next hit knocks you out of the sky
-	if (p.gliding and not p.dropping) or p.glide_fuel < 0.999:
-		var heat := 1.0 - p.glide_fuel
-		var gr := Rect2(Vector2(x0 + w * 0.2, y0 - 10), Vector2(w * 0.6, 5))
-		c.draw_rect(gr.grow(1.0), Color(0.03, 0.03, 0.05, 0.75))
-		var hot := heat >= 0.999
-		var gcol := Color("ffd27a").lerp(Color("ff5a3a"), clampf(heat * 1.2 - 0.2, 0.0, 1.0))
-		if hot: gcol = gcol.lerp(Color.WHITE, 0.35 + 0.35 * sin(m.time * 14.0))
-		c.draw_rect(Rect2(gr.position, Vector2(gr.size.x * heat, gr.size.y)), gcol if p.gliding else Color(gcol, 0.55))
-		if p.gliding or hot:
-			_ctext(Vector2(sz.x * 0.5, gr.position.y - 4), "OVERHEATED" if hot else "GLIDER HEAT", 11, gcol if hot else Color(INK, 0.7), big)
+	# glider heat is shown as a ring beside the glider itself (see _draw_glider_heat)
+
+## Glider heat as a ring floating beside the glider, as in Supervive: it fills as you glide (faster
+## when you're hit or lifting out of the abyss), drains on the ground, and pulses red when
+## overheated, when the next hit will spike you.
+func _draw_glider_heat(p: Hunter) -> void:
+	if p.dropping or p.downed or p.riding:
+		return
+	var heat := 1.0 - p.glide_fuel
+	if not p.gliding and heat < 0.01:
+		return
+	var at := p.position + Vector3(0, 2.25 * float(p.cdat["scale"]), 0)
+	if m.cam.is_position_behind(at):
+		return
+	var cpt := m.cam.unproject_position(at) + Vector2(58, -6)
+	var hot := heat >= 0.999
+	var gcol := Color("ffd27a").lerp(Color("ff5a3a"), clampf(heat * 1.2 - 0.2, 0.0, 1.0))
+	if hot: gcol = gcol.lerp(Color.WHITE, 0.35 + 0.35 * sin(m.time * 14.0))
+	var a := 1.0 if p.gliding else 0.6
+	c.draw_circle(cpt, 15.0, Color(0.03, 0.03, 0.05, 0.75 * a))
+	c.draw_arc(cpt, 11.0, 0.0, TAU, 32, Color(1, 1, 1, 0.14 * a), 4.0, true)
+	if heat > 0.005:
+		c.draw_arc(cpt, 11.0, -PI * 0.5, -PI * 0.5 + TAU * heat, 40, Color(gcol, a), 4.0, true)
+	# a little wing in the middle
+	var wcol := Color(gcol if hot else Color(1, 1, 1, 0.8), a)
+	c.draw_polyline(PackedVector2Array([cpt + Vector2(-6, 2), cpt + Vector2(0, -3), cpt + Vector2(6, 2)]), wcol, 2.0, true)
+	if hot:
+		c.draw_arc(cpt, 17.0 + 2.0 * sin(m.time * 14.0), 0.0, TAU, 32, Color(1.0, 0.3, 0.2, 0.6), 2.0, true)
 
 ## The ability row: kin throw, the active kin's two abilities, your weapon's utility, the bond
 ## ultimate in the middle, your dodge, tonics, and gear actives.
@@ -1000,10 +1017,11 @@ func _draw_overhead(p: Hunter) -> void:
 	head_hp = maxf(frac, lerpf(head_hp, frac, 0.06))
 	_vitals(sp, w, p, GOOD if frac > 0.35 else BAD, head_hp, true)
 	# stamina: one yellow pip per dash under the bars, the next one filling as it recharges
-	var n := int(p.max_dashes())
+	var n := int(p.max_dashes()) + 1
 	for i in n:
 		var cpt := sp + Vector2(-w * 0.5 + 6 + i * 13, 17)
-		var fill := clampf(p.dashes - i, 0.0, 1.0)
+		# the last pip is the long dash (Shift in the air, or when the short ones are spent)
+		var fill := clampf(p.dashes - i, 0.0, 1.0) if i < n - 1 else 1.0 - p.ex_cd / Hunter.EX_DASH_CD
 		var dia := PackedVector2Array([cpt + Vector2(0, -5), cpt + Vector2(5, 0), cpt + Vector2(0, 5), cpt + Vector2(-5, 0)])
 		c.draw_colored_polygon(dia, Color(0.04, 0.04, 0.06, 0.8))
 		if fill >= 1.0:

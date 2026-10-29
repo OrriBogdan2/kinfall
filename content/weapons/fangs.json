@@ -4,5 +4,5 @@
 	"classes": ["light"],
 	"primary": {"melee": true, "dmg": 9.0, "rate": 0.2, "speed": 40.0, "mag": 1, "reload": 0.1, "kb": 1.0, "spread": 0.0,
 		"range": 1.7, "arc": 95.0, "combo": [1.0, 1.0, 1.8], "lunge": 4.5, "size": 0.2, "color": "#c8f0ff", "sfx": "dash"},
-	"utility": ""
+	"utility": "shadow_lunge"
 }

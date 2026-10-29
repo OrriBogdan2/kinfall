@@ -4,5 +4,5 @@
 	"classes": ["light"],
 	"primary": {"dmg": 6.5, "rate": 0.42, "speed": 32.0, "mag": 18, "reload": 1.1, "kb": 0.6, "spread": 0.0,
 		"range": 12.0, "burst": 3, "burst_gap": 0.07, "size": 0.1, "color": "#d6a8ff", "sfx": "smg"},
-	"utility": ""
+	"utility": "pinning_dart"
 }

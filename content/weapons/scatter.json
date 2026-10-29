@@ -4,5 +4,5 @@
 	"classes": ["medium"],
 	"primary": {"dmg": 5.0, "rate": 0.7, "speed": 26.0, "mag": 5, "reload": 1.5, "kb": 1.2, "spread": 0.0,
 		"range": 6.5, "pellets": 6, "fan": 0.42, "size": 0.11, "color": "#ffd28a", "sfx": "thump"},
-	"utility": ""
+	"utility": "breaching_blast"
 }

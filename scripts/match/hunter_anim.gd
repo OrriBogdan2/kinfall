@@ -148,7 +148,7 @@ func update(dt: float, s: Dictionary) -> void:
 	if knee_r: knee_r.rotation.x = kr
 	# ---- body
 	var r1 := minf(run_k, 1.0)
-	var bob := absf(sin(ph)) * 0.055 * r1
+	var bob := absf(sin(ph)) * 0.025 * r1
 	var breath := sin(t * 2.3) * idle
 	torso.position.y = 0.42 + bob - bend * 0.12 + breath * 0.006 + glide_k * 0.02
 	torso.scale = Vector3(1.0 - breath * 0.006, 1.0 + breath * 0.012, 1.0 - breath * 0.006)

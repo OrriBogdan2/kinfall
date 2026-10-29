@@ -1,0 +1,20 @@
+{
+	"id": "rising_cut",
+	"name": "Rising Cut",
+	"desc": "A wide upward cut that stuns everyone in front of you for a moment.",
+	"icon": "cleave",
+	"color": "#fff0b0",
+	"cooldown": 7,
+	"effects": [
+		{
+			"type": "cone",
+			"radius": 2.6,
+			"arc": 0.3,
+			"dmg": 20,
+			"stun": 0.5,
+			"kb": 4,
+			"color": "#fff0b0"
+		}
+	],
+	"charges": 1
+}

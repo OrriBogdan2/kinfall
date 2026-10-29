@@ -8,7 +8,7 @@ const LEAD_X := 4.2
 const LEAD_Z := 5.4
 ## Expedition camera presets (Settings "cam_style"): pitch in degrees, distance, field of view.
 const STYLES := {
-	"supervive": {"pitch": 62.0, "dist": 25.0, "fov": 38.0, "name": "Supervive (steep, wide)"},
+	"supervive": {"pitch": 65.0, "dist": 25.0, "fov": 35.0, "name": "Supervive"},     # measured from footage
 	"high": {"pitch": 70.0, "dist": 27.0, "fov": 36.0, "name": "Top-down"},
 	"classic": {"pitch": 57.0, "dist": 32.2, "fov": 28.0, "name": "Classic (flat, far)"},
 	"low": {"pitch": 50.0, "dist": 23.0, "fov": 42.0, "name": "Low (more horizon)"},
@@ -29,6 +29,16 @@ var yaw := 0.0                # turned around the focus (0 = looking north); onl
 var yaw_to := 0.0
 var chase := 0.0              # 0 = the usual angle, 1 = low behind-the-ship view
 var chase_to := 0.0
+## Cursor panning, from Supervive's three camera presets: [deadzone, maxzone, pan distance,
+## camera speed, quadratic easing]. Locked stays centred on you.
+const FOLLOW := {
+	"standard": [0.2, 0.8, 6.0, 7.0, true],
+	"dynamic": [0.1, 0.9, 10.0, 10.0, false],
+	"locked": [0.0, 0.0, 0.0, 0.0, false],
+}
+var follow_mode := "standard"
+var pan := Vector3.ZERO
+var base := Vector3.ZERO      # the followed point, before the cursor pan
 
 ## Picks one of STYLES (the expedition camera).
 func use_style(id: String) -> void:
@@ -45,6 +55,8 @@ func _ready() -> void:
 
 func snap(p: Vector3) -> void:
 	focus = p
+	base = p
+	pan = Vector3.ZERO
 	_apply(Vector3.ZERO)
 
 func punch(a: float) -> void:
@@ -54,19 +66,27 @@ func add_trauma(a: float) -> void:
 	trauma = minf(1.0, trauma + a * float(Settings.get_v("shake")))
 
 func follow(p: Vector3, delta: float, mouse_lead := true) -> void:
-	var off := Vector3.ZERO
-	if mouse_lead:
+	var want_pan := Vector3.ZERO
+	var fm: Array = FOLLOW.get(follow_mode, FOLLOW["standard"])
+	if mouse_lead and float(fm[2]) > 0.0:
 		var vp := get_viewport()
 		var sz := vp.get_visible_rect().size
-		var mp := vp.get_mouse_position()
-		var half := minf(sz.x, sz.y) * 0.5
-		var n := Vector2((mp.x - sz.x * 0.5) / half, (mp.y - sz.y * 0.5) / half)
-		var l := n.length()
-		var f := clampf((l - 0.12) / 0.8, 0.0, 1.0)
-		if l > 0.0:
-			off = Vector3(n.x / l * f * LEAD_X, 0, n.y / l * f * LEAD_Z).rotated(Vector3.UP, yaw) * lead
-	var want := Vector3(p.x, p.y * 0.6, p.z) + off
-	focus = focus.lerp(want, minf(1.0, delta * 6.0))
+		var half := sz * 0.5
+		var rel := (vp.get_mouse_position() - half) / half       # -1..1 on each axis
+		var l := rel.length()
+		if l > float(fm[0]) and float(fm[1]) > float(fm[0]):
+			var f := clampf((l - float(fm[0])) / (float(fm[1]) - float(fm[0])), 0.0, 1.0)
+			if fm[4]: f *= f
+			want_pan = Vector3(rel.x / l, 0, rel.y / l).rotated(Vector3.UP, yaw) * f * float(fm[2]) * lead
+	if not mouse_lead or float(fm[3]) <= 0.0:
+		pan = want_pan if mouse_lead else pan.lerp(Vector3.ZERO, minf(1.0, delta * 6.0))
+	else:
+		pan = pan.lerp(want_pan, 1.0 - exp(-float(fm[3]) * delta))
+	if follow_mode == "dynamic" and mouse_lead:
+		pan = want_pan
+	var want := Vector3(p.x, p.y * 0.6, p.z)
+	base = base.lerp(want, minf(1.0, delta * 8.0))
+	focus = base + pan
 	zoom = lerpf(zoom, zoom_to, minf(1.0, delta * 2.5))
 	top = move_toward(top, top_to, delta * (0.9 if top_to < top else 2.0))
 	chase = move_toward(chase, chase_to, delta * 0.7)

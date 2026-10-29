@@ -123,5 +123,7 @@ static func night(e: Environment, k: float) -> void:
 	var day: Array = sm.get_meta("day")
 	var nite := [Color("161c44"), Color("2a3672"), Color("5a5a9c")]     # a bright, moonlit blue, never pitch black
 	for i in 3:
+		if not (day[i] is Color):
+			continue      # a sky that never set this colour keeps its default
 		sm.set_shader_parameter(["top", "mid", "horizon"][i], (day[i] as Color).lerp(nite[i], k))
 	sm.set_shader_parameter("stars", 0.4 + k)

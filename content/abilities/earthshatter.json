@@ -1,0 +1,28 @@
+{
+	"id": "earthshatter",
+	"name": "Earthshatter",
+	"desc": "Leap to a spot and smash down, blasting everyone there away and slowing them.",
+	"icon": "quake",
+	"color": "#ffb070",
+	"cooldown": 10,
+	"range": 7,
+	"effects": [
+		{
+			"type": "leap",
+			"at": "aim",
+			"time": 0.5,
+			"on_land": [
+				{
+					"type": "area",
+					"at": "here",
+					"radius": 3.0,
+					"dmg": 20,
+					"kb": 10,
+					"slow": 1.5,
+					"color": "#ffb070"
+				}
+			]
+		}
+	],
+	"charges": 1
+}

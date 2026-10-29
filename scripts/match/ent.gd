@@ -104,7 +104,7 @@ func hurt(dmg: float, by: Ent, opts := {}) -> float:
 	last_hit_by = by
 	flash_t = 0.12
 	freeze_t = 0.05 if d >= 10.0 else 0.03
-	squash = 0.25
+	squash = 0.1
 	if opts.has("kb"):
 		impulse(opts["kb"], opts.get("lift", -1.0))
 	if opts.get("burn", 0.0) > 0.0:
@@ -165,12 +165,9 @@ func body_vertical(dt: float) -> void:
 		pos.y += vel.y * dt
 		if g > World.VOID + 1.0 and vel.y <= 0.0 and pos.y <= g and pos.y > g - 1.2:
 			pos.y = g
-			if vel.y < -9.0:
-				vel.y = -vel.y * 0.3
-			else:
-				vel.y = 0.0
-				grounded = true
-				squash = 0.2
+			vel.y = 0.0
+			grounded = true
+			squash = 0.2
 	else:
 		pos.y = g
 	if pos.y < -14.0:

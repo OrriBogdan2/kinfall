@@ -56,6 +56,10 @@ var slow_k := 0.35
 var killcam_text := ""
 var cam_style := ""
 var swing_hits := {}
+var aim_y := 0.0
+## Shots and ability projectiles bend up or down to the height of what you aimed at, so you can
+## hit someone a terrace or two above or below. Further than this and the cliff takes it.
+const AIM_DY_MAX := 2.6
 var hitstop := 0.0
 var aim_line: MeshInstance3D
 var aim_ring: MeshInstance3D
@@ -1032,13 +1036,16 @@ func _mouse_aim() -> Vector3:
 			bd = d; best = e
 	if best:
 		var q := cam.mouse_on_plane(best.pos.y + 0.95)
+		aim_y = best.pos.y
 		return Vector3(q.x, base_y, q.z)
+	aim_y = player.pos.y
 	var p := cam.mouse_on_plane(base_y)
 	for _i in 2:
 		var g := world.ground_at(p.x, p.z)
 		if g <= World.VOID + 1.0 or absf(g - player.pos.y) > World.LEVEL * 3.0:
 			break
 		p = cam.mouse_on_plane(g + 0.95)
+		aim_y = g
 	return Vector3(p.x, base_y, p.z)
 
 func foes_of(team: int) -> Array:
@@ -1817,6 +1824,17 @@ func spawn_shot(by: Ent, at: Vector3, v2: Vector2, dmg: float, life: float, size
 		mi.material_override.set_shader_parameter("color", col)
 		mi.scale = Vector3.ONE * size * 2.0
 		mi.global_position = at
+	if not extra.has("dy") and not extra.get("mob", false) and not extra.get("cos", false) and not extra.get("melee", false):
+		var src: Hunter = by as Hunter if by is Hunter else ((by as Kin).owner_h as Hunter if by is Kin and (by as Kin).owner_h else null)
+		if src and src.inp.has("aim_y"):
+			var dyv: float = float(src.inp["aim_y"]) - src.pos.y
+			if absf(dyv) > 0.3 and absf(dyv) <= AIM_DY_MAX:
+				var aimp: Vector3 = src.inp["aim"]
+				extra = extra.duplicate()
+				extra["dy"] = dyv
+				extra["dyd"] = maxf(1.0, Vector2(aimp.x - at.x, aimp.z - at.z).length())
+				extra["y0"] = at.y
+				extra["gmax"] = maxf(src.pos.y, float(src.inp["aim_y"]))
 	var team := by.team
 	shots.append({"pos": at, "vel": v2, "dmg": dmg, "team": team, "by": by, "life": life, "r": size, "col": col, "x": extra, "node": mi, "prev": at, "start": at})
 	if net_on and not extra.get("cos", false) and not extra.get("melee", false) and not by.remote:
@@ -1834,14 +1852,21 @@ func _update_shots(dt: float) -> void:
 		var step := Vector3(v.x, 0, v.y) * dt
 		var n := int(ceil(step.length() / 0.25))
 		var hit := false
+		var sx: Dictionary = s["x"]
 		for i in n:
 			p += step / n
+			if sx.has("dy"):
+				# climbing or dipping toward the height you aimed at
+				var trav := Vector2(p.x - (s["start"] as Vector3).x, p.z - (s["start"] as Vector3).z).length()
+				p.y = float(sx["y0"]) + float(sx["dy"]) * clampf(trav / float(sx["dyd"]), 0.0, 1.0)
 			# domes stop shots fired at them from outside
 			if _dome_blocks(s, p):
 				_shot_end(s, p, null)
 				hit = true; break
 			# terrain and rocks
-			if world.is_block(p.x, p.z) and world.ground_at(p.x, p.z) + World.BLOCK_H > p.y or world.ground_at(p.x, p.z) > p.y:
+			var gp := world.ground_at(p.x, p.z)
+			var over_ok: bool = sx.has("dy") and gp <= float(sx["gmax"]) + 0.05
+			if world.is_block(p.x, p.z) and gp + World.BLOCK_H > p.y or (gp > p.y and not over_ok):
 				_shot_end(s, p, null)
 				hit = true; break
 			var bh := _shot_break(s, p)
@@ -2055,6 +2080,7 @@ func _process(delta: float) -> void:
 				mi.look_at(mi.global_position + Vector3(v.x, 0, v.y), Vector3.UP)
 				var r: float = s["r"]
 				mi.scale = Vector3(r * 2.0, r * 2.0, r * 2.0 + v.length() * 0.025)
+	cam.follow_mode = String(Settings.get_v("cam_follow"))
 	var sty := String(Settings.get_v("cam_style"))
 	if sty != cam_style:
 		cam_style = sty
@@ -2084,7 +2110,7 @@ func _process(delta: float) -> void:
 		else:
 			# high in the air or out over the abyss the camera pulls back so you can see where you'll land
 			# the camera only eases back while gliding, so jumps and falls never change the framing
-			cam.zoom_to = 1.12 if player.gliding else 1.0
+			cam.zoom_to = 1.25 if player.gliding else 1.0
 			cam.top_to = 0.0
 		cam.follow(player.prev.lerp(player.pos, alpha), delta, not player.dropping)
 	elif player and (player.downed or player.out):
@@ -2137,11 +2163,13 @@ func _gather_input() -> void:
 		if best != Vector3.INF and bd > 0.8:
 			player.inp["move"] = Vector2(best.x - player.pos.x, best.z - player.pos.z).normalized()
 	player.inp["aim"] = _mouse_aim()
+	player.inp["aim_y"] = aim_y      # the height of whatever you're pointing at (shots climb or dip to it)
 	player.inp["fire"] = Input.is_action_pressed("fire") and not paused
 	if paused:
 		player.inp["move"] = Vector2.ZERO
 	player.inp["interact"] = Input.is_action_pressed("interact")
 	player.inp["glide"] = Input.is_action_pressed("jump") and not paused
+	player.inp["dash_hold"] = Input.is_action_pressed("dash") and bool(Settings.get_v("dash_hold"))
 	var quick: bool = Settings.get_v("quick_cast")
 	player.inp["sec_hold"] = Input.is_action_pressed("secondary") and not paused
 	# crouch: hold by default, or tap to toggle (the web version defaults to toggle, so you never

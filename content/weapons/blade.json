@@ -4,5 +4,5 @@
 	"classes": ["medium"],
 	"primary": {"melee": true, "dmg": 16.0, "rate": 0.36, "speed": 40.0, "mag": 1, "reload": 0.1, "kb": 2.5, "spread": 0.0,
 		"range": 2.1, "arc": 120.0, "combo": [1.0, 1.1, 1.7], "lunge": 3.5, "size": 0.22, "color": "#fff0b0", "sfx": "dash"},
-	"utility": ""
+	"utility": "rising_cut"
 }

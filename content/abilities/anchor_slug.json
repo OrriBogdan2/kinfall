@@ -1,0 +1,30 @@
+{
+	"id": "anchor_slug",
+	"name": "Anchor Slug",
+	"desc": "A slug that drags everyone near where it hits in toward that spot.",
+	"icon": "anchor",
+	"color": "#ff8a5a",
+	"cooldown": 11,
+	"effects": [
+		{
+			"type": "projectile",
+			"dmg": 14,
+			"speed": 26,
+			"range": 12,
+			"size": 0.2,
+			"color": "#ff8a5a",
+			"sfx": "rifle",
+			"pitch": 0.6,
+			"on_end": [
+				{
+					"type": "pull",
+					"at": "here",
+					"radius": 4.0,
+					"strength": 8,
+					"color": "#ff8a5a"
+				}
+			]
+		}
+	],
+	"charges": 1
+}

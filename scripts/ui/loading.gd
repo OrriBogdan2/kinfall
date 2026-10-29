@@ -9,7 +9,7 @@ const TIPS := [
 	"Knocked off an edge? Touch the island's side and you float back up onto it.",
 	"Exits open partway through. Stand inside one to fly home with everything you carry.",
 	"C throws your kin. It stuns whatever it hits, and C again calls it back.",
-	"Right click is your hero's own ability. Every hero's is different, so try it in Training.",
+	"Left and right click both belong to your weapon: every weapon has its own right-click ability. Try them in Training.",
 	"You only see what's in front of you. Rivals behind you or past a wall stay hidden, and so do you.",
 	"Tall grass hides you from anyone outside it. Shooting gives you away for a moment.",
 	"Sneak (Ctrl): you move slower and quieter, and you see further.",

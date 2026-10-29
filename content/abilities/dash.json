@@ -1,10 +1,10 @@
 {
 	"id": "dash",
 	"name": "Dash",
-	"desc": "A quick burst the way you're moving. Dash through a hit just as it lands for a perfect dodge: your next shots crit.",
+	"desc": "A quick burst the way you're moving (or toward the cursor). In the air, or with it on cooldown, Shift does a long dash instead. Dash through a hit just as it lands for a perfect dodge: your next shots crit.",
 	"icon": "dash",
 	"color": "#bfe6ff",
-	"cooldown": 2.2,
-	"charges": 2,
+	"cooldown": 7.0,
+	"charges": 1,
 	"effects": [{"type": "dash", "speed": 19, "time": 0.17, "invuln": 0.14}]
 }

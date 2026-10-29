@@ -1953,7 +1953,7 @@ func _open_expedition() -> void:
 	var hrow := UI.hbox(12); hc.add_child(hrow)
 	var hv := UI.vbox(4); hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hv.add_child(UI.title("%s  ·  %s" % [hd["name"], Data.CLASSES[hd["cls"]]["name"]], 24, hd["color"]))
-	hv.add_child(UI.label("%s  ·  right click %s  ·  %s" % [Data.weapon_stats(w)["name"], Data.ABIL[hd["s"]]["name"] if Data.ABIL.has(hd.get("s", "")) else "weapon utility",
+	hv.add_child(UI.label("%s  ·  right click %s  ·  %s" % [Data.weapon_stats(w)["name"], (Content.ability(Content.weapon(w).utility).display_name if Content.weapon(w) and Content.weapon(w).utility != "" and Content.ability(Content.weapon(w).utility) else "weapon utility"),
 		Data.PERKS[pk]["name"] if Data.PERKS.has(pk) else "no perk"], 14, UI.MUTED))
 	hrow.add_child(hv)
 	hrow.add_child(UI.button("Hero and loadout", _open_loadout, 200))
@@ -2453,9 +2453,12 @@ func _open_loadout() -> void:
 	var dv := UI.vbox(5); det.add_child(dv)
 	dv.add_child(UI.title("%s, %s" % [hd["name"], String(hd["role"]).to_lower()], 22, hd["color"]))
 	dv.add_child(UI.label("Passive: " + String(hd["passive"]), 14))
-	if Data.ABIL.has(hd.get("s", "")):
-		dv.add_child(UI.label("Right click  %s: %s" % [Data.ABIL[hd["s"]]["name"], Data.ABIL[hd["s"]]["desc"]], 14))
-	var kn := UI.label("A hero is a preset: a class, a weapon and a look. Q, V and R come from the kin you bring, so the same hero plays differently with every pair of kin.", 13, UI.MUTED)
+	var cw0: String = Save.d.get("weapon", hd["weapon"])
+	var wdef := Content.weapon(cw0)
+	var ud: AbilityDef = Content.ability(wdef.utility) if wdef and wdef.utility != "" else null
+	if ud:
+		dv.add_child(UI.label("Right click (from your weapon)  %s: %s" % [ud.display_name, ud.desc], 14))
+	var kn := UI.label("A hero is a preset: a class, a weapon and a look. Left and right click come from your weapon; Q, F and R come from the kin you bring, so the same hero plays differently with every pair of kin.", 13, UI.MUTED)
 	kn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	dv.add_child(kn)
 	v.add_child(det)
@@ -2470,7 +2473,9 @@ func _open_loadout() -> void:
 			Save.save_game()
 			_refresh_player_model()
 			_open_loadout())
-		wb.tooltip_text = "%d damage, %d per mag, range %d" % [int(wd["dmg"]), int(wd["mag"]), int(wd["range"])]
+		var wu := Content.weapon(w)
+		var un: String = Content.ability(wu.utility).display_name if wu and wu.utility != "" and Content.ability(wu.utility) else ""
+		wb.tooltip_text = ("Melee: %d damage per hit, reach %.1f" % [int(wd["dmg"]), float(wd["range"])] if wd.get("melee", false) else "%d damage, %d per mag, range %d" % [int(wd["dmg"]), int(wd["mag"]), int(wd["range"])]) + ("\nRight click: " + un if un != "" else "")
 		wr.add_child(wb)
 	v.add_child(wr)
 	v.add_child(UI.section("Perk"))

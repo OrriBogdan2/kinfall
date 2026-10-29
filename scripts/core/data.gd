@@ -10,17 +10,17 @@ const MATCH_PLAYERS := 20
 
 const CLASSES := {
 	"light": {
-		"name": "Light", "hp": 115, "speed": 6.3, "dashes": 3, "mass": 0.9, "scale": 0.9,
+		"name": "Light", "hp": 115, "speed": 5.0, "dashes": 3, "mass": 0.9, "scale": 0.9,
 		"sig": "cloak", "weapon": "stinger", "weapons": ["stinger", "pulse", "rail", "needler", "fangs"],
 		"desc": "Fast and fragile. Three dashes and a cloak to slip out of fights.",
 	},
 	"medium": {
-		"name": "Medium", "hp": 145, "speed": 5.4, "dashes": 2, "mass": 1.0, "scale": 1.0,
+		"name": "Medium", "hp": 145, "speed": 5.0, "dashes": 2, "mass": 1.0, "scale": 1.0,
 		"sig": "mend", "weapon": "repeater", "weapons": ["repeater", "pulse", "rocket", "rail", "scatter", "blade"],
 		"desc": "The all-rounder. Heals the team and its kin, and speeds up revives.",
 	},
 	"heavy": {
-		"name": "Heavy", "hp": 190, "speed": 4.7, "dashes": 1, "mass": 1.45, "scale": 1.14,
+		"name": "Heavy", "hp": 190, "speed": 5.0, "dashes": 1, "mass": 1.45, "scale": 1.14,
 		"sig": "fortify", "weapon": "thumper", "weapons": ["thumper", "pulse", "rocket", "slugger", "maul"],
 		"desc": "Slow and tough. Grenades that blast people off edges, and a shield nothing can push.",
 	},

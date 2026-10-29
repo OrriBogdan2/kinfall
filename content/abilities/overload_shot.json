@@ -1,0 +1,23 @@
+{
+	"id": "overload_shot",
+	"name": "Overload Shot",
+	"desc": "A long, piercing-fast shot that stuns and shoves whoever it hits.",
+	"icon": "skypierce",
+	"color": "#9af0ff",
+	"cooldown": 10,
+	"effects": [
+		{
+			"type": "projectile",
+			"dmg": 30,
+			"speed": 48,
+			"range": 18,
+			"size": 0.16,
+			"stun": 0.6,
+			"kb": 6,
+			"color": "#9af0ff",
+			"sfx": "rifle",
+			"pitch": 0.7
+		}
+	],
+	"charges": 1
+}

@@ -4,10 +4,31 @@ extends Ent
 
 # Weightier vertical movement: stronger gravity, a quicker jump to the same height (about two and a
 # half terraces), falls that speed up and carry the speed you ran off the edge with.
-const H_GRAV := 36.0
-const FALL_MULT := 1.3        # falling pulls a little harder than rising, the same every time
-const TERMINAL := 22.0
-const JUMP_V := 11.8
+# Supervive feel (see docs/SUPERVIVE_FEEL.md): heavy, snappy arcs, near-instant ground control,
+# momentum that carries in the air and in the glider.
+const H_GRAV := 30.0
+const FALL_MULT := 1.0
+const TERMINAL := 40.0
+const JUMP_V := 9.0           # about 1.35 up: one terrace easily; higher ledges you mantle
+const GROUND_ACCEL := 70.0
+const GROUND_DECEL := 90.0
+const GROUND_OVERSPEED := 30.0   # how fast dash or pad speed bleeds off on the ground
+const AIR_ACCEL := 22.0
+const AIR_DECEL := 3.0
+const AIR_OVERSPEED := 3.0
+const GLIDE_ACCEL := 10.0
+const GLIDE_DECEL := 2.0
+const GLIDE_OVERSPEED := 1.2
+const GLIDE_GRAV := 14.0
+const GLIDE_ENGAGE := 0.15       # hold Space this long in the air before the glider opens
+const ABYSS_LIFT := 45.0         # opening the glider below ground level: strong lift...
+const ABYSS_LIFT_MAX := 16.0
+const ABYSS_BRAKE_DIST := 2.5    # ...that brakes near ground level (let go just before to keep the height)
+const ABYSS_BRAKE := 60.0
+const MANTLE_REACH := 3.0        # ledges up to this far above you pop you up when you move into them
+const EX_DASH_CD := 12.5         # the long dash: in the air, or with the short one on cooldown
+const DASH_CARRY_GROUND := 0.35
+const DASH_CARRY_AIR := 0.75
 const DASH_SPEED := 19.0
 const DASH_TIME := 0.17
 const DASH_REGEN := 2.2
@@ -15,7 +36,7 @@ const LEDGE_REACH := 2.8
 const LEDGE_CD := 0.45
 const FLOAT_SPEED := 12.0
 const GLIDE_FALL := 1.7
-const GLIDE_SPEED := 8.4
+const GLIDE_SPEED := 5.4
 const GLIDE_TIME := 6.0
 const GLIDE_DRAG := 1.6         # speed lost per second while gliding (more when going fast)
 const GLIDE_MAX := 15.0
@@ -199,7 +220,7 @@ func max_dashes() -> float:
 func dash_regen() -> float:
 	return dodge_def.cooldown if dodge_def else DASH_REGEN
 
-## The weapon's utility goes on right click (heroes without one keep their own secondary for now).
+## Right click is always your weapon's ability, as left click is its attack.
 func _kit_from_weapon() -> void:
 	if runner == null:
 		return
@@ -363,13 +384,29 @@ func _shot_down() -> void:
 	if ctrl == "local" and m.hud:
 		m.hud.toast_small("GLIDER SHOT DOWN", Color("ff9a5a"))
 
+## Knockback is a clean, predictable shove: it sets your speed along its direction (it doesn't
+## stack with whatever you were doing), you slide for a fixed moment without control, and it never
+## pops you into the air unless the attack says so.
+var knock_t := 0.0
 func impulse(kbv: Vector2, lift := -1.0) -> void:
 	if fortify_t > 0.0:
 		return
 	var k := kbv * (0.5 if shoulder() == "bedrock" else 1.0)
-	if k.length() / mass() > 4.0:
+	var s := k.length() / mass()
+	if s < 0.05:
+		return
+	if s > 4.0:
 		kb_t = m.time
-	super.impulse(k, lift)
+	var dir := k / k.length()
+	var hv := Vector2(vel.x, vel.z)
+	var along := hv.dot(dir)
+	hv += dir * (maxf(along, s) - along)
+	vel.x = hv.x; vel.z = hv.y
+	if s > 2.5:
+		knock_t = clampf(0.1 + s * 0.02, 0.12, 0.35)
+	if lift >= 0.0:
+		vel.y = maxf(vel.y, minf(9.0, lift / mass()))
+		grounded = false
 
 func _on_zero(by: Ent, opts: Dictionary) -> void:
 	if remote or downed:
@@ -397,7 +434,8 @@ func do_jump() -> void:
 		m.sfx("jump", pos, -6.0)
 		return
 	# against a wall in the air: kick off it
-	if wall_touch_t > 0.0 and wall_kicks > 0 and wall_n.length() > 0.1:
+	var mvk: Vector2 = inp.get("move", Vector2.ZERO)
+	if wall_touch_t > 0.0 and wall_kicks > 0 and wall_n.length() > 0.1 and mvk.length() > 0.3 and mvk.normalized().dot(wall_n) > 0.4:
 		wall_kicks -= 1
 		wall_touch_t = 0.0
 		var hv0 := Vector2(vel.x, vel.z)
@@ -416,9 +454,27 @@ func do_jump() -> void:
 	jump_buf = 0.12
 
 ## A glider sinks at one steady rate, whatever your speed, so every glide reads the same.
-const GLIDE_SINK := 1.5
+const GLIDE_SINK := 2.2
 static func glide_fall(_speed: float) -> float:
 	return GLIDE_SINK
+
+## Momentum-preserving acceleration (the Supervive feel): under the wanted speed, move toward it;
+## over it (a dash, a pad, a knockback) bleed the extra off slowly while still steering.
+static func accel2(cur: Vector2, wish: Vector2, accel: float, decel: float, over_decel: float, dt: float) -> Vector2:
+	var mx := wish.length()
+	if mx < 0.001:
+		return cur.move_toward(Vector2.ZERO, decel * dt)
+	var cs := cur.length()
+	if cs > mx:
+		var wd := wish / mx
+		# steering back against your momentum brakes it properly
+		var against := maxf(0.0, -(cur / cs).dot(wd))
+		var ns := maxf(cs - (over_decel + accel * against) * dt, mx)
+		var turn := clampf(accel * dt / cs, 0.0, 1.0)
+		var d := (cur / cs).lerp(wd, turn)
+		if d.length_squared() < 0.0001: d = wd
+		return d.normalized() * ns
+	return cur.move_toward(wish, accel * dt)
 
 func can_glide() -> bool:
 	return not grounded and roll_t <= 0.0 and fly_t <= 0.0 and glide_cd <= 0.0 and not downed and stun_t <= 0.0 \
@@ -439,10 +495,24 @@ func _open_glider() -> void:
 
 ## The class's dodge (Shift), as described by its ability data: a dash, plus anything else in its
 ## effect list (the heavy class's charge shoves people).
+## Shift, as in Supervive: a short dash, and a long one (its own, longer cooldown) when you're in
+## the air or the short one is still recharging.
+var ex_cd := 0.0
+var ex_next := false
+var dash_is_ex := false
+var dash_held := 0.0
 func do_dash() -> void:
-	if downed or stun_t > 0.0 or root_t > 0.0 or out or dashes < 1.0 or roll_t > 0.0 or grap.size() > 0 or pad.size() > 0:
+	if downed or stun_t > 0.0 or root_t > 0.0 or out or roll_t > 0.0 or grap.size() > 0 or pad.size() > 0:
 		return
-	dashes -= 1.0
+	var use_ex := not grounded or dashes < 1.0
+	if use_ex:
+		if ex_cd > 0.0:
+			return
+		ex_cd = EX_DASH_CD
+		ex_next = true
+		gliding = false
+	else:
+		dashes -= 1.0
 	var effs: Array = dodge_def.effects if dodge_def else [{"type": "dash", "speed": DASH_SPEED, "time": DASH_TIME, "invuln": 0.14}]
 	Effects.run(effs, self, {"slot": "dodge", "ability": dodge_def.id if dodge_def else "dash"})
 	CombatBus.ability_used.emit(self, dodge_def.id if dodge_def else "dash", "dodge")
@@ -466,6 +536,14 @@ func dash_with(e: Dictionary) -> void:
 	roll_dir = d.normalized()
 	roll_speed = float(e.get("speed", DASH_SPEED))
 	roll_t = float(e.get("time", DASH_TIME))
+	dash_is_ex = ex_next
+	dash_held = 0.0
+	if ex_next:
+		# the long dash: further and a touch faster
+		ex_next = false
+		roll_speed *= 1.2
+		roll_t *= 1.45
+		vel.y = maxf(vel.y, 0.0)
 	inv_t = maxf(inv_t, float(e.get("invuln", 0.14)))
 	shove = {"hit": {}, "kb": float(e.get("shove_kb", 9.0)), "dmg": float(e.get("shove_dmg", 0.0))} if e.get("shove", false) else {}
 	if not shove.is_empty():
@@ -792,7 +870,7 @@ func sim(dt: float) -> void:
 				inp[k] = false
 		return
 	tick_status(dt)
-	for k in ["reveal_t", "inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t"]:
+	for k in ["ex_cd", "reveal_t", "inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t"]:
 		set(k, maxf(0.0, get(k) - dt))
 	if shield_t > 0.0:
 		shield_t -= dt
@@ -926,30 +1004,31 @@ func _physics(dt: float) -> void:
 			m.fx.dust(pos, 2)
 	elif roll_t > 0.0:
 		roll_t -= dt
+		# the "hold for the long dash" option: keep Shift down and the short dash stretches into
+		# the long one, which then goes on its own cooldown
+		if inp.get("dash_hold", false) and not dash_is_ex and ex_cd <= 0.0:
+			dash_held += dt
+			if dash_held >= 0.12:
+				dash_is_ex = true
+				ex_cd = EX_DASH_CD
+				roll_t += 0.08
+				roll_speed *= 1.2
 		hv = roll_dir * roll_speed
 		if not shove.is_empty():
 			_shove_along()
 		if roll_t <= 0.0:
-			hv = roll_dir * spd * 1.1
+			# out of a dash you keep some of its speed: a little on the ground, most in the air
+			hv = roll_dir * roll_speed * (DASH_CARRY_GROUND if grounded else DASH_CARRY_AIR)
 	elif fly_t > 0.0:
 		fly_t -= dt
+	elif knock_t > 0.0:
+		knock_t -= dt
+		hv = hv.move_toward(Vector2.ZERO, 6.0 * dt)
 	elif gliding:
-		# the glider keeps the speed you bring into it and bleeds it off slowly; steering turns
-		# you without slowing you down. Speed is what keeps you up (see the fall below).
+		# the glider keeps the speed you bring into it (a dash or a pad into a glide carries) and
+		# drifts on when you let go of the keys
 		var gs := (DIVE_SPEED if diving else DROP_SPEED) if dropping else (GLIDE_SPEED * 0.6 if glide_fuel <= 0.001 else GLIDE_SPEED) * (1.0 + gear_stat("glide_speed"))
-		var head := hv.normalized() if cur > 0.3 else mv
-		# steering hard against your heading works as an air brake
-		var brake := 0.0
-		if mv.length() > 0.1 and head.length() > 0.1:
-			brake = clampf(-head.dot(mv.normalized()) + 0.3, 0.0, 1.3) * 7.0
-		# a steady cruise: extra speed (from a pad or a dash) bleeds back to it, a slow start
-		# picks up to it, and steering against your heading brakes
-		var drag := GLIDE_DRAG + maxf(0.0, cur - gs) * 0.25 if cur > gs else 8.0
-		var keep := maxf(gs * 0.5, move_toward(cur, gs, drag * dt) - brake * dt)
-		keep = minf(keep, GLIDE_MAX)
-		if mv.length() > 0.1:
-			head = head.slerp(mv.normalized(), 1.0 - exp(-3.2 * dt)) if head.length() > 0.1 else mv.normalized()
-		hv = head * keep
+		hv = accel2(hv, mv * gs, GLIDE_ACCEL, GLIDE_DECEL, GLIDE_OVERSPEED, dt)
 		if dropping:
 			# the drop goes where you point and stops when you let go: no fixed heading to circle on
 			hv = Vector2(vel.x, vel.z).lerp(mv * gs, 1.0 - exp(-(3.0 if diving else 4.0) * dt))
@@ -969,19 +1048,32 @@ func _physics(dt: float) -> void:
 				in_current = true
 				vel.y = move_toward(vel.y, 9.0, 30.0 * dt)
 	else:
-		var wish := mv * spd
-		var over := cur > spd * 1.15
-		# in the air you keep most of the speed you left the ground with: steering bends it, slowly
-		var k := (2.6 if over else 16.0) if grounded else (1.2 if over else 5.0)   # responsive air steering
-		hv += (wish - hv) * (1.0 - exp(-k * dt))
+		# near-instant on the ground; in the air you steer well but momentum carries
+		if grounded:
+			hv = accel2(hv, mv * spd, GROUND_ACCEL, GROUND_DECEL, GROUND_OVERSPEED, dt)
+		else:
+			hv = accel2(hv, mv * spd, AIR_ACCEL, AIR_DECEL, AIR_OVERSPEED, dt)
 	vel.x = hv.x; vel.z = hv.y
 	update_lip()
 	_update_glide(dt)
 	if gliding and in_current:
 		pass   # the current sets the height
+	elif gliding and not dropping and below_lip and glide_fuel > 0.001:
+		# below ground level over the abyss the glider lifts you hard, then brakes near the top.
+		# Let go just before ground level to carry the lift up as height (feathering)
+		var depth := lip_y - pos.y
+		if depth > ABYSS_BRAKE_DIST:
+			vel.y = minf(vel.y + ABYSS_LIFT * dt, ABYSS_LIFT_MAX)
+		else:
+			vel.y = move_toward(vel.y, maxf(depth * 2.0, 1.0), ABYSS_BRAKE * dt)
 	elif gliding:
 		var sink := (DIVE_FALL if diving else DROP_FALL) if dropping else (3.0 if glide_fuel <= 0.001 else glide_fall(Vector2(vel.x, vel.z).length()))
-		vel.y = lerpf(vel.y, -sink, 1.0 - exp(-4.0 * dt))
+		if dropping:
+			vel.y = lerpf(vel.y, -sink, 1.0 - exp(-4.0 * dt))
+		else:
+			vel.y = maxf(vel.y - GLIDE_GRAV * dt, -sink)
+	elif roll_t > 0.0 and not grounded and not dropping:
+		vel.y = 0.0          # a dash in the air holds your height for its length
 	elif not grounded:
 		vel.y -= H_GRAV * (FALL_MULT if vel.y < 0.0 and fly_t <= 0.0 else 1.0) * dt
 		vel.y = maxf(vel.y, -TERMINAL)
@@ -1001,10 +1093,13 @@ func _physics(dt: float) -> void:
 	elif grounded and b2 > 0.0 and b2 - pos.y <= World.LEVEL + 0.05: step_up = maxf(step_up, b2)
 	elif b2 > 0.0 or b2 == -1.0: vel.z = 0.0 if b2 == -1.0 else vel.z * -0.1
 	if step_up > 0.0 and mv.length() > 0.3:
-		# walking into a single terrace hops you up it instead of stopping you dead
-		vel.y = sqrt(2.0 * H_GRAV * (step_up - pos.y + 0.18))
-		grounded = false
-		coyote = 0.0
+		# walking into a single terrace steps you up it smoothly, no hop
+		step_vis -= step_up - pos.y
+		pos.y = step_up
+		prev.y = pos.y
+		var fw := mv.normalized() * spd * dt
+		if m.world.occupy(pos.x + fw.x, pos.z + fw.y, r, pos.y, guard) == 0.0:
+			pos.x += fw.x; pos.z += fw.y
 	elif step_up == 0.0 and (b1 > 0.0 or b2 > 0.0) and hv.length() > 1.0:
 		# caught on a corner: slip sideways around it rather than sticking
 		var moved := Vector2(pos.x - x0, pos.z - z0).length()
@@ -1076,14 +1171,14 @@ func _physics(dt: float) -> void:
 				m.fx.dust(pos, 8)
 			if fv < -11.0 or cur > spd * 1.3:
 				m.fx.dust(pos, 6)
-				squash = 0.35
+				squash = 0.15
 				land_t = 0.2
 				m.sfx("land", pos, -10.0)
 			if fv < -17.0:
 				# a long drop lands hard: a thud, a ring of dust and a short stagger
 				m.fx.dust(pos, 12)
 				m.fx.ring(pos + Vector3(0, 0.05, 0), 1.4, Color(1, 1, 1, 0.5), 0.3)
-				squash = 0.5
+				squash = 0.25
 				land_t = 0.32
 				if is_local(): m.shake(0.18, pos)
 			if jump_buf > 0.0:
@@ -1113,7 +1208,9 @@ func _deploy() -> void:
 	m.fx.burst(pos + Vector3(0, 1.7, 0), Color("f3eee2"), 12, 3.0, 0.4, 0.0)
 
 ## Hold jump while falling to open the glider. It folds when you land, run out, dash, or get hit.
+var air_t := 0.0                # time since you left the ground
 func _update_glide(dt: float) -> void:
+	air_t = 0.0 if grounded else air_t + dt
 	if dropping:
 		# the opening drop: the glider stays open until you land, or until you sink below the islands
 		gliding = not grounded
@@ -1147,15 +1244,15 @@ func _update_glide(dt: float) -> void:
 			if glide_fuel <= 0.0:
 				glide_cd = 0.5
 		elif not in_current:
-			glide_fuel = maxf(0.0, glide_fuel - dt / (glide_max * (1.0 + gear_stat("heat"))))
+			# heat builds faster while the glider is lifting you out of the abyss
+			var hk := 1.5 if below_lip and vel.y > 0.0 else 1.0
+			glide_fuel = maxf(0.0, glide_fuel - dt * hk / (glide_max * (1.0 + gear_stat("heat"))))
 		if not dropping:
 			stats["glide_t"] = float(stats.get("glide_t", 0.0)) + dt
-	elif want and can and vel.y < 1.5 and glide_fuel > 0.15 and not gliding:
+	elif want and can and air_t >= GLIDE_ENGAGE and glide_fuel > 0.15 and not gliding:
+		# hold Space in the air and the glider opens a beat after you leave the ground
 		gliding = true
 		if below_lip:
-			# feathering: snapping the glider open below the lip catches an updraft back up to it
-			vel.y = clampf(sqrt(2.0 * H_GRAV * maxf(0.2, lip_y - pos.y + 0.9)), 4.0, 16.0)
-			glide_fuel = maxf(0.0, glide_fuel - 0.06)   # feathering is the fuel-cheap way back up
 			m.fx.burst(pos + Vector3(0, 1.2, 0), Color("cfeaff"), 12, 3.5, 0.4, -2.0, 0.8)
 			m.sfx("glide", pos, -2.0, 1.4)
 			add_stat("feathers")
@@ -1172,10 +1269,11 @@ func _try_ledge_grab(dt: float) -> void:
 	var w: World = m.world
 	var mv: Vector2 = inp["move"]
 	var reach := 0.0
-	var max_rise := 12.0
+	var max_rise := MANTLE_REACH
 	if grounded:
-		# a wall of ground in front of you: lean on it for a moment and you go up
-		if mv.length() < 0.5 or grap_cd > 0.0:
+		# as in Supervive, walking into a wall doesn't climb it: jump, and you mantle at the top.
+		# Bots still lean their way up so their paths work.
+		if mv.length() < 0.5 or grap_cd > 0.0 or ctrl == "local":
 			push_t = 0.0
 			return
 		var probe := Vector2(pos.x, pos.z) + mv.normalized() * (r + 0.35)
@@ -1191,7 +1289,7 @@ func _try_ledge_grab(dt: float) -> void:
 	else:
 		push_t = 0.0
 		# a hard launch carries you a moment before you can catch anything
-		if vel.y > 1.0 or grap_cd > 0.0 or (m.time - kb_t < 0.3 and Vector2(vel.x, vel.z).length() > 8.0):
+		if vel.y > 2.0 or grap_cd > 0.0 or (m.time - kb_t < 0.3 and Vector2(vel.x, vel.z).length() > 8.0):
 			return
 		# no magnet: you have to be below the edge, right up against the cliff, and pushing into it
 		if mv.length() < 0.3:
@@ -1300,8 +1398,12 @@ func add_stat(k: String, n := 1) -> void:
 	stats[k] = int(stats.get(k, 0)) + n
 var unseen := false           # hidden from the local player (in a bush, or behind a wall)
 
+var step_vis := 0.0            # eases the model up a terrace you just stepped onto
 func render(delta: float, alpha: float) -> void:
 	super.render(delta, alpha)
+	if absf(step_vis) > 0.001:
+		position.y += step_vis
+		step_vis = lerpf(step_vis, 0.0, 1.0 - exp(-16.0 * delta))
 	visible = not out and not extracted and not riding and not unseen
 	if not model:
 		return
