@@ -55,7 +55,31 @@ static func environment(p: Dictionary) -> Environment:
 		e.ssao_light_affect = 0.15
 		e.glow_intensity = 0.6
 		e.glow_bloom = 0.08
+		# The look was tuned on the simpler renderer, which shows colours darker and richer. The
+		# desktop renderer is gamma-correct, so it comes out lifted and washed; this curve maps it
+		# back to the same tones.
+		e.adjustment_color_correction = _tone_curve()
+		e.adjustment_saturation *= 1.65
+	if "--nofog" in OS.get_cmdline_user_args(): e.fog_enabled = false
+	if "--nossao" in OS.get_cmdline_user_args(): e.ssao_enabled = false
+	if "--noglow" in OS.get_cmdline_user_args(): e.glow_enabled = false
+	if "--noadj" in OS.get_cmdline_user_args(): e.adjustment_enabled = false
 	return e
+
+static var _curve_tex: GradientTexture1D
+static func _tone_curve() -> GradientTexture1D:
+	if _curve_tex == null:
+		var g := Gradient.new()
+		var offs := PackedFloat32Array(); var cols := PackedColorArray()
+		for i in 33:
+			var x := float(i) / 32.0
+			var y := pow(x, 1.45)
+			offs.append(x); cols.append(Color(y, y, y))
+		g.offsets = offs; g.colors = cols
+		_curve_tex = GradientTexture1D.new()
+		_curve_tex.gradient = g
+		_curve_tex.width = 256
+	return _curve_tex
 
 ## True on desktop (Forward+): the web build uses the simpler renderer and skips the extras.
 static func full_renderer() -> bool:

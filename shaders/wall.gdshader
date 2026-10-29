@@ -44,8 +44,15 @@ void fragment() {
 }
 
 void light() {
-	float ndl = dot(NORMAL, LIGHT);
-	float lit = smoothstep(0.0, 0.06, ndl) * ATTENUATION;
-	lit = mix(shade, 1.0, smoothstep(0.35, 0.65, lit));
-	DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR / PI * lit;
+	if (!LIGHT_IS_DIRECTIONAL) {
+		// lamps and glows: plain falloff. (The cel shade floor below is only for the sun; on a lamp
+		// it lit whole screen clusters at once, which showed up as blocky squares at night.)
+		float pl = smoothstep(-0.1, 0.4, dot(NORMAL, LIGHT)) * ATTENUATION;
+		DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR / PI * pl;
+	} else {
+		float ndl = dot(NORMAL, LIGHT);
+		float lit = smoothstep(0.0, 0.06, ndl) * ATTENUATION;
+		lit = mix(shade, 1.0, smoothstep(0.35, 0.65, lit));
+		DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR / PI * lit;
+	}
 }
