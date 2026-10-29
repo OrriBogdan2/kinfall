@@ -158,6 +158,8 @@ func _ready() -> void:
 				current._take("plant"))
 	elif town_arg != "":
 		show_screen("town", {"mode": town_arg, "gid": "test"})
+	elif "--creator" in args:
+		show_screen("hatch", {"create": true})    # test: the hunter creator
 	elif "--match" in args:
 		show_screen("match", opts)
 	elif "--training" in args:
