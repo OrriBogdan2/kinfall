@@ -45,7 +45,21 @@ static func environment(p: Dictionary) -> Environment:
 	e.fog_sky_affect = 0.0
 	e.fog_height = float(p.get("fog_height", -3.0))
 	e.fog_height_density = float(p.get("fog_height_density", 0.12))
+	if full_renderer():
+		# the desktop renderer: soft contact shadows where things meet the ground, a cleaner glow
+		e.ssao_enabled = true
+		e.ssao_radius = 1.4
+		e.ssao_intensity = 1.6
+		e.ssao_power = 1.4
+		e.ssao_detail = 0.6
+		e.ssao_light_affect = 0.15
+		e.glow_intensity = 0.6
+		e.glow_bloom = 0.08
 	return e
+
+## True on desktop (Forward+): the web build uses the simpler renderer and skips the extras.
+static func full_renderer() -> bool:
+	return RenderingServer.get_current_rendering_method() == "forward_plus"
 
 ## A warm key light with shadows and a cool fill from the other side that rims the silhouettes.
 static func lights(parent: Node, key_col: Color, key_energy := 1.0, rot := Vector3(-52, -35, 0), shadow_dist := 60.0) -> DirectionalLight3D:
@@ -60,6 +74,9 @@ static func lights(parent: Node, key_col: Color, key_energy := 1.0, rot := Vecto
 	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
 	sun.shadow_opacity = 0.75
 	sun.shadow_blur = 1.5
+	if full_renderer():
+		sun.directional_shadow_mode = DirectionalLight3D.SHADOW_PARALLEL_4_SPLITS
+		sun.shadow_blur = 1.2
 	parent.add_child(sun)
 	var fill := DirectionalLight3D.new()
 	fill.name = "Fill"

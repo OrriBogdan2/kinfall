@@ -57,8 +57,12 @@ vis_blocks={
 common/physics_ticks_per_second=60
 
 [rendering]
-renderer/rendering_method="gl_compatibility"
+renderer/rendering_method="forward_plus"
 renderer/rendering_method.mobile="gl_compatibility"
+renderer/rendering_method.web="gl_compatibility"
 anti_aliasing/quality/msaa_3d=2
+lights_and_shadows/directional_shadow/size=4096
+lights_and_shadows/directional_shadow/soft_shadow_filter_quality=3
+environment/ssao/quality=2
 textures/canvas_textures/default_texture_filter=1
 textures/vram_compression/import_etc2_astc=true
