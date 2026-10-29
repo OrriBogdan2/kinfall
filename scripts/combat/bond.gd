@@ -31,6 +31,8 @@ static func on_hit(attacker: Node, target: Node, amount: float, _tags: Array) ->
 		return
 	if bool(rl.get("kin_required", true)) and not h.has_kin_ready():
 		return
+	if target is Mob:
+		rate *= float(rl.get("mob_factor", 0.6))     # fighting other hunters fills it faster than farming monsters
 	var add_v := minf(amount * rate, float(rl.get("max_per_hit", 0.06)))
 	if attacker is Kin and target.hp <= 0.0:
 		add_v += float(rl.get("kin_ko", 0.1))

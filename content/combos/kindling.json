@@ -10,6 +10,6 @@
 	"payoff_by": "kin_ability",
 	"window": 3.0,
 	"bonus": 1.25,
-	"bond": 0.04,
+	"bond": 0.03,
 	"color": "#ff9a5a"
 }

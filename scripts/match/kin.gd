@@ -60,6 +60,7 @@ var lost_from := ""               # a kin left behind by a hunter who went down 
 var lost_uid := ""
 var ring: MeshInstance3D = null   # the team-coloured ring under it
 var shell_fx: Node3D = null       # the glow around its hunter while fused
+static var XRAY: Shader = preload("res://shaders/kin_aura_xray.gdshader")
 
 func init_kin(match_node: Node, id: String, species_id: String, record: Dictionary, owner_hunter: Hunter) -> void:
 	setup(match_node, id)
@@ -830,6 +831,12 @@ func render(delta: float, alpha: float) -> void:
 			var rs := r * 2.6 + 0.3
 			ring.global_position = Vector3(global_position.x, m.world.ground_at(global_position.x, global_position.z) + 0.06, global_position.z)
 			ring.scale = Vector3.ONE * rs * (1.0 + 0.06 * sin(m.time * 5.0))
+	if shell and not has_meta("xr") and m.player:
+		# your squad's kin glow through grass and walls, so you never lose track of them
+		set_meta("xr", true)
+		if team == m.player.team and owner_h:
+			var sm0: ShaderMaterial = (shell as MeshInstance3D).material_override
+			sm0.shader = XRAY
 	if shell:
 		var want := 0.0 if state in ["shoulder", "fused"] else (1.0 if not giant.is_empty() else 0.6)
 		if state in ["wild", "dazed"]: want = 0.25 if not has_meta("lineup") else 0.6

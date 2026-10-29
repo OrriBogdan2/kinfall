@@ -1,10 +1,11 @@
 {
 	"desc": "How the bond meter fills. All values are fractions of a full meter.",
-	"per_player_dmg": 0.0032,
-	"per_kin_dmg": 0.0055,
-	"passive_per_sec": 0.0035,
-	"combo": 0.08,
-	"kin_ko": 0.12,
-	"max_per_hit": 0.06,
-	"kin_required": true
+	"per_player_dmg": 0.0016,
+	"per_kin_dmg": 0.0026,
+	"passive_per_sec": 0.002,
+	"combo": 0.05,
+	"kin_ko": 0.06,
+	"max_per_hit": 0.035,
+	"kin_required": true,
+	"mob_factor": 0.6
 }

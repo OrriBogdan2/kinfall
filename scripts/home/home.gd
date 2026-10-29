@@ -2463,8 +2463,11 @@ func _open_loadout() -> void:
 	var dv := UI.vbox(5); det.add_child(dv)
 	dv.add_child(UI.title("%s, %s" % [hd["name"], String(hd["role"]).to_lower()], 22, hd["color"]))
 	dv.add_child(UI.label("Passive: " + String(hd["passive"]), 14))
-	dv.add_child(UI.label("E  %s: %s" % [Data.ABIL[hd["e"]]["name"], Data.ABIL[hd["e"]]["desc"]], 14))
-	dv.add_child(UI.label("R  %s: %s" % [Data.ABIL[hd["r"]]["name"], Data.ABIL[hd["r"]]["desc"]], 14, UI.GOLD))
+	if Data.ABIL.has(hd.get("s", "")):
+		dv.add_child(UI.label("Right click  %s: %s" % [Data.ABIL[hd["s"]]["name"], Data.ABIL[hd["s"]]["desc"]], 14))
+	var kn := UI.label("A hero is a preset: a class, a weapon and a look. Q, V and R come from the kin you bring, so the same hero plays differently with every pair of kin.", 13, UI.MUTED)
+	kn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	dv.add_child(kn)
 	v.add_child(det)
 	v.add_child(UI.section("Weapon"))
 	var wr := UI.hbox(8)

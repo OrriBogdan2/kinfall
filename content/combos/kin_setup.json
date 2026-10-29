@@ -11,6 +11,6 @@
 	"payoff_by": "owner",
 	"window": 2.5,
 	"bonus": 1.35,
-	"bond": 0.08,
+	"bond": 0.05,
 	"color": "#ffd23f"
 }

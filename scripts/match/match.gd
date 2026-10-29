@@ -375,7 +375,7 @@ func _spawn_hunters() -> void:
 			if not held.is_empty():
 				bname = String(held["holder"])
 				brec = (held["rec"] as Dictionary).duplicate(true)
-			var h := make_hunter(next_id("b"), t, "", bname, "bot", brec, at, bk, bot_kin_record())
+			var h := make_hunter(next_id("b"), t, "", bname, "bot", brec, at, bk, bot_kin_record() if rng.randf() < 0.6 else {})
 			if not held.is_empty() and h.kin:
 				(h.kin as Kin).lost_uid = String(brec.get("uid", ""))
 				(h.kin as Kin).lost_from = "you"
@@ -1471,8 +1471,7 @@ func _held_for_match(team_i: int) -> Dictionary:
 	if opts.get("training", false) or opts.get("tutorial", false) or team_i == 0 or not tracked.is_empty() or net_on:
 		return {}
 	for L in Save.d.get("lost_kin", []):
-		if String(L.get("where", "")) == "rival" and not L.has("_seen_" + str(seed_val)) and rng.randf() < 0.5:
-			L["_seen_" + str(seed_val)] = true
+		if String(L.get("where", "")) == "rival" and rng.randf() < 0.5:
 			return {"holder": String(L["holder"]), "rec": L["rec"]}
 	return {}
 
@@ -1510,13 +1509,17 @@ func _leave_kin(h: Hunter) -> void:
 			if not world.is_void(at.x, at.z):
 				var rec: Dictionary = k.rec.duplicate(true)
 				var w := spawn_wild(rec, at + Vector3(rng.randf_range(-0.6, 0.6), 0, rng.randf_range(-0.6, 0.6)), true)
-				w.lost_from = "you" if h == player else h.pname
+				# whose it really is: yours (even if a rival was carrying it), or the hunter who brought it
+				w.lost_from = "you" if (h == player or k.lost_from == "you") else h.pname
 				w.lost_uid = String(rec.get("uid", ""))
 				w.dazed_t = 1e9
 				kstat["left"] += 1
 				if h == player:
 					player_lost.append({"uid": w.lost_uid, "kin": w, "holder": null, "rec": rec})
 					add_feed("%s was left behind" % rec.get("name", "Your kin"))
+				elif k.lost_from == "you" and player and not player.out:
+					add_feed("%s dropped %s! Catch it and extract to bring it home." % [h.pname, rec.get("name", "your kin")])
+					ping(w.pos, Color("ffd23f"))
 		k.dead = true
 		k.visible = false
 
