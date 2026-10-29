@@ -19,6 +19,7 @@ Net="*res://scripts/core/net.gd"
 Social="*res://scripts/core/social.gd"
 Overlay="*res://scripts/ui/overlay.gd"
 Shot="*res://scripts/shot.gd"
+CombatBus="*res://scripts/combat/combat_bus.gd"
 
 [display]
 window/size/viewport_width=1280

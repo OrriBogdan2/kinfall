@@ -1,0 +1,18 @@
+{
+	"id": "rail",
+	"name": "Rail Rifle",
+	"primary": {
+		"dmg": 24.0,
+		"rate": 0.9,
+		"speed": 46.0,
+		"mag": 4,
+		"reload": 1.8,
+		"kb": 3.5,
+		"spread": 0.0,
+		"range": 18.0,
+		"sfx": "rifle",
+		"color": "#9af0ff",
+		"size": 0.1
+	},
+	"utility": ""
+}

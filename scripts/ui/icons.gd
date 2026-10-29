@@ -124,6 +124,13 @@ static func draw(c: Control, id: String, at: Vector2, s: float, col: Color) -> v
 			A.call(0.0, 0.0, 0.65, -PI * 0.5, PI * 1.0)
 			A.call(0.0, 0.0, 0.35, PI * 0.5, PI * 2.0)
 			O.call(0.0, 0.0, 0.1)
+		"concussion":
+			A.call(0.0, 0.0, 0.42, 0, TAU)
+			A.call(0.0, 0.0, 0.72, -0.6, 0.6); A.call(0.0, 0.0, 0.72, PI - 0.6, PI + 0.6)
+			O.call(0.0, 0.0, 0.16)
+		"pulse":
+			F.call([[-0.85, -0.14], [0.7, -0.14], [0.7, 0.1], [-0.15, 0.1], [-0.3, 0.55], [-0.55, 0.55], [-0.45, 0.1], [-0.85, 0.1]])
+			O.call(0.82, -0.02, 0.12)
 		# ---- right-click secondaries
 		"shadowstep":
 			L.call([[-0.7, 0.7], [0.3, -0.3]]); F.call([[0.55, -0.55], [0.15, -0.45], [0.45, -0.15]])

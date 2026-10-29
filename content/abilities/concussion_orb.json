@@ -1,0 +1,13 @@
+{
+	"id": "concussion_orb",
+	"name": "Concussion Orb",
+	"desc": "A slow orb that bursts when it hits something or reaches the end of its flight, blasting everyone nearby away. Knock rivals off edges.",
+	"icon": "concussion",
+	"color": "#8ff0ff",
+	"cooldown": 7.0,
+	"charges": 1,
+	"effects": [
+		{"type": "projectile", "dmg": 6, "speed": 13, "range": 11, "size": 0.32, "color": "#8ff0ff", "sfx": "throw", "pitch": 0.8,
+			"on_end": [{"type": "area", "at": "here", "radius": 2.4, "dmg": 14, "kb": 11, "lift": 4, "color": "#8ff0ff"}]}
+	]
+}

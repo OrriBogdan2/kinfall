@@ -105,6 +105,14 @@ func _ready() -> void:
 			Save.d["tutorial"]["home"] = true
 			show_screen("lobby", {})
 			return
+	# a test scene (tests/combat_sandbox.tscn) can ask for a screen directly
+	if has_meta("start"):
+		var st: Dictionary = get_meta("start")
+		show_screen(String(st["screen"]), st.get("opts", {}))
+		return
+	if "--sandbox" in args:
+		show_screen("match", {"training": true, "sandbox": true, "sandbox_demo": "--sandbox-demo" in args, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242, "no_drop": true, "weapon": "pulse"})
+		return
 	if "--results-test" in args:
 		show_screen("results", {"extracted": true, "gems": 42, "seeds": {"sunroot": 1}, "caught": [Save.new_kin("zapple")], "knocks": 3, "damage": 512, "time": 201.0, "kin_events": [{"kind": "refused", "text": "refused to jump into a fight that looked too dangerous", "trust": -1.0}], "kin_trust": 57.0, "tonics": 1})
 		return

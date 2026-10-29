@@ -11,17 +11,17 @@ const MATCH_PLAYERS := 20
 const CLASSES := {
 	"light": {
 		"name": "Light", "hp": 90, "speed": 6.3, "dashes": 3, "mass": 0.9, "scale": 0.9,
-		"sig": "cloak", "weapon": "stinger", "weapons": ["stinger", "rail"],
+		"sig": "cloak", "weapon": "stinger", "weapons": ["stinger", "pulse", "rail"],
 		"desc": "Fast and fragile. Three dashes and a cloak to slip out of fights.",
 	},
 	"medium": {
 		"name": "Medium", "hp": 115, "speed": 5.4, "dashes": 2, "mass": 1.0, "scale": 1.0,
-		"sig": "mend", "weapon": "repeater", "weapons": ["repeater", "rocket", "rail"],
+		"sig": "mend", "weapon": "repeater", "weapons": ["repeater", "pulse", "rocket", "rail"],
 		"desc": "The all-rounder. Heals the team and its kin, and speeds up revives.",
 	},
 	"heavy": {
 		"name": "Heavy", "hp": 155, "speed": 4.7, "dashes": 1, "mass": 1.45, "scale": 1.14,
-		"sig": "fortify", "weapon": "thumper", "weapons": ["thumper", "rocket"],
+		"sig": "fortify", "weapon": "thumper", "weapons": ["thumper", "pulse", "rocket"],
 		"desc": "Slow and tough. Grenades that blast people off edges, and a shield nothing can push.",
 	},
 }
@@ -52,8 +52,16 @@ const RARITY := [
 ]
 
 ## A weapon's stats at a rarity. "short" is the plain name for the ability bar.
+## Every weapon: the ones in content/weapons (the source of truth), plus any only defined here.
+func weapon_ids() -> Array:
+	var ids: Array = Content.ids("weapons")
+	for k in WEAPONS:
+		if not ids.has(k): ids.append(k)
+	return ids
+
 func weapon_stats(wid: String, rar := 0) -> Dictionary:
-	var w: Dictionary = WEAPONS.get(wid, WEAPONS["repeater"]).duplicate()
+	var wd := Content.weapon(wid)
+	var w: Dictionary = wd.primary.duplicate() if wd else WEAPONS.get(wid, WEAPONS["repeater"]).duplicate()
 	var r: Dictionary = RARITY[clampi(rar, 0, RARITY.size() - 1)]
 	w["short"] = String(w["name"]).split(" ")[0]
 	if rar > 0:

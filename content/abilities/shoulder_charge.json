@@ -1,0 +1,10 @@
+{
+	"id": "shoulder_charge",
+	"name": "Shoulder Charge",
+	"desc": "A heavy lunge that can't be knocked back and shoves anyone you run into.",
+	"icon": "ram",
+	"color": "#ffd8a8",
+	"cooldown": 3.0,
+	"charges": 1,
+	"effects": [{"type": "dash", "speed": 16, "time": 0.26, "invuln": 0.08, "shove": true, "shove_kb": 9, "shove_dmg": 8}]
+}

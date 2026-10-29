@@ -250,7 +250,7 @@ func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String
 	return h
 
 func my_kit() -> Dictionary:
-	return {"hero": Save.d.get("hero", ""), "weapon": Save.d.get("weapon", ""), "perk": Save.d.get("perk", "")}
+	return {"hero": String(opts.get("hero", Save.d.get("hero", ""))), "weapon": String(opts.get("weapon", Save.d.get("weapon", ""))), "perk": Save.d.get("perk", "")}
 
 func bot_kit() -> Dictionary:
 	var heroes: Array = Data.HEROES.keys()
@@ -583,7 +583,7 @@ func _spawn_breakables() -> void:
 			else: _add_break(t[1], q)
 	# the weapons lying in the open are the same for everyone in an online match
 	var wr := RandomNumberGenerator.new(); wr.seed = seed_val * 31 + 7
-	var keys: Array = Data.WEAPONS.keys()
+	var keys: Array = Data.weapon_ids()
 	for i in world.weapon_spots.size():
 		spawn_weapon(String(keys[wr.randi() % keys.size()]), Data.roll_rarity(wr, 1 if tier >= 2 else 0), world.weapon_spots[i], "ws%d" % i, false)
 
@@ -841,7 +841,7 @@ func _break(b: Dictionary, by: Ent, from_net := false) -> void:
 			if randf() < 0.4:
 				drop("armor", at + Vector3(0, 0.5, 0), 25)
 			if not from_net and randf() < 0.16:
-				var keys: Array = Data.WEAPONS.keys()
+				var keys: Array = Data.weapon_ids()
 				spawn_weapon(String(keys[randi() % keys.size()]), Data.roll_rarity(rng), at)
 		"barrel":
 			_barrel_boom(at, by, from_net)
@@ -1039,6 +1039,11 @@ func add_feed(t: String) -> void:
 
 # ------------------------------------------------------------------ events
 func on_damage(target: Ent, by: Ent, d: float, o: Dictionary) -> void:
+	var tags: Array = o.get("tags", [])
+	if tags.is_empty():
+		tags = [String(o.get("src", "primary")) if o.get("src", "") != "" else "primary"]
+	if o.get("stun", 0.0) > 0.0: tags = tags + ["stun"]
+	CombatBus.hit_landed.emit(by, target, d, tags)
 	var crit: bool = o.get("crit", false)
 	var src: String = o.get("src", "")
 	var credit: Ent = by
@@ -1350,7 +1355,7 @@ func on_mob_dead(mb: Mob, by: Ent, _o: Dictionary) -> void:
 		if mb.mkind in ["brute", "warden", "sentinel"] and rng.randf() < (1.0 if mb.mkind == "warden" else 0.4):
 			spawn_gear(Gear.roll(rng), Data.roll_rarity(rng, 2 if mb.mkind == "warden" else 0), mb.pos + Vector3(0.8, 0, 0.4))
 		if mb.mkind == "glimmer":
-			var keys: Array = Data.WEAPONS.keys()
+			var keys: Array = Data.weapon_ids()
 			spawn_weapon(String(keys[randi() % keys.size()]), Data.roll_rarity(rng, 1), mb.pos)
 			if credit is Hunter: add_feed("%s caught the Glimmerkin's treasure" % credit.pname)
 		if rng.randf() < (0.35 if mb.mkind == "brute" else 0.12):
@@ -1672,6 +1677,15 @@ func _shot_targets(s: Dictionary) -> Array:
 
 func _shot_end(s: Dictionary, at: Vector3, e: Ent) -> void:
 	shots.erase(s)
+	# data-driven abilities: effects that go off where the shot ends, or on what it hit
+	var fxx: Dictionary = s["x"]
+	if not fxx.get("cos", false) and is_instance_valid(s["by"]):
+		var c2: Dictionary = (fxx.get("fx_ctx", {}) as Dictionary).duplicate()
+		c2["at"] = at
+		if e and fxx.has("fx_hit"):
+			Effects.run(fxx["fx_hit"], s["by"], c2)
+		if fxx.has("fx_end"):
+			Effects.run(fxx["fx_end"], s["by"], c2)
 	if s["node"]:
 		s["node"].visible = false
 	var x: Dictionary = s["x"]
@@ -1947,6 +1961,15 @@ func step(dt: float) -> void:
 	if opts.has("aim_demo") and player:
 		aim_hold = String(opts["aim_demo"])
 		player.inp["aim"] = player.pos + Vector3(4.0, 0, -3.0)
+	if opts.get("sandbox_demo", false) and player:
+		# test hook: lob the utility at the nearest dummy, then dodge
+		var tgt: Ent = null; var bd := 1e9
+		for mb in mobs:
+			if not mb.dead and player.flat_dist(mb) < bd: bd = player.flat_dist(mb); tgt = mb
+		if tgt: player.inp["aim"] = tgt.pos + Vector3(0, 0.95, 0)
+		if time > 0.8 and time - DT <= 0.8: pending_input["sec"] = true
+		if time > 2.6 and time - DT <= 2.6: pending_input["dash"] = true
+		if time > 1.6: player.inp["fire"] = true
 	if opts.get("cone_demo", false) and player:
 		player.inp["aim"] = player.pos + Vector3(4.0, 0.95, -5.0)
 		player.inp["crouch"] = opts.get("crouch_demo", false)
@@ -2251,7 +2274,7 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 	for i in seeds_n:
 		drop("seed", c["pos"] + Vector3(0, 0.8, 0), randi_range(1, 2), Data.pick_seed())
 	if not from_net and randf() < [0.25, 0.6, 1.0][t]:
-		var keys: Array = Data.WEAPONS.keys()
+		var keys: Array = Data.weapon_ids()
 		var a := randf() * TAU
 		spawn_weapon(String(keys[randi() % keys.size()]), Data.roll_rarity(rng, maxi(0, t - 1)), c["pos"] + Vector3(cos(a) * 1.1, 0, sin(a) * 1.1))
 	if not from_net and randf() < [0.35, 0.65, 1.0][t]:

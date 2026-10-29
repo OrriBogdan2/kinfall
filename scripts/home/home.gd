@@ -1908,7 +1908,7 @@ func _open_expedition() -> void:
 	var hrow := UI.hbox(12); hc.add_child(hrow)
 	var hv := UI.vbox(4); hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hv.add_child(UI.title("%s  ·  %s" % [hd["name"], Data.CLASSES[hd["cls"]]["name"]], 24, hd["color"]))
-	hv.add_child(UI.label("%s  ·  E %s  ·  R %s  ·  %s" % [Data.WEAPONS[w]["name"], Data.ABIL[hd["e"]]["name"], Data.ABIL[hd["r"]]["name"],
+	hv.add_child(UI.label("%s  ·  E %s  ·  R %s  ·  %s" % [Data.weapon_stats(w)["name"], Data.ABIL[hd["e"]]["name"], Data.ABIL[hd["r"]]["name"],
 		Data.PERKS[pk]["name"] if Data.PERKS.has(pk) else "no perk"], 14, UI.MUTED))
 	hrow.add_child(hv)
 	hrow.add_child(UI.button("Hero and loadout", _open_loadout, 200))
@@ -2252,7 +2252,7 @@ func _open_loadout() -> void:
 	var wr := UI.hbox(8)
 	var cur_w: String = Save.d.get("weapon", hd["weapon"])
 	for w in Data.CLASSES[hd["cls"]]["weapons"]:
-		var wd: Dictionary = Data.WEAPONS[w]
+		var wd: Dictionary = Data.weapon_stats(w)
 		var wk: String = w
 		var wb := UI.choice(String(wd["name"]), w == cur_w, func():
 			Save.d["weapon"] = wk

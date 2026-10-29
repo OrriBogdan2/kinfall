@@ -70,7 +70,7 @@ func _setup_input() -> void:
 	_key("gear2", [KEY_G])                    # active on your second piece of gear
 	_key("crouch", [KEY_CTRL])                # sneak
 	_key("throw", [KEY_C])                    # throw your kin, or call it back
-	_key("kin_skill", [KEY_X])                # your kin's skill at the cursor
+	_key("kin_skill", [KEY_V])                # your kin's skill at the cursor
 	_key("dash", [KEY_SHIFT])
 	_key("jump", [KEY_SPACE])
 	_key("reload", [])                        # reloading is automatic

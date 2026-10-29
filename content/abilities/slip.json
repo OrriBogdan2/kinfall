@@ -1,0 +1,10 @@
+{
+	"id": "slip",
+	"name": "Slip",
+	"desc": "A short, very fast hop with three charges. Hard to pin down.",
+	"icon": "dash",
+	"color": "#d8f4ff",
+	"cooldown": 2.0,
+	"charges": 3,
+	"effects": [{"type": "dash", "speed": 23, "time": 0.12, "invuln": 0.12}]
+}

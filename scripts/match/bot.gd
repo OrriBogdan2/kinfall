@@ -218,9 +218,16 @@ func _crawl(m: Match, h: Hunter) -> void:
 func _use_sec(m: Match, h: Hunter, tgt: Ent) -> void:
 	var id := Abil.s_id(h)
 	h.inp["sec_hold"] = false
-	if id == "" or tgt == null:
+	if tgt == null:
 		return
 	var d := h.flat_dist(tgt)
+	# a weapon utility takes the right click over the hero's own secondary
+	if h.runner and h.runner.has_slot("utility"):
+		if h.runner.is_ready("utility") and d < 10.0 and randf() < 0.08:
+			h.inp["sec"] = true
+		return
+	if id == "":
+		return
 	var hurt := h.hp < h.max_hp * 0.5
 	var facing: bool = tgt is Hunter and h.aim_dir().dot(h.dir_to(tgt)) > 0.6
 	if id == "brightshield":

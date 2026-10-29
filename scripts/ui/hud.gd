@@ -603,7 +603,7 @@ func _draw_abilities(sz: Vector2, p: Hunter) -> void:
 	var gap := 12.0
 	var us := 72.0
 	var k: Kin = p.kin
-	var n_small := 6 if k else 4
+	var n_small := (6 if k else 4) - (1 if Abil.s_id(p) == "" and not (p.runner and p.runner.def_of("utility")) else 0)
 	var total := n_small * s + us + (n_small) * gap
 	var x := sz.x * 0.5 - total * 0.5
 	var y := sz.y - 88.0
@@ -619,9 +619,14 @@ func _draw_abilities(sz: Vector2, p: Hunter) -> void:
 		var kready: bool = k.skill_cd <= 0.0 and k.state not in ["fainted", "reviving"]
 		_ab_slot("kskill", Rect2(Vector2(x, y), Vector2(s, s)), sk_id, Settings.key_cap("kin_skill"), kc, k.skill_cd / float(sk["cd"]) if k.skill_cd > 0.0 else 0.0, k.skill_cd, kready)
 		x += s + gap
-	# right click: the hero's secondary
+	# right click: the weapon's utility, or the hero's secondary if the weapon has none
 	var s_id := Abil.s_id(p)
-	if s_id != "":
+	var util: AbilityDef = p.runner.def_of("utility") if p.runner else null
+	if util:
+		var sr := Rect2(Vector2(x, y), Vector2(s, s))
+		_ab_slot("sec", sr, util.icon, Settings.key_cap("secondary"), util.color, p.runner.cd_frac("utility"), p.runner.cd_left("utility") if not p.runner.is_ready("utility") else 0.0, p.runner.is_ready("utility"), p.runner.charges("utility") if util.charges > 1 else -1, util.charges if util.charges > 1 else 0)
+		x += s + gap
+	elif s_id != "":
 		var s_ab: Dictionary = Data.ABIL[s_id]
 		var sr := Rect2(Vector2(x, y), Vector2(s, s))
 		if s_id == "breeze":
@@ -651,7 +656,7 @@ func _draw_abilities(sz: Vector2, p: Hunter) -> void:
 	x += us + gap
 	var dmax := p.max_dashes()
 	var dcd := (1.0 - fposmod(p.dashes, 1.0)) if p.dashes < dmax else 0.0
-	_ab_slot("dash", Rect2(Vector2(x, y), Vector2(s, s)), "dash", Settings.key_cap("dash"), Color("bfe6ff"), dcd if p.dashes < 1.0 else 0.0, (1.0 - fposmod(p.dashes, 1.0)) * Hunter.DASH_REGEN if p.dashes < 1.0 else 0.0, p.dashes >= 1.0, int(floor(p.dashes)), int(dmax))
+	_ab_slot("dash", Rect2(Vector2(x, y), Vector2(s, s)), "dash", Settings.key_cap("dash"), Color("bfe6ff"), dcd if p.dashes < 1.0 else 0.0, (1.0 - fposmod(p.dashes, 1.0)) * p.dash_regen() if p.dashes < 1.0 else 0.0, p.dashes >= 1.0, int(floor(p.dashes)), int(dmax))
 	x += s + gap
 	_ab_slot("tonic", Rect2(Vector2(x, y), Vector2(s, s)), "tonic", Settings.key_cap("tonic"), GOOD, 0.0, 0.0, p.tonics > 0, -1, 0)
 	_ctext(Vector2(x + s - 10, y + 18), "×%d" % p.tonics, 13, INK, big)
@@ -789,7 +794,10 @@ func _draw_kit(sz: Vector2, p: Hunter) -> void:
 	var e_ab: Dictionary = Data.ABIL[Abil.e_id(p)]
 	var r_ab: Dictionary = Data.ABIL[Abil.r_id(p)]
 	lines.append([Settings.key_cap("signature"), e_ab["name"], e_ab["desc"], Data.HEROES[p.hero]["color"]])
-	if Abil.s_id(p) != "":
+	var util: AbilityDef = p.runner.def_of("utility") if p.runner else null
+	if util:
+		lines.append([Settings.key_cap("secondary"), util.display_name, util.desc, util.color])
+	elif Abil.s_id(p) != "":
 		var s_ab: Dictionary = Data.ABIL[Abil.s_id(p)]
 		lines.append([Settings.key_cap("secondary"), s_ab["name"], s_ab["desc"], Data.HEROES[p.hero]["color"].lightened(0.25)])
 	lines.append([Settings.key_cap("ultimate"), r_ab["name"] + " (ultimate)", r_ab["desc"], Color("f2c84a")])
@@ -978,6 +986,12 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 	var hc: Color = Data.HEROES[p.hero]["color"]
 	var out: Array = []
 	match id:
+		"sec" when p.runner and p.runner.def_of("utility") != null:
+			var u: AbilityDef = p.runner.def_of("utility")
+			out.append([u.display_name, u.color])
+			out.append(["Weapon utility (%s)  ·  %s" % [String(p.wpn.get("name", "")), Settings.key_cap("secondary")], MUTED, 12])
+			out.append([u.desc, INK, 14])
+			out.append(["Cooldown %s%s" % [_secs(u.cooldown), ("  ·  ready in %s" % _secs(p.runner.cd_left("utility"))) if not p.runner.is_ready("utility") else "  ·  ready"], MUTED, 13])
 		"e", "r", "sec":
 			var aid: String = Abil.e_id(p) if id == "e" else (Abil.r_id(p) if id == "r" else Abil.s_id(p))
 			var ab: Dictionary = Data.ABIL[aid]
@@ -1014,10 +1028,11 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 			out.append([sk["desc"], INK, 14])
 			out.append(["Cooldown %s%s. Thrown out first if it's on your shoulder." % [_secs(float(sk["cd"])), ("  ·  ready in %s" % _secs(k.skill_cd)) if k.skill_cd > 0.05 else ""], MUTED, 13])
 		"dash":
-			out.append(["Dash", Color("bfe6ff")])
-			out.append(["Movement  ·  %s" % Settings.key_cap("dash"), MUTED, 12])
-			out.append(["A quick burst in the direction you're moving. Dash through a hit just as it lands for a perfect dodge: your next shots crit.", INK, 14])
-			out.append(["%d of %d charges. One comes back every %s." % [int(floor(p.dashes)), int(p.max_dashes()), _secs(Hunter.DASH_REGEN)], MUTED, 13])
+			var dd: AbilityDef = p.dodge_def
+			out.append([dd.display_name if dd else "Dash", dd.color if dd else Color("bfe6ff")])
+			out.append(["%s class dodge  ·  %s" % [String(p.cls).capitalize(), Settings.key_cap("dash")], MUTED, 12])
+			out.append([dd.desc if dd else "A quick burst the way you're moving.", INK, 14])
+			out.append(["%d of %d charges. One comes back every %s." % [int(floor(p.dashes)), int(p.max_dashes()), _secs(p.dash_regen())], MUTED, 13])
 		"tonic":
 			out.append(["Tonic", GOOD])
 			out.append(["Item  ·  %s" % Settings.key_cap("tonic"), MUTED, 12])

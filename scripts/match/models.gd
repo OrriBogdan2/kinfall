@@ -309,6 +309,12 @@ static func gun_parts(gun: Node3D, weapon: String, m_gun: Material, m_dark: Mate
 			part(gun, box(0.08, 0.1, 0.9), m_gun, Vector3(0, 0, -0.32))
 			part(gun, box(0.04, 0.04, 0.5), toon(Color("9af0ff"), false, 0.8), Vector3(0, 0.07, -0.42))
 			part(gun, cyl(0.05, 0.05, 0.14), m_dark, Vector3(0, 0.1, -0.12), Vector3.ONE, Vector3(PI / 2, 0, 0))
+		"pulse":
+			part(gun, box(0.1, 0.13, 0.62), m_gun, Vector3(0, 0, -0.2))
+			part(gun, cyl(0.06, 0.06, 0.2, 12), toon(Color("8ff0ff"), false, 0.9), Vector3(0, 0.0, -0.56), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			for k in 3:
+				part(gun, box(0.12, 0.02, 0.04), toon(Color("8ff0ff"), false, 0.7), Vector3(0, 0.075, -0.06 - k * 0.1))
+			part(gun, box(0.05, 0.16, 0.08), m_dark, Vector3(0, -0.12, -0.02))
 		"rocket":
 			part(gun, cyl(0.1, 0.1, 0.72), toon(Color("5a6a4a")), Vector3(0, 0.04, -0.22), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			part(gun, cyl(0.06, 0.12, 0.12), toon(Color("ff7a5a")), Vector3(0, 0.04, -0.6), Vector3.ONE, Vector3(PI / 2, 0, 0))

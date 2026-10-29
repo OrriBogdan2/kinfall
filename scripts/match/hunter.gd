@@ -151,6 +151,9 @@ func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, n
 	max_armor = float(ARMOR.get(cls, 50.0)); armor = max_armor; base_armor = max_armor
 	if perk == "featherfall": glide_max = GLIDE_TIME * 1.6
 	base_speed = cdat["speed"]
+	runner = AbilityRunner.new(self)
+	dodge_def = Content.class_dodge(cls)
+	_kit_from_weapon()
 	dashes = max_dashes()
 	ammo = wpn["mag"]
 	r = 0.38 * float(cdat["scale"])
@@ -160,6 +163,7 @@ func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, n
 func equip(w: String, rar: int, with_ammo := -1) -> void:
 	wid = w; wrar = rar
 	wpn = Data.weapon_stats(w, rar)
+	_kit_from_weapon()
 	ammo = int(wpn["mag"]) if with_ammo < 0 else mini(with_ammo, int(wpn["mag"])); reload_t = 0.0; fire_cd = 0.25
 	if ammo <= 0 and not remote: start_reload()
 	var gun: Node3D = model.find_child("Gun", true, false) if model else null
@@ -171,7 +175,18 @@ func equip(w: String, rar: int, with_ammo := -1) -> void:
 		Models.gun_parts(gun, w, Models.toon(Color("4a4d5c")), Models.toon(Color("2b2a33")), Models.toon(acc, true, 0.45 if rar > 0 else 0.0))
 
 func max_dashes() -> float:
-	return float(cdat["dashes"]) + (1.0 if shoulder() == "updraft" else 0.0) + (1.0 if perk == "secondwind" else 0.0)
+	var base := float(dodge_def.charges) if dodge_def else float(cdat["dashes"])
+	return base + (1.0 if shoulder() == "updraft" else 0.0) + (1.0 if perk == "secondwind" else 0.0)
+
+func dash_regen() -> float:
+	return dodge_def.cooldown if dodge_def else DASH_REGEN
+
+## The weapon's utility goes on right click (heroes without one keep their own secondary for now).
+func _kit_from_weapon() -> void:
+	if runner == null:
+		return
+	var wd := Content.weapon(wid)
+	runner.set_slot("utility", Content.ability(wd.utility) if wd and wd.utility != "" else null)
 
 ## The shoulder passive is active once the kin has settled on your shoulder.
 func shoulder() -> String:
@@ -397,21 +412,45 @@ func _open_glider() -> void:
 	m.sfx("glide", pos, -4.0)
 	m.fx.burst(pos + Vector3(0, 1.7, 0), Color("f3eee2"), 8, 2.0, 0.35, 0.0)
 
+## The class's dodge (Shift), as described by its ability data: a dash, plus anything else in its
+## effect list (the heavy class's charge shoves people).
 func do_dash() -> void:
 	if downed or stun_t > 0.0 or root_t > 0.0 or out or dashes < 1.0 or roll_t > 0.0 or grap.size() > 0 or pad.size() > 0:
 		return
+	dashes -= 1.0
+	var effs: Array = dodge_def.effects if dodge_def else [{"type": "dash", "speed": DASH_SPEED, "time": DASH_TIME, "invuln": 0.14}]
+	Effects.run(effs, self, {"slot": "dodge", "ability": dodge_def.id if dodge_def else "dash"})
+	CombatBus.ability_used.emit(self, dodge_def.id if dodge_def else "dash", "dodge")
+
+var roll_speed := DASH_SPEED
+var shove := {}                # the heavy charge: who it already hit, and how hard it shoves
+
+func dash_with(e: Dictionary) -> void:
 	var d: Vector2 = inp["move"]
 	if d.length() < 0.1:
 		d = aim_dir()
 	roll_dir = d.normalized()
-	dashes -= 1.0
-	roll_t = DASH_TIME
-	inv_t = maxf(inv_t, 0.14)
+	roll_speed = float(e.get("speed", DASH_SPEED))
+	roll_t = float(e.get("time", DASH_TIME))
+	inv_t = maxf(inv_t, float(e.get("invuln", 0.14)))
+	shove = {"hit": {}, "kb": float(e.get("shove_kb", 9.0)), "dmg": float(e.get("shove_dmg", 0.0))} if e.get("shove", false) else {}
+	if not shove.is_empty():
+		fortify_t = maxf(fortify_t, roll_t + 0.1)     # nothing knocks you back mid-charge
 	dash_at = m.time
 	dodged = false
 	fly_t = 0.0
-	m.sfx("dash", pos, -4.0)
+	m.sfx("dash", pos, -4.0, 0.8 if not shove.is_empty() else 1.0)
 	m.fx.dash_trail(self)
+
+func _shove_along() -> void:
+	for f in m.foes_of(team):
+		if shove["hit"].has(f.nid) or flat_dist(f) > r + f.r + 0.35 or absf(f.pos.y - pos.y) > 1.4:
+			continue
+		shove["hit"][f.nid] = true
+		var side := Vector2(f.pos.x - pos.x, f.pos.z - pos.z).normalized()
+		var push := (roll_dir * 0.7 + side * 0.5).normalized() * float(shove["kb"])
+		f.hurt(maxf(0.1, float(shove["dmg"])) * m.dmg_mult(self), self, {"kb": push, "lift": 2.5, "src": "abil", "ab": "dodge", "tags": ["dodge"]})
+		m.shake(0.25, f.pos)
 
 func can_fire() -> bool:
 	return not (reload_t > 0.0 or roll_t > 0.0 or downed or out or stun_t > 0.0 or grap.size() > 0 or gliding or charge.size() > 0)
@@ -545,7 +584,7 @@ func sim(dt: float) -> void:
 		if reload_t <= 0.0:
 			ammo = wpn["mag"]
 	if dashes < max_dashes():
-		dashes = minf(max_dashes(), dashes + dt / DASH_REGEN)
+		dashes = minf(max_dashes(), dashes + dt / dash_regen())
 	if shoulder() == "spring" and not downed:
 		hp = minf(max_hp, hp + 3.0 * dt)
 	# out of the fight for a few seconds, armor snaps back, then you patch yourself up
@@ -581,6 +620,9 @@ func sim(dt: float) -> void:
 	# inputs
 	if inp["dash"]: do_dash()
 	if inp["jump"]: do_jump()
+	if runner:
+		runner.rate = 1.0 + gear_stat("cdr")
+		runner.tick(dt)
 	var cdr := gear_stat("cdr")
 	if cdr > 0.0:
 		sig_cd = maxf(0.0, sig_cd - dt * cdr)
@@ -590,7 +632,9 @@ func sim(dt: float) -> void:
 		if inp.get("gear%d" % (gi + 1), false):
 			m.use_gear(self, gi)
 		if inp["sig"]: use_signature()
-	if inp["sec"]: Abil.use_s(self)
+	if inp["sec"]:
+		if runner and runner.has_slot("utility"): runner.use("utility")
+		else: Abil.use_s(self)
 	Abil.tick_s(self, dt)
 	if inp["reload"]: start_reload()
 	if inp["tonic"]: use_tonic()
@@ -650,7 +694,9 @@ func _physics(dt: float) -> void:
 			m.fx.dust(pos, 2)
 	elif roll_t > 0.0:
 		roll_t -= dt
-		hv = roll_dir * DASH_SPEED
+		hv = roll_dir * roll_speed
+		if not shove.is_empty():
+			_shove_along()
 		if roll_t <= 0.0:
 			hv = roll_dir * spd * 1.1
 	elif fly_t > 0.0:
@@ -938,6 +984,8 @@ func _grapple(dt: float) -> void:
 
 # ------------------------------------------------------------------ visuals
 var bot_look: Dictionary = {}  # how a bot hunter looks (random)
+var runner: AbilityRunner     # weapon utility now; kin abilities later
+var dodge_def: AbilityDef     # the class's dodge
 var stats := {}                # this match's counts for challenges (the local player's)
 var gear: Array = [{}, {}]     # two slots of found gear: {id, rar}
 var gear_cd: Array = [0.0, 0.0]
