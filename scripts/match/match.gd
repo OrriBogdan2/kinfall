@@ -86,7 +86,7 @@ func start(o: Dictionary) -> void:
 	seed(seed_val)
 	# real expeditions happen on the big map and start from the skyship
 	big = not (o.get("tutorial", false) or o.get("training", false)) and o.get("big", true)
-	length = float(o.get("length", Data.MATCH["length"] * (1.35 if big else 1.0)))
+	length = float(o.get("length", Data.MATCH["length"] * (1.7 if big else 1.0)))
 	tier = clampi(int(o.get("tier", 0)), 0, Data.TIERS.size() - 1)
 	T = Data.TIERS[tier]
 	_build_env()

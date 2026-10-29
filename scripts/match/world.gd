@@ -69,13 +69,17 @@ func island_of(x: float, z: float) -> int:
 ## Returns 0 if free, the blocking height if a wall or rock is in the way, -1 if the edge guard stops it.
 func occupy(x: float, z: float, r: float, y: float, guard: bool) -> float:
 	var worst := 0.0
-	for o in [Vector2(0, 0), Vector2(r, 0), Vector2(-r, 0), Vector2(0, r), Vector2(0, -r), Vector2(r, r) * 0.7, Vector2(-r, r) * 0.7, Vector2(r, -r) * 0.7, Vector2(-r, -r) * 0.7]:
+	# rocks, trees and walls use a slimmer body than the terrain does, so you slide past their
+	# corners and fit through one-tile gaps instead of snagging
+	var rb := r * 0.7
+	for o in [Vector2(0, 0), Vector2(rb, 0), Vector2(-rb, 0), Vector2(0, rb), Vector2(0, -rb), Vector2(rb, rb) * 0.7, Vector2(-rb, rb) * 0.7, Vector2(rb, -rb) * 0.7, Vector2(-rb, -rb) * 0.7]:
 		var px: float = x + o.x; var pz: float = z + o.y
 		if is_block(px, pz):
 			var top := ground_at(px, pz) + BLOCK_H
 			if top > y + STEP:
 				return top
-		var g := ground_at(px, pz)
+	for o in [Vector2(0, 0), Vector2(r, 0), Vector2(-r, 0), Vector2(0, r), Vector2(0, -r), Vector2(r, r) * 0.7, Vector2(-r, r) * 0.7, Vector2(r, -r) * 0.7, Vector2(-r, -r) * 0.7]:
+		var g := ground_at(x + o.x, z + o.y)
 		if g > y + STEP:
 			worst = maxf(worst, g)
 	if worst > 0.0:
@@ -330,22 +334,22 @@ func _place_blockers() -> void:
 			var dv: Vector2i = [Vector2i(1, 0), Vector2i(0, 1)][rng.randi_range(0, 1)]
 			var roll := rng.randf()
 			if roll < 0.4:
-				var length := rng.randi_range(4, 7)
-				var gap := rng.randi_range(1, length - 2)
+				var length := rng.randi_range(5, 8)
+				var gap := rng.randi_range(1, length - 3)
 				for k in length:
-					if k != gap: _wall_at(c0 + dv * k, ii)
+					if k != gap and k != gap + 1: _wall_at(c0 + dv * k, ii)    # a two-tile doorway
 			elif roll < 0.7:
 				var a := rng.randi_range(3, 5); var b := rng.randi_range(3, 5)
 				var dv2 := Vector2i(dv.y, dv.x) * (1 if rng.randf() < 0.5 else -1)
 				for k in a: _wall_at(c0 + dv * k, ii)
 				for k in range(1, b): _wall_at(c0 + dv2 * k, ii)
 			elif roll < 0.85 or cells.size() < 160:
-				for k in 4: _wall_at(c0 + dv * (k * 2), ii)
+				for k in 4: _wall_at(c0 + dv * (k * 3), ii)
 			else:
 				# a small keep: a 6x6 square with two openings
 				for k in 6:
 					for e in [Vector2i(k, 0), Vector2i(k, 5), Vector2i(0, k), Vector2i(5, k)]:
-						if e in [Vector2i(2, 0), Vector2i(3, 0), Vector2i(5, 2), Vector2i(5, 3), Vector2i(0, 3)]:
+						if e in [Vector2i(2, 0), Vector2i(3, 0), Vector2i(5, 2), Vector2i(5, 3), Vector2i(0, 2), Vector2i(0, 3)]:
 							continue
 						_wall_at(c0 + e, ii)
 		# patches of tall grass

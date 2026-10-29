@@ -1,4 +1,5 @@
 shader_type spatial;
+render_mode depth_prepass_alpha;
 // Toon stone for walls. Whatever part of a wall stands between the camera and the player
 // dithers away, so you can always see yourself behind cover.
 uniform float rim_amount = 0.12;
@@ -9,21 +10,17 @@ uniform float radius = 0.13;
 
 void fragment() {
 	vec3 c = COLOR.rgb;
+	float cut = 0.0;
 	vec4 fv = VIEW_MATRIX * vec4(focus, 1.0);
 	if (fv.z < 0.0 && VERTEX.z > fv.z + 0.4) {
 		vec2 a = VERTEX.xy / -VERTEX.z;
 		vec2 b = fv.xy / -fv.z;
 		float fade = 1.0 - smoothstep(radius * 0.55, radius, length(a - b));
-		if (fade > 0.0) {
-			int bx = int(mod(FRAGCOORD.x, 4.0));
-			int by = int(mod(FRAGCOORD.y, 4.0));
-			int bayer[16] = int[](0, 8, 2, 10, 12, 4, 14, 6, 3, 11, 1, 9, 15, 7, 13, 5);
-			float th = (float(bayer[by * 4 + bx]) + 0.5) / 16.0;
-			if (fade * 0.8 > th) { discard; }
-		}
+		cut = fade;
 	}
 	c = vis_apply(c, vis_fog((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz));
 	ALBEDO = c;
+	ALPHA = 1.0 - cut * 0.78;     // see through the part of a wall that hides you, smoothly
 	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
 	EMISSION = vec3(1.0, 0.96, 0.88) * rim * rim_amount * 0.35;
 	ROUGHNESS = 1.0;

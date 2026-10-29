@@ -423,6 +423,15 @@ func do_dash() -> void:
 	CombatBus.ability_used.emit(self, dodge_def.id if dodge_def else "dash", "dodge")
 
 var roll_speed := DASH_SPEED
+var wedged_t := 0.0
+
+## True only when there's no direction at all you could step: really stuck, not just walking into a wall.
+func _boxed_in() -> bool:
+	for i in 8:
+		var a := TAU * i / 8.0
+		if m.world.occupy(pos.x + cos(a) * 0.2, pos.z + sin(a) * 0.2, r, pos.y, false) == 0.0:
+			return false
+	return true
 var shove := {}                # the heavy charge: who it already hit, and how hard it shoves
 
 func dash_with(e: Dictionary) -> void:
@@ -779,6 +788,19 @@ func _physics(dt: float) -> void:
 				if m.world.occupy(tx, tz, r, pos.y, guard) == 0.0:
 					pos.x = tx; pos.z = tz
 					break
+	# a safety net: pushing to move for a second without going anywhere means something has us
+	# wedged, so step out to the nearest open ground
+	if grounded and mv.length() > 0.3 and stun_t <= 0.0 and root_t <= 0.0 and not remote and grap.is_empty():
+		if Vector2(pos.x - x0, pos.z - z0).length() < 0.004 and _boxed_in():
+			wedged_t += dt
+			if wedged_t > 0.9:
+				wedged_t = 0.0
+				var free: Vector3 = m.world.free_spot_near(pos, [], 1.0, r, 2.5)
+				if free.distance_to(pos) > 0.05 and absf(free.y - pos.y) < 1.0:
+					pos = Vector3(free.x, free.y, free.z)
+					m.fx.dust(pos, 4)
+		else:
+			wedged_t = 0.0
 	var blk := maxf(b1, b2)
 	if (b1 > 0.0 or b2 > 0.0) and blk > pos.y + 0.6:
 		# against a wall: in the air you can kick off it; knocked into it hard, you're stunned

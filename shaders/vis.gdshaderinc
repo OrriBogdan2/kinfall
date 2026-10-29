@@ -4,7 +4,7 @@ global uniform float vis_on;
 global uniform vec3 vis_focus;
 global uniform vec2 vis_dir;
 global uniform vec2 vis_size;
-global uniform sampler2D vis_blocks;
+global uniform sampler2D vis_blocks : filter_linear;
 
 float vis_fog(vec3 wp) {
 	if (vis_on < 0.5) { return 0.0; }
@@ -15,14 +15,19 @@ float vis_fog(vec3 wp) {
 	float c = dot(d / max(dist, 0.001), vis_dir);
 	float cone = smoothstep(0.56, 0.68, c) * (1.0 - smoothstep(22.0, 25.0, dist));
 	if (cone > 0.001) {
-		float steps = clamp(floor(dist / 0.5), 1.0, 48.0);
-		for (int i = 1; i < 48; i++) {
+		// sight shadows: march toward the point through a smoothed map of what blocks sight, so
+		// shadows have soft, rounded edges instead of blocky tile steps
+		float steps = clamp(floor(dist / 0.35), 1.0, 64.0);
+		float occ = 0.0;
+		for (int i = 1; i < 64; i++) {
 			float t = float(i) / steps;
-			if (t >= 1.0 || dist * (1.0 - t) < 0.55) { break; }
-			ivec2 tq = ivec2(floor(vis_focus.xz + d * t));
-			if (tq.x < 0 || tq.y < 0 || tq.x >= int(vis_size.x) || tq.y >= int(vis_size.y)) { continue; }
-			if (texelFetch(vis_blocks, tq, 0).r > 0.5) { cone = 0.0; break; }
+			if (t >= 1.0 || dist * (1.0 - t) < 0.7) { break; }
+			vec2 q = vis_focus.xz + d * t;
+			float v = textureLod(vis_blocks, q / vis_size, 0.0).r;
+			occ = max(occ, smoothstep(0.32, 0.72, v));
+			if (occ > 0.99) { break; }
 		}
+		cone *= 1.0 - occ;
 	}
 	return 1.0 - max(near_v, cone);
 }

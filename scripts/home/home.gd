@@ -627,6 +627,7 @@ func _move_player(d: float) -> void:
 	var air := py > 0.001 or pvy > 0.0
 	hv += (mv * SPEED - hv) * (1.0 - exp(-(14.0 if not air else 6.0) * d))
 	# the island edge is an invisible wall: walking and jumping both stop at it
+	var p0 := ppos
 	var nx := ppos.x + hv.x * d
 	if world.occupy(nx, ppos.z, 0.38, 0.0, true) == 0.0: ppos.x = nx
 	else: hv.x = 0.0
@@ -634,6 +635,25 @@ func _move_player(d: float) -> void:
 	if world.occupy(ppos.x, nz, 0.38, 0.0, true) == 0.0: ppos.z = nz
 	else: hv.y = 0.0
 	pvel = Vector3(hv.x, 0, hv.y)
+	# caught on a corner: slip around it. Boxed in on every side: step out to open ground.
+	if mv.length() > 0.3 and Vector2(ppos.x - p0.x, ppos.z - p0.z).length() < SPEED * d * 0.3:
+		var dn := mv.normalized()
+		var slid := false
+		for side in [Vector2(-dn.y, dn.x), Vector2(dn.y, -dn.x)]:
+			var t: Vector2 = Vector2(ppos.x, ppos.z) + (side * 0.8 + dn * 0.4) * SPEED * d
+			if world.occupy(t.x, t.y, 0.38, 0.0, true) == 0.0:
+				ppos.x = t.x; ppos.z = t.y; slid = true
+				break
+		var boxed := not slid
+		if boxed:
+			for i in 8:
+				var a2 := TAU * i / 8.0
+				if world.occupy(ppos.x + cos(a2) * 0.2, ppos.z + sin(a2) * 0.2, 0.38, 0.0, true) == 0.0:
+					boxed = false; break
+		wedge_t = wedge_t + d if boxed else 0.0
+		if wedge_t > 0.8:
+			wedge_t = 0.0
+			unstick()
 	# jumping, just for fun
 	if panel_open == "" and not Overlay.is_open() and not chat_open and train.is_empty() and not air and Input.is_action_just_pressed("jump"):
 		pvy = JUMP_V
@@ -2083,6 +2103,8 @@ func _open_lot(b: String) -> void:
 		_construct(b), 200)
 	btn.disabled = int(Save.d["gems"]) < cost
 	v.add_child(btn)
+
+var wedge_t := 0.0
 
 ## Moves you (and any kin) to the nearest open ground if something has boxed you in.
 func unstick() -> void:
