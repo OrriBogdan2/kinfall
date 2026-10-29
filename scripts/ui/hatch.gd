@@ -54,39 +54,19 @@ func _ready() -> void:
 	Sfx.play_music("title")
 	Sfx.play_ambience("home")
 	var env := WorldEnvironment.new()
-	env.environment = Look.environment({"top": Color("1e2a5a"), "mid": Color("5a6ab8"), "horizon": Color("ffc89a"), "below": Color("3a3a6a"),
-		"ambient": Color("c4cbe6"), "ambient_energy": 0.55, "fog": Color("7a7ab8"), "fog_height": -5.0, "stars": 0.5})
+	env.environment = Look.environment({"top": Color("1a1440"), "mid": Color("7a3a9a"), "horizon": Color("ffa860"), "below": Color("2a1e4a"),
+		"sun_dir": Vector3(0.2, 0.12, -0.97), "sun_col": Color("ffd09a"),
+		"ambient": Color("c8cdf0"), "ambient_energy": 0.5, "fog": Color("6a5aa8"), "fog_height": -6.0, "stars": 0.7})
 	add_child(env)
-	Look.lights(self, Color("ffe9cf"), 1.0, Vector3(-45, -30, 0), 30.0)
+	Look.lights(self, Color("ffe2c4"), 1.0, Vector3(-40, -25, 0), 30.0)
+	# a warm rim light from behind, so everything on the dais gets a glowing outline
+	var rim := DirectionalLight3D.new(); rim.light_color = Color("9ad8ff"); rim.light_energy = 0.55
+	rim.rotation_degrees = Vector3(-20, 180, 0); add_child(rim)
 	fx = Fx.new(); add_child(fx)
 	cam = Camera3D.new(); cam.fov = 40.0; add_child(cam)
 	cam.position = cam_from
 	cam.look_at(Vector3(0, 0.6, 0))
-	# a small floating island
-	var drng := RandomNumberGenerator.new(); drng.seed = 3
-	var g := Models.float_island(drng, 3.4, 6.0, Color("6aa64a"), Color("9a7a5a"), Color("3a2f48"))
-	g.name = "Ground"
-	add_child(g)
-	for i in 5:
-		var a := TAU * i / 5.0 + 0.3
-		var fb := Models.flower_bed(drng, 4); fb.position = Vector3(cos(a) * 2.7, 0, sin(a) * 2.2); fb.scale = Vector3.ONE * 0.8
-		add_child(fb)
-	for i in 2:
-		var tr := Models.tree(drng, Color("5a9a4f"), "round" if i == 0 else "blossom"); tr.position = Vector3(-2.4 + i * 4.6, 0, -1.6); add_child(tr)
-	var lamp := Models.lamp(); lamp.position = Vector3(2.4, 0, -1.2); add_child(lamp)
-	var sea := MeshInstance3D.new()
-	var pm := PlaneMesh.new(); pm.size = Vector2(4000, 4000)
-	sea.mesh = pm
-	var cm := ShaderMaterial.new(); cm.shader = load("res://shaders/clouds.gdshader")
-	cm.set_shader_parameter("deep", Color("2a2f62")); cm.set_shader_parameter("light", Color("9aa0d8")); cm.set_shader_parameter("glow_amount", 0.5)
-	sea.material_override = cm
-	sea.position = Vector3(0, -16.0, -20.0)
-	add_child(sea)
-	var drift := RandomNumberGenerator.new(); drift.seed = 9
-	for k in 14:
-		var r := Models.rock(drift, drift.randf_range(0.4, 1.2))
-		r.position = Vector3(drift.randf_range(-14, 14), drift.randf_range(-8, -3), drift.randf_range(-16, 2))
-		add_child(r)
+	_build_set()
 	egg_defs = EGGS.duplicate(true)
 	var others: Array = Data.KIN.keys().filter(func(k): return not k in ["cindle", "puddlet", "burrlet"])
 	for d in egg_defs:
@@ -122,6 +102,10 @@ func _ready() -> void:
 		_end_intro()
 	else:
 		_show_story()
+	if "--hatch-pick" in OS.get_cmdline_user_args():
+		# test: straight to choosing an egg
+		if not Save.d.has("look"): Save.d["look"] = Models.default_look()
+		_end_intro()
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--hatch-auto="):
 			var i := int(a.substr(13))
@@ -130,11 +114,154 @@ func _ready() -> void:
 			_pick(i); _pick(i)
 			auto_warm = true
 
+## The set for a new game: a carved stone dais floating at dusk, a rune circle glowing under your
+## feet, a broken arch behind with the old world's heart-crystal turning inside it, lanterns and
+## banners, rocks drifting round in a slow orbit, wild kin watching from the edges, fireflies,
+## a waterfall pouring off into the clouds, and the islands and a skyship far behind.
+var orbit: Node3D
+var runes: Array = []
+var crystal: Node3D
+func _build_set() -> void:
+	var rr := RandomNumberGenerator.new(); rr.seed = 3
+	var stone := Models.toon(Color("d9d2c4"))
+	var stone_d := Models.toon(Color("8f8aa0"))
+	var gold := Models.toon(Color("f2c46a"), true, 0.4)
+	# the floating rock and the dais on top
+	var base := Models.float_island(rr, 3.9, 8.0, Color("b9ad96"), Color("8a6f5a"), Color("3a2a4a"))
+	base.position.y = -0.32
+	add_child(base)
+	var dais := Models.part(self, Models.cyl(3.9, 4.1, 0.5, 40), stone, Vector3(0, -0.24, 0))
+	dais.name = "Ground"
+	Models.part(self, Models.cyl(3.2, 3.2, 0.04, 40), Models.toon(Color("a99c86")), Vector3(0, 0.02, 0))
+	for i in 24:
+		var a := TAU * i / 24.0
+		var bl := Models.part(self, Models.box(0.6, 0.22, 0.3), stone_d if i % 2 == 0 else stone, Vector3(cos(a) * 3.95, 0.06, sin(a) * 3.95))
+		bl.rotation.y = -a
+	# rune circles: a wide gold one and a smaller cyan one turning the other way
+	for spec in [[6.6, Color(1.0, 0.8, 0.4, 0.85), 0.05, 0.25], [4.2, Color(0.55, 0.95, 1.0, 0.7), 0.07, -0.4]]:
+		var rn := MeshInstance3D.new(); rn.mesh = Models.flat_quad(float(spec[0]))
+		rn.material_override = Models.ring_mat(spec[1], float(spec[2]))
+		rn.position.y = 0.05
+		rn.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(rn)
+		runes.append([rn, float(spec[3])])
+	for i in 8:
+		var a := TAU * i / 8.0 + 0.2
+		var gl := Models.part(self, Models.box(0.12, 0.03, 0.34), Models.glow_mat(Color(1.0, 0.85, 0.5, 0.9)), Vector3(cos(a) * 3.0, 0.05, sin(a) * 3.0))
+		gl.rotation.y = -a
+	# a waterfall pouring off the edge into the clouds
+	var wf := Models.waterfall(1.1, 12.0); wf.position = Vector3(3.3, -0.1, -1.6); wf.rotation.y = -0.9
+	add_child(wf)
+	# the broken arch behind, and the heart-crystal turning inside it
+	var arch_c := Vector3(0, -0.2, -5.2)
+	for i in 15:
+		if i in [10, 11]:
+			continue                       # broken off near the top
+		var a := PI * i / 14.0
+		var bp := arch_c + Vector3(cos(a) * 4.6, sin(a) * 4.6, 0)
+		var blk := Models.part(self, Models.box(0.95, 0.75, 0.9), stone if i % 3 else stone_d, bp)
+		blk.rotation.z = a - PI * 0.5
+	for k in 3:
+		var fr := Models.rock(rr, rr.randf_range(0.25, 0.45), Color("cdbfa6"))
+		fr.position = arch_c + Vector3(-2.6 + k * 0.7, 4.6 + k * 0.5, 0.3)
+		add_child(fr)
+		PropAnim.on(fr, 0.3, 0.25, 0.6 + k * 0.2)
+	crystal = Node3D.new(); crystal.position = arch_c + Vector3(0, 2.8, 0); add_child(crystal)
+	var cm := Models.toon(Color("8ae8ff"), true, 1.4)
+	var pm := PrismMesh.new(); pm.size = Vector3(1.1, 2.4, 1.1)
+	Models.part(crystal, pm, cm, Vector3(0, 0.6, 0))
+	Models.part(crystal, pm, cm, Vector3(0, -0.8, 0), Vector3(1.0, 0.6, 1.0), Vector3(PI, 0, 0))
+	for i in 5:
+		var a := TAU * i / 5.0
+		Models.part(crystal, pm, cm, Vector3(cos(a) * 0.8, -0.2, sin(a) * 0.8), Vector3(0.35, 0.4, 0.35), Vector3(sin(a) * 0.5, 0, -cos(a) * 0.5))
+	var cl := OmniLight3D.new(); cl.light_color = Color("8ae8ff"); cl.light_energy = 2.2; cl.omni_range = 9.0; crystal.add_child(cl)
+	var beam := Models.part(self, Models.cyl(0.5, 1.4, 30.0, 16), Models.glow_mat(Color(0.55, 0.9, 1.0, 0.16)), arch_c + Vector3(0, 14.0, -0.4))
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	# lantern posts and banners either side
+	for sx in [-1.0, 1.0]:
+		var post := Vector3(sx * 3.35, 0, -1.9)
+		Models.part(self, Models.cyl(0.16, 0.22, 2.4, 10), stone_d, post + Vector3(0, 1.2, 0))
+		Models.part(self, Models.box(0.5, 0.12, 0.5), gold, post + Vector3(0, 2.45, 0))
+		var lan := Models.part(self, Models.sphere(0.22, 12), Models.glow_mat(Color(1.0, 0.75, 0.4, 0.95)), post + Vector3(0, 2.75, 0))
+		lan.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var ol := OmniLight3D.new(); ol.light_color = Color("ffb36a"); ol.light_energy = 1.6; ol.omni_range = 5.5
+		ol.position = post + Vector3(0, 2.75, 0); add_child(ol)
+		var bn := Models.banner(UI.ACCENT if sx < 0 else Color("8ae8ff")); bn.position = post + Vector3(sx * -0.5, 0, 0.35); add_child(bn)
+	# rocks drifting round in a slow orbit
+	orbit = Node3D.new(); add_child(orbit)
+	for k in 12:
+		var a := TAU * k / 12.0 + rr.randf_range(-0.2, 0.2)
+		var rad := rr.randf_range(7.5, 12.0)
+		var rk := Models.rock(rr, rr.randf_range(0.4, 1.3), Color("8fb86a"))
+		rk.position = Vector3(cos(a) * rad, rr.randf_range(-3.0, 3.5), sin(a) * rad)
+		orbit.add_child(rk)
+	# wild kin watching from little rocks at the edges
+	for spec in [["zapple", Vector3(-5.6, -0.4, -2.4)], ["wisplet", Vector3(5.9, 0.4, -3.2)], ["pebbit", Vector3(-7.4, 1.2, -6.0)]]:
+		var perch := Models.float_island(rr, 0.9, 1.6, Color("7ab85a"), Color("8a6f5a"), Color("3a2a4a"))
+		perch.position = spec[1]; add_child(perch)
+		PropAnim.on(perch, 0.0, 0.18, 0.5 + rr.randf() * 0.4)
+		if Data.KIN.has(spec[0]):
+			var wk := Models.kin(spec[0], {"level": 3})
+			wk.position = Vector3(0, 0.05, 0); wk.rotation.y = atan2(-(0.0 - (spec[1] as Vector3).x), -(2.0 - (spec[1] as Vector3).z))
+			wk.set_meta("happy", true)
+			perch.add_child(wk)
+	# fireflies over the dais and petals drifting past
+	var ff := CPUParticles3D.new()
+	ff.amount = 60; ff.lifetime = 5.0; ff.preprocess = 5.0
+	ff.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX; ff.emission_box_extents = Vector3(7.0, 2.0, 5.0)
+	ff.position = Vector3(0, 1.8, -1.0)
+	ff.direction = Vector3.UP; ff.spread = 180.0; ff.initial_velocity_min = 0.1; ff.initial_velocity_max = 0.4; ff.gravity = Vector3(0, 0.05, 0)
+	var fgr := Gradient.new(); fgr.set_color(0, Color(1, 0.85, 0.4, 0)); fgr.set_color(1, Color(1, 0.85, 0.4, 0)); fgr.add_point(0.5, Color(1, 0.9, 0.5, 1))
+	ff.color_ramp = fgr
+	var fm := SphereMesh.new(); fm.radius = 0.04; fm.height = 0.08; fm.radial_segments = 6; fm.rings = 3
+	var fmat := StandardMaterial3D.new(); fmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED; fmat.vertex_color_use_as_albedo = true
+	fmat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; fmat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	fm.material = fmat; ff.mesh = fm
+	add_child(ff)
+	var pt := CPUParticles3D.new()
+	pt.amount = 40; pt.lifetime = 7.0; pt.preprocess = 7.0
+	pt.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX; pt.emission_box_extents = Vector3(10.0, 1.0, 6.0)
+	pt.position = Vector3(-4.0, 5.0, -2.0)
+	pt.direction = Vector3(1, -0.3, 0.2); pt.spread = 25.0; pt.initial_velocity_min = 0.6; pt.initial_velocity_max = 1.2; pt.gravity = Vector3(0, -0.25, 0)
+	pt.angular_velocity_min = -90.0; pt.angular_velocity_max = 90.0
+	var pq := QuadMesh.new(); pq.size = Vector2(0.09, 0.06)
+	var pmat := StandardMaterial3D.new(); pmat.albedo_color = Color("ffb3d0"); pmat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	pmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	pq.material = pmat; pt.mesh = pq
+	add_child(pt)
+	# the cloud sea, far islands and a skyship passing
+	var sea := MeshInstance3D.new()
+	var spm := PlaneMesh.new(); spm.size = Vector2(4000, 4000)
+	sea.mesh = spm
+	var sm := ShaderMaterial.new(); sm.shader = load("res://shaders/clouds.gdshader")
+	sm.set_shader_parameter("deep", Color("221a4e")); sm.set_shader_parameter("light", Color("8f86d4"))
+	sm.set_shader_parameter("glow", Color("ffb070")); sm.set_shader_parameter("glow_amount", 0.9)
+	sm.set_shader_parameter("sun_xz", Vector2(0.2, -0.97))
+	sea.material_override = sm
+	sea.position = Vector3(0, -14.0, -20.0)
+	add_child(sea)
+	for k in 7:
+		var isl := Scenery.island(rr, rr.randf_range(3.0, 7.0), true, rr.randf() < 0.5)
+		isl.position = Vector3(rr.randf_range(-60, 60), rr.randf_range(-8, 6), rr.randf_range(-70, -30))
+		add_child(isl)
+	ship = Models.skyship(); ship.position = Vector3(-40, 9, -45); ship.rotation.y = -PI / 2; ship.scale = Vector3.ONE * 1.2
+	add_child(ship)
+var ship: Node3D
+
 func _build_ui() -> void:
 	ui = CanvasLayer.new(); add_child(ui)
 	root_ui = Control.new(); root_ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root_ui.theme = UI.theme()
 	root_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(root_ui)
+	# a soft dark vignette pulls the eye to the middle, like a stage
+	var vg := TextureRect.new()
+	var gt := GradientTexture2D.new()
+	gt.fill = GradientTexture2D.FILL_RADIAL; gt.fill_from = Vector2(0.5, 0.45); gt.fill_to = Vector2(1.05, 1.05)
+	var gg := Gradient.new(); gg.set_color(0, Color(0.05, 0.02, 0.1, 0.0)); gg.set_color(1, Color(0.05, 0.02, 0.1, 0.7)); gg.add_point(0.55, Color(0.05, 0.02, 0.1, 0.0))
+	gt.gradient = gg
+	vg.texture = gt; vg.stretch_mode = TextureRect.STRETCH_SCALE
+	vg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); vg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root_ui.add_child(vg)
 	var top := VBoxContainer.new()
 	top.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
 	top.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -317,6 +444,7 @@ func _show_create() -> void:
 	v.add_child(br)
 	root_ui.add_child(card)
 	card.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 48)
+	card.offset_top += 46; card.offset_bottom += 46       # clear of the title
 
 func _step_look(key: String, d: int, n: int) -> void:
 	look[key] = posmod(int(look[key]) + d, n)
@@ -451,6 +579,17 @@ func _start_hatch() -> void:
 func _process(delta: float) -> void:
 	t += delta
 	cam.position = cam.position.lerp(cam_to, minf(1.0, delta * 2.0))
+	# a slow breathing drift so the shot is never quite still
+	cam.position += Vector3(sin(t * 0.37) * 0.004, sin(t * 0.51) * 0.003, 0)
+	for rn in runes:
+		(rn[0] as Node3D).rotation.y += delta * float(rn[1])
+	if orbit: orbit.rotation.y += delta * 0.04
+	if crystal:
+		crystal.rotation.y += delta * 0.5
+		crystal.position.y = -0.2 + 2.8 + sin(t * 1.1) * 0.15
+	if ship:
+		ship.position.x += delta * 1.6
+		if ship.position.x > 60.0: ship.position.x = -60.0
 	if stage == "create":
 		cam.look_at(look_at_t)
 		if preview: preview.rotation.y += delta * 0.6
