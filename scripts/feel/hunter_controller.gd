@@ -11,6 +11,7 @@ signal overheat_started
 signal overheat_tick(damage: float)
 signal mantled
 signal fell_into_abyss
+signal spiked
 
 enum State { GROUND, AIR, GLIDE, DASH, MANTLE, DEAD }
 
@@ -18,6 +19,7 @@ enum State { GROUND, AIR, GLIDE, DASH, MANTLE, DEAD }
 @export var camera_path: NodePath   ## optional; falls back to the viewport camera
 @export var visual_path: NodePath   ## node that turns to face aim / movement
 @export var show_aim_laser := true
+@export var show_balloon := true      ## glider balloon on a tether while below ground level
 
 var state: State = State.AIR
 var heat := 0.0
@@ -45,6 +47,10 @@ var _face_aim_timer := 0.0
 var _mantle_from := Vector3.ZERO
 var _mantle_to := Vector3.ZERO
 var _mantle_t := 0.0
+var _mantle_dur := 0.25
+var _stun_on_land := false
+var _balloon: MeshInstance3D
+var _tether: MeshInstance3D
 var _camera: Camera3D
 var _visual: Node3D
 var _laser: MeshInstance3D
@@ -62,6 +68,8 @@ func _ready() -> void:
 	ground_level = global_position.y
 	if show_aim_laser:
 		_build_laser()
+	if show_balloon:
+		_build_balloon()
 
 
 # ---------------------------------------------------------------- public API
@@ -69,18 +77,39 @@ func _ready() -> void:
 func is_gliding() -> bool:
 	return state == State.GLIDE
 
+## Overheated gliders, and gliders below ground level (balloon showing), can be spiked.
 func is_spikeable() -> bool:
-	return state == State.GLIDE and is_overheated
+	return state == State.GLIDE and (is_overheated or depth_below_ground() > cfg.balloon_depth)
 
-## Call when this hunter takes damage (heat builds faster while hit).
+## Meters below the current ground level (0 when at or above it).
+func depth_below_ground() -> float:
+	return maxf(ground_level - global_position.y, 0.0)
+
+## Combat code multiplies incoming damage by this (gliders take double).
+func incoming_damage_multiplier() -> float:
+	return cfg.glide_damage_multiplier if state == State.GLIDE else 1.0
+
+## Call when this hunter takes damage. Builds glider heat faster and knocks a
+## glider out of the air (they are stunned briefly when they land).
 func notify_damaged() -> void:
 	_hit_heat_timer = 0.5
+	if state == State.GLIDE:
+		_stun_on_land = true
+		_set_state(State.AIR)
 
 ## Spike: stun and plummet. Over the abyss this is near-certain death.
 func spike() -> void:
 	_stun = cfg.spike_stun
 	velocity = Vector3(0.0, -cfg.spike_velocity, 0.0)
 	_set_state(State.AIR)
+	spiked.emit()
+
+## Hitting a spikeable glider's balloon (or the glider itself when overheated).
+func try_spike() -> bool:
+	if not is_spikeable():
+		return false
+	spike()
+	return true
 
 ## Jump pads, knockbacks. Keeps horizontal momentum; dashing in adds a boost.
 func launch(impulse: Vector3) -> void:
@@ -129,6 +158,7 @@ func _physics_process(delta: float) -> void:
 	_update_heat(delta)
 	_update_facing(delta)
 	_update_laser()
+	_update_balloon()
 	_check_abyss_death()
 
 
@@ -153,6 +183,9 @@ func _process_locomotion(delta: float, input_dir: Vector3) -> void:
 		last_safe_position = global_position
 		if state != State.GROUND:
 			_set_state(State.GROUND)
+			if _stun_on_land:
+				_stun = cfg.glide_hit_land_stun
+				_stun_on_land = false
 	else:
 		_air_time += delta
 		if state == State.GROUND:
@@ -235,6 +268,11 @@ func _glide_vertical(delta: float) -> void:
 			velocity.y = move_toward(velocity.y, target, cfg.abyss_brake_decel * delta)
 	else:
 		velocity.y = maxf(velocity.y - cfg.glide_gravity * delta, -cfg.glide_fall_speed)
+		# A glider doesn't sink below ground level on its own: it holds there,
+		# so you can cross the abyss until the heat runs out.
+		var next_y := global_position.y + velocity.y * delta
+		if velocity.y < 0.0 and next_y < ground_level:
+			velocity.y = (ground_level - global_position.y) / delta
 
 
 # ---------------------------------------------------------------- heat
@@ -244,7 +282,7 @@ func _update_heat(delta: float) -> void:
 		var rate := cfg.heat_rate
 		if _hit_heat_timer > 0.0:
 			rate *= cfg.heat_damaged_multiplier
-		if global_position.y < ground_level and velocity.y > 0.0:
+		if depth_below_ground() > 0.3 and velocity.y > 0.0:
 			rate *= cfg.heat_lift_multiplier
 		heat = minf(heat + rate * delta, cfg.heat_max)
 	else:
@@ -332,17 +370,20 @@ func _try_mantle(input_dir: Vector3) -> void:
 	var wall := space.intersect_ray(q)
 	if wall.is_empty() or (wall.normal as Vector3).y > 0.3:
 		return
+	var max_reach := maxf(cfg.mantle_reach_up, cfg.mantle_reach_from_abyss)
 	var probe_top: Vector3 = (wall.position as Vector3) - (wall.normal as Vector3) * 0.45 \
-			+ Vector3.UP * (cfg.mantle_reach_up + 0.5)
+			+ Vector3.UP * (max_reach + 0.5)
 	var q2 := PhysicsRayQueryParameters3D.create(probe_top,
-			probe_top + Vector3.DOWN * (cfg.mantle_reach_up + 1.0))
+			probe_top + Vector3.DOWN * (max_reach + 1.0))
 	q2.exclude = [get_rid()]
 	var top := space.intersect_ray(q2)
 	if top.is_empty() or (top.normal as Vector3).y < 0.7:
 		return
 	var rise: float = (top.position as Vector3).y - global_position.y
-	if rise < 0.25 or rise > cfg.mantle_reach_up:
+	var reach := cfg.mantle_reach_from_abyss if depth_below_ground() > 0.3 else cfg.mantle_reach_up
+	if rise < 0.25 or rise > reach:
 		return
+	_mantle_dur = clampf(rise / cfg.mantle_rise_speed, cfg.mantle_duration, 1.0)
 	_mantle_from = global_position
 	_mantle_to = (top.position as Vector3) + Vector3.UP * 0.05
 	_mantle_t = 0.0
@@ -352,7 +393,7 @@ func _try_mantle(input_dir: Vector3) -> void:
 
 
 func _process_mantle(delta: float, input_dir: Vector3) -> void:
-	_mantle_t = minf(_mantle_t + delta / cfg.mantle_duration, 1.0)
+	_mantle_t = minf(_mantle_t + delta / _mantle_dur, 1.0)
 	var t := _mantle_t
 	var flat := _mantle_from.lerp(_mantle_to, t * t)          # forward late
 	var y := lerpf(_mantle_from.y, _mantle_to.y, 1.0 - pow(1.0 - t, 3.0))  # up early
@@ -446,6 +487,54 @@ func _update_laser() -> void:
 	var dir := to.normalized()
 	_laser.global_transform = Transform3D(Basis.looking_at(dir, Vector3.UP), start + dir * length * 0.5)
 	_laser.scale = Vector3(1.0, 1.0, length)
+
+
+func _build_balloon() -> void:
+	_balloon = MeshInstance3D.new()
+	var sphere := SphereMesh.new()
+	sphere.radius = 0.35
+	sphere.height = 0.7
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = Color(1.0, 0.45, 0.55)
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.3, 0.45)
+	sphere.material = mat
+	_balloon.mesh = sphere
+	_balloon.top_level = true
+	_balloon.visible = false
+	add_child(_balloon)
+	_tether = MeshInstance3D.new()
+	var line := BoxMesh.new()
+	line.size = Vector3(0.03, 0.03, 1.0)
+	var lmat := StandardMaterial3D.new()
+	lmat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	lmat.albedo_color = Color(0.1, 0.1, 0.12)
+	line.material = lmat
+	_tether.mesh = line
+	_tether.top_level = true
+	_tether.visible = false
+	add_child(_tether)
+
+
+## Balloon floats at ground level, tethered to a hunter below it. It glows
+## purple while gliding: that's the "you can spike me now" tell.
+func _update_balloon() -> void:
+	if _balloon == null:
+		return
+	var show := depth_below_ground() > cfg.balloon_depth and state != State.DEAD
+	_balloon.visible = show
+	_tether.visible = show
+	if not show:
+		return
+	var top := Vector3(global_position.x, ground_level + 1.6, global_position.z)
+	_balloon.global_position = top
+	var mat := (_balloon.mesh as SphereMesh).material as StandardMaterial3D
+	mat.emission = Color(0.7, 0.3, 1.0) if state == State.GLIDE else Color(1.0, 0.3, 0.45)
+	var bottom := global_position + Vector3.UP * 1.8
+	var length := top.distance_to(bottom)
+	if length > 0.05:
+		_tether.global_transform = Transform3D(Basis.looking_at((top - bottom) / length, Vector3.FORWARD), (top + bottom) * 0.5)
+		_tether.scale = Vector3(1.0, 1.0, length)
 
 
 # ---------------------------------------------------------------- helpers

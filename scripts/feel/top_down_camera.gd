@@ -34,12 +34,19 @@ enum Mode { LOCKED, STANDARD_DYNAMIC, FULLY_DYNAMIC }
 @export var lock_to_cursor := false    ## [guide] "no stabilization": pan snaps to target
 @export var smooth_corrections := true ## [guide] smooths vertical follow (jumps, ledges)
 
+@export_group("Abyss")
+@export var abyss_tint := true         ## [footage] screen washes purple as you sink below ground level
+@export var abyss_tint_color := Color(0.55, 0.1, 0.55)
+@export var abyss_tint_full_depth := 8.0 ## meters below ground level for the strongest tint
+@export var abyss_tint_max_alpha := 0.55
+
 var camera: Camera3D
 var _target: Node3D
 var _pan := Vector3.ZERO
 var _zoom := 1.0
 var _glide_time := 0.0
 var _focus_y := 0.0
+var _tint: ColorRect
 
 
 func _ready() -> void:
@@ -54,6 +61,15 @@ func _ready() -> void:
 		apply_preset(mode)
 	if _target != null:
 		_focus_y = _target.global_position.y
+	if abyss_tint:
+		var layer := CanvasLayer.new()
+		layer.layer = -1
+		_tint = ColorRect.new()
+		_tint.set_anchors_preset(Control.PRESET_FULL_RECT)
+		_tint.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_tint.color = Color(abyss_tint_color, 0.0)
+		layer.add_child(_tint)
+		add_child(layer)
 	_update_camera(0.0, true)
 
 
@@ -72,6 +88,10 @@ func apply_preset(m: Mode) -> void:
 
 func _process(delta: float) -> void:
 	_update_camera(delta, false)
+	if _tint != null and _target != null and _target.has_method("depth_below_ground"):
+		var depth: float = _target.depth_below_ground()
+		var a := clampf(depth / abyss_tint_full_depth, 0.0, 1.0) * abyss_tint_max_alpha
+		_tint.color = Color(abyss_tint_color, lerpf(_tint.color.a, a, 1.0 - exp(-10.0 * delta)))
 
 
 func _update_camera(delta: float, snap: bool) -> void:

@@ -8,7 +8,7 @@ extends Ent
 # momentum that carries in the air and in the glider.
 const H_GRAV := 30.0
 const FALL_MULT := 1.0
-const TERMINAL := 40.0
+const TERMINAL := 10.0          # [footage] 1s off an edge is ~8m deep; the glider recovers in ~1s
 const JUMP_V := 9.0           # about 1.35 up: one terrace easily; higher ledges you mantle
 const GROUND_ACCEL := 70.0
 const GROUND_DECEL := 90.0
@@ -25,7 +25,9 @@ const ABYSS_LIFT := 45.0         # opening the glider below ground level: strong
 const ABYSS_LIFT_MAX := 16.0
 const ABYSS_BRAKE_DIST := 2.5    # ...that brakes near ground level (let go just before to keep the height)
 const ABYSS_BRAKE := 60.0
-const MANTLE_REACH := 3.0        # ledges up to this far above you pop you up when you move into them
+const MANTLE_REACH := 1.5        # near a jump's apex, ledges this far above you pop you up
+const MANTLE_REACH_ABYSS := 12.0 # [footage] falling players spring back onto an island even from a second deep
+const MANTLE_RISE := 14.0        # [footage] a deep mantle returns to the top in ~0.8s
 const EX_DASH_CD := 12.5         # the long dash: in the air, or with the short one on cooldown
 const DASH_CARRY_GROUND := 0.35
 const DASH_CARRY_AIR := 0.75
@@ -36,8 +38,8 @@ const LEDGE_REACH := 2.8
 const LEDGE_CD := 0.45
 const FLOAT_SPEED := 12.0
 const GLIDE_FALL := 1.7
-const GLIDE_SPEED := 5.4
-const GLIDE_TIME := 6.0
+const GLIDE_SPEED := 5.0       # [footage] about run speed
+const GLIDE_TIME := 14.0       # [footage] ~14s of level glide before the heat ring turns hot
 const GLIDE_DRAG := 1.6         # speed lost per second while gliding (more when going fast)
 const GLIDE_MAX := 15.0
 # The opening drop, battle-royale style: a fast skydive you steer freely, then the glider opens by
@@ -1072,6 +1074,10 @@ func _physics(dt: float) -> void:
 			vel.y = lerpf(vel.y, -sink, 1.0 - exp(-4.0 * dt))
 		else:
 			vel.y = maxf(vel.y - GLIDE_GRAV * dt, -sink)
+			# [footage] over the abyss a glider holds at island level instead of sinking below it,
+			# so you can cross until the heat runs out
+			if over_void() and glide_fuel > 0.001 and vel.y < 0.0 and pos.y + vel.y * dt < lip_y:
+				vel.y = minf(0.0, (lip_y - pos.y) / dt)
 	elif roll_t > 0.0 and not grounded and not dropping:
 		vel.y = 0.0          # a dash in the air holds your height for its length
 	elif not grounded:
@@ -1167,7 +1173,7 @@ func _physics(dt: float) -> void:
 				m.on_drop_landed(self)
 			if shot_down:
 				shot_down = false
-				stun_t = maxf(stun_t, 1.0)
+				stun_t = maxf(stun_t, 0.5)
 				m.fx.dust(pos, 8)
 			if fv < -11.0 or cur > spd * 1.3:
 				m.fx.dust(pos, 6)
@@ -1194,7 +1200,7 @@ func _physics(dt: float) -> void:
 			if not (w.is_void(pos.x + 1.4, pos.z) or w.is_void(pos.x - 1.4, pos.z) or w.is_void(pos.x, pos.z + 1.4) or w.is_void(pos.x, pos.z - 1.4)):
 				safe_pos = pos
 	_try_ledge_grab(dt)
-	if pos.y < -14.0:
+	if pos.y < last_gy - 24.0 or pos.y < -40.0:
 		fall_out()
 
 ## The skydive ends: the glider snaps open and the fall slows right down.
@@ -1245,7 +1251,7 @@ func _update_glide(dt: float) -> void:
 				glide_cd = 0.5
 		elif not in_current:
 			# heat builds faster while the glider is lifting you out of the abyss
-			var hk := 1.5 if below_lip and vel.y > 0.0 else 1.0
+			var hk := 4.0 if below_lip and lip_y - pos.y > 0.3 and vel.y > 0.0 else 1.0     # [footage] ~1s of lift burns a quarter
 			glide_fuel = maxf(0.0, glide_fuel - dt * hk / (glide_max * (1.0 + gear_stat("heat"))))
 		if not dropping:
 			stats["glide_t"] = float(stats.get("glide_t", 0.0)) + dt
@@ -1263,7 +1269,7 @@ func _update_glide(dt: float) -> void:
 # back up onto it, the way Supervive does it. Walking into a step up a few terraces high does
 # the same after a short push. Getting launched hard still carries you past the edge.
 func _try_ledge_grab(dt: float) -> void:
-	if grap.size() > 0 or pad.size() > 0 or fly_t > 0.0 or downed or charge.size() > 0 or dropping or shot_down or pos.y < -12.0 or (grounded and stun_t > 0.0):
+	if grap.size() > 0 or pad.size() > 0 or fly_t > 0.0 or downed or charge.size() > 0 or dropping or shot_down or pos.y < last_gy - 14.0 or (grounded and stun_t > 0.0):
 		push_t = 0.0
 		return
 	var w: World = m.world
@@ -1296,6 +1302,8 @@ func _try_ledge_grab(dt: float) -> void:
 			return
 		reach = r + 0.4
 	var void_here := over_void()
+	if not grounded and void_here and last_gy - pos.y > 0.3:
+		max_rise = MANTLE_REACH_ABYSS      # deep in the abyss, any island wall you touch springs you back up
 	var best := {}; var bd := 1e9
 	for z in range(int(floor(pos.z - reach)), int(floor(pos.z + reach)) + 1):
 		for x in range(int(floor(pos.x - reach)), int(floor(pos.x + reach)) + 1):
@@ -1340,7 +1348,7 @@ func _try_ledge_grab(dt: float) -> void:
 	var over := Vector3(land.x + dir_in.x * carry * 0.12, land.y, land.z + dir_in.y * carry * 0.12)
 	if not w.is_block(over.x, over.z) and absf(w.ground_at(over.x, over.z) - land.y) < 0.1:
 		land = over
-	pad = {"from": pos, "to": land, "t": 0.0, "dur": clampf(0.2 + rise * 0.035, 0.22, 0.6), "h": 0.55, "ledge": true, "carry": maxf(carry, base_speed * 0.8)}
+	pad = {"from": pos, "to": land, "t": 0.0, "dur": clampf(rise / MANTLE_RISE, 0.25, 1.0), "h": 0.55, "ledge": true, "carry": maxf(carry, base_speed * 0.8)}
 	grap = {}
 	grap_cd = LEDGE_CD
 	push_t = 0.0

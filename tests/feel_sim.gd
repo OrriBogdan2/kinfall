@@ -141,7 +141,7 @@ func _run() -> void:
 	print("feathered release at y=-3: peak y=%.2f" % top)
 
 	# 7. Mantle onto raised island (top y=1, west face x=25) from below edge
-	h.respawn(Vector3(24.45, -1.5, -6)); h.ground_level = 0.0
+	h.respawn(Vector3(24.45, -6.0, -6)); h.ground_level = 0.0
 	h.velocity = Vector3.ZERO
 	_press("kf_move_right")
 	h.mantled.connect(func(): flags["mantled"] = true)
@@ -149,6 +149,30 @@ func _run() -> void:
 	_release("kf_move_right")
 	await _frames(20)
 	print("mantle triggered=%s, state=%s, y=%.2f (island top 1.0)" % [flags.get("mantled", false), HunterController.State.keys()[h.state], h.global_position.y])
+
+	# 7b. Zik drill: walk off an edge, free-fall 1s, open glider, get back up
+	h.respawn(Vector3(0, 0.1, 16.5)); await _frames(20)
+	_press("kf_move_down")
+	t = 0
+	while h.global_position.z < 18.6 and t < 120:
+		await _frames(1); t += 1
+	_release("kf_move_down")
+	var fell_at := t
+	var balloon_seen := -1
+	for i in 60:
+		await _frames(1)
+		if balloon_seen < 0 and h._balloon.visible: balloon_seen = i
+	var deep := h.depth_below_ground()
+	_press("kf_glide")
+	t = 0
+	while h.depth_below_ground() > 0.3 and t < 180:
+		await _frames(1); t += 1
+	print("walk-off: balloon after %.2fs, depth after 1s fall %.1fm, glide back to ground level in %.2fs, heat %d" % [balloon_seen / 60.0, deep, t / 60.0, int(h.heat)])
+	# spikeable while below ground? hit while gliding drops the glider
+	var mult := h.incoming_damage_multiplier()
+	h.notify_damaged()
+	print("hit while gliding: took x%.1f damage, then state=%s" % [mult, HunterController.State.keys()[h.state]])
+	_release("kf_glide")
 
 	# 8. Jump pad at z=-14
 	h.respawn(Vector3(0, 0.1, -8)); await _frames(20)

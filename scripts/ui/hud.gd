@@ -133,6 +133,15 @@ func _draw_all() -> void:
 		for i in 6:
 			var inset := i * 14.0
 			c.draw_rect(Rect2(Vector2(inset, inset), sz - Vector2(inset, inset) * 2.0), Color(0.8, 0.1, 0.08, a * (0.12 - i * 0.018)), false, 14.0)
+	if p and not p.out and not p.grounded and p.over_void():
+		# [footage] the screen washes purple as you sink below island level, deeper the further down
+		var depth := p.last_gy - p.pos.y
+		if depth > 0.0:
+			abyss_a = lerpf(abyss_a, clampf(depth / 8.0, 0.0, 1.0) * 0.55, 0.15)
+	else:
+		abyss_a = lerpf(abyss_a, 0.0, 0.15)
+	if abyss_a > 0.005:
+		c.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.55, 0.1, 0.55, abyss_a))
 	if p and not p.downed and not p.out and p.hp < p.max_hp * 0.35:
 		var pulse := 0.5 + 0.5 * sin(m.time * 6.0)
 		for i in 5:
@@ -1004,6 +1013,7 @@ func _draw_tip(sz: Vector2, t: Dictionary) -> void:
 	c.draw_multiline_string(body, r.position + Vector2(20, 28), text, HORIZONTAL_ALIGNMENT_LEFT, w - 40.0, 16, -1, Color(0.1, 0.09, 0.12, a))
 
 var head_hp := 1.0
+var abyss_a := 0.0
 
 ## Health and stamina (dash charges) right above your hunter, where your eyes already are.
 func _draw_overhead(p: Hunter) -> void:

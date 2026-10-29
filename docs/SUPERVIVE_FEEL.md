@@ -1,58 +1,71 @@
 # Supervive-style feel for Kinfall (phase 1: camera + movement)
 
-Clean-room rebuild. Nothing here comes from Supervive's files. The numbers come from the community wiki, published settings guides, or my estimates, and each one is tagged in `scripts/feel/feel_config.gd`.
+Clean-room rebuild. Nothing here comes from Supervive's files. The values come from the community wiki, published settings guides, frame-by-frame measurements of 60fps gameplay videos, or my estimates. Each one is tagged in `scripts/feel/feel_config.gd`: `[wiki]`, `[guide]`, `[footage]` or `[est]`.
 
 ## What's in it
 
 | File | What it does |
 |---|---|
-| `scripts/feel/feel_config.gd` | Every tunable in one Resource. Save it as a `.tres` and give different weapons or kin different feel profiles. |
-| `scripts/feel/hunter_controller.gd` | CharacterBody3D. Covers WASD, jump, hold-to-glide with heat, abyss lift, mini-dash/ex-dash, mantling, jump-pad launches, spike, cursor aim and the aim laser. |
-| `scripts/feel/top_down_camera.gd` | Fixed-angle camera with Supervive's 3 presets: Locked, Standard Dynamic and Fully Dynamic. |
-| `scripts/feel/jump_pad.gd` | Launch pad that keeps your momentum (dash into it for extra speed). |
-| `scripts/feel/kinfall_input.gd` | Registers default binds at runtime (`kf_*` actions), so project.godot doesn't need editing. |
-| `scenes/feel_test.tscn` | Playground: two islands over an abyss, a ledge, pillars, a jump pad and a debug HUD. |
+| `scripts/feel/feel_config.gd` | Every tunable in one Resource. Save it as a `.tres` to give different weapons or kin their own feel. |
+| `scripts/feel/hunter_controller.gd` | CharacterBody3D. Covers WASD, jump, hold-to-glide with heat, abyss lift, feathering, the glider balloon, spiking, dash/ex-dash (or tap/hold), deep mantling, jump pads, cursor aim and the aim laser. |
+| `scripts/feel/top_down_camera.gd` | Fixed-angle camera with Supervive's 3 presets, zoom-out while gliding, and a purple screen tint that deepens the further you sink into the abyss. |
+| `scripts/feel/jump_pad.gd` | Launch pad that keeps your momentum. |
+| `scripts/feel/kinfall_input.gd` | Registers default binds at runtime (`kf_*` actions). |
+| `scenes/feel_test.tscn` | Playground: islands over an abyss, a raised island to mantle onto, pillars, a jump pad and a debug HUD. |
 | `tests/feel_sim.gd` | Headless check: `godot --headless --path . -s tests/feel_sim.gd` |
 
 ## Controls (Supervive defaults)
-WASD move · Space jump (tap) / glide (hold in air) · Shift dash · Ctrl sneak · LMB/RMB attack (hunter faces cursor) · F1/F2/F3 camera preset in the test scene.
+WASD move · Space jump (tap) / glide (hold in air) · Shift dash · Ctrl sneak · LMB/RMB attack (the hunter turns to face the cursor) · F1/F2/F3 switch camera preset in the test scene.
 
-## Rules this copies
-- **Move speed** 4.65 m/s (465 units). It's the same for every hunter I checked. Accel/decel are near-instant.
-- **Dash**: Shift does a mini-dash (7s cooldown). Pressing it while airborne or while the mini-dash is on cooldown does a longer ex-dash (12.5s cooldown). Direction comes from WASD and falls back to the cursor.
-- **Momentum carries**: dash or jump-pad speed bleeds off slowly in the air and in glide, and fast on the ground.
-- **Glide**: hold Space while airborne. Gliding builds heat, and getting hit builds it faster. When overheated you take damage over time and can be spiked (0.7s stun, then you plummet).
-- **Abyss**: opening the glider below ground level gives strong lift, then brakes at ground level. Releasing just before ground level turns the lift into height (feathering). So you can hover over the abyss until heat runs out.
-- **Mantle**: if you're falling or near the top of a jump and moving into a wall whose top is within 3m, you pop up onto it.
-- **Camera presets** (from the settings guides): Standard is deadzone 0.2 / maxzone 0.8 / pan 6 / speed 7 / quadratic. Fully Dynamic is 0.1 / 0.9 / 10 / 10 / locks to the cursor. Every preset zooms out while gliding.
+## What the footage showed
 
-## Measured in the headless sim (Godot 4.6.2)
-| Check | Result |
-|---|---|
-| 0 → 95% run speed | 0.07s |
-| Stop | 0.07s |
-| Jump | 1.28m apex, 0.62s airtime |
-| Mini / ex dash | 3.9m / 6.7m |
-| Glide over abyss until overheat | ~4.9s |
-| Abyss lift from 6m below | 0.9s back to ground level |
-| Feathered release at -3m | peaks 1.15m above ground |
-| Mantle from 2.5m below a ledge | ✓ |
-| Jump pad | 4.7m apex |
-| Fall with no glide | dies, respawns |
+Videos studied: TheSixGame's full walkthrough (60fps), Ryan Lemur's Celeste guide and Legend solo queue game, Ryan Lemur's all-abilities video, Tom Kick's gliding guide, and Zik's abyss/spike guide.
 
-## Measured from footage (60fps gameplay, frame-stepped)
-- **Camera pitch ~65°** (not the 56° I first guessed). Ground circles near screen center are ~0.91 as tall as wide.
-- **Vertical FOV ~35°**, **distance ~25m**. A hunter running at 4.55 m/s scrolls ~175px/s on a 1080p frame, so the screen shows ~28m of ground side to side.
-- Hunters sit roughly at screen center and only shift when the cursor pans the camera.
-- Some kits use **tap Shift = short dash, hold Shift = longer dash on a longer cooldown**. Turn on `dash_hold_for_ex` for those.
+**Camera**
+- Pitch is ~65° (steep, close to top-down) with ~35° vertical FOV, sitting ~25m away. The screen shows ~28m of ground side to side.
+- The hunter stays roughly centered and only shifts when the cursor pans the camera.
+- The camera visibly zooms out while gliding.
+- The screen goes purple as you sink below island level, and darker the deeper you go.
 
-## Tuning against footage (the remaining [est] values)
-1. Grab a clean 60fps Supervive clip (pro VOD on YouTube) and the same shot from the test scene.
-2. **Camera first**: match the pitch angle, FOV and distance by how big a hunter looks on screen and how much ground fits in frame. Those three numbers decide most of the "looks like Supervive" feeling.
-3. **Then timing**: count frames in the clip for jump airtime, dash length (measured in hunter widths) and glide sink rate. Change those values in `feel_config.gd` and rerun `feel_sim.gd`.
+**Gliding**
+- Glide speed is ~5 m/s, about the same as running.
+- A glider over the abyss holds at island level rather than sinking. Two players in Tom Kick's guide glide level for ~14s before the heat ring by the nameplate turns hot.
+- Lift is what eats heat. In Zik's drill, a player walks off an edge, free-falls ~1s (about 8m deep), opens the glider and is back at island level ~1s later. That one lift burns roughly a quarter to a third of the glider.
+- Heat keeps climbing across repeated drop-and-lift (feathering) cycles. It only really cools on the ground.
+- A balloon on a string appears about 0.25s after stepping off an edge. It stays at island level and glows purple while you glide, which is the cue that you can be spiked.
 
-## Dropping into Kinfall
-Copy `scripts/feel/` into the project and put a `HunterController` on the player with its collision capsule offset up by half its height (origin at the feet). Point `visual_path` at the mesh root and add a `TopDownCameraRig` with `target_path` set to the player. Hook these into combat: `notify_damaged()`, `spike()`, `is_spikeable()`, `main_ability_on_cooldown`, and the signals `overheat_tick(damage)` and `fell_into_abyss`.
+**Mantling**
+- Falling players who touch an island wall spring back onto it, even from a full second deep. It takes ~0.8s.
 
-## Not in phase 1
-Networking/prediction, real attacks and abilities, animations, VFX, and kin throw/recall. Kin throw/recall is the next phase and plugs into `launch()` and the aim point.
+**Dash**
+- Some kits use tap Shift for a short dash and hold Shift for a longer dash on a longer cooldown. This is in as `dash_hold_for_ex`.
+- Dash length is different for every hunter. Kinfall's dodge comes from the weapon, so the values here are only a baseline.
+
+## Rules from the wiki
+- Run speed is 465 units (4.65 m/s).
+- Shiv's attack range is 850 units (8.5m), which is the aim laser length.
+- Jin's dash cooldown is 7s and his ex-dash cooldown is 12.5s.
+- Most hits on a glider deal double damage and knock them out of the air, with a stun on landing.
+- Spiking an overheated or below-ground glider stuns them and sends them plummeting. Over ground the stun is 0.7s.
+
+## Headless sim results (Godot 4.6.2)
+| Check | Result | Footage / source |
+|---|---|---|
+| Run to 95% speed / stop | 0.07s / 0.07s | snappy MOBA feel |
+| Glide over abyss until overheat | 14.1s | ~14s |
+| Walk off edge, fall 1s | 9.2m deep, balloon at 0.13s | ~8m, ~0.25s |
+| Open glider from there | back at island level in 1.25s, 30% heat | ~1s, ~25–35% |
+| Deep mantle from 7m below | ✓ | ✓ |
+| Hit while gliding | x2 damage, glider drops | wiki |
+| Jump | 1.28m apex, 0.62s | [est] |
+| Mini / ex dash | 3.9m / 6.7m | [est] |
+
+## Combat hooks for Kinfall
+`incoming_damage_multiplier()` · `notify_damaged()` (drops gliders) · `try_spike()` / `is_spikeable()` · `depth_below_ground()` · `launch(impulse)` · `main_ability_on_cooldown`. Signals: `dashed`, `glide_started`/`glide_ended`, `overheat_started`, `overheat_tick(damage)`, `mantled`, `spiked`, `fell_into_abyss`.
+
+## Still estimates
+- Jump height: I didn't find a clean plain jump in any of the videos.
+- Dash distance per weapon.
+- Glider damage while overheated, spike plummet speed, and the jump pad's launch strength.
+
+Tune them in `feel_config.gd`, then rerun the sim.
