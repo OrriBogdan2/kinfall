@@ -160,6 +160,8 @@ func _ready() -> void:
 		show_screen("town", {"mode": town_arg, "gid": "test"})
 	elif "--visit-test" in args:
 		show_screen("home", {"visit": Social.clean_island(Social.profile_doc()), "visit_id": "test"})    # test: visiting an island
+	elif "--prologue" in args:
+		show_screen("prologue", {"then": "title"})    # test: the opening story
 	elif "--creator" in args:
 		show_screen("hatch", {"create": true})    # test: the hunter creator
 	elif "--match" in args:
@@ -240,6 +242,11 @@ func show_screen(screen: String, opts: Dictionary) -> void:
 		"title":
 			var Tt = load("res://scripts/ui/title.gd")
 			current = Tt.new()
+			add_child(current)
+		"prologue":
+			var Pr = load("res://scripts/ui/prologue.gd")
+			current = Pr.new()
+			current.set("then_go", String(opts.get("then", "hatch")))
 			add_child(current)
 		"hatch":
 			var Hx = load("res://scripts/ui/hatch.gd")
