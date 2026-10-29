@@ -778,6 +778,8 @@ func build_meshes() -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var tn := FastNoiseLite.new(); tn.seed = rng.seed + 3; tn.frequency = 0.3
+	_edge_noise = FastNoiseLite.new(); _edge_noise.seed = rng.seed + 17; _edge_noise.frequency = 0.21
+	_corner_cache.clear()
 	for z in h:
 		for x in w:
 			var i := idx(x, z)
@@ -800,7 +802,7 @@ func build_meshes() -> void:
 					if pn > 0:
 						col = col.lerp(pc / pn, minf(1.0, pn / 2.0) * (0.85 + v2 * 0.15))
 				cols.append(col)
-			_quad4(st, Vector3(x, y, z), Vector3(x + 1, y, z), Vector3(x + 1, y, z + 1), Vector3(x, y, z + 1), Vector3.UP, cols)
+			_quad4(st, Vector3(x, y, z) + _corner(x, z), Vector3(x + 1, y, z) + _corner(x + 1, z), Vector3(x + 1, y, z + 1) + _corner(x + 1, z + 1), Vector3(x, y, z + 1) + _corner(x, z + 1), Vector3.UP, cols)
 			var bottom := depth[i] + y * 0.3
 			for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 				var nx: int = x + dir.x; var nz: int = z + dir.y
@@ -812,15 +814,104 @@ func build_meshes() -> void:
 				var lo := maxf(ny, bottom)
 				_side(st, x, z, dir, y, lo, ny <= -1.0e8)
 			# underside of the column
-			_quad(st, Vector3(x, bottom, z + 1), Vector3(x + 1, bottom, z + 1), Vector3(x + 1, bottom, z), Vector3(x, bottom, z), Vector3.DOWN, Color(bio["deep"]).darkened(0.3))
+			_quad(st, Vector3(x, bottom, z + 1) + _corner(x, z + 1), Vector3(x + 1, bottom, z + 1) + _corner(x + 1, z + 1), Vector3(x + 1, bottom, z) + _corner(x + 1, z), Vector3(x, bottom, z) + _corner(x, z), Vector3.DOWN, Color(bio["deep"]).darkened(0.3))
+	_island_roots(st)
 	var mesh := st.commit()
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
-	mi.material_override = Models.vtoon()
+	mi.material_override = terrain_material()
 	mi.name = "Ground"
 	add_child(mi)
 	_decorate()
 	_build_air()
+
+## The shared material for every island surface (see shaders/terrain.gdshader).
+static var _terrain_mat: ShaderMaterial
+static func terrain_material() -> ShaderMaterial:
+	if _terrain_mat == null:
+		_terrain_mat = ShaderMaterial.new()
+		_terrain_mat.shader = load("res://shaders/terrain.gdshader")
+	return _terrain_mat
+
+## Island outlines don't follow the tile grid: every corner on an island's edge is nudged a little,
+## so coastlines and cliffs look carved instead of stacked. (Only what you see moves; walking still
+## follows the tiles.)
+var _edge_noise: FastNoiseLite
+var _corner_cache := {}
+func _corner(x: int, z: int) -> Vector3:
+	var key := x * 100003 + z
+	if _corner_cache.has(key):
+		return _corner_cache[key]
+	var off := Vector3.ZERO
+	var edge := false
+	for t in [Vector2i(x - 1, z - 1), Vector2i(x, z - 1), Vector2i(x - 1, z), Vector2i(x, z)]:
+		if not inb(t.x, t.y) or kind[idx(t.x, t.y)] == T_VOID or bridge.has(idx(t.x, t.y)):
+			edge = true; break
+	if edge and _edge_noise:
+		off = Vector3(_edge_noise.get_noise_2d(x * 1.7, z * 1.7), 0.0, _edge_noise.get_noise_2d(x * 1.7 + 91.0, z * 1.7 - 37.0)) * 0.5
+	_corner_cache[key] = off
+	return off
+
+## Each island hangs a cluster of rocky roots underneath it: one big one in the middle and smaller
+## ones scattered under the rest, so islands read as floating rocks rather than slabs.
+func _island_roots(st: SurfaceTool) -> void:
+	var rr := RandomNumberGenerator.new(); rr.seed = rng.seed + 29
+	for ii in islands.size():
+		var cells: Array = islands[ii].get("cells", [])
+		if cells.is_empty():
+			cells = []
+			for i in kind.size():
+				if island[i] == ii and kind[i] != T_VOID: cells.append(Vector2i(i % w, i / w))
+		if cells.size() < 6:
+			continue
+		var bio: Dictionary = _isl_bio[ii] if ii < _isl_bio.size() else biome
+		var cx := 0.0; var cz := 0.0; var lo := 1e9
+		for c in cells:
+			cx += c.x + 0.5; cz += c.y + 0.5
+			var i := idx(c.x, c.y)
+			lo = minf(lo, depth[i] + level[i] * LEVEL * 0.3)
+		cx /= cells.size(); cz /= cells.size()
+		var rad := sqrt(cells.size() / PI)
+		var top_c: Color = Color(bio["side"]).darkened(0.25)
+		var deep_c: Color = Color(bio["deep"]).darkened(0.2)
+		_root(st, rr, Vector3(cx, lo + 0.6, cz), rad * 0.62, rad * rr.randf_range(1.0, 1.4) + 3.0, top_c, deep_c)
+		var n := clampi(int(rad * 0.9), 2, 9)
+		for _k in n:
+			var c: Vector2i = cells[rr.randi_range(0, cells.size() - 1)]
+			var i := idx(c.x, c.y)
+			var b := depth[i] + level[i] * LEVEL * 0.3
+			_root(st, rr, Vector3(c.x + 0.5, b + 0.4, c.y + 0.5), rr.randf_range(0.5, 1.2) + rad * 0.12, rr.randf_range(1.5, 4.0) + rad * 0.4, top_c, deep_c)
+
+func _root(st: SurfaceTool, rr: RandomNumberGenerator, at: Vector3, r: float, length: float, c0: Color, c1: Color) -> void:
+	var seg := 9
+	var rings := 5
+	var pts: Array = []
+	var ph := rr.randf() * TAU
+	var lean := Vector2(rr.randf_range(-0.15, 0.15), rr.randf_range(-0.15, 0.15)) * length
+	for k in rings + 1:
+		var t := float(k) / rings
+		var ring: Array = []
+		var rk := r * pow(1.0 - t, 1.25) * (1.0 if k < rings else 0.0)
+		for j in seg:
+			var a := ph + TAU * j / seg
+			var jr := rk * rr.randf_range(0.75, 1.15)
+			ring.append(at + Vector3(cos(a) * jr + lean.x * t * t, -length * t, sin(a) * jr + lean.y * t * t))
+		pts.append(ring)
+	for k in rings:
+		var ca: Color = c0.lerp(c1, float(k) / rings)
+		var cb: Color = c0.lerp(c1, float(k + 1) / rings)
+		for j in seg:
+			var a: Vector3 = pts[k][j]; var b: Vector3 = pts[k][(j + 1) % seg]
+			var c: Vector3 = pts[k + 1][(j + 1) % seg]; var d: Vector3 = pts[k + 1][j]
+			var nrm := (b - a).cross(d - a).normalized()
+			if nrm.dot(Vector3(a.x - at.x, 0, a.z - at.z)) < 0.0: nrm = -nrm
+			st.set_normal(nrm)
+			st.set_color(ca); st.add_vertex(a)
+			st.set_color(cb); st.add_vertex(c)
+			st.set_color(ca); st.add_vertex(b)
+			st.set_color(ca); st.add_vertex(a)
+			st.set_color(cb); st.add_vertex(d)
+			st.set_color(cb); st.add_vertex(c)
 
 func _quad4(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, cols: Array) -> void:
 	st.set_normal(n)
@@ -845,10 +936,10 @@ func _side(st: SurfaceTool, x: int, z: int, dir: Vector2i, top: float, lo: float
 	var n := Vector3(dir.x, 0, dir.y)
 	var p0: Vector3; var p1: Vector3
 	match dir:
-		Vector2i(1, 0): p0 = Vector3(x + 1, 0, z + 1); p1 = Vector3(x + 1, 0, z)
-		Vector2i(-1, 0): p0 = Vector3(x, 0, z); p1 = Vector3(x, 0, z + 1)
-		Vector2i(0, 1): p0 = Vector3(x, 0, z + 1); p1 = Vector3(x + 1, 0, z + 1)
-		_: p0 = Vector3(x + 1, 0, z); p1 = Vector3(x, 0, z)
+		Vector2i(1, 0): p0 = Vector3(x + 1, 0, z + 1) + _corner(x + 1, z + 1); p1 = Vector3(x + 1, 0, z) + _corner(x + 1, z)
+		Vector2i(-1, 0): p0 = Vector3(x, 0, z) + _corner(x, z); p1 = Vector3(x, 0, z + 1) + _corner(x, z + 1)
+		Vector2i(0, 1): p0 = Vector3(x, 0, z + 1) + _corner(x, z + 1); p1 = Vector3(x + 1, 0, z + 1) + _corner(x + 1, z + 1)
+		_: p0 = Vector3(x + 1, 0, z) + _corner(x + 1, z); p1 = Vector3(x, 0, z) + _corner(x, z)
 	# a grassy lip, then dirt fading into dark rock toward the bottom
 	var lip := minf(0.18, top - lo)
 	var grass: Color = Color(cur_bio["top2"]).darkened(0.12)
@@ -965,7 +1056,8 @@ func _decorate() -> void:
 			var y := level[i] * LEVEL
 			var n: Node3D
 			if drng.randf() < 0.5:
-				n = Models.tree(drng, _bio(i)["leaf"])
+				var reg := int(islands[island[i]].get("region", 0)) if island[i] >= 0 and island[i] < islands.size() else 0
+				n = Models.tree(drng, _bio(i)["leaf"], "pine" if reg == 2 or drng.randf() < 0.25 else ("blossom" if reg == 4 and drng.randf() < 0.6 else "round"))
 			else:
 				n = Models.rock(drng, drng.randf_range(0.9, 1.25))
 			n.position = Vector3(x + 0.5, y, z + 0.5)
@@ -993,49 +1085,80 @@ func _decorate() -> void:
 			var wmi := MultiMeshInstance3D.new(); wmi.multimesh = wm
 			wmi.material_override = wall_mat
 			deco.add_child(wmi)
-	# tall grass to hide in, batched
+	# tall grass to hide in: dense clumps of long blades that sway
 	var blist: Array = []
 	for bi in bush:
 		if kind[bi] == T_GROUND:
-			for _k in 3: blist.append(bi)
+			for _k in 4: blist.append(bi)
 	if blist.size() > 0:
 		var bm := MultiMesh.new(); bm.transform_format = MultiMesh.TRANSFORM_3D; bm.use_colors = true
-		bm.mesh = Models.sphere(0.42, 8)
+		bm.mesh = Models.grass_mesh(true)
 		bm.instance_count = blist.size()
 		for k in blist.size():
 			var bi: int = blist[k]
 			var bx := bi % w; var bz := bi / w
-			var p := Vector3(bx + drng.randf_range(0.2, 0.8), level[bi] * LEVEL + 0.35, bz + drng.randf_range(0.2, 0.8))
-			var sc := drng.randf_range(0.8, 1.15)
-			bm.set_instance_transform(k, Transform3D(Basis().scaled(Vector3(sc, sc * drng.randf_range(1.0, 1.5), sc)), p))
-			bm.set_instance_color(k, Color(_bio(bi)["leaf"]).darkened(drng.randf_range(0.0, 0.25)))
+			var p := Vector3(bx + drng.randf_range(0.1, 0.9), level[bi] * LEVEL, bz + drng.randf_range(0.1, 0.9))
+			var sc := drng.randf_range(0.85, 1.2)
+			bm.set_instance_transform(k, Transform3D(Basis(Vector3.UP, drng.randf() * TAU).scaled(Vector3(sc, sc * drng.randf_range(0.9, 1.25), sc)), p))
+			bm.set_instance_color(k, Color(_bio(bi)["leaf"]).lerp(Color(_bio(bi)["top"]), 0.35).darkened(drng.randf_range(0.0, 0.18)))
 		var bmi := MultiMeshInstance3D.new(); bmi.multimesh = bm
-		bmi.material_override = Models.vtoon()
+		bmi.material_override = Models.grass_material(0.16)
+		bmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		bmi.name = "Bushes"
 		deco.add_child(bmi)
-	# grass tufts and flowers, batched
-	var tuft := Models.cyl(0.0, 0.06, 0.22, 4)
-	var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.mesh = tuft
+	# short grass, flowers and pebbles over open ground, batched
 	var xs: Array = []
+	var fl: Array = []
+	var pb: Array = []
 	for z in h:
 		for x in w:
 			var i := idx(x, z)
-			if kind[i] != T_GROUND or paint.has(i) or bridge.has(i):
+			if kind[i] != T_GROUND or bridge.has(i) or bush.has(i):
 				continue
-			for _k in 2:
-				if drng.randf() < 0.45:
-					xs.append([Vector3(x + drng.randf(), level[i] * LEVEL + 0.1, z + drng.randf()), drng.randf(), i])
+			var painted := paint.has(i)
+			for _k in (1 if painted else 3):
+				if drng.randf() < (0.15 if painted else 0.55):
+					xs.append([Vector3(x + drng.randf(), level[i] * LEVEL, z + drng.randf()), drng.randf(), i])
+			if not painted and drng.randf() < 0.07:
+				fl.append([Vector3(x + drng.randf(), level[i] * LEVEL, z + drng.randf()), i])
+			if drng.randf() < (0.06 if edge_dist(x, z, 2) < 2 else 0.015):
+				pb.append(Vector3(x + drng.randf(), level[i] * LEVEL, z + drng.randf()))
+	var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.mesh = Models.grass_mesh(false)
 	mm.instance_count = xs.size()
 	for k in xs.size():
-		var t := Transform3D(Basis().scaled(Vector3.ONE * (0.7 + xs[k][1] * 0.8)), xs[k][0])
-		mm.set_instance_transform(k, t)
+		var sc := 0.7 + float(xs[k][1]) * 0.6
+		mm.set_instance_transform(k, Transform3D(Basis(Vector3.UP, drng.randf() * TAU).scaled(Vector3(sc, sc, sc)), xs[k][0]))
 		var tb := _bio(int(xs[k][2]))
-		var c: Color = Color(tb["top2"]).darkened(0.1).lerp(Color("f4e27a") if xs[k][1] > 0.93 else Color(tb["top"]).lightened(0.15), xs[k][1])
-		mm.set_instance_color(k, c)
+		mm.set_instance_color(k, Color(tb["top"]).lerp(Color(tb["top2"]), drng.randf()).lightened(0.05))
 	var mmi := MultiMeshInstance3D.new(); mmi.multimesh = mm
-	var mat := Models.vtoon(); mmi.material_override = mat
+	mmi.material_override = Models.grass_material(0.08)
 	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	mmi.name = "Grass"
 	deco.add_child(mmi)
+	if fl.size() > 0:
+		var fcols := [Color("fff3a8"), Color("ff9ac8"), Color("ffffff"), Color("b8a6ff"), Color("ffb070"), Color("8fd8ff")]
+		var fm := MultiMesh.new(); fm.transform_format = MultiMesh.TRANSFORM_3D; fm.use_colors = true; fm.mesh = Models.flower_mesh()
+		fm.instance_count = fl.size()
+		for k in fl.size():
+			fm.set_instance_transform(k, Transform3D(Basis(Vector3.UP, drng.randf() * TAU).scaled(Vector3.ONE * drng.randf_range(0.8, 1.3)), fl[k][0]))
+			fm.set_instance_color(k, fcols[drng.randi_range(0, fcols.size() - 1)])
+		var fmi := MultiMeshInstance3D.new(); fmi.multimesh = fm
+		fmi.material_override = Models.grass_material(0.05, true)
+		fmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		deco.add_child(fmi)
+	if pb.size() > 0:
+		var pm2 := MultiMesh.new(); pm2.transform_format = MultiMesh.TRANSFORM_3D; pm2.use_colors = true
+		var sm := SphereMesh.new(); sm.radius = 0.1; sm.height = 0.12; sm.radial_segments = 6; sm.rings = 3
+		pm2.mesh = sm
+		pm2.instance_count = pb.size()
+		for k in pb.size():
+			var sc := drng.randf_range(0.6, 1.6)
+			pm2.set_instance_transform(k, Transform3D(Basis(Vector3.UP, drng.randf() * TAU).scaled(Vector3(sc * drng.randf_range(0.8, 1.4), sc, sc)), pb[k] + Vector3(0, 0.02, 0)))
+			pm2.set_instance_color(k, Color("9a948c").lerp(Color("6f6a73"), drng.randf()))
+		var pmi := MultiMeshInstance3D.new(); pmi.multimesh = pm2
+		pmi.material_override = Models.vtoon()
+		pmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		deco.add_child(pmi)
 	var sea := MeshInstance3D.new()
 	var pm := PlaneMesh.new(); pm.size = Vector2(maxi(w, h) * 14, maxi(w, h) * 14)
 	sea.mesh = pm

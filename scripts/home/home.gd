@@ -458,26 +458,12 @@ func _lay_planks(k: String, animate: bool) -> void:
 
 func _build_env() -> void:
 	var env := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color("1a2236")
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color("c4cbe6")
-	e.ambient_light_energy = 0.42
-	e.glow_enabled = true
-	e.glow_intensity = 0.6
-	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	var e := Look.environment({"top": Color("2a4a8a"), "mid": Color("6a8ad0"), "horizon": Color("ffd2a8"), "below": Color("3a3a6a"),
+		"ambient": Color("c4cbe6"), "ambient_energy": 0.5, "fog": Color("8a96c8"), "fog_height": -4.0, "stars": 0.0})
 	env.environment = e
 	add_child(env)
 	env_res = e
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-50, -30, 0)
-	sun.light_color = Color("ffe9cf")
-	sun.light_energy = 0.85
-	sun.shadow_enabled = true
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-	sun.directional_shadow_max_distance = 45.0
-	add_child(sun)
+	var sun := Look.lights(self, Color("ffe9cf"), 0.95, Vector3(-50, -30, 0), 45.0)
 	sun_l = sun
 	# the day picks up where you left it, based on the clock
 	day_t = fmod(Time.get_unix_time_from_system() / DAY_LEN, 1.0)
@@ -610,8 +596,8 @@ func _update_sky(d: float) -> void:
 	env_res.ambient_light_energy = lerpf(0.2, 0.45, light) * (1.0 - rain_k * 0.2)
 	env_res.adjustment_enabled = true
 	env_res.adjustment_brightness = lerpf(0.72, 1.0, light) * (1.0 - rain_k * 0.08)
-	env_res.adjustment_saturation = lerpf(0.7, 1.0, light) * (1.0 - rain_k * 0.15)
-	env_res.background_color = Color("1a2236").lerp(Color("0b0e1a"), 1.0 - light)
+	env_res.adjustment_saturation = lerpf(0.8, 1.14, light) * (1.0 - rain_k * 0.15)
+	Look.night(env_res, 1.0 - light)
 	var lamp_on := clampf(1.2 - light * 1.6, 0.0, 1.0)
 	for l in lamps:
 		l.light_energy = 0.25 + lamp_on * 2.2

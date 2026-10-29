@@ -95,140 +95,256 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "", app
 	var lk: Dictionary = default_look()
 	lk.merge(appearance, true)
 	var root := Node3D.new()
-	var look0: String = hero if hero != "" else {"light": "veil", "medium": "sage", "heavy": "bastion"}.get(cls, "sage")
-	var hero_col: Color = Data.HEROES[look0]["color"] if Data.HEROES.has(look0) else team_col
-	# each hero has its own outfit colour; the team shows in the ring at their feet and the trim
-	var body_col := team_col.lerp(hero_col, 0.45).lerp(Color("3a3f52"), 0.3)
+	var look: String = hero if hero != "" else {"light": "veil", "medium": "sage", "heavy": "bastion"}.get(cls, "sage")
+	var hero_col: Color = Data.HEROES[look]["color"] if Data.HEROES.has(look) else team_col
+	var hc := hero_col
+	# outfit: a coat in the hero's colour, darker trousers and leather, team colour on the trim
+	var coat_col := hero_col.lerp(Color("3a3f52"), 0.42).lerp(team_col, 0.12)
+	var shirt_col := hero_col.lerp(Color("f3eee2"), 0.3).darkened(0.05)
+	var pants_col := Color("3a3448").lerp(coat_col, 0.2)
 	var mats: Array = []
-	var m_body := toon(body_col); mats.append(m_body)
+	var m_body := toon(coat_col); mats.append(m_body)
+	var m_shirt := toon(shirt_col); mats.append(m_shirt)
+	var m_pants := toon(pants_col); mats.append(m_pants)
+	var m_leather := toon(Color("5a3e2e")); mats.append(m_leather)
 	var m_skin := toon(LOOK_SKIN[clampi(int(lk["skin"]), 0, LOOK_SKIN.size() - 1)]); mats.append(m_skin)
 	var m_hair := toon(LOOK_HAIR[clampi(int(lk["hair_col"]), 0, LOOK_HAIR.size() - 1)]); mats.append(m_hair)
 	var m_dark := toon(Color("2b2a33")); mats.append(m_dark)
 	var m_acc := toon(team_col); mats.append(m_acc)
+	var m_gold := toon(Color("f2c84a"), true, 0.15); mats.append(m_gold)
 	var m_gun := toon(Color("4a4d5c")); mats.append(m_gun)
+	var m_hero := toon(hc); mats.append(m_hero)
+	var m_trim := toon(hero_col.darkened(0.15)); mats.append(m_trim)
+	for mm in [m_body, m_shirt, m_hair, m_acc, m_hero, m_trim]:
+		(mm as ShaderMaterial).set_shader_parameter("rim_amount", 0.75)
 	var rig := Node3D.new(); rig.name = "Rig"; root.add_child(rig)
 	var legs := Node3D.new(); legs.name = "Legs"; rig.add_child(legs)
-	part(legs, capsule(0.09, 0.42), m_dark, Vector3(-0.12, 0.22, 0), Vector3.ONE, Vector3.ZERO, "LegL")
-	part(legs, capsule(0.09, 0.42), m_dark, Vector3(0.12, 0.22, 0), Vector3.ONE, Vector3.ZERO, "LegR")
-	var torso := Node3D.new(); torso.name = "Torso"; torso.position = Vector3(0, 0.42, 0); rig.add_child(torso)
-	var bw: float = [0.86, 1.0, 1.16][clampi(int(lk["body"]), 0, 2)]
+	var bw: float = [0.88, 1.0, 1.15][clampi(int(lk["body"]), 0, 2)]
 	var gender := int(lk["gender"])
-	part(torso, capsule(0.25, 0.72), m_body, Vector3(0, 0.3, 0), Vector3(bw * (0.94 if gender == 0 else 1.0), 1.0, bw))
-	part(torso, box(0.3, 0.32, 0.16), m_dark, Vector3(0, 0.36, 0.24 * bw))  # backpack
-	part(torso, sphere(0.215), m_skin, Vector3(0, 0.82, 0), Vector3.ONE, Vector3.ZERO, "Head")
+	# legs swing from the hip: thigh, knee pad, a tall boot with a cuff and a toe
+	for sx in [-1.0, 1.0]:
+		var leg := Node3D.new(); leg.name = "LegL" if sx < 0.0 else "LegR"
+		leg.position = Vector3(0.11 * sx * bw, 0.44, 0)
+		legs.add_child(leg)
+		part(leg, capsule(0.085 * bw, 0.3), m_pants, Vector3(0, -0.12, 0))
+		part(leg, capsule(0.08, 0.22), m_leather, Vector3(0, -0.31, 0))
+		part(leg, cyl(0.092, 0.092, 0.05, 12), m_trim, Vector3(0, -0.21, 0))
+		part(leg, sphere(0.085, 10), m_leather, Vector3(0, -0.41, -0.05), Vector3(1.0, 0.62, 1.45))
+		part(leg, box(0.13, 0.03, 0.2), m_dark, Vector3(0, -0.44, -0.04))
+		part(leg, sphere(0.045, 8), m_acc, Vector3(0, -0.2, -0.07), Vector3(1.0, 1.0, 0.6))
+	var torso := Node3D.new(); torso.name = "Torso"; torso.position = Vector3(0, 0.42, 0); rig.add_child(torso)
+	var chest_w := bw * (0.92 if gender == 0 else 1.0)
+	# hips and a coat that flares a little below the belt
+	part(torso, cyl(0.21 * bw, 0.2 * bw, 0.14, 16), m_pants, Vector3(0, 0.02, 0))
+	part(torso, cyl(0.235 * bw, 0.3 * bw, 0.24, 16), m_body, Vector3(0, -0.04, 0.01))
+	# chest: shirt under an open jacket
+	part(torso, capsule(0.24, 0.62), m_body, Vector3(0, 0.33, 0), Vector3(chest_w, 1.0, bw * 0.95))
+	part(torso, box(0.14 * chest_w, 0.26, 0.06), m_shirt, Vector3(0, 0.4, -0.215 * bw), Vector3.ONE, Vector3(-0.1, 0, 0))
+	for sx in [-1.0, 1.0]:
+		part(torso, box(0.07, 0.38, 0.05), m_trim, Vector3(0.1 * sx * chest_w, 0.35, -0.205 * bw), Vector3.ONE, Vector3(-0.08, 0, 0.12 * sx))
+	part(torso, TorusMesh.new() if false else cyl(0.17, 0.2, 0.08, 16), m_trim, Vector3(0, 0.6, 0))   # collar
+	part(torso, cyl(0.075, 0.085, 0.1, 10), m_skin, Vector3(0, 0.66, 0))                              # neck
+	# belt with a buckle and pouches, and a strap across the chest
+	part(torso, cyl(0.245 * bw, 0.245 * bw, 0.07, 18), m_leather, Vector3(0, 0.1, 0))
+	part(torso, box(0.08, 0.07, 0.03), m_gold, Vector3(0, 0.1, -0.245 * bw))
+	for sx in [-1.0, 1.0]:
+		part(torso, box(0.1, 0.11, 0.08), m_leather, Vector3(0.19 * sx * bw, 0.06, -0.1), Vector3.ONE, Vector3(0, 0.5 * sx, 0))
+	part(torso, box(0.06, 0.62, 0.04), m_leather, Vector3(0.02, 0.36, -0.215 * bw), Vector3.ONE, Vector3(-0.1, 0, 0.62))
+	# shoulder pads in team colour
+	for sx in [-1.0, 1.0]:
+		var hm := SphereMesh.new(); hm.radius = 0.13; hm.height = 0.13; hm.is_hemisphere = true; hm.radial_segments = 14; hm.rings = 5
+		part(torso, hm, m_acc, Vector3(0.24 * sx * chest_w, 0.52, 0.0), Vector3(1.0, 0.9, 1.1), Vector3(0, 0, -0.45 * sx))
+		part(torso, cyl(0.135, 0.135, 0.025, 14), m_trim, Vector3(0.245 * sx * chest_w, 0.5, 0.0), Vector3.ONE, Vector3(0, 0, -0.45 * sx))
+	# the glider pack: a rolled wing on a back plate
+	part(torso, box(0.3, 0.34, 0.1), m_leather, Vector3(0, 0.36, 0.24 * bw))
+	part(torso, cyl(0.075, 0.075, 0.44, 12), toon(Color("f3eee2")), Vector3(0, 0.56, 0.27 * bw), Vector3.ONE, Vector3(0, 0, PI / 2))
+	part(torso, cyl(0.08, 0.08, 0.06, 12), m_acc, Vector3(-0.2, 0.56, 0.27 * bw), Vector3.ONE, Vector3(0, 0, PI / 2))
+	part(torso, cyl(0.08, 0.08, 0.06, 12), m_acc, Vector3(0.2, 0.56, 0.27 * bw), Vector3.ONE, Vector3(0, 0, PI / 2))
+	# head: a slightly bigger head reads better from the top-down camera
+	part(torso, sphere(0.235), m_skin, Vector3(0, 0.86, 0), Vector3(1.0, 0.98, 0.98), Vector3.ZERO, "Head")
+	for sx in [-1.0, 1.0]:
+		part(torso, sphere(0.05, 8), m_skin, Vector3(0.225 * sx, 0.84, 0.01), Vector3(0.6, 1.0, 0.8))   # ears
 	_face(torso, int(lk["face"]), gender, m_dark, m_skin)
 	_hair(torso, int(lk["hair"]), gender, m_hair)
-	# boots and gloves for a less blocky silhouette
-	for sx in [-1.0, 1.0]:
-		part(legs, sphere(0.1), m_trim0(team_col), Vector3(0.12 * sx, 0.05, -0.03), Vector3(1.0, 0.6, 1.35))
-	var look: String = hero if hero != "" else {"light": "veil", "medium": "sage", "heavy": "bastion"}.get(cls, "sage")
-	var hc: Color = Data.HEROES[look]["color"] if Data.HEROES.has(look) else team_col
-	var m_hero := toon(hc); mats.append(m_hero)
 	match look:
 		"veil":
-			part(torso, sphere(0.25), m_acc, Vector3(0, 0.88, 0.04), Vector3(1.0, 0.95, 1.05))  # hood
-			part(torso, cyl(0.2, 0.26, 0.1), m_acc, Vector3(0, 0.58, 0))  # scarf
-			part(torso, box(0.12, 0.34, 0.04), m_acc, Vector3(0.1, 0.42, 0.24), Vector3.ONE, Vector3(0.3, 0, 0.2))
+			part(torso, sphere(0.265), m_acc, Vector3(0, 0.92, 0.05), Vector3(1.0, 0.95, 1.05))  # hood
+			part(torso, cyl(0.0, 0.08, 0.2, 8), m_acc, Vector3(0, 1.14, 0.18), Vector3.ONE, Vector3(0.9, 0, 0))
+			part(torso, cyl(0.2, 0.26, 0.1), m_acc, Vector3(0, 0.62, 0))  # scarf
+			part(torso, box(0.12, 0.4, 0.04), m_acc, Vector3(0.12, 0.46, 0.26), Vector3.ONE, Vector3(0.3, 0, 0.2))
+			part(torso, box(0.1, 0.42, 0.03), m_acc, Vector3(-0.12, 0.4, 0.27), Vector3.ONE, Vector3(0.35, 0, -0.25))
 		"nyx":
-			part(torso, sphere(0.25), m_dark, Vector3(0, 0.88, 0.04), Vector3(1.0, 0.95, 1.05))
-			part(torso, box(0.34, 0.07, 0.06), toon(hc, false, 0.9), Vector3(0, 0.84, -0.2))   # glowing visor
+			part(torso, sphere(0.265), m_dark, Vector3(0, 0.92, 0.04), Vector3(1.0, 0.95, 1.05))
+			part(torso, box(0.36, 0.07, 0.06), toon(hc, false, 1.0), Vector3(0, 0.88, -0.21))   # glowing visor
 			for sx in [-1.0, 1.0]:
-				part(torso, cyl(0.0, 0.05, 0.22), m_hero, Vector3(0.14 * sx, 1.12, 0.02), Vector3.ONE, Vector3(-0.2, 0, -0.5 * sx))
-			part(torso, box(0.5, 0.5, 0.04), m_dark, Vector3(0, 0.3, 0.27), Vector3.ONE, Vector3(0.25, 0, 0))  # cape
+				part(torso, cyl(0.0, 0.05, 0.24), m_hero, Vector3(0.14 * sx, 1.16, 0.02), Vector3.ONE, Vector3(-0.2, 0, -0.5 * sx))
+				part(torso, box(0.05, 0.28, 0.03), toon(Color("e8e0ff"), true, 0.3), Vector3(0.16 * sx, 0.12, 0.27), Vector3.ONE, Vector3(0.5, 0, 0.6 * sx))   # back daggers
+			part(torso, box(0.5, 0.56, 0.04), m_dark, Vector3(0, 0.26, 0.3), Vector3.ONE, Vector3(0.25, 0, 0))  # cape
 		"kestrel":
-			part(torso, cyl(0.22, 0.24, 0.12), m_hero, Vector3(0, 0.98, 0))
-			part(torso, box(0.38, 0.08, 0.1), toon(Color("2b2a33")), Vector3(0, 0.86, -0.17))
-			part(torso, sphere(0.05, 8), toon(hc, false, 0.9), Vector3(0.09, 0.86, -0.22))
-			part(torso, box(0.04, 0.32, 0.1), toon(Color("f3eee2")), Vector3(0.22, 1.08, 0.08), Vector3.ONE, Vector3(-0.4, 0, -0.4))  # feather
+			part(torso, cyl(0.23, 0.25, 0.12), m_hero, Vector3(0, 1.02, 0))
+			part(torso, box(0.4, 0.08, 0.1), toon(Color("2b2a33")), Vector3(0, 0.9, -0.18))
+			part(torso, sphere(0.05, 8), toon(hc, false, 1.0), Vector3(0.09, 0.9, -0.23))
+			part(torso, box(0.04, 0.34, 0.1), toon(Color("f3eee2")), Vector3(0.22, 1.12, 0.08), Vector3.ONE, Vector3(-0.4, 0, -0.4))  # feather
+			part(torso, cyl(0.07, 0.07, 0.55, 10), toon(Color("7a5236")), Vector3(-0.14, 0.5, 0.3), Vector3.ONE, Vector3(0.2, 0, 0.3))   # quiver
 		"sage":
-			part(torso, cyl(0.34, 0.34, 0.04), m_acc, Vector3(0, 0.98, 0))  # brim
-			part(torso, cyl(0.17, 0.2, 0.2), m_acc, Vector3(0, 1.08, 0))
-			part(torso, cyl(0.205, 0.205, 0.04), m_dark, Vector3(0, 1.01, 0))
+			part(torso, cyl(0.36, 0.36, 0.04, 22), m_acc, Vector3(0, 1.02, 0))  # brim
+			part(torso, cyl(0.18, 0.21, 0.2, 18), m_acc, Vector3(0, 1.12, 0))
+			part(torso, cyl(0.215, 0.215, 0.045, 18), m_dark, Vector3(0, 1.05, 0))
+			part(torso, box(0.03, 0.12, 0.05), toon(Color("9ee2a0")), Vector3(0.18, 1.1, 0.05), Vector3.ONE, Vector3(0, 0, -0.4))   # a leaf in the band
+			part(torso, box(0.2, 0.18, 0.1), toon(Color("8a5a35")), Vector3(0.22, 0.12, 0.12), Vector3.ONE, Vector3(0, 0.5, 0))   # satchel
+			part(torso, sphere(0.07, 8), toon(Color("9ee2a0"), false, 0.6), Vector3(0.24, 0.24, 0.14))
 		"marlow":
-			part(torso, sphere(0.23), m_hero, Vector3(0, 0.9, 0.02), Vector3(1.0, 0.6, 1.0))  # bandana
-			part(torso, sphere(0.07, 8), m_hero, Vector3(0, 0.88, 0.24))
-			part(torso, box(0.07, 0.2, 0.04), m_hero, Vector3(0.04, 0.78, 0.27), Vector3.ONE, Vector3(0.3, 0, 0.3))
+			part(torso, sphere(0.245), m_hero, Vector3(0, 0.94, 0.02), Vector3(1.0, 0.6, 1.0))  # bandana
+			part(torso, sphere(0.07, 8), m_hero, Vector3(0, 0.92, 0.25))
+			part(torso, box(0.07, 0.22, 0.04), m_hero, Vector3(0.04, 0.8, 0.28), Vector3.ONE, Vector3(0.3, 0, 0.3))
 			var t := TorusMesh.new(); t.inner_radius = 0.2; t.outer_radius = 0.26
 			part(torso, t, toon(Color("8a8d99")), Vector3(0, 0.38, 0), Vector3.ONE, Vector3(0.9, 0, 0.5))  # chain
 		"pyra":
-			part(torso, sphere(0.2), toon(Color("ff7a3d")), Vector3(0, 0.98, 0.05), Vector3(1.15, 0.8, 1.15))  # hair
+			part(torso, sphere(0.21), toon(Color("ff7a3d")), Vector3(0, 1.02, 0.05), Vector3(1.15, 0.8, 1.15))  # hair
 			for sx in [-1.0, 1.0]:
-				part(torso, cyl(0.07, 0.07, 0.05, 12), toon(Color("9af0ff"), false, 0.6), Vector3(0.09 * sx, 0.97, -0.17), Vector3.ONE, Vector3(PI / 2, 0, 0))
-			part(torso, box(0.36, 0.04, 0.04), m_dark, Vector3(0, 0.97, -0.15))
+				part(torso, cyl(0.075, 0.075, 0.05, 12), toon(Color("9af0ff"), false, 0.7), Vector3(0.09 * sx, 1.01, -0.18), Vector3.ONE, Vector3(PI / 2, 0, 0))
+				part(torso, cyl(0.08, 0.08, 0.42, 12), toon(Color("ff7a5a")), Vector3(0.1 * sx, 0.42, 0.32))   # fuel tanks
+				part(torso, cyl(0.05, 0.03, 0.08, 10), toon(Color("ffd23f"), false, 0.9), Vector3(0.1 * sx, 0.18, 0.32))
+			part(torso, box(0.38, 0.04, 0.04), m_dark, Vector3(0, 1.01, -0.16))
 		"bastion":
-			part(torso, sphere(0.26), m_acc, Vector3(0, 0.9, 0.02), Vector3(1.05, 0.85, 1.05))  # helmet
-			part(torso, box(0.34, 0.06, 0.06), m_dark, Vector3(0, 0.83, -0.2))  # visor
-			part(torso, sphere(0.17), m_acc, Vector3(-0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
-			part(torso, sphere(0.17), m_acc, Vector3(0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
-		"tusk":
-			part(torso, sphere(0.26), m_hero, Vector3(0, 0.9, 0.02), Vector3(1.05, 0.85, 1.05))
+			part(torso, sphere(0.28), m_acc, Vector3(0, 0.94, 0.02), Vector3(1.05, 0.85, 1.05))  # helmet
+			part(torso, box(0.36, 0.07, 0.06), toon(Color("9af0ff"), false, 0.5), Vector3(0, 0.87, -0.22))  # visor
+			part(torso, cyl(0.03, 0.03, 0.22, 8), m_gold, Vector3(0, 1.17, 0.02))
 			for sx in [-1.0, 1.0]:
-				part(torso, cyl(0.0, 0.06, 0.3), toon(Color("f3eee2")), Vector3(0.14 * sx, 0.74, -0.2), Vector3.ONE, Vector3(-1.2, 0, -0.3 * sx))
-			part(torso, sphere(0.19), m_hero, Vector3(-0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
-			part(torso, sphere(0.19), m_hero, Vector3(0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
+				part(torso, sphere(0.19), m_acc, Vector3(0.31 * sx, 0.55, 0), Vector3(1.2, 0.8, 1.2))
+			part(torso, cyl(0.32, 0.32, 0.06, 22), m_trim, Vector3(0, 0.38, 0.34), Vector3.ONE, Vector3(PI / 2, 0, 0))   # shield on the back
+			part(torso, cyl(0.13, 0.13, 0.07, 16), m_gold, Vector3(0, 0.38, 0.37), Vector3.ONE, Vector3(PI / 2, 0, 0))
+		"tusk":
+			part(torso, sphere(0.28), m_hero, Vector3(0, 0.94, 0.02), Vector3(1.05, 0.85, 1.05))
+			for sx in [-1.0, 1.0]:
+				part(torso, cyl(0.0, 0.06, 0.32), toon(Color("f3eee2")), Vector3(0.14 * sx, 0.77, -0.21), Vector3.ONE, Vector3(-1.2, 0, -0.3 * sx))
+				part(torso, sphere(0.2), m_hero, Vector3(0.31 * sx, 0.55, 0), Vector3(1.2, 0.8, 1.2))
+			part(torso, box(0.52, 0.1, 0.44), m_trim, Vector3(0, 0.05, 0))   # heavy belt
+			part(torso, sphere(0.08, 8), toon(Color("f3eee2")), Vector3(0, 0.06, -0.23))
 		"halo":
-			part(torso, sphere(0.25), m_acc, Vector3(0, 0.9, 0.02), Vector3(1.0, 0.9, 1.0))
-			part(torso, box(0.3, 0.12, 0.06), toon(Color("9af0ff"), false, 0.5), Vector3(0, 0.85, -0.2))
+			part(torso, sphere(0.27), m_acc, Vector3(0, 0.94, 0.02), Vector3(1.0, 0.9, 1.0))
+			part(torso, box(0.32, 0.12, 0.06), toon(Color("9af0ff"), false, 0.6), Vector3(0, 0.88, -0.22))
 			var hr := TorusMesh.new(); hr.inner_radius = 0.17; hr.outer_radius = 0.22
-			part(torso, hr, toon(hc, false, 1.2), Vector3(0, 1.26, 0), Vector3.ONE, Vector3.ZERO, "Halo")
-			part(torso, sphere(0.17), m_acc, Vector3(-0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
-			part(torso, sphere(0.17), m_acc, Vector3(0.3, 0.55, 0), Vector3(1.2, 0.8, 1.2))
-	# outfit pieces that give each hero its own silhouette
-	var m_trim := toon(hero_col.darkened(0.15)); mats.append(m_trim)
-	part(torso, cyl(0.255, 0.255, 0.07, 18), m_trim, Vector3(0, 0.08, 0))   # belt
-	match look:
-		"veil":
-			part(torso, box(0.1, 0.42, 0.03), m_acc, Vector3(-0.12, 0.4, 0.27), Vector3.ONE, Vector3(0.35, 0, -0.25))
-		"nyx":
+			part(torso, hr, toon(hc, false, 1.3), Vector3(0, 1.3, 0), Vector3.ONE, Vector3.ZERO, "Halo")
 			for sx in [-1.0, 1.0]:
-				part(torso, box(0.05, 0.26, 0.03), toon(Color("e8e0ff")), Vector3(0.16 * sx, 0.12, 0.26), Vector3.ONE, Vector3(0.5, 0, 0.6 * sx))   # back daggers
-		"kestrel":
-			part(torso, box(0.06, 0.62, 0.05), m_trim, Vector3(0.0, 0.36, -0.2), Vector3.ONE, Vector3(0, 0, 0.75))   # strap
-			part(torso, cyl(0.07, 0.07, 0.55, 10), toon(Color("7a5236")), Vector3(-0.14, 0.5, 0.28), Vector3.ONE, Vector3(0.2, 0, 0.3))   # quiver
-		"sage":
-			part(torso, box(0.2, 0.18, 0.1), toon(Color("8a5a35")), Vector3(0.22, 0.12, 0.12), Vector3.ONE, Vector3(0, 0.5, 0))   # satchel
-			part(torso, sphere(0.07, 8), toon(Color("9ee2a0"), false, 0.5), Vector3(0.24, 0.24, 0.14))
-		"marlow":
-			part(torso, box(0.42, 0.06, 0.05), toon(Color("5a4636")), Vector3(0, 0.3, -0.22), Vector3.ONE, Vector3(0, 0, -0.6))   # harness
-		"pyra":
-			for sx in [-1.0, 1.0]:
-				part(torso, cyl(0.08, 0.08, 0.42, 12), toon(Color("ff7a5a")), Vector3(0.1 * sx, 0.42, 0.3))   # fuel tanks
-				part(torso, cyl(0.05, 0.03, 0.08, 10), toon(Color("ffd23f"), false, 0.8), Vector3(0.1 * sx, 0.18, 0.3))
-		"bastion":
-			part(torso, cyl(0.3, 0.3, 0.06, 20), m_trim, Vector3(0, 0.38, 0.33), Vector3.ONE, Vector3(PI / 2, 0, 0))   # shield on the back
-			part(torso, cyl(0.12, 0.12, 0.07, 14), m_acc, Vector3(0, 0.38, 0.36), Vector3.ONE, Vector3(PI / 2, 0, 0))
-		"tusk":
-			part(torso, box(0.5, 0.1, 0.42), m_trim, Vector3(0, 0.05, 0))   # heavy belt
-			part(torso, sphere(0.08, 8), toon(Color("f3eee2")), Vector3(0, 0.06, -0.22))
-		"halo":
+				part(torso, sphere(0.18), m_acc, Vector3(0.31 * sx, 0.55, 0), Vector3(1.2, 0.8, 1.2))
 			var gen := TorusMesh.new(); gen.inner_radius = 0.12; gen.outer_radius = 0.18
-			part(torso, gen, toon(hero_col, false, 0.9), Vector3(0, 0.4, 0.33), Vector3.ONE, Vector3(PI / 2, 0, 0))   # dome generator
+			part(torso, gen, toon(hero_col, false, 1.0), Vector3(0, 0.4, 0.34), Vector3.ONE, Vector3(PI / 2, 0, 0))   # dome generator
 	var gun := Node3D.new(); gun.name = "Gun"; gun.position = Vector3(0.22, 0.32, -0.18); torso.add_child(gun)
-	# arms reach from the shoulders to the gun
-	var arm_r := part(torso, capsule(0.07, 0.42), m_body, Vector3(0.24, 0.48, -0.08), Vector3.ONE, Vector3(1.2, 0, 0.15), "ArmR")
-	var arm_l := part(torso, capsule(0.07, 0.46), m_body, Vector3(-0.1, 0.46, -0.16), Vector3.ONE, Vector3(1.25, 0, -0.7), "ArmL")
-	part(arm_r, sphere(0.075, 8), m_skin, Vector3(0, -0.23, 0))
-	part(arm_l, sphere(0.075, 8), m_skin, Vector3(0, -0.25, 0))
+	# arms: sleeve, a cuff in the trim colour and a glove
+	var arm_r := part(torso, capsule(0.075, 0.42), m_body, Vector3(0.25, 0.48, -0.08), Vector3.ONE, Vector3(1.2, 0, 0.15), "ArmR")
+	var arm_l := part(torso, capsule(0.075, 0.46), m_body, Vector3(-0.11, 0.46, -0.16), Vector3.ONE, Vector3(1.25, 0, -0.7), "ArmL")
+	for arm in [arm_r, arm_l]:
+		part(arm, cyl(0.082, 0.082, 0.06, 12), m_trim, Vector3(0, -0.15, 0))
+		part(arm, sphere(0.08, 10), m_leather, Vector3(0, -0.23, 0), Vector3(1.0, 1.1, 1.0))
 	gun_parts(gun, weapon, m_gun, m_dark, m_acc)
 	var muzzle := Node3D.new(); muzzle.name = "Muzzle"; muzzle.position = Vector3(0, 0.02, -0.75); gun.add_child(muzzle)
-	var shoulder := Node3D.new(); shoulder.name = "Shoulder"; shoulder.position = Vector3(-0.3, 0.78, 0.04); torso.add_child(shoulder)
-	# a folding cloth glider that pops out above the backpack
+	var shoulder := Node3D.new(); shoulder.name = "Shoulder"; shoulder.position = Vector3(-0.3, 0.8, 0.04); torso.add_child(shoulder)
+	# a paraglider canopy that unfolds above the pack: an arched wing in stripes, with lines down to the harness
 	var glider := Node3D.new(); glider.name = "Glider"; glider.position = Vector3(0, 0.62, 0.12); glider.visible = false
 	torso.add_child(glider)
-	var m_cloth := toon(Color("f3eee2")); var m_frame := toon(Color("5a4636"))
-	part(glider, box(0.86, 0.04, 0.72), m_cloth, Vector3(-0.42, 0.98, 0), Vector3.ONE, Vector3(0, 0, 0.16))
-	part(glider, box(0.86, 0.04, 0.72), m_cloth, Vector3(0.42, 0.98, 0), Vector3.ONE, Vector3(0, 0, -0.16))
-	part(glider, box(0.3, 0.05, 0.74), m_acc, Vector3(-0.66, 0.94, 0), Vector3.ONE, Vector3(0, 0, 0.16))
-	part(glider, box(0.3, 0.05, 0.74), m_acc, Vector3(0.66, 0.94, 0), Vector3.ONE, Vector3(0, 0, -0.16))
-	part(glider, box(1.8, 0.05, 0.06), m_frame, Vector3(0, 1.0, -0.36))
-	part(glider, cyl(0.025, 0.025, 0.9), m_frame, Vector3(-0.22, 0.52, 0), Vector3.ONE, Vector3(0, 0, -0.3))
-	part(glider, cyl(0.025, 0.025, 0.9), m_frame, Vector3(0.22, 0.52, 0), Vector3.ONE, Vector3(0, 0, 0.3))
+	var canopy := MeshInstance3D.new()
+	canopy.mesh = glider_mesh(Color("f3eee2"), team_col, hero_col)
+	canopy.material_override = vtoon_outlined()
+	canopy.position = Vector3(0, 1.05, 0.02)
+	glider.add_child(canopy)
+	var m_line := toon(Color("5a4636"), false)
+	for sx in [-1.0, -0.4, 0.4, 1.0]:
+		part(glider, cyl(0.008, 0.008, 1.0, 4), m_line, Vector3(0.42 * sx, 0.55, 0), Vector3.ONE, Vector3(0, 0, -0.62 * sx))
 	var ring := MeshInstance3D.new(); ring.name = "TeamRing"; ring.mesh = flat_quad(1.0)
 	ring.material_override = ring_mat(team_col, 0.16); ring.position = Vector3(0, 0.04, 0)
 	root.add_child(ring)
-	root.set_meta("mats", mats)
+	merge_static(torso)
+	merge_static(legs.get_node("LegL"))
+	merge_static(legs.get_node("LegR"))
+	root.set_meta("mats", collect_mats(root))
 	root.scale = Vector3.ONE * float(Data.CLASSES[cls]["scale"])
 	return root
+
+## A paraglider wing: arched across its span, rounded at the tips, striped in the given colours.
+static func glider_mesh(cloth: Color, stripe: Color, edge: Color) -> ArrayMesh:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var segs := 12
+	var span := 1.05
+	for side in [1.0, -1.0]:
+		for k in segs:
+			var x0 := -span + 2.0 * span * k / segs
+			var x1 := -span + 2.0 * span * (k + 1) / segs
+			var col: Color = stripe if k % 3 == 1 else (edge if k == 0 or k == segs - 1 else cloth)
+			var pts := []
+			for x in [x0, x1]:
+				var u: float = absf(x) / span
+				var y: float = -0.32 * u * u
+				var chord: float = 0.42 * sqrt(maxf(0.0, 1.0 - pow(u, 3.0))) + 0.05
+				pts.append(Vector3(x, y + side * 0.012, -chord * 0.55))
+				pts.append(Vector3(x, y + side * 0.012, chord * 0.45))
+			var n: Vector3 = Vector3.UP * side
+			st.set_color(col)
+			var order := [0, 2, 3, 0, 3, 1] if side > 0.0 else [0, 3, 2, 0, 1, 3]
+			for i in order:
+				st.set_normal(n)
+				st.add_vertex(pts[i])
+	return st.commit()
+
+static func vtoon_outlined() -> ShaderMaterial:
+	var m := vtoon()
+	m.set_shader_parameter("rim_amount", 0.5)
+	if _outline_mat == null:
+		_outline_mat = ShaderMaterial.new()
+		_outline_mat.shader = OUTLINE
+	m.next_pass = _outline_mat
+	return m
+
+## Bakes a node's plain mesh parts into one mesh per look, so a detailed character costs a handful
+## of draw calls. Named parts (Head, ArmR, Halo, ...) and anything with children stay separate.
+static func merge_static(node: Node3D) -> void:
+	var groups := {}
+	var drop: Array = []
+	for ch in node.get_children():
+		if not (ch is MeshInstance3D) or ch.get_child_count() > 0 or not String(ch.name).begins_with("@"):
+			continue
+		var mi: MeshInstance3D = ch
+		var mat: Material = mi.material_override
+		if mat == null or mi.mesh == null:
+			continue
+		var key := _mat_key(mat)
+		if not groups.has(key):
+			groups[key] = {"mat": mat, "st": SurfaceTool.new(), "n": 0}
+			(groups[key]["st"] as SurfaceTool).begin(Mesh.PRIMITIVE_TRIANGLES)
+		var st: SurfaceTool = groups[key]["st"]
+		for si in mi.mesh.get_surface_count():
+			st.append_from(mi.mesh, si, mi.transform)
+		groups[key]["n"] = int(groups[key]["n"]) + 1
+		drop.append(mi)
+	for key in groups:
+		var g: Dictionary = groups[key]
+		var mi := MeshInstance3D.new()
+		mi.mesh = (g["st"] as SurfaceTool).commit()
+		mi.material_override = g["mat"]
+		node.add_child(mi)
+	for d in drop:
+		node.remove_child(d)
+		d.free()
+
+static func _mat_key(m: Material) -> String:
+	if m is ShaderMaterial:
+		var sm := m as ShaderMaterial
+		return "%s|%s|%s|%s|%s|%s" % [sm.shader.resource_path, str(sm.get_shader_parameter("albedo")), str(sm.get_shader_parameter("glow")), str(sm.get_shader_parameter("rim_amount")), str(sm.next_pass != null), str(sm.get_shader_parameter("use_vertex_color"))]
+	return str(m.get_instance_id())
+
+## Every toon material in a model, for the hit flash.
+static func collect_mats(n: Node) -> Array:
+	var out: Array = []
+	var stack: Array = [n]
+	while not stack.is_empty():
+		var c: Node = stack.pop_back()
+		if c is MeshInstance3D and (c as MeshInstance3D).material_override is ShaderMaterial:
+			var sm := (c as MeshInstance3D).material_override as ShaderMaterial
+			if sm.shader == TOON and not out.has(sm):
+				out.append(sm)
+		for ch in c.get_children(): stack.append(ch)
+	return out
 
 static func m_trim0(c: Color) -> ShaderMaterial:
 	return toon(c.darkened(0.55).lerp(Color("3a2f2a"), 0.5))
@@ -236,63 +352,76 @@ static func m_trim0(c: Color) -> ShaderMaterial:
 ## Eyes, brows and a mouth: small shapes, but they carry a lot of character.
 static func _face(torso: Node3D, face: int, gender: int, m_dark: Material, m_skin: Material) -> void:
 	var shine := toon(Color.WHITE, false, 1.0)
-	var y := 0.845
+	var white := toon(Color("fbf8f2"), false, 0.1)
+	var iris := toon(Color("4a3a6a") if face != 4 else Color("6a3a2a"), false)
+	var y := 0.865
 	for sx in [-1.0, 1.0]:
-		var ex: float = 0.08 * sx
+		var ex: float = 0.088 * sx
 		match face:
-			0:   # bright eyes: big pupils with a shine
-				part(torso, sphere(0.045, 10), m_dark, Vector3(ex, y, -0.185), Vector3(0.9, 1.15, 0.6))
-				part(torso, sphere(0.014, 6), shine, Vector3(ex + 0.015, y + 0.02, -0.21))
-			1:   # calm: small dots
-				part(torso, sphere(0.032, 8), m_dark, Vector3(ex, y, -0.19), Vector3(1.0, 1.0, 0.6))
-			2:   # sleepy: half-closed
-				part(torso, box(0.06, 0.016, 0.02), m_dark, Vector3(ex, y - 0.005, -0.198), Vector3.ONE, Vector3(0, 0, 0.12 * sx))
+			0, 4:   # bright eyes (or fierce): white, iris, pupil and a shine
+				part(torso, sphere(0.05, 12), white, Vector3(ex, y, -0.2), Vector3(0.85, 1.15 if face == 0 else 0.9, 0.45))
+				part(torso, sphere(0.036, 10), iris, Vector3(ex + 0.004 * sx, y - 0.004, -0.218), Vector3(0.9, 1.1, 0.4))
+				part(torso, sphere(0.019, 8), m_dark, Vector3(ex + 0.004 * sx, y - 0.004, -0.226), Vector3(1.0, 1.1, 0.4))
+				part(torso, sphere(0.012, 6), shine, Vector3(ex + 0.016, y + 0.022, -0.232))
+				if face == 4:
+					part(torso, box(0.075, 0.02, 0.02), m_dark, Vector3(ex, y + 0.058, -0.212), Vector3.ONE, Vector3(0, 0, -0.38 * sx))
+				else:
+					part(torso, box(0.06, 0.014, 0.014), m_dark, Vector3(ex, y + 0.068, -0.21), Vector3.ONE, Vector3(0, 0, 0.12 * sx))
+			1:   # calm: soft dark eyes with a shine
+				part(torso, sphere(0.034, 10), m_dark, Vector3(ex, y, -0.215), Vector3(0.9, 1.1, 0.5))
+				part(torso, sphere(0.01, 6), shine, Vector3(ex + 0.012, y + 0.014, -0.232))
+				part(torso, box(0.055, 0.012, 0.012), m_dark, Vector3(ex, y + 0.06, -0.21))
+			2:   # sleepy: half-closed lids
+				part(torso, box(0.065, 0.016, 0.02), m_dark, Vector3(ex, y - 0.006, -0.222), Vector3.ONE, Vector3(0, 0, 0.12 * sx))
+				part(torso, box(0.05, 0.012, 0.012), m_dark, Vector3(ex, y + 0.05, -0.214), Vector3.ONE, Vector3(0, 0, 0.2 * sx))
 			3:   # cheerful: eyes that smile
-				var t := TorusMesh.new(); t.inner_radius = 0.022; t.outer_radius = 0.034; t.rings = 12; t.ring_segments = 6
-				part(torso, t, m_dark, Vector3(ex, y - 0.01, -0.195), Vector3(1.0, 1.0, 0.5), Vector3(PI / 2, 0, 0))
-				part(torso, box(0.075, 0.03, 0.03), m_skin, Vector3(ex, y - 0.03, -0.2))
-			4:   # fierce: sharp brows over the eyes
-				part(torso, sphere(0.035, 8), m_dark, Vector3(ex, y, -0.19), Vector3(1.0, 0.85, 0.6))
-				part(torso, box(0.07, 0.018, 0.02), m_dark, Vector3(ex, y + 0.05, -0.19), Vector3.ONE, Vector3(0, 0, -0.35 * sx))
-		if gender == 0 and face != 2:
-			# lashes
-			part(torso, box(0.022, 0.012, 0.012), m_dark, Vector3(ex + 0.035 * sx, y + 0.03, -0.19), Vector3.ONE, Vector3(0, 0, 0.6 * sx))
-	# a small mouth
+				var t := TorusMesh.new(); t.inner_radius = 0.024; t.outer_radius = 0.036; t.rings = 12; t.ring_segments = 6
+				part(torso, t, m_dark, Vector3(ex, y - 0.01, -0.215), Vector3(1.0, 1.0, 0.5), Vector3(PI / 2, 0, 0))
+				part(torso, box(0.08, 0.032, 0.03), m_skin, Vector3(ex, y - 0.032, -0.22))
+		if gender == 0 and face not in [2, 3]:
+			part(torso, box(0.024, 0.012, 0.012), m_dark, Vector3(ex + 0.04 * sx, y + 0.034, -0.21), Vector3.ONE, Vector3(0, 0, 0.6 * sx))   # lashes
+	part(torso, sphere(0.018, 6), m_skin, Vector3(0, 0.83, -0.232), Vector3(1.0, 0.8, 0.8))   # nose
 	if face in [0, 3]:
 		var sm := TorusMesh.new(); sm.inner_radius = 0.022; sm.outer_radius = 0.03; sm.rings = 12; sm.ring_segments = 6
-		part(torso, sm, m_dark, Vector3(0, 0.765, -0.192), Vector3(1.0, 1.0, 0.4), Vector3(PI / 2, 0, PI))
+		part(torso, sm, m_dark, Vector3(0, 0.79, -0.214), Vector3(1.0, 1.0, 0.4), Vector3(PI / 2, 0, PI))
 	else:
-		part(torso, box(0.04, 0.012, 0.012), m_dark, Vector3(0, 0.765, -0.2))
-	# cheeks
+		part(torso, box(0.045, 0.012, 0.012), m_dark, Vector3(0, 0.79, -0.222))
 	if gender != 1:
 		var blush := toon(Color("ff9a9a"), false)
 		for sx in [-1.0, 1.0]:
-			part(torso, sphere(0.028, 8), blush, Vector3(0.13 * sx, 0.79, -0.165), Vector3(1.0, 0.6, 0.4))
+			part(torso, sphere(0.03, 8), blush, Vector3(0.14 * sx, 0.815, -0.185), Vector3(1.0, 0.6, 0.4))
 
-## Hair that peeks out under whatever the hero wears on their head.
+## Hair that peeks out under whatever the hero wears on their head: a cap of hair, chunky fringe
+## locks over the forehead, then the style.
 static func _hair(torso: Node3D, style: int, gender: int, m_hair: Material) -> void:
-	# a fringe for most styles
-	if style != 5:
-		part(torso, sphere(0.2), m_hair, Vector3(0, 0.95, -0.06), Vector3(1.08, 0.45, 0.8))
+	if style == 5:
+		part(torso, sphere(0.242), m_hair, Vector3(0, 0.885, 0.02), Vector3(1.0, 0.82, 1.0))
+		return
+	part(torso, sphere(0.25), m_hair, Vector3(0, 0.91, 0.035), Vector3(1.05, 0.86, 1.02))
+	# fringe: a few locks sweeping across the forehead
+	for k in 4:
+		var x := -0.13 + k * 0.087
+		part(torso, cyl(0.0, 0.07, 0.17, 8), m_hair, Vector3(x, 0.98, -0.17), Vector3(1.0, 1.0, 0.7), Vector3(-2.4, 0, -0.25 + k * 0.17))
+	for sx in [-1.0, 1.0]:
+		part(torso, cyl(0.0, 0.06, 0.2, 8), m_hair, Vector3(0.2 * sx, 0.84, -0.06), Vector3(1.0, 1.0, 0.8), Vector3(PI, 0, 0.15 * sx))   # sideburn locks
 	match style:
-		0:   # short
-			part(torso, sphere(0.215), m_hair, Vector3(0, 0.88, 0.03), Vector3(1.04, 0.85, 1.0))
 		1:   # long
-			part(torso, sphere(0.215), m_hair, Vector3(0, 0.88, 0.03), Vector3(1.06, 0.88, 1.02))
-			part(torso, capsule(0.15, 0.5), m_hair, Vector3(0, 0.66, 0.1), Vector3(1.35, 1.0, 0.7))
-		2:   # ponytail
-			part(torso, sphere(0.215), m_hair, Vector3(0, 0.88, 0.03), Vector3(1.04, 0.86, 1.0))
-			part(torso, capsule(0.07, 0.36), m_hair, Vector3(0, 0.82, 0.26), Vector3.ONE, Vector3(0.5, 0, 0))
+			part(torso, capsule(0.17, 0.52), m_hair, Vector3(0, 0.7, 0.1), Vector3(1.35, 1.0, 0.7))
+			for sx in [-1.0, 1.0]:
+				part(torso, cyl(0.0, 0.07, 0.26, 8), m_hair, Vector3(0.16 * sx, 0.5, 0.14), Vector3.ONE, Vector3(PI, 0, 0.1 * sx))
+		2:   # ponytail with a tie
+			part(torso, sphere(0.05, 8), toon(Color("e0607e")), Vector3(0, 0.95, 0.24))
+			part(torso, capsule(0.075, 0.38), m_hair, Vector3(0, 0.82, 0.3), Vector3.ONE, Vector3(0.55, 0, 0))
+			part(torso, cyl(0.0, 0.07, 0.16, 8), m_hair, Vector3(0, 0.62, 0.38), Vector3.ONE, Vector3(PI - 0.4, 0, 0))
 		3:   # bun
-			part(torso, sphere(0.215), m_hair, Vector3(0, 0.88, 0.03), Vector3(1.04, 0.86, 1.0))
-			part(torso, sphere(0.1), m_hair, Vector3(0, 1.0, 0.18))
+			part(torso, sphere(0.11), m_hair, Vector3(0, 1.08, 0.16))
+			part(torso, cyl(0.06, 0.06, 0.03, 10), toon(Color("f2c84a")), Vector3(0, 1.04, 0.13), Vector3.ONE, Vector3(-0.6, 0, 0))
 		4:   # spiky
-			part(torso, sphere(0.215), m_hair, Vector3(0, 0.88, 0.03), Vector3(1.04, 0.85, 1.0))
-			for i in 5:
-				var a := -0.9 + i * 0.45
-				part(torso, cyl(0.0, 0.06, 0.18, 8), m_hair, Vector3(sin(a) * 0.12, 1.04, 0.04 + cos(a) * 0.04), Vector3.ONE, Vector3(-0.3, 0, -a * 0.8))
-		5:   # buzzed
-			part(torso, sphere(0.218), m_hair, Vector3(0, 0.86, 0.02), Vector3(1.0, 0.82, 1.0))
+			for i in 7:
+				var a := -1.2 + i * 0.4
+				part(torso, cyl(0.0, 0.065, 0.22, 8), m_hair, Vector3(sin(a) * 0.14, 1.08, 0.05 + cos(a) * 0.06), Vector3.ONE, Vector3(-0.35, 0, -a * 0.75))
+		_:   # short: a tuft on the crown
+			part(torso, cyl(0.0, 0.05, 0.12, 8), m_hair, Vector3(0.03, 1.12, 0.02), Vector3.ONE, Vector3(-0.3, 0, -0.5))
 
 ## The gun's pieces, shared by hunters and the weapons lying around on the islands.
 static func gun_parts(gun: Node3D, weapon: String, m_gun: Material, m_dark: Material, m_acc: Material) -> void:
@@ -776,25 +905,129 @@ static func mob(kind: String) -> Node3D:
 	return root
 
 # ---------------------------------------------------------------- props
-static func rock(rng: RandomNumberGenerator, s: float) -> Node3D:
+## A rough stone: a faceted lump, sometimes a smaller one beside it, often a cap of moss.
+static func rock(rng: RandomNumberGenerator, s: float, moss := Color("6f9a4a")) -> Node3D:
 	var root := Node3D.new()
 	var g := Color("8d8a86").lerp(Color("6f6a73"), rng.randf())
 	var m := toon(g, true)
+	m.set_shader_parameter("rim_amount", 0.5)
 	var sm := SphereMesh.new(); sm.radius = 0.5; sm.height = 1.0; sm.radial_segments = 7; sm.rings = 4
-	part(root, sm, m, Vector3(0, 0.45 * s, 0), Vector3(s * rng.randf_range(0.9, 1.15), s * rng.randf_range(0.9, 1.4), s * rng.randf_range(0.9, 1.15)), Vector3(0, rng.randf() * TAU, 0))
+	var ys := s * rng.randf_range(0.8, 1.3)
+	part(root, sm, m, Vector3(0, 0.42 * ys, 0), Vector3(s * rng.randf_range(0.9, 1.2), ys, s * rng.randf_range(0.9, 1.2)), Vector3(rng.randf_range(-0.2, 0.2), rng.randf() * TAU, rng.randf_range(-0.2, 0.2)))
 	if rng.randf() < 0.6:
-		part(root, sm, m, Vector3(rng.randf_range(-0.3, 0.3) * s, 0.2 * s, rng.randf_range(-0.3, 0.3) * s), Vector3.ONE * s * 0.55, Vector3(0, rng.randf() * TAU, 0))
+		part(root, sm, m, Vector3(rng.randf_range(-0.35, 0.35) * s, 0.2 * s, rng.randf_range(-0.35, 0.35) * s), Vector3.ONE * s * rng.randf_range(0.4, 0.6), Vector3(0, rng.randf() * TAU, 0))
+	if rng.randf() < 0.65:
+		var mm := SphereMesh.new(); mm.radius = 0.5; mm.height = 0.5; mm.radial_segments = 8; mm.rings = 3; mm.is_hemisphere = true
+		part(root, mm, toon(moss.darkened(rng.randf_range(0.0, 0.2)), false), Vector3(0, 0.78 * ys, 0), Vector3(s * 0.8, ys * 0.35, s * 0.8))
 	return root
 
-static func tree(rng: RandomNumberGenerator, leaf: Color) -> Node3D:
+## Trees in three styles: "round" (layered leafy canopy), "pine" (tiers of needles) and
+## "blossom" (pale pink canopy). Leaf colour comes from the biome; each canopy has a darker
+## underside and a lighter top so it reads as a volume from above.
+static func tree(rng: RandomNumberGenerator, leaf: Color, style := "round") -> Node3D:
 	var root := Node3D.new()
-	var mt := toon(Color("6b4a35"))
-	var ml := toon(leaf.lerp(Color("2f5a3a"), rng.randf() * 0.4))
-	var h := rng.randf_range(1.6, 2.4)
-	part(root, cyl(0.1, 0.15, h * 0.5), mt, Vector3(0, h * 0.25, 0))
-	part(root, cyl(0.0, 0.7, h * 0.55), ml, Vector3(0, h * 0.55, 0))
-	part(root, cyl(0.0, 0.52, h * 0.45), ml, Vector3(0, h * 0.82, 0))
+	var bark := Color("6b4a35").lerp(Color("4e3a30"), rng.randf())
+	var mt := toon(bark)
+	var h := rng.randf_range(1.7, 2.5)
+	var lean := Vector3(rng.randf_range(-0.12, 0.12), 0, rng.randf_range(-0.12, 0.12))
+	part(root, cyl(0.09, 0.16, h * 0.62), mt, Vector3(0, h * 0.31, 0), Vector3.ONE, lean)
+	for k in 3:
+		var a := TAU * k / 3.0 + rng.randf()
+		part(root, cyl(0.02, 0.08, 0.36, 6), mt, Vector3(cos(a) * 0.14, 0.08, sin(a) * 0.14), Vector3.ONE, Vector3(sin(a) * 1.1, 0, -cos(a) * 1.1))
+	var top := Vector3(lean.z * h * 0.6, h * 0.62, -lean.x * h * 0.6)
+	match style:
+		"pine":
+			var c0 := leaf.lerp(Color("2f5a3a"), 0.45)
+			var tiers := 4
+			for k in tiers:
+				var t := float(k) / tiers
+				var r := lerpf(0.85, 0.28, t)
+				var shade_c := c0.lerp(c0.lightened(0.25), t)
+				part(root, cyl(0.0, r, 0.75, 9), toon(shade_c), top + Vector3(0, -0.15 + k * 0.42, 0), Vector3.ONE, Vector3(0, rng.randf() * TAU, 0))
+			if leaf.v > 0.75:
+				part(root, cyl(0.0, 0.22, 0.3, 9), toon(Color("f4f8ff")), top + Vector3(0, -0.15 + tiers * 0.42 - 0.05, 0))
+		_:
+			var base := leaf if style != "blossom" else Color("ffb3d0").lerp(leaf, 0.15)
+			var dark := toon(base.lerp(Color("1f3a2a") if style != "blossom" else Color("c86a9a"), 0.35))
+			var mid := toon(base)
+			var light := toon(base.lightened(0.2).lerp(Color("fff6c0"), 0.08))
+			for m2 in [dark, mid, light]:
+				(m2 as ShaderMaterial).set_shader_parameter("rim_amount", 0.6)
+			var blobs := rng.randi_range(4, 6)
+			part(root, sphere(0.62, 12), dark, top + Vector3(0, 0.25, 0), Vector3(1.25, 0.8, 1.25))
+			for k in blobs:
+				var a := TAU * k / blobs + rng.randf_range(-0.3, 0.3)
+				var rr := rng.randf_range(0.32, 0.46)
+				part(root, sphere(rr, 10), mid, top + Vector3(cos(a) * 0.5, 0.42 + rng.randf_range(-0.1, 0.15), sin(a) * 0.5), Vector3.ONE)
+			part(root, sphere(0.5, 12), light, top + Vector3(0.08, 0.78, -0.06), Vector3(1.0, 0.8, 1.0))
+			if style == "blossom":
+				for k in 6:
+					part(root, sphere(0.06, 6), toon(Color("fff0f6"), false, 0.4), top + Vector3(rng.randf_range(-0.6, 0.6), rng.randf_range(0.5, 1.05), rng.randf_range(-0.6, 0.6)))
 	return root
+
+## Meshes for grass tufts and tall grass: a handful of tapered, slightly bent blades. UV.y runs
+## from root (0) to tip (1) for the grass shader's colour and sway.
+static var _grass_meshes := {}
+static func grass_mesh(tall: bool) -> ArrayMesh:
+	var key := "tall" if tall else "short"
+	if _grass_meshes.has(key):
+		return _grass_meshes[key]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var r := RandomNumberGenerator.new(); r.seed = 77 if tall else 33
+	var blades := 9 if tall else 6
+	for b in blades:
+		var a := r.randf() * TAU
+		var dist := r.randf_range(0.0, 0.32 if tall else 0.12)
+		var base := Vector3(cos(a) * dist, 0, sin(a) * dist)
+		var hgt := r.randf_range(0.7, 1.05) if tall else r.randf_range(0.16, 0.3)
+		var wid := r.randf_range(0.07, 0.1) if tall else r.randf_range(0.035, 0.05)
+		var face := r.randf() * TAU
+		var side := Vector3(cos(face), 0, sin(face))
+		var bend := Vector3(-sin(face), 0, cos(face)) * hgt * r.randf_range(0.15, 0.4)
+		var segs := 3 if tall else 2
+		for k in segs:
+			var t0 := float(k) / segs; var t1 := float(k + 1) / segs
+			var w0 := wid * (1.0 - t0); var w1 := wid * (1.0 - t1)
+			var p0 := base + Vector3(0, hgt * t0, 0) + bend * t0 * t0
+			var p1 := base + Vector3(0, hgt * t1, 0) + bend * t1 * t1
+			var v := [p0 - side * w0, p0 + side * w0, p1 + side * w1, p1 - side * w1]
+			var uv := [Vector2(0, t0), Vector2(1, t0), Vector2(1, t1), Vector2(0, t1)]
+			for idx in [0, 1, 2, 0, 2, 3]:
+				st.set_normal(Vector3.UP)
+				st.set_uv(uv[idx])
+				st.add_vertex(v[idx])
+	var m := st.commit()
+	_grass_meshes[key] = m
+	return m
+
+## A tiny flower: three petals around a dot, on a short stem (coloured per instance).
+static func flower_mesh() -> ArrayMesh:
+	if _grass_meshes.has("flower"):
+		return _grass_meshes["flower"]
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var top := 0.2
+	for k in 5:
+		var a := TAU * k / 5.0
+		var c := Vector3(0, top, 0)
+		var p1 := c + Vector3(cos(a - 0.45), 0.02, sin(a - 0.45)) * 0.07
+		var p2 := c + Vector3(cos(a), 0.03, sin(a)) * 0.11
+		var p3 := c + Vector3(cos(a + 0.45), 0.02, sin(a + 0.45)) * 0.07
+		for v in [c, p1, p2, c, p2, p3]:
+			st.set_normal(Vector3.UP); st.set_uv(Vector2(0.5, 1.0)); st.add_vertex(v)
+	var m := st.commit()
+	_grass_meshes["flower"] = m
+	return m
+
+static var GRASS: Shader = preload("res://shaders/grass.gdshader")
+static func grass_material(sway: float, flower := false) -> ShaderMaterial:
+	var m := ShaderMaterial.new()
+	m.shader = GRASS
+	m.set_shader_parameter("sway", sway)
+	if flower:
+		m.set_shader_parameter("tip_tint", Color(1.0, 1.0, 1.0))
+	return m
 
 const CHEST_COLS := [[Color("8a5a35"), Color("f2c84a")], [Color("3f6fb0"), Color("dfe8f2")], [Color("6a3fa8"), Color("f2c84a")]]
 

@@ -161,36 +161,14 @@ func next_id(prefix: String) -> String:
 # ------------------------------------------------------------------ setup
 func _build_env() -> void:
 	env = WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = T["sky"]
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = T["ambient"]
-	e.ambient_light_energy = 0.45
-	e.fog_enabled = true
-	e.fog_light_color = Color("1b2238")
-	e.fog_density = 0.0
-	e.fog_height = -2.0
-	e.fog_height_density = 0.18
-	e.glow_enabled = true
-	e.glow_intensity = 0.6
-	e.glow_bloom = 0.05
-	e.glow_hdr_threshold = 0.9
-	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	e.tonemap_exposure = 1.0
-	env.environment = e
+	var sky: Color = T["sky"]
+	var amb: Color = T["ambient"]
+	var cl: Array = T["clouds"]
+	env.environment = Look.environment({"top": sky.darkened(0.2), "mid": sky.lerp(amb, 0.35), "horizon": (cl[1] as Color).lerp(T["sun"], 0.5).lightened(0.15),
+		"below": cl[0], "ambient": amb, "ambient_energy": 0.5, "fog": (cl[1] as Color).lerp(sky, 0.3), "sun_col": T["sun"]})
 	add_child(env)
-	var sun := DirectionalLight3D.new()
-	sun.name = "Sun"
-	sun.rotation_degrees = Vector3(-55, -35, 0)
-	sun.light_color = T["sun"]
-	sun.light_energy = 0.9
-	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 60.0
-	sun.shadow_bias = 0.03
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-	sun.shadow_opacity = 0.85
-	add_child(sun)
+	var sun := Look.lights(self, T["sun"], 1.0, Vector3(-55, -35, 0), 60.0)
+	sun.shadow_opacity = 0.8
 
 func _build_shot_pool() -> void:
 	var mesh := Models.sphere(0.5, 10)
