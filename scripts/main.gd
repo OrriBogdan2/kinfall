@@ -158,6 +158,8 @@ func _ready() -> void:
 				current._take("plant"))
 	elif town_arg != "":
 		show_screen("town", {"mode": town_arg, "gid": "test"})
+	elif "--visit-test" in args:
+		show_screen("home", {"visit": Social.clean_island(Social.profile_doc()), "visit_id": "test"})    # test: visiting an island
 	elif "--creator" in args:
 		show_screen("hatch", {"create": true})    # test: the hunter creator
 	elif "--match" in args:

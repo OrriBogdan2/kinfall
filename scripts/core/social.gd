@@ -161,6 +161,10 @@ func publish_profile(force := false) -> void:
 	if not force and t - _last_publish < 20.0:
 		return
 	_last_publish = t
+	set_doc("profiles/" + me, profile_doc())
+
+## What other players see of your island when they visit.
+static func profile_doc() -> Dictionary:
 	var roster: Array = []
 	for r in Save.d["roster"].slice(0, 12):
 		Evo.ensure(r)
@@ -172,10 +176,10 @@ func publish_profile(force := false) -> void:
 		"buildings": Save.d.get("buildings", []), "bridges": Save.d.get("bridges", []),
 		"plots": Save.d["plots"], "gh_plots": Save.d.get("gh_plots", []),
 		"extracts": int(Save.d.get("extracts", 0)), "matches": int(Save.d.get("matches", 0)),
-		"guild": String(Save.d.get("guild_id", "")), "updated": now_ms(),
+		"guild": String(Save.d.get("guild_id", "")), "updated": Time.get_unix_time_from_system() * 1000.0,
 		"decor": Save.d.get("decor", {}).get("house", []),
 	}
-	set_doc("profiles/" + me, d)
+	return d
 
 ## cb gets [{id, d}] with d already cleaned (see clean_island).
 func list_islands(cb: Callable) -> void:
