@@ -54,45 +54,33 @@ func _ready() -> void:
 	Sfx.play_music("title")
 	Sfx.play_ambience("home")
 	var env := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color("141a2c")
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color("c4cbe6")
-	e.ambient_light_energy = 0.5
-	e.glow_enabled = true
-	e.glow_intensity = 0.7
-	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.environment = e
+	env.environment = Look.environment({"top": Color("1e2a5a"), "mid": Color("5a6ab8"), "horizon": Color("ffc89a"), "below": Color("3a3a6a"),
+		"ambient": Color("c4cbe6"), "ambient_energy": 0.55, "fog": Color("7a7ab8"), "fog_height": -5.0, "stars": 0.5})
 	add_child(env)
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-50, -30, 0)
-	sun.light_color = Color("ffe9cf"); sun.light_energy = 0.9
-	sun.shadow_enabled = true
-	add_child(sun)
+	Look.lights(self, Color("ffe9cf"), 1.0, Vector3(-45, -30, 0), 30.0)
 	fx = Fx.new(); add_child(fx)
 	cam = Camera3D.new(); cam.fov = 40.0; add_child(cam)
 	cam.position = cam_from
 	cam.look_at(Vector3(0, 0.6, 0))
 	# a small floating island
-	var g := Models.part(self, Models.cyl(3.4, 3.0, 0.5, 28), Models.toon(Color("5f8d45")), Vector3(0, -0.25, 0))
-	g.name = "Ground"
-	Models.part(self, Models.cyl(3.0, 1.2, 2.6, 28), Models.toon(Color("8b6d52")), Vector3(0, -1.8, 0))
-	Models.part(self, Models.cyl(1.2, 0.2, 1.6, 20), Models.toon(Color("5a4a44")), Vector3(0, -3.9, 0))
 	var drng := RandomNumberGenerator.new(); drng.seed = 3
+	var g := Models.float_island(drng, 3.4, 6.0, Color("6aa64a"), Color("9a7a5a"), Color("3a2f48"))
+	g.name = "Ground"
+	add_child(g)
 	for i in 5:
 		var a := TAU * i / 5.0 + 0.3
 		var fb := Models.flower_bed(drng, 4); fb.position = Vector3(cos(a) * 2.7, 0, sin(a) * 2.2); fb.scale = Vector3.ONE * 0.8
 		add_child(fb)
 	for i in 2:
-		var tr := Models.tree(drng, Color("5a9a4f")); tr.position = Vector3(-2.6 + i * 5.0, 0, -1.8); add_child(tr)
+		var tr := Models.tree(drng, Color("5a9a4f"), "round" if i == 0 else "blossom"); tr.position = Vector3(-2.4 + i * 4.6, 0, -1.6); add_child(tr)
 	var lamp := Models.lamp(); lamp.position = Vector3(2.4, 0, -1.2); add_child(lamp)
 	var sea := MeshInstance3D.new()
 	var pm := PlaneMesh.new(); pm.size = Vector2(4000, 4000)
 	sea.mesh = pm
 	var cm := ShaderMaterial.new(); cm.shader = load("res://shaders/clouds.gdshader")
+	cm.set_shader_parameter("deep", Color("2a2f62")); cm.set_shader_parameter("light", Color("9aa0d8")); cm.set_shader_parameter("glow_amount", 0.5)
 	sea.material_override = cm
-	sea.position = Vector3(0, -14.0, -20.0)
+	sea.position = Vector3(0, -16.0, -20.0)
 	add_child(sea)
 	var drift := RandomNumberGenerator.new(); drift.seed = 9
 	for k in 14:

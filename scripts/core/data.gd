@@ -377,7 +377,7 @@ const BUILDINGS := {
 		"desc": "If you go down, you still keep a third of the gems you were carrying."},
 	"board": {"name": "Challenge House", "isle": "main", "cost": 0, "rect": [31, 22, 33, 23], "free": true,
 		"desc": "Challenges to take on, their rewards, and what they unlock at the market."},
-	"ransom": {"name": "Ransom House", "isle": "main", "cost": 0, "rect": [39, 33, 41, 34], "free": true,
+	"ransom": {"name": "Ransom House", "isle": "main", "cost": 0, "rect": [42, 39, 44, 40], "free": true,
 		"desc": "Old Pell's place. Kin left behind on expeditions end up here, and it's where you deal with rivals who took yours."},
 	"hall": {"name": "Trophy Hall", "isle": "summit", "cost": 120, "rect": [47, 6, 49, 8],
 		"desc": "Keeps your records and every kin you've brought home."},

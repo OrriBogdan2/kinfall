@@ -825,6 +825,27 @@ func build_meshes() -> void:
 	_decorate()
 	_build_air()
 
+## Scatter batches split into 16x16-tile chunks, so the camera only draws the ones it can see.
+func _chunked(parent: Node3D, items: Array, mesh: Mesh, mat: Material, label: String) -> void:
+	var by := {}
+	for it in items:
+		var o: Vector3 = (it[0] as Transform3D).origin
+		var key := Vector2i(int(o.x) / 16, int(o.z) / 16)
+		if not by.has(key): by[key] = []
+		by[key].append(it)
+	for key in by:
+		var list: Array = by[key]
+		var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.mesh = mesh
+		mm.instance_count = list.size()
+		for k in list.size():
+			mm.set_instance_transform(k, list[k][0])
+			mm.set_instance_color(k, list[k][1])
+		var mi := MultiMeshInstance3D.new(); mi.multimesh = mm
+		mi.material_override = mat
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.name = "%s_%d_%d" % [label, key.x, key.y]
+		parent.add_child(mi)
+
 ## The shared material for every island surface (see shaders/terrain.gdshader).
 static var _terrain_mat: ShaderMaterial
 static func terrain_material() -> ShaderMaterial:
@@ -907,11 +928,11 @@ func _root(st: SurfaceTool, rr: RandomNumberGenerator, at: Vector3, r: float, le
 			if nrm.dot(Vector3(a.x - at.x, 0, a.z - at.z)) < 0.0: nrm = -nrm
 			st.set_normal(nrm)
 			st.set_color(ca); st.add_vertex(a)
-			st.set_color(cb); st.add_vertex(c)
 			st.set_color(ca); st.add_vertex(b)
-			st.set_color(ca); st.add_vertex(a)
-			st.set_color(cb); st.add_vertex(d)
 			st.set_color(cb); st.add_vertex(c)
+			st.set_color(ca); st.add_vertex(a)
+			st.set_color(cb); st.add_vertex(c)
+			st.set_color(cb); st.add_vertex(d)
 
 func _quad4(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, cols: Array) -> void:
 	st.set_normal(n)
@@ -1028,7 +1049,7 @@ func _build_air() -> void:
 		var col := MeshInstance3D.new()
 		col.mesh = Models.cyl(float(u["r"]), float(u["r"]) * 1.15, hgt, 18)
 		var mat := ShaderMaterial.new(); mat.shader = wsh
-		mat.set_shader_parameter("color", Color(1.0, 0.95, 0.75, 0.22))
+		mat.set_shader_parameter("color", Color(1.0, 0.95, 0.75, 0.1))
 		mat.set_shader_parameter("tiles", hgt / 2.5)
 		mat.set_shader_parameter("speed", 1.4)
 		col.material_override = mat
@@ -1086,66 +1107,40 @@ func _decorate() -> void:
 			wmi.material_override = wall_mat
 			deco.add_child(wmi)
 	# tall grass to hide in: dense clumps of long blades that sway
-	var blist: Array = []
+	var tall: Array = []
 	for bi in bush:
 		if kind[bi] == T_GROUND:
-			for _k in 4: blist.append(bi)
-	if blist.size() > 0:
-		var bm := MultiMesh.new(); bm.transform_format = MultiMesh.TRANSFORM_3D; bm.use_colors = true
-		bm.mesh = Models.grass_mesh(true)
-		bm.instance_count = blist.size()
-		for k in blist.size():
-			var bi: int = blist[k]
-			var bx := bi % w; var bz := bi / w
-			var p := Vector3(bx + drng.randf_range(0.1, 0.9), level[bi] * LEVEL, bz + drng.randf_range(0.1, 0.9))
-			var sc := drng.randf_range(0.85, 1.2)
-			bm.set_instance_transform(k, Transform3D(Basis(Vector3.UP, drng.randf() * TAU).scaled(Vector3(sc, sc * drng.randf_range(0.9, 1.25), sc)), p))
-			bm.set_instance_color(k, Color(_bio(bi)["leaf"]).lerp(Color(_bio(bi)["top"]), 0.35).darkened(drng.randf_range(0.0, 0.18)))
-		var bmi := MultiMeshInstance3D.new(); bmi.multimesh = bm
-		bmi.material_override = Models.grass_material(0.16)
-		bmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		bmi.name = "Bushes"
-		deco.add_child(bmi)
-	# short grass, flowers and pebbles over open ground, batched
+			var bx: int = bi % w; var bz: int = bi / w
+			for _k in 4:
+				var p := Vector3(bx + drng.randf_range(0.1, 0.9), level[bi] * LEVEL, bz + drng.randf_range(0.1, 0.9))
+				var sc := drng.randf_range(0.85, 1.2)
+				tall.append([Transform3D(Basis(Vector3.UP, drng.randf() * TAU).scaled(Vector3(sc, sc * drng.randf_range(0.9, 1.25), sc)), p),
+					Color(_bio(bi)["leaf"]).lerp(Color(_bio(bi)["top"]), 0.35).darkened(drng.randf_range(0.0, 0.18))])
+	_chunked(deco, tall, Models.grass_mesh(true), Models.grass_material(0.16), "Bushes")
+	# short grass, flowers and pebbles over open ground, batched in chunks so off-screen ones are skipped
 	var xs: Array = []
 	var fl: Array = []
 	var pb: Array = []
+	var fcols := [Color("fff3a8"), Color("ff9ac8"), Color("ffffff"), Color("b8a6ff"), Color("ffb070"), Color("8fd8ff")]
 	for z in h:
 		for x in w:
 			var i := idx(x, z)
 			if kind[i] != T_GROUND or bridge.has(i) or bush.has(i):
 				continue
 			var painted := paint.has(i)
-			for _k in (1 if painted else 3):
-				if drng.randf() < (0.15 if painted else 0.55):
-					xs.append([Vector3(x + drng.randf(), level[i] * LEVEL, z + drng.randf()), drng.randf(), i])
+			var tb := _bio(i)
+			for _k in (1 if painted else 2):
+				if drng.randf() < (0.15 if painted else 0.6):
+					var sc := 0.75 + drng.randf() * 0.6
+					xs.append([Transform3D(Basis(Vector3.UP, drng.randf() * TAU).scaled(Vector3(sc, sc, sc)), Vector3(x + drng.randf(), level[i] * LEVEL, z + drng.randf())),
+						Color(tb["top"]).lerp(Color(tb["top2"]), drng.randf()).lightened(0.05)])
 			if not painted and drng.randf() < 0.07:
-				fl.append([Vector3(x + drng.randf(), level[i] * LEVEL, z + drng.randf()), i])
+				fl.append([Transform3D(Basis(Vector3.UP, drng.randf() * TAU).scaled(Vector3.ONE * drng.randf_range(0.8, 1.3)), Vector3(x + drng.randf(), level[i] * LEVEL, z + drng.randf())),
+					fcols[drng.randi_range(0, fcols.size() - 1)]])
 			if drng.randf() < (0.06 if edge_dist(x, z, 2) < 2 else 0.015):
 				pb.append(Vector3(x + drng.randf(), level[i] * LEVEL, z + drng.randf()))
-	var mm := MultiMesh.new(); mm.transform_format = MultiMesh.TRANSFORM_3D; mm.use_colors = true; mm.mesh = Models.grass_mesh(false)
-	mm.instance_count = xs.size()
-	for k in xs.size():
-		var sc := 0.7 + float(xs[k][1]) * 0.6
-		mm.set_instance_transform(k, Transform3D(Basis(Vector3.UP, drng.randf() * TAU).scaled(Vector3(sc, sc, sc)), xs[k][0]))
-		var tb := _bio(int(xs[k][2]))
-		mm.set_instance_color(k, Color(tb["top"]).lerp(Color(tb["top2"]), drng.randf()).lightened(0.05))
-	var mmi := MultiMeshInstance3D.new(); mmi.multimesh = mm
-	mmi.material_override = Models.grass_material(0.08)
-	mmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	mmi.name = "Grass"
-	deco.add_child(mmi)
-	if fl.size() > 0:
-		var fcols := [Color("fff3a8"), Color("ff9ac8"), Color("ffffff"), Color("b8a6ff"), Color("ffb070"), Color("8fd8ff")]
-		var fm := MultiMesh.new(); fm.transform_format = MultiMesh.TRANSFORM_3D; fm.use_colors = true; fm.mesh = Models.flower_mesh()
-		fm.instance_count = fl.size()
-		for k in fl.size():
-			fm.set_instance_transform(k, Transform3D(Basis(Vector3.UP, drng.randf() * TAU).scaled(Vector3.ONE * drng.randf_range(0.8, 1.3)), fl[k][0]))
-			fm.set_instance_color(k, fcols[drng.randi_range(0, fcols.size() - 1)])
-		var fmi := MultiMeshInstance3D.new(); fmi.multimesh = fm
-		fmi.material_override = Models.grass_material(0.05, true)
-		fmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		deco.add_child(fmi)
+	_chunked(deco, xs, Models.grass_mesh(false), Models.grass_material(0.08), "Grass")
+	_chunked(deco, fl, Models.flower_mesh(), Models.grass_material(0.05, true), "Flowers")
 	if pb.size() > 0:
 		var pm2 := MultiMesh.new(); pm2.transform_format = MultiMesh.TRANSFORM_3D; pm2.use_colors = true
 		var sm := SphereMesh.new(); sm.radius = 0.1; sm.height = 0.12; sm.radial_segments = 6; sm.rings = 3

@@ -146,6 +146,8 @@ func _ready() -> void:
 	fx = Fx.new(); add_child(fx)
 	cam = CamRig.new(); add_child(cam)
 	cam.zoom_to = 0.8; cam.zoom = 0.8; cam.lead = 0.2
+	if "--home-wide" in OS.get_cmdline_user_args():
+		cam.zoom_to = 2.6; cam.zoom = 2.6     # test: the whole farm in one shot
 	var house := Models.house(); house.position = spots["house"]; add_child(house)
 	var pot := Models.cauldron(); pot.position = spots["pot"]; add_child(pot)
 	var stall := Models.stall(); stall.position = spots["stall"]; stall.rotation.y = PI * 0.5; add_child(stall)

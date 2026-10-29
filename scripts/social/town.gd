@@ -74,24 +74,10 @@ func _exit_tree() -> void:
 
 func _build_env() -> void:
 	var env := WorldEnvironment.new()
-	var e := Environment.new()
-	e.background_mode = Environment.BG_COLOR
-	e.background_color = Color("1a2236")
-	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	e.ambient_light_color = Color("c9cfe6")
-	e.ambient_light_energy = 0.45
-	e.glow_enabled = true
-	e.glow_intensity = 0.6
-	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
-	env.environment = e
+	env.environment = Look.environment({"top": Color("2a4a8a"), "mid": Color("6a8ad0"), "horizon": Color("ffd2a8"), "below": Color("3a3a6a"),
+		"ambient": Color("c9cfe6"), "ambient_energy": 0.5, "fog": Color("8a96c8"), "fog_height": -4.0, "stars": 0.0})
 	add_child(env)
-	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-52, -35, 0)
-	sun.light_color = Color("ffe6c8"); sun.light_energy = 0.88
-	sun.shadow_enabled = true
-	sun.directional_shadow_mode = DirectionalLight3D.SHADOW_ORTHOGONAL
-	sun.directional_shadow_max_distance = 45.0
-	add_child(sun)
+	Look.lights(self, Color("ffe6c8"), 0.95, Vector3(-52, -35, 0), 45.0)
 
 func _spot(kind: String, at: Vector3, label: String, reach := 2.2, data = null) -> void:
 	spots.append({"kind": kind, "pos": at, "label": label, "reach": reach, "data": data})

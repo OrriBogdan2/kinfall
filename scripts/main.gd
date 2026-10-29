@@ -65,6 +65,24 @@ func _ready() -> void:
 		print("CHECK DONE, failures: ", bad)
 		get_tree().quit()
 		return
+	if "--meshtime" in args:
+		# test: how long the big map takes to build its meshes, and how many draws it makes
+		var w := World.new()
+		add_child(w)
+		w.generate(5, World.BIG_SIZE, World.BIG_ISLANDS)
+		var t0 := Time.get_ticks_msec()
+		w.build_meshes()
+		var t1 := Time.get_ticks_msec()
+		var n := 0; var mm := 0; var inst := 0
+		var stack: Array = [w]
+		while not stack.is_empty():
+			var c: Node = stack.pop_back()
+			if c is MeshInstance3D: n += 1 + (1 if (c as MeshInstance3D).material_override and (c as MeshInstance3D).material_override.next_pass else 0)
+			if c is MultiMeshInstance3D: mm += 1; inst += (c as MultiMeshInstance3D).multimesh.instance_count
+			for ch in c.get_children(): stack.append(ch)
+		print("MESHTIME ms=%d mesh_draws=%d multimeshes=%d instances=%d" % [t1 - t0, n, mm, inst])
+		get_tree().quit()
+		return
 	if "--gentime" in args:
 		for sz in [[64, 7], [128, 16], [World.BIG_SIZE, World.BIG_ISLANDS]]:
 			var t0 := Time.get_ticks_msec()
