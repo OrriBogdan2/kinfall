@@ -75,8 +75,15 @@ func _process(dt: float) -> void:
 		ear_v -= clampf(-vy_prev * 2.0, 1.0, 6.0)
 	vy_prev = vy
 	var want := -clampf(vy * 0.035, -0.06, 0.12)
-	sq_v += ((want - sq) * 180.0 - sq_v * 14.0) * dt
-	sq += sq_v * dt
+	# springs stepped in small slices so a slow frame can't make them blow up
+	var left := minf(dt, 0.1)
+	while left > 0.0:
+		var h := minf(left, 1.0 / 120.0)
+		left -= h
+		sq_v += ((want - sq) * 180.0 - sq_v * 14.0) * h
+		sq += sq_v * h
+		ear_v += (-ear_flop * 120.0 - ear_v * 9.0) * h
+		ear_flop += ear_v * h
 	sq = clampf(sq, -0.18, 0.28)
 	# casting: a quick swell
 	var p: int = root.get_meta("pulse", 0)
@@ -125,8 +132,6 @@ func _process(dt: float) -> void:
 		tail.rotation.x = lerpf(tail.rotation.x, (0.5 if dazed else -0.1 * move_k), 1.0 - exp(-6.0 * dt))
 	# ears: spring that flops on landing, perks on a cast, twitches now and then
 	if ears:
-		ear_v += (-ear_flop * 120.0 - ear_v * 9.0) * dt
-		ear_flop += ear_v * dt
 		twitch_t -= dt
 		if twitch_t <= 0.0:
 			twitch_t = randf_range(2.0, 5.0)

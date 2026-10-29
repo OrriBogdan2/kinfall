@@ -1038,7 +1038,10 @@ func _try_ledge_grab(dt: float) -> void:
 		# a hard launch carries you a moment before you can catch anything
 		if vel.y > 1.0 or grap_cd > 0.0 or (m.time - kb_t < 0.3 and Vector2(vel.x, vel.z).length() > 8.0):
 			return
-		reach = LEDGE_REACH if over_void() else r + 0.45
+		# no magnet: you have to be below the edge, right up against the cliff, and pushing into it
+		if mv.length() < 0.3:
+			return
+		reach = r + 0.4
 	var void_here := over_void()
 	var best := {}; var bd := 1e9
 	for z in range(int(floor(pos.z - reach)), int(floor(pos.z + reach)) + 1):
@@ -1053,6 +1056,8 @@ func _try_ledge_grab(dt: float) -> void:
 			var d := Vector2(ex - pos.x, ez - pos.z).length()
 			var toward := Vector2(ex - pos.x, ez - pos.z)
 			if grounded and toward.dot(mv) <= 0.0:
+				continue
+			if not grounded and (toward.length() > 0.01 and toward.normalized().dot(mv.normalized()) < 0.35):
 				continue
 			if not grounded and not void_here:
 				# off the void, only a wall you're heading into and that rises above where you last stood:
