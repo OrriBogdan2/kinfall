@@ -2099,8 +2099,8 @@ func _process(delta: float) -> void:
 		if time < 0.5:
 			# boarding: start already behind the ship rather than swinging through it
 			cam.chase = 1.0; cam.yaw = cam.yaw_to; cam.zoom = cam.zoom_to
-		var fp := ship_pos() + sd * 30.0
-		cam.follow(Vector3(fp.x, (SHIP_Y - 8.0) / 0.6, fp.z), delta, false)
+		var fp := ship_pos() + sd * 27.0
+		cam.follow(Vector3(fp.x, (SHIP_Y - 11.0) / 0.6, fp.z), delta, false)
 	elif player and not player.out and not player.downed:
 		cam.chase_to = 0.0
 		cam.yaw_to = 0.0
