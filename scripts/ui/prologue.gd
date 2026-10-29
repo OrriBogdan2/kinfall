@@ -1,9 +1,10 @@
 extends Node3D
 ## The prologue: a short animated telling of how the Skylands came to be, before your first egg.
-## Six shots, each a little set far apart from the others, with the camera gliding through them
+## Seven shots, each a little set far apart from the others, with the camera gliding through them
 ## and a line of story under letterbox bars:
-##   1. the world whole  2. the Sundering breaks it apart  3. survivors take to the sky on ships
-##   4. the kin choose hunters  5. the Skylands rebuilt  6. hunters dropping into the wild isles
+##   1. the world whole  2. the Wyrm wakes and burns it  3. the Sundering breaks it apart
+##   4. survivors flee into the sky  5. the kin choose hunters  6. the Skylands rebuilt
+##   7. hunters dropping into the wild isles, while the Wyrm sleeps below
 ## then the KINFALL title card. Click, Space or Esc skips ahead; "Skip" ends it.
 
 signal finished
@@ -36,6 +37,13 @@ var bar_top: ColorRect
 var bar_bot: ColorRect
 var card: Control
 var done := false
+var advancing := false          # fading out to the next shot (the camera keeps moving meanwhile)
+var wyrm: Wyrm
+var wyrm_paths := {}            # event -> Curve3D the Wyrm flies along in that shot
+var towns: Array = []           # [island, local position] of each house and tower, to set alight
+var burning := 0
+var debris: Array = []          # falling rocks: {node, vel, spin}
+var deep_eyes: Node3D
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -68,23 +76,28 @@ func _ready() -> void:
 	_set_kin()
 	_set_home()
 	_set_drop()
+	_set_wyrm()
+	_sky_burn(0.0)            # remember the calm sky before anything tints it
+	Look.night(env, 0.0)
 	_build_ui()
 	# each shot: camera path (from, look, to, look), how long, and its line of story
 	var W: Vector3 = SETS["whole"]; var S: Vector3 = SETS["ships"]; var K: Vector3 = SETS["kin"]
 	var H: Vector3 = SETS["home"]; var D: Vector3 = SETS["drop"]
 	shots = [
 		{"a": W + Vector3(-46, 30, 62), "la": W + Vector3(0, 0, 0), "b": W + Vector3(-30, 22, 46), "lb": W + Vector3(0, 2, 0), "dur": 6.0,
-			"text": "Long ago, the world was whole."},
-		{"a": W + Vector3(-30, 22, 46), "la": W + Vector3(0, 0, 0), "b": W + Vector3(-34, 34, 70), "lb": W + Vector3(0, -22, 0), "dur": 8.0,
-			"text": "Then came the Sundering.\nThe land broke apart, and the old cities fell into the clouds.", "event": "break"},
-		{"a": S + Vector3(-34, 6, 26), "la": S + Vector3(0, 2, -10), "b": S + Vector3(-8, 9, 30), "lb": S + Vector3(10, 4, -14), "dur": 7.0,
-			"text": "The ones who survived took to the sky,\nin ships patched together from whatever was left."},
+			"text": "Long ago, the world was whole, and its people lived in peace."},
+		{"a": W + Vector3(-24, 5, 40), "la": W + Vector3(14, 6, -30), "b": W + Vector3(-30, 8, 44), "lb": W + Vector3(2, 12, 0), "dur": 8.0,
+			"text": "Then the Wyrm woke beneath the world.", "event": "wyrm"},
+		{"a": W + Vector3(-30, 22, 46), "la": W + Vector3(0, 0, 0), "b": W + Vector3(-34, 34, 70), "lb": W + Vector3(0, -22, 0), "dur": 9.0,
+			"text": "It tore the land apart.\nThe cities burned, and fell into the clouds.", "event": "break"},
+		{"a": S + Vector3(-34, 6, 26), "la": S + Vector3(0, 2, -10), "b": S + Vector3(-8, 9, 30), "lb": S + Vector3(10, 4, -14), "dur": 8.0,
+			"text": "The few who survived fled into the sky,\nin ships patched together from the wreckage.", "event": "flee"},
 		{"a": K + Vector3(0, 3.2, 9.5), "la": K + Vector3(0, 0.8, 0), "b": K + Vector3(-4.5, 2.4, 6.0), "lb": K + Vector3(0, 0.9, 0), "dur": 8.0,
 			"text": "They weren't alone up here. The kin, small bright creatures\nborn of the old world's light, began to choose hunters.", "event": "kin"},
 		{"a": H + Vector3(18, 16, 26), "la": H + Vector3(0, 0, 0), "b": H + Vector3(-10, 12, 24), "lb": H + Vector3(2, 0, -2), "dur": 7.0,
 			"text": "Now the Skylands are being rebuilt, one island at a time:\nfarms, bridges, homes."},
 		{"a": D + Vector3(-6, 30, 26), "la": D + Vector3(4, 8, -30), "b": D + Vector3(-2, 22, 10), "lb": D + Vector3(8, -6, -46), "dur": 8.0,
-			"text": "And hunters still fly out to the wild isles, to bring back\nwhat the fall left behind... and the kin they find there.", "event": "drop"},
+			"text": "Now hunters fly out to the wild isles for what the fall left behind.\nAnd far below the clouds, the Wyrm sleeps.", "event": "drop"},
 	]
 	_next_shot()
 
@@ -106,8 +119,10 @@ func _set_whole() -> void:
 			var hs := Models.house(); hs.scale = Vector3.ONE * 0.55
 			hs.position = Vector3(cos(a), 0, sin(a)) * r * 0.45; hs.rotation.y = rng.randf() * TAU
 			isl.add_child(hs)
+			towns.append([isl, hs.position + Vector3(0, 1.4, 0)])
 		var tw := Models.part(isl, Models.cyl(0.8, 1.0, 4.0, 8), Models.toon(Color("c9c0b0")), Vector3(rng.randf_range(-3, 3), 2.0, rng.randf_range(-3, 3)))
 		Models.part(isl, Models.cyl(0.0, 1.1, 1.4, 8), Models.toon(Color("c9604a")), tw.position + Vector3(0, 2.7, 0))
+		towns.append([isl, tw.position + Vector3(0, 3.2, 0)])
 		var dir := Vector3(offs[i].x, 0, offs[i].y).normalized() if i > 0 else Vector3.ZERO
 		pieces.append({"node": isl, "base": at, "dir": dir, "fall": rng.randf_range(4.0, 30.0) * (0.3 if i == 0 else 1.0),
 			"spin": rng.randf_range(-0.25, 0.25), "drift": rng.randf_range(6.0, 16.0)})
@@ -122,6 +137,8 @@ func _set_ships() -> void:
 		sh.scale = Vector3.ONE * (1.4 if i == 0 else 1.0)
 		add_child(sh)
 		ships.append({"node": sh, "speed": rng.randf_range(2.0, 3.5), "base": sh.position})
+		if i in [1, 3]:
+			_fire(sh, Vector3(0.6, 1.2, 0.8), 0.7)       # damaged in the escape, trailing smoke
 	for i in 8:
 		var isl := Scenery.island(rng, rng.randf_range(3.0, 7.0), true, rng.randf() < 0.5)
 		isl.position = o + Vector3(rng.randf_range(-60, 60), rng.randf_range(-22, -6), rng.randf_range(-90, -15))
@@ -203,6 +220,92 @@ func _set_drop() -> void:
 		h.rotation.y = atan2(-v.x, -v.z)
 		gliders.append({"node": h, "anim": HunterAnim.new(h), "vel": v, "start": h.position, "delay": i * 0.9})
 
+## The Wyrm and the paths it flies in its shots.
+func _set_wyrm() -> void:
+	wyrm = Wyrm.new()
+	add_child(wyrm)
+	wyrm.set_size(1.8)
+	wyrm.visible = false
+	var W: Vector3 = SETS["whole"]; var S: Vector3 = SETS["ships"]
+	# rises out of the clouds beyond the world, sweeps low over the towns breathing fire, climbs away
+	wyrm_paths["wyrm"] = _curve([W + Vector3(70, -90, -90), W + Vector3(55, -20, -60), W + Vector3(32, 12, -30), W + Vector3(10, 10, -6),
+		W + Vector3(-10, 9, 10), W + Vector3(-34, 22, 22), W + Vector3(-70, 40, 30)])
+	# far off behind the fleeing ships, a dark shape moving through the clouds
+	wyrm_paths["flee"] = _curve([S + Vector3(-110, 2, -120), S + Vector3(-30, 12, -100), S + Vector3(60, 6, -115), S + Vector3(140, -6, -130)])
+	# a pair of embers far down in the clouds, for the last shot
+	var D: Vector3 = SETS["drop"]
+	deep_eyes = Node3D.new()
+	deep_eyes.position = D + Vector3(26, -62, -95)
+	add_child(deep_eyes)
+	for sx in [-1.0, 1.0]:
+		Models.part(deep_eyes, Models.sphere(1.3, 12), Models.glow_mat(Color("ff7a2a")), Vector3(sx * 3.2, 0, 0), Vector3(1.4, 0.5, 1.0))
+	deep_eyes.scale = Vector3(1, 0.01, 1)
+
+func _curve(pts: Array) -> Curve3D:
+	var c := Curve3D.new()
+	for i in pts.size():
+		var p: Vector3 = pts[i]
+		var tin := Vector3.ZERO; var tout := Vector3.ZERO
+		if i > 0 and i < pts.size() - 1:
+			var tan := ((pts[i + 1] as Vector3) - (pts[i - 1] as Vector3)) * 0.25
+			tin = -tan; tout = tan
+		c.add_point(p, tin, tout)
+	return c
+
+## Flames and a smoke column on a node (a burning house, a damaged ship).
+func _fire(parent: Node3D, at: Vector3, size := 1.0) -> void:
+	var f := CPUParticles3D.new()
+	f.amount = 26; f.lifetime = 0.8
+	f.position = at
+	f.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE; f.emission_sphere_radius = 0.5 * size
+	f.direction = Vector3.UP; f.spread = 18.0
+	f.initial_velocity_min = 1.5 * size; f.initial_velocity_max = 3.5 * size
+	f.gravity = Vector3(0, 2.0, 0)
+	f.scale_amount_min = 0.6 * size; f.scale_amount_max = 1.3 * size
+	var fg := Gradient.new(); fg.set_color(0, Color(1, 0.9, 0.5, 1)); fg.set_color(1, Color(0.8, 0.15, 0.05, 0))
+	f.color_ramp = fg
+	f.mesh = _blob(0.35, true)
+	parent.add_child(f)
+	var sm := CPUParticles3D.new()
+	sm.amount = 22; sm.lifetime = 4.0
+	sm.position = at + Vector3(0, 0.8, 0)
+	sm.direction = Vector3(0.25, 1, 0); sm.spread = 12.0
+	sm.initial_velocity_min = 2.0; sm.initial_velocity_max = 3.5
+	sm.gravity = Vector3(0.6, 0.4, 0)
+	sm.scale_amount_min = 1.2 * size; sm.scale_amount_max = 2.6 * size
+	var sc := Curve.new(); sc.add_point(Vector2(0, 0.4)); sc.add_point(Vector2(1, 2.2))
+	sm.scale_amount_curve = sc
+	var sg := Gradient.new(); sg.set_color(0, Color(0.25, 0.2, 0.22, 0.75)); sg.set_color(1, Color(0.35, 0.32, 0.38, 0.0))
+	sm.color_ramp = sg
+	sm.mesh = _blob(0.6, false)
+	parent.add_child(sm)
+
+func _blob(r: float, glow: bool) -> SphereMesh:
+	var m := SphereMesh.new(); m.radius = r; m.height = r * 2.0; m.radial_segments = 8; m.rings = 4
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.vertex_color_use_as_albedo = true
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	if glow: mat.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.material = mat
+	return m
+
+## Tints the sky toward a burning red (0 = as it was).
+func _sky_burn(k: float) -> void:
+	var sm := env.sky.sky_material as ShaderMaterial if env and env.sky else null
+	if sm == null:
+		return
+	if not sm.has_meta("calm"):
+		sm.set_meta("calm", [sm.get_shader_parameter("top"), sm.get_shader_parameter("mid"), sm.get_shader_parameter("horizon")])
+	var calm: Array = sm.get_meta("calm")
+	var red := [Color("2a1020"), Color("7a2a2a"), Color("ff7a3a")]
+	for i in 3:
+		sm.set_shader_parameter(["top", "mid", "horizon"][i], (calm[i] as Color).lerp(red[i], k))
+
+func _wyrm_along(ev: String, k: float) -> void:
+	var c: Curve3D = wyrm_paths[ev]
+	wyrm.global_position = c.sample_baked(c.get_baked_length() * clampf(k, 0.0, 1.0), true)
+
 # ---------------------------------------------------------------- ui
 func _build_ui() -> void:
 	ui = CanvasLayer.new(); ui.layer = 5; add_child(ui)
@@ -253,8 +356,22 @@ func _next_shot() -> void:
 	if shot >= shots.size():
 		_title_card()
 		return
-	if shot == 2 and broke:
-		Look.night(env, 0.0)       # the storm has passed
+	advancing = false
+	var ev0 := String(shots[shot].get("event", ""))
+	if ev0 == "wyrm":
+		var c: Curve3D = wyrm_paths["wyrm"]
+		wyrm.teleport(c.sample_baked(0.0), c.sample_baked(1.0) - c.sample_baked(0.0))
+		wyrm.visible = true
+	elif ev0 == "flee":
+		var c2: Curve3D = wyrm_paths["flee"]
+		wyrm.teleport(c2.sample_baked(0.0), c2.sample_baked(1.0) - c2.sample_baked(0.0))
+		wyrm.breath.emitting = false
+		wyrm.visible = true
+		wyrm.flap_rate = 0.8
+	elif ev0 != "break":
+		wyrm.visible = false
+		Look.night(env, 0.0)
+		_sky_burn(0.0)
 	var s: Dictionary = shots[shot]
 	caption.text = String(s["text"])
 	caption.modulate.a = 0.0
@@ -265,13 +382,13 @@ func _next_shot() -> void:
 
 ## Fade out and on to the next shot.
 func _advance() -> void:
-	if done or shot >= shots.size():
+	if done or advancing or shot >= shots.size():
 		return
+	advancing = true      # don't trigger twice; the camera keeps gliding while it fades
 	var tw := create_tween()
 	tw.tween_property(caption, "modulate:a", 0.0, 0.35)
 	tw.parallel().tween_property(fade, "color:a", 1.0, 0.6)
 	tw.tween_callback(_next_shot)
-	shot_t = -999.0       # don't trigger twice while fading
 
 func _title_card() -> void:
 	caption.text = ""
@@ -320,7 +437,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("menu"):
 		_finish()
 	elif event.is_action_pressed("jump") or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
-		if shot < shots.size() and shot_t > 0.8:
+		if shot < shots.size() and shot_t > 0.8 and not advancing:
 			_advance()
 
 # ---------------------------------------------------------------- the show
@@ -329,8 +446,9 @@ func _process(delta: float) -> void:
 	shot_t += delta
 	if shot >= 0 and shot < shots.size():
 		var s: Dictionary = shots[shot]
-		var k := clampf(shot_t / float(s["dur"]), 0.0, 1.0)
-		var e := k * k * (3.0 - 2.0 * k)
+		# keeps going a little past the end while it fades out, so a click never snaps it back
+		var k := clampf(shot_t / float(s["dur"]), 0.0, 1.08)
+		var e := k * k * (3.0 - 2.0 * k) if k <= 1.0 else 1.0 + (k - 1.0)
 		var pos: Vector3 = (s["a"] as Vector3).lerp(s["b"], e)
 		var look: Vector3 = (s["la"] as Vector3).lerp(s["lb"], e)
 		if shake > 0.0:
@@ -339,8 +457,15 @@ func _process(delta: float) -> void:
 		cam.position = pos
 		cam.look_at(look, Vector3.UP)
 		_events(String(s.get("event", "")), shot_t, delta)
-		if shot_t >= float(s["dur"]):
+		if shot_t >= float(s["dur"]) and not advancing:
 			_advance()
+	for d in debris.duplicate():
+		var n: Node3D = d["node"]
+		d["vel"] += Vector3(0, -9.0, 0) * delta
+		n.position += (d["vel"] as Vector3) * delta
+		n.rotation += (d["spin"] as Vector3) * delta
+		if n.position.y < -90.0:
+			n.queue_free(); debris.erase(d)
 	flash.color.a = maxf(0.0, flash.color.a - delta * 1.6)
 	for sh in ships:
 		var n: Node3D = sh["node"]
@@ -352,15 +477,48 @@ func _process(delta: float) -> void:
 
 func _events(ev: String, st: float, delta: float) -> void:
 	match ev:
+		"wyrm":
+			var dur: float = shots[shot]["dur"]
+			_wyrm_along("wyrm", st / (dur + 0.6))
+			if st > 2.2 and wyrm.roar_k <= 0.0 and not wyrm.has_meta("roared"):
+				wyrm.set_meta("roared", true)
+				wyrm.roar()
+				shake = 0.9
+				Sfx.play("v_warden", null, 2.0, 0.0, 0.55)
+				Sfx.play("boom", null, -6.0, 0.0, 0.35)
+				var tk := create_tween()
+				tk.tween_method(_sky_burn, 0.0, 0.6, 3.0)
+			wyrm.breath.emitting = st > 3.4 and st < 5.6
+			if wyrm.breath.emitting and burning < towns.size() and randf() < delta * 6.0:
+				var tn: Array = towns[burning]
+				_fire(tn[0], tn[1], 1.3)
+				burning += 1
+				Sfx.play("boom", null, -14.0, 0.1, 1.4)
 		"break":
+			# the Wyrm circles overhead while the world comes apart
+			wyrm.visible = true
+			wyrm.breath.emitting = false
+			var ang := 2.2 + st * 0.42
+			wyrm.global_position = (SETS["whole"] as Vector3) + Vector3(cos(ang) * 21.0, 13.0 + sin(st * 0.8) * 3.0, sin(ang) * 21.0)
+			if burning < towns.size():
+				for i in range(burning, towns.size()):
+					_fire(towns[i][0], towns[i][1], 1.2)
+				burning = towns.size()
+			if st > 1.6 and randf() < delta * 14.0 and debris.size() < 70:
+				# rocks breaking off the edges and tumbling away
+				var p: Dictionary = pieces[rng.randi_range(0, pieces.size() - 1)]
+				var rock := Models.part(self, Models.box(rng.randf_range(0.5, 1.6), rng.randf_range(0.5, 1.4), rng.randf_range(0.5, 1.6)), Models.toon(Color("6b5246")),
+					(p["node"] as Node3D).position + Vector3(rng.randf_range(-9, 9), rng.randf_range(-3, 1), rng.randf_range(-9, 9)))
+				debris.append({"node": rock, "vel": Vector3(rng.randf_range(-3, 3), rng.randf_range(-1, 3), rng.randf_range(-3, 3)), "spin": Vector3(rng.randf_range(-3, 3), rng.randf_range(-3, 3), rng.randf_range(-3, 3))})
 			if st > 1.6 and not broke:
 				broke = true
 				flash.color.a = 0.85
 				shake = 1.4
 				Sfx.play("boom", null, 0.0, 0.0, 0.6)
 				Sfx.play("boom", null, -4.0, 0.0, 0.45)
+				Sfx.play("v_warden", null, 0.0, 0.0, 0.5)
 				var dk := create_tween()
-				dk.tween_method(func(v: float): Look.night(env, v), 0.0, 0.55, 1.5)
+				dk.tween_method(_sky_burn, 0.6, 1.0, 1.5)
 			if broke:
 				# the pieces drift apart, tilt and sink into the clouds
 				var k := clampf((st - 1.6) / 6.0, 0.0, 1.0)
@@ -393,7 +551,12 @@ func _events(ev: String, st: float, delta: float) -> void:
 					k.rotation.y = lerp_angle(k.rotation.y, atan2(-(kin_hunter.position.x - k.position.x), -(kin_hunter.position.z - k.position.z)), delta * 4.0)
 					k.get_node("Body").position.y = absf(sin(st * 4.0 + i)) * 0.12
 					k.set_meta("happy", true)
+		"flee":
+			_wyrm_along("flee", st / 8.0)
+			_sky_burn(maxf(0.0, 0.55 - st * 0.12))     # the fires fall behind them
 		"drop":
+			# the last thing you see: two embers opening far down in the clouds
+			deep_eyes.scale.y = lerpf(deep_eyes.scale.y, 1.0 if st > 4.8 else 0.01, minf(1.0, delta * 3.0))
 			for g in gliders:
 				var tt: float = st - float(g["delay"])
 				var h: Node3D = g["node"]

@@ -12,7 +12,7 @@ const DASH_SPEED := 19.0
 const DASH_TIME := 0.17
 const DASH_REGEN := 2.2
 const LEDGE_REACH := 2.8
-const LEDGE_CD := 1.2
+const LEDGE_CD := 0.45
 const FLOAT_SPEED := 12.0
 const GLIDE_FALL := 1.7
 const GLIDE_SPEED := 8.4
@@ -824,12 +824,17 @@ func _pad_fly(dt: float) -> void:
 	pos = np
 	if k >= 1.0:
 		pos = b
-		vel = Vector3(vel.x, 0.0, vel.z).limit_length(base_speed)
+		var ledge: bool = pad.get("ledge", false)
+		var hvel := Vector2(vel.x, vel.z)
+		if ledge and hvel.length() > 0.01:
+			# out of a mantle you keep running in the same direction, no stop
+			hvel = hvel.normalized() * float(pad.get("carry", base_speed))
+		vel = Vector3(hvel.x, 0.0, hvel.y).limit_length(base_speed * 1.3)
 		grounded = true
 		pad = {}
-		squash = 0.3
-		m.fx.dust(pos, 8)
-		m.sfx("land", pos, -8.0)
+		squash = 0.12 if ledge else 0.3
+		m.fx.dust(pos, 3 if ledge else 8)
+		m.sfx("land", pos, -12.0 if ledge else -8.0)
 
 func _physics(dt: float) -> void:
 	if pad.size() > 0:
@@ -899,7 +904,7 @@ func _physics(dt: float) -> void:
 		var wish := mv * spd
 		var over := cur > spd * 1.15
 		# in the air you keep most of the speed you left the ground with: steering bends it, slowly
-		var k := (2.6 if over else 16.0) if grounded else (0.7 if over else 2.2)
+		var k := (2.6 if over else 16.0) if grounded else (1.2 if over else 5.0)   # responsive air steering
 		hv += (wish - hv) * (1.0 - exp(-k * dt))
 	vel.x = hv.x; vel.z = hv.y
 	update_lip()
@@ -1111,7 +1116,7 @@ func _try_ledge_grab(dt: float) -> void:
 			push_t = 0.0
 			return
 		push_t += dt
-		if push_t < 0.2:
+		if push_t < 0.08:
 			return
 		reach = r + 0.6
 		max_rise = World.LEVEL * 4.0 + 0.1
@@ -1160,13 +1165,23 @@ func _try_ledge_grab(dt: float) -> void:
 			land = Vector3(lx, best["gz"], lz); break
 	if w.is_block(land.x, land.z):
 		return
-	grap = {"ex": best["ex"], "ez": best["ez"], "gz": best["gz"], "land": land, "t": 0.0, "fx": 0.0}
+	# Supervive-style mantle: no hang and no stop, one quick fluid vault from wherever you touched
+	# the cliff up and over onto the top, carrying your run on the far side
+	var rise: float = float(best["gz"]) - pos.y
+	var hv0 := Vector2(vel.x, vel.z)
+	var dir_in := Vector2(cos(a), sin(a))
+	var carry := clampf(hv0.dot(dir_in), 0.0, base_speed * 1.3)
+	var over := Vector3(land.x + dir_in.x * carry * 0.12, land.y, land.z + dir_in.y * carry * 0.12)
+	if not w.is_block(over.x, over.z) and absf(w.ground_at(over.x, over.z) - land.y) < 0.1:
+		land = over
+	pad = {"from": pos, "to": land, "t": 0.0, "dur": clampf(0.2 + rise * 0.035, 0.22, 0.6), "h": 0.55, "ledge": true, "carry": maxf(carry, base_speed * 0.8)}
+	grap = {}
 	grap_cd = LEDGE_CD
 	push_t = 0.0
 	gliding = false
 	roll_t = 0.0
-	vel = Vector3.ZERO
-	m.sfx("grab", pos, -2.0)
+	m.sfx("grab", pos, -8.0, 1.2)
+	m.fx.burst(pos + Vector3(0, 0.6, 0), Color("cfeaff"), 6, 2.0, 0.3, 0.0)
 	m.on_ledge_grab(self)
 
 ## Floating up the side: rise to the lip, drift onto it, then a small hop onto the top.

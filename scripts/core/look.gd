@@ -121,7 +121,7 @@ static func night(e: Environment, k: float) -> void:
 	if not sm.has_meta("day"):
 		sm.set_meta("day", [sm.get_shader_parameter("top"), sm.get_shader_parameter("mid"), sm.get_shader_parameter("horizon")])
 	var day: Array = sm.get_meta("day")
-	var nite := [Color("05060f"), Color("0d1230"), Color("2a2a55")]
+	var nite := [Color("161c44"), Color("2a3672"), Color("5a5a9c")]     # a bright, moonlit blue, never pitch black
 	for i in 3:
 		sm.set_shader_parameter(["top", "mid", "horizon"][i], (day[i] as Color).lerp(nite[i], k))
 	sm.set_shader_parameter("stars", 0.4 + k)

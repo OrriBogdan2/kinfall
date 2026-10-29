@@ -27,7 +27,7 @@ const TIPS := [
 	"A rival took your kin? You'll sense it when they're nearby. Take it back.",
 	"Wild kin with a ring under them can be caught. Weaken them first.",
 	"Jump off the skyship over an island nobody else picked. Space opens your glider early for a longer, slower last stretch.",
-	"One life per expedition. Fall into the abyss and it throws you back onto the last solid ground you stood on, for a third of your health.",
+	"One life per expedition. Fall off the islands and a gust from below carries you back up, for a third of your health.",
 	"A teammate is down? Stand next to them and hold F to bring them back.",
 	"Dash through a shot at the last moment and you take nothing.",
 	"Shrines on the islands give a short power-up. Stand by one and press F.",

@@ -471,8 +471,8 @@ func _build_env() -> void:
 	env_res = e
 	var sun := Look.lights(self, Color("ffe9cf"), 0.95, Vector3(-50, -30, 0), 45.0)
 	sun_l = sun
-	# the day picks up where you left it, based on the clock
-	day_t = fmod(Time.get_unix_time_from_system() / DAY_LEN, 1.0)
+	# you always arrive in the morning; the day runs on from there
+	day_t = 0.3
 	rain = CPUParticles3D.new()
 	rain.amount = 260; rain.lifetime = 0.9; rain.emitting = false
 	var dm := BoxMesh.new(); dm.size = Vector3(0.025, 0.4, 0.025)
@@ -584,7 +584,7 @@ func _update_sky(d: float) -> void:
 	_update_music(d)
 	day_t = fmod(day_t + d / DAY_LEN, 1.0)
 	var sun_h := sin((day_t - 0.25) * TAU)            # 1 at noon, -1 at midnight
-	var light := clampf(sun_h * 1.6 + 0.35, 0.0, 1.0)  # how much daylight
+	var light := clampf(sun_h * 1.6 + 0.6, 0.0, 1.0)   # how much daylight (night is short and moonlit)
 	var dusk := clampf(1.0 - absf(sun_h) * 3.0, 0.0, 1.0)
 	weather_t -= d
 	if weather_t <= 0.0:
@@ -596,14 +596,14 @@ func _update_sky(d: float) -> void:
 	rain.position = Vector3(ppos.x, 12.0, ppos.z)
 	var day_col := Color("ffe9cf").lerp(Color("ff9a6a"), dusk * 0.8)
 	sun_l.light_color = day_col.lerp(Color("8fa6e0"), 1.0 - light)
-	sun_l.light_energy = lerpf(0.1, 0.9, light) * (1.0 - rain_k * 0.35)
+	sun_l.light_energy = lerpf(0.4, 0.9, light) * (1.0 - rain_k * 0.35)
 	sun_l.rotation_degrees = Vector3(lerpf(-28.0, -62.0, maxf(sun_h, 0.0)), -30.0 + day_t * 80.0, 0)
-	env_res.ambient_light_color = Color("c4cbe6").lerp(Color("5a6aa8"), 1.0 - light).lerp(Color("ffc9a8"), dusk * 0.35)
-	env_res.ambient_light_energy = lerpf(0.2, 0.45, light) * (1.0 - rain_k * 0.2)
+	env_res.ambient_light_color = Color("c4cbe6").lerp(Color("8090c8"), 1.0 - light).lerp(Color("ffc9a8"), dusk * 0.35)
+	env_res.ambient_light_energy = lerpf(0.36, 0.45, light) * (1.0 - rain_k * 0.2)
 	env_res.adjustment_enabled = true
-	env_res.adjustment_brightness = lerpf(0.72, 1.0, light) * (1.0 - rain_k * 0.08)
-	env_res.adjustment_saturation = lerpf(0.8, 1.14, light) * (1.0 - rain_k * 0.15)
-	Look.night(env_res, 1.0 - light)
+	env_res.adjustment_brightness = lerpf(0.92, 1.0, light) * (1.0 - rain_k * 0.08)
+	env_res.adjustment_saturation = lerpf(0.95, 1.14, light) * (1.0 - rain_k * 0.15) * (1.65 if Look.full_renderer() else 1.0)
+	Look.night(env_res, (1.0 - light) * 0.75)
 	var lamp_on := clampf(1.2 - light * 1.6, 0.0, 1.0)
 	for l in lamps:
 		l.light_energy = 0.25 + lamp_on * 2.2

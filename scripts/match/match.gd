@@ -1391,45 +1391,37 @@ func on_fell(e: Ent) -> void:
 	elif e is Kin:
 		e.dead = true
 
-## One life, but harder to lose it: the abyss throws you back up onto the last solid ground you
-## stood on. It costs a third of your health. Blown off by another hunter, or with too little
-## health left, you land knocked down instead (they get the knock) and your squad or kin can still
-## get you up.
+## One life, but harder to lose it: fall into the abyss and a gust of wind from below carries you
+## back up in one arc onto the last solid ground you stood on. It costs a third of your health.
+## Blown off by another hunter, or with too little health left, you come back knocked down (they get
+## the knock) and your squad or kin can still get you up.
 func _abyss_rescue(h: Hunter, by: Ent) -> void:
 	var back: Vector3 = h.safe_pos
 	if back == Vector3.INF or world.is_void(back.x, back.z):
 		back = h.ai.get("land", world.spawns[0] if world.spawns.size() > 0 else world.random_ground())
-	h.teleport(back + Vector3(0, 0.05, 0))
-	h.vel = Vector3.ZERO
-	h.gliding = false; h.grap = {}; h.pad = {}; h.charge = {}; h.roll_t = 0.0; h.shot_down = false
-	h.grounded = true
-	fx.ring(h.pos + Vector3(0, 0.05, 0), 2.2, Color("bfe9ff"), 0.5)
-	fx.burst(h.pos + Vector3(0, 0.6, 0), Color("bfe9ff"), 30, 6.0, 0.6, -2.0)
-	sfx("revive", h.pos, 0.0)
+	h.gliding = false; h.grap = {}; h.charge = {}; h.roll_t = 0.0; h.shot_down = false
+	h.grounded = false
+	var rise := back.y - h.pos.y
+	h.pad = {"from": h.pos, "to": back, "t": 0.0, "dur": 1.15, "h": 3.0 + rise * 0.15, "ledge": true, "carry": 0.0}
+	fx.burst(h.pos + Vector3(0, 1.0, 0), Color("dff3ff"), 26, 9.0, 0.7, -4.0, 1.2, Vector3.UP, 30.0)
+	sfx("whoosh", h.pos, 0.0, 0.7)
 	var credit: Ent = by.owner_h if by is Kin and by.owner_h else by
 	var pushed: bool = credit is Hunter and credit != h and (credit as Hunter).team != h.team
 	var cost := h.max_hp * 0.34
 	if h.downed:
-		# already down: thrown back still down, a good deal closer to bleeding out
 		h.down_hp -= Data.MATCH["down_hp"] * 0.35
 		h.self_up = 0.0
 		return
 	if pushed or h.hp <= cost + 1.0:
 		h.armor = 0.0
 		knock(h, by, {"src": "abyss"})
-		if h == player and hud:
-			hud.toast("The abyss threw you back, but you're down", Color("ffb0a0"))
 	else:
 		h.hp -= cost
 		h.armor = 0.0
-		h.stun_t = maxf(h.stun_t, 0.5)
-		h.inv_t = maxf(h.inv_t, 1.0)
-		add_feed("%s was thrown back by the abyss" % h.pname)
+		h.regen_wait = maxf(h.regen_wait, 4.0)
+		h.inv_t = maxf(h.inv_t, 1.4)
 		if h == player:
-			if hud:
-				hud.flash(Color("bfe9ff"), 0.3)
-				hud.toast("The abyss threw you back  ·  -%d health" % int(cost), Color("cfeaff"))
-			cam.add_trauma(0.4)
+			cam.add_trauma(0.3)
 
 func S_dev_god() -> bool:
 	return bool(opts.get("god", false)) or bool(opts.get("tutorial", false)) or bool(opts.get("training", false)) or Game.god
