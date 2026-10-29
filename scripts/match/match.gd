@@ -2046,7 +2046,11 @@ func _process(delta: float) -> void:
 			cam.zoom_to = lerpf(1.15, 2.3, hk)
 			cam.top_to = clampf(hk * 1.6, 0.0, 1.0)
 		else:
-			cam.zoom_to = 1.0
+			# high in the air or out over the abyss the camera pulls back so you can see where you'll land
+			var g2: float = world.ground_at(player.pos.x, player.pos.z)
+			var above := (player.pos.y - g2) if g2 > World.VOID + 1.0 else 8.0
+			var air := 0.0 if player.grounded else clampf(above / 10.0, 0.0, 1.0)
+			cam.zoom_to = 1.0 + air * (0.3 if player.gliding else 0.18)
 			cam.top_to = 0.0
 		cam.follow(player.prev.lerp(player.pos, alpha), delta, not player.dropping)
 	elif player and (player.downed or player.out):

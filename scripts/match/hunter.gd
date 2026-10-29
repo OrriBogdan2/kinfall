@@ -2,7 +2,12 @@ class_name Hunter
 extends Ent
 ## A player or bot hunter: movement, weapon, dash, jump, ledge grab, class signature, downed state.
 
-const JUMP_V := 10.8
+# Weightier vertical movement: stronger gravity, a quicker jump to the same height (about two and a
+# half terraces), falls that speed up and carry the speed you ran off the edge with.
+const H_GRAV := 36.0
+const FALL_MULT := 1.55
+const TERMINAL := 26.0
+const JUMP_V := 11.8
 const DASH_SPEED := 19.0
 const DASH_TIME := 0.17
 const DASH_REGEN := 2.2
@@ -644,7 +649,7 @@ func _tick_drink(dt: float) -> void:
 func launch_to(target: Vector3, t: float) -> void:
 	vel.x = (target.x - pos.x) / t
 	vel.z = (target.z - pos.z) / t
-	vel.y = (target.y - pos.y) / t + 0.5 * GRAV * t
+	vel.y = (target.y - pos.y) / t + 0.5 * H_GRAV * t
 	grounded = false
 	fly_t = t + 0.3
 	roll_t = 0.0
@@ -839,7 +844,8 @@ func _physics(dt: float) -> void:
 	else:
 		var wish := mv * spd
 		var over := cur > spd * 1.15
-		var k := (2.6 if over else 16.0) if grounded else (1.5 if over else 3.5)
+		# in the air you keep most of the speed you left the ground with: steering bends it, slowly
+		var k := (2.6 if over else 16.0) if grounded else (0.7 if over else 2.2)
 		hv += (wish - hv) * (1.0 - exp(-k * dt))
 	if dropping and drop_from != Vector2.INF:
 		# the drop only lets you pick a spot near where you jumped: steering pushes against the edge of a small circle
@@ -857,7 +863,8 @@ func _physics(dt: float) -> void:
 		var sink := DROP_FALL if dropping else (3.0 if glide_fuel <= 0.001 else glide_fall(Vector2(vel.x, vel.z).length()))
 		vel.y = lerpf(vel.y, -sink, 1.0 - exp(-4.0 * dt))
 	elif not grounded:
-		vel.y -= GRAV * (1.3 if vel.y < 0.0 and fly_t <= 0.0 else 1.0) * dt
+		vel.y -= H_GRAV * (FALL_MULT if vel.y < 0.0 and fly_t <= 0.0 else 1.0) * dt
+		vel.y = maxf(vel.y, -TERMINAL)
 	var guard := grounded and roll_t <= 0.0 and hv.length() <= spd * 1.25
 	# horizontal with walls; mantle onto ledges you run or fall into
 	var x0 := pos.x; var z0 := pos.z
@@ -875,7 +882,7 @@ func _physics(dt: float) -> void:
 	elif b2 > 0.0 or b2 == -1.0: vel.z = 0.0 if b2 == -1.0 else vel.z * -0.1
 	if step_up > 0.0 and mv.length() > 0.3:
 		# walking into a single terrace hops you up it instead of stopping you dead
-		vel.y = sqrt(2.0 * GRAV * (step_up - pos.y + 0.18))
+		vel.y = sqrt(2.0 * H_GRAV * (step_up - pos.y + 0.18))
 		grounded = false
 		coyote = 0.0
 	elif step_up == 0.0 and (b1 > 0.0 or b2 > 0.0) and hv.length() > 1.0:
@@ -921,7 +928,7 @@ func _physics(dt: float) -> void:
 	wall_touch_t = maxf(0.0, wall_touch_t - dt)
 	wslam_t = maxf(0.0, wslam_t - dt)
 	if not grounded and not dropping and blk > 0.0 and blk < pos.y + 2.4 and mantle_cd <= 0.0 and blk - pos.y < World.BLOCK_H - 0.1:
-		vel.y = sqrt(2.0 * GRAV * (blk - pos.y + 0.3))
+		vel.y = sqrt(2.0 * H_GRAV * (blk - pos.y + 0.3))
 		mantle_cd = 0.45
 	var g := ground()
 	if grounded and g < pos.y - 0.05:
@@ -951,6 +958,13 @@ func _physics(dt: float) -> void:
 				squash = 0.35
 				land_t = 0.2
 				m.sfx("land", pos, -10.0)
+			if fv < -17.0:
+				# a long drop lands hard: a thud, a ring of dust and a short stagger
+				m.fx.dust(pos, 12)
+				m.fx.ring(pos + Vector3(0, 0.05, 0), 1.4, Color(1, 1, 1, 0.5), 0.3)
+				squash = 0.5
+				land_t = 0.32
+				if is_local(): m.shake(0.18, pos)
 			if jump_buf > 0.0:
 				jump_buf = 0.0
 				vel.y = JUMP_V
@@ -999,7 +1013,7 @@ func _update_glide(dt: float) -> void:
 		gliding = true
 		if below_lip:
 			# feathering: snapping the glider open below the lip catches an updraft back up to it
-			vel.y = clampf(sqrt(2.0 * GRAV * maxf(0.2, lip_y - pos.y + 0.9)), 4.0, 15.0)
+			vel.y = clampf(sqrt(2.0 * H_GRAV * maxf(0.2, lip_y - pos.y + 0.9)), 4.0, 16.0)
 			glide_fuel = maxf(0.0, glide_fuel - 0.2)
 			m.fx.burst(pos + Vector3(0, 1.2, 0), Color("cfeaff"), 12, 3.5, 0.4, -2.0, 0.8)
 			m.sfx("glide", pos, -2.0, 1.4)
