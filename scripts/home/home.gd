@@ -201,6 +201,17 @@ func _ready() -> void:
 			get_tree().create_timer(11.5).timeout.connect(func(): _care_bath(ck))
 			get_tree().create_timer(19.0).timeout.connect(func(): _care_nap(ck); print("CARETEST ", ck["needs"], " known ", ck["known"], " items ", Save.d["items"]))
 			get_tree().create_timer(22.0).timeout.connect(func(): print("CARETEST2 nap ", _kin_entry(ck).get("nap_t", 0), " acc ", ck.get("acc", "")); get_tree().quit())
+		if a == "--hatch-nest":
+			# test: two kin with an egg ready; stand by the nest and hatch it
+			var ka := Save.active_kin()
+			var kb := Save.new_kin("puddlet", "Drip")
+			kb["level"] = 6; kb["trust"] = 60.0
+			Save.d["roster"].append(kb)
+			Save.d["egg"] = {"a": ka["uid"], "b": kb["uid"], "m": 0, "t": 0.0}
+			_spawn_kin()
+			_refresh_nest()
+			ppos = NEST_AT + Vector3(0, 0, 2.0)
+			get_tree().create_timer(1.0).timeout.connect(_hatch_nest_egg)
 		if a.begins_with("--drill="):
 			var dstat := a.substr(8)
 			get_tree().create_timer(0.4).timeout.connect(func(): _start_drill(Save.active_kin(), dstat))
@@ -2764,18 +2775,32 @@ func _hatch_nest_egg() -> void:
 	if baby.get("shimmer", false): Care.dex_mark(baby["species"], "shimmer")
 	Save.save_game()
 	building_now = true
-	var tw := create_tween()
-	var sh: Node3D = nest.get_node("Shell")
-	for i in 4:
-		tw.tween_property(sh, "rotation:z", 0.3, 0.07)
-		tw.tween_property(sh, "rotation:z", -0.3, 0.07)
-	tw.tween_callback(func():
-		fx.burst(NEST_AT + Vector3(0, 0.5, 0), Data.KIN[baby["species"]]["color"], 34, 4.0, 0.7, 3.0)
-		fx.ring(NEST_AT, 2.0, Color("fff6c0"), 0.4)
-		Sfx.play("unlock")
-		Sfx.play("kin_happy", null, 0.0, 0.1)
+	# the egg hatches in stages: wiggles, cracks, a peek, then the kin pops out
+	var shell_c: Color = Color(Data.KIN[a["species"]]["color"]).lightened(0.15)
+	if is_instance_valid(nest):
+		nest.get_node("Shell").visible = false
+	var eh := EggHatch.new(baby["species"], fx, 0.26, 0.36, 1.0, baby)
+	eh.shell_col = shell_c
+	eh.spot_col = Color("fff6c0")
+	eh.position = NEST_AT
+	eh.scale = Vector3.ONE * 1.2
+	add_child(eh)
+	eh.start()
+	var zoom0: float = cam.zoom_to
+	cam.zoom_to = 0.5
+	eh.done.connect(func():
+		var land: Vector3 = eh.kin_node.global_position if is_instance_valid(eh.kin_node) else NEST_AT + Vector3(0.8, 0, 0.6)
+		land.y = 0.0
+		if is_instance_valid(eh.kin_node): eh.kin_node.queue_free()
+		eh.queue_free()
 		_refresh_nest()
 		building_now = false
+		cam.zoom_to = zoom0
+		_spawn_kin()
+		var ke := _kin_entry(baby)
+		if not ke.is_empty():
+			ke["pos"] = Vector3(land.x, ke["pos"].y, land.z)
+			(ke["node"] as Node3D).position = ke["pos"]
 		_name_baby(baby))
 
 func _name_baby(baby: Dictionary) -> void:
@@ -2798,10 +2823,12 @@ func _name_baby(baby: Dictionary) -> void:
 		baby["name"] = ne.text.strip_edges() if ne.text.strip_edges() != "" else String(baby["name"])
 		Save.save_game()
 		_close_panel()
+		var old := _kin_entry(baby)
+		var spot: Vector3 = old["pos"] if not old.is_empty() else NEST_AT + Vector3(0.8, 0, 0.6)
 		_spawn_kin()
 		var ke := _kin_entry(baby)
 		if not ke.is_empty():
-			ke["pos"] = NEST_AT + Vector3(0.8, 0, 0.6)
+			ke["pos"] = spot
 			(ke["node"] as Node3D).position = ke["pos"]
 			_say(ke, KinSpeak.say(baby, "excited", "hello"), 3.0), 220))
 

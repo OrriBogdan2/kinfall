@@ -28,10 +28,10 @@ var story_box: Control
 var warmth := 0.0
 var warm_bar: Control
 var hover := -1
-var cracks: Array = []
 var auto_warm := false        # test hook: hold the warmth on by itself
 var t := 0.0
 var hatch_t := 0.0
+var warm_step := 0
 var kin_node: Node3D
 var ui: CanvasLayer
 var root_ui: Control
@@ -102,7 +102,8 @@ func _ready() -> void:
 			if ch is MeshInstance3D and (ch as MeshInstance3D).mesh is SphereMesh:
 				ch.visible = false
 		holder.add_child(nest)
-		var egg := _egg(sp["color"], sp["belly"])
+		var egg := EggHatch.new(d["species"], fx, 0.32, 0.42, 1.1)
+		egg.hop_out = 0.35
 		egg.position = Vector3(0, 0.12, 0)
 		holder.add_child(egg)
 		eggs.append({"holder": holder, "egg": egg, "base": holder.position, "data": d})
@@ -119,20 +120,6 @@ func _ready() -> void:
 			_end_intro()
 			_pick(i); _pick(i)
 			auto_warm = true
-
-func _egg(c: Color, spot: Color) -> Node3D:
-	var root := Node3D.new()
-	var shell := Node3D.new(); shell.name = "Shell"; root.add_child(shell)
-	var m := Models.toon(c.lightened(0.15))
-	var ms := Models.toon(spot)
-	var top := Models.part(shell, Models.sphere(0.32, 18), m, Vector3(0, 0.42, 0), Vector3(0.92, 1.25, 0.92))
-	top.name = "Egg"
-	var rng := RandomNumberGenerator.new(); rng.seed = int(c.r * 1000)
-	for i in 6:
-		var a := rng.randf() * TAU; var y := rng.randf_range(0.2, 0.7)
-		var p := Vector3(cos(a) * 0.27, y, sin(a) * 0.27)
-		Models.part(shell, Models.sphere(0.06, 8), ms, p, Vector3(1, 1, 0.5))
-	return root
 
 func _build_ui() -> void:
 	ui = CanvasLayer.new(); add_child(ui)
@@ -317,7 +304,7 @@ func _start_hatch() -> void:
 func _process(delta: float) -> void:
 	t += delta
 	cam.position = cam.position.lerp(cam_to, minf(1.0, delta * 2.0))
-	cam.look_at(Vector3(0, 0.25 if stage != "pick" else 0.55, 0.5))
+	cam.look_at(Vector3(0, (0.25 if stage != "pick" else 0.55) if stage != "name" else -0.55, 0.5))
 	if stage == "pick":
 		var hv := _egg_under_mouse()
 		if hv != hover:
@@ -331,19 +318,33 @@ func _process(delta: float) -> void:
 		var holding := auto_warm or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_action_pressed("jump")
 		warmth = clampf(warmth + delta * (0.32 if holding else -0.12), 0.0, 1.0)
 		if warm_bar: warm_bar.queue_redraw()
-		var wegg: Node3D = eggs[chosen]["egg"]
-		wegg.rotation.z = sin(t * (8.0 + warmth * 20.0)) * (0.04 + warmth * 0.18)
+		var wegg: EggHatch = eggs[chosen]["egg"]
+		wegg.set_warmth(warmth)
+		# it rocks gently in the warmth, and gives a happy little hop as it warms through
+		wegg.rotation.z = sin(t * 2.4) * (0.03 + warmth * 0.06)
+		var step := int(warmth * 3.0)
+		if step > warm_step:
+			warm_step = step
+			var hop := create_tween()
+			hop.tween_property(wegg, "position:y", 0.24, 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+			hop.tween_property(wegg, "position:y", 0.12, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+			Sfx.play("jump", null, -12.0, 0.05, 1.7)
 		if holding and int(t * 8.0) != int((t - delta) * 8.0):
 			fx.burst(eggs[chosen]["holder"].position + Vector3(0, 0.5, 0), Color("ffb36a"), 2, 1.0, 0.5, -1.0, 0.5)
-		# cracks appear as it warms up
-		var want_cracks := int(warmth * 4.0)
-		while cracks.size() < want_cracks:
-			_add_crack(wegg)
 		if warmth >= 1.0:
 			stage = "hatching"
-			hatch_t = 2.6
 			title.text = "Something's moving..."
 			_clear_bottom()
+			wegg.rotation.z = 0.0
+			wegg.position.y = 0.12
+			wegg.popped.connect(func(k: Node3D):
+				kin_node = k
+				title.text = "It's a %s!" % Data.KIN[EGGS[chosen]["species"]]["name"])
+			wegg.done.connect(func():
+				stage = "name"
+				cam_to = Vector3(0, 2.2, 5.6)
+				_show_name())
+			wegg.start()
 	for i in eggs.size():
 		var egg: Node3D = eggs[i]["egg"]
 		if stage == "pick":
@@ -351,60 +352,6 @@ func _process(delta: float) -> void:
 			egg.position.y = lerpf(egg.position.y, 0.12 + lift + (sin(t * 3.0) * 0.03 if i == chosen else 0.0), minf(1.0, delta * 8.0))
 			# a little wobble now and then, like something inside is awake
 			egg.rotation.z = sin(t * 2.0 + i * 2.1) * 0.06 * (1.0 + float(sin(t * 0.7 + i) > 0.7) * 3.0)
-	if stage == "hatching" and chosen >= 0:
-		hatch_t += delta
-		var egg: Node3D = eggs[chosen]["egg"]
-		var k := clampf((hatch_t - 0.8) / 2.6, 0.0, 1.0)
-		var amp := k * k * 0.35
-		egg.rotation.z = sin(hatch_t * (14.0 + k * 22.0)) * amp
-		egg.position.x = sin(hatch_t * 31.0) * amp * 0.12
-		if k > 0.0 and int(hatch_t * (3.0 + k * 9.0)) != int((hatch_t - delta) * (3.0 + k * 9.0)):
-			Sfx.play("build", null, -10.0 + k * 6.0, 0.2, 1.4 + k * 0.5)
-			fx.burst(eggs[chosen]["holder"].position + Vector3(0, 0.5, 0), Color("f3eee2"), 3, 1.5, 0.3, 6.0, 0.6)
-		if hatch_t > 3.5:
-			_crack()
-
-func _add_crack(egg: Node3D) -> void:
-	var shell: Node3D = egg.get_node("Shell")
-	var a := randf() * TAU
-	var y := randf_range(0.3, 0.6)
-	var line := Models.part(shell, Models.box(0.025, 0.2, 0.025), Models.toon(Color(0.12, 0.08, 0.06), false), Vector3(cos(a) * 0.29, y, sin(a) * 0.29), Vector3.ONE, Vector3(0, -a, randf_range(-0.8, 0.8)))
-	cracks.append(line)
-	Sfx.play("build", null, -8.0, 0.2, 1.6)
-	fx.burst(eggs[chosen]["holder"].position + Vector3(0, y + 0.1, 0), Color("f3eee2"), 5, 1.6, 0.35, 6.0, 0.6)
-
-func _crack() -> void:
-	stage = "name"
-	var e: Dictionary = eggs[chosen]
-	var sp_id: String = e["data"]["species"]
-	var sp: Dictionary = Data.KIN[sp_id]
-	var at: Vector3 = e["holder"].position
-	var egg: Node3D = e["egg"]
-	egg.visible = false
-	# shell halves fly apart
-	for sgn in [-1.0, 1.0]:
-		var half := Models.part(self, Models.sphere(0.3, 14), Models.toon(Color(sp["color"]).lightened(0.15)), at + Vector3(0.12 * sgn, 0.55, 0), Vector3(0.35, 0.6, 0.6))
-		var tw := create_tween().set_parallel(true)
-		tw.tween_property(half, "position", at + Vector3(0.9 * sgn, 0.12, 0.3), 0.5).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-		tw.tween_property(half, "rotation", Vector3(0, 0, 1.6 * sgn), 0.5)
-		tw.chain().tween_interval(0.4)
-		tw.chain().tween_property(half, "scale", Vector3.ZERO, 0.5)
-	fx.burst(at + Vector3(0, 0.6, 0), sp["color"], 30, 4.0, 0.8, 4.0, 1.2)
-	fx.burst(at + Vector3(0, 0.6, 0), Color("f3eee2"), 16, 3.0, 0.6, 8.0, 0.8)
-	fx.ring(at, 2.0, Color(UI.GOLD, 0.9), 0.5)
-	Sfx.play("unlock")
-	get_tree().create_timer(0.25).timeout.connect(func(): Sfx.play("kin_happy"))
-	kin_node = Models.kin(sp_id)
-	kin_node.position = at + Vector3(0, 0.1, 0)
-	kin_node.scale = Vector3.ONE * 0.1
-	kin_node.rotation.y = PI
-	add_child(kin_node)
-	var tw2 := create_tween()
-	tw2.tween_property(kin_node, "scale", Vector3.ONE * 1.3, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	tw2.tween_property(kin_node, "position:y", 0.55, 0.18).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tw2.tween_property(kin_node, "position:y", 0.1, 0.22).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
-	title.text = "It's a %s!" % sp["name"]
-	get_tree().create_timer(0.9).timeout.connect(_show_name)
 
 func _show_name() -> void:
 	_clear_bottom()
