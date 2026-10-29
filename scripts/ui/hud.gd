@@ -825,8 +825,9 @@ func _draw_kit(sz: Vector2, p: Hunter) -> void:
 	var show_t := 14.0 if not m.opts.get("training", false) else 1e9
 	var t := m.time - kit_t0
 	if p.dropping or p.riding:
+		# shown once you land, not over the drop map
 		kit_t0 = m.time
-		t = 0.0
+		return
 	if t > show_t:
 		return
 	var a := clampf(show_t - t, 0.0, 1.0)
@@ -848,21 +849,30 @@ func _draw_kit(sz: Vector2, p: Hunter) -> void:
 		lines.append([Settings.key_cap("throw"), "Throw / recall " + String(k.rec.get("name", "your kin")), "Stuns what it hits; then your shots deal a combo. Press again to call it back.", kcol])
 		if p.kin2:
 			lines.append([Settings.key_cap("swap_kin"), "Swap to " + String((p.kin2 as Kin).rec.get("name", "your other kin")), "Your other kin, with its own abilities and ultimate.", Data.KIN[(p.kin2 as Kin).species]["color"]])
-	var w := 420.0
-	var box := Rect2(Vector2(sz.x - w - 16, sz.y - 186 - lines.size() * 44 - 30), Vector2(w, 30 + lines.size() * 44))
+	var w := 356.0
+	# each row: the key and name, then the description wrapped to the panel
+	var hs: Array = []
+	var total := 34.0
+	for l in lines:
+		var dh := body.get_multiline_string_size(String(l[2]), HORIZONTAL_ALIGNMENT_LEFT, w - 28, 12).y
+		hs.append(26.0 + dh + 8.0)
+		total += 26.0 + dh + 8.0
+	var bottom := sz.y - 120.0
+	var box := Rect2(Vector2(sz.x - w - 16, bottom - total), Vector2(w, total))
 	if m.opts.get("training", false):
 		box.position.y = 240
 	_panel(box, Color(0.06, 0.07, 0.1, 0.82 * a), 12)
 	_text(box.position + Vector2(14, 22), "Your kit", 14, Color(GOLD, a), big)
+	var y := box.position.y + 34
 	for i in lines.size():
 		var l: Array = lines[i]
-		var y := box.position.y + 34 + i * 44
 		var kw := big.get_string_size(l[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
 		var ks := StyleBoxFlat.new(); ks.bg_color = Color(l[3], a); ks.set_corner_radius_all(5)
 		c.draw_style_box(ks, Rect2(Vector2(box.position.x + 14, y), Vector2(kw + 12, 20)))
 		c.draw_string(big, Vector2(box.position.x + 20, y + 15), l[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.07, 0.06, 0.08, a))
 		_text(Vector2(box.position.x + 34 + kw, y + 15), l[1], 14, Color(INK, a))
-		c.draw_string(body, Vector2(box.position.x + 14, y + 36), String(l[2]), HORIZONTAL_ALIGNMENT_LEFT, w - 28, 12, Color(MUTED, a))
+		c.draw_multiline_string(body, Vector2(box.position.x + 14, y + 38), String(l[2]), HORIZONTAL_ALIGNMENT_LEFT, w - 28, 12, -1, Color(MUTED, a))
+		y += float(hs[i])
 
 func _draw_prompt(sz: Vector2, p: Hunter) -> void:
 	var it := m.interact

@@ -1047,11 +1047,11 @@ func _build_air() -> void:
 		var c: Vector3 = u["pos"]
 		var hgt: float = float(u["top"]) - c.y + 6.0
 		var col := MeshInstance3D.new()
-		col.mesh = Models.cyl(float(u["r"]), float(u["r"]) * 1.15, hgt, 18)
-		var mat := ShaderMaterial.new(); mat.shader = wsh
-		mat.set_shader_parameter("color", Color(1.0, 0.95, 0.75, 0.1))
-		mat.set_shader_parameter("tiles", hgt / 2.5)
-		mat.set_shader_parameter("speed", 1.4)
+		var cm := Models.cyl(float(u["r"]), float(u["r"]) * 1.15, hgt, 18)
+		cm.cap_top = false; cm.cap_bottom = false
+		col.mesh = cm
+		var mat := ShaderMaterial.new(); mat.shader = load("res://shaders/updraft.gdshader")
+		mat.set_shader_parameter("tiles", hgt / 4.0)
 		col.material_override = mat
 		col.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		col.position = Vector3(c.x, c.y - 6.0 + hgt * 0.5, c.z)
@@ -1076,7 +1076,10 @@ func _decorate() -> void:
 				continue
 			var y := level[i] * LEVEL
 			var n: Node3D
-			if drng.randf() < 0.5:
+			var by_shrine := false
+			for sp in shrine_spots:
+				if Vector2(sp.x - x - 0.5, sp.z - z - 0.5).length() < 2.6: by_shrine = true
+			if drng.randf() < 0.5 and not by_shrine:
 				var reg := int(islands[island[i]].get("region", 0)) if island[i] >= 0 and island[i] < islands.size() else 0
 				n = Models.tree(drng, _bio(i)["leaf"], "pine" if reg == 2 or drng.randf() < 0.25 else ("blossom" if reg == 4 and drng.randf() < 0.6 else "round"))
 			else:
@@ -1166,11 +1169,27 @@ func _decorate() -> void:
 	sea.position = Vector3(w / 2.0, -18.0, h / 2.0)
 	sea.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(sea)
-	# drifting rocks in the abyss for depth
-	for _k in 40:
-		var r := Models.rock(drng, drng.randf_range(0.6, 2.2))
-		r.position = Vector3(drng.randf_range(-10, w + 10), drng.randf_range(-15, -6), drng.randf_range(-10, h + 10))
-		deco.add_child(r)
+	# far below and around: little drifting islets and loose rocks, for depth
+	var top_c: Color = biome.get("top", Color("5f8d45"))
+	var side_c: Color = biome.get("side", Color("8b6d52"))
+	var deep_c: Color = biome.get("deep", Color("3a3140"))
+	var placed := 0
+	for _k in 120:
+		if placed >= 22: break
+		var at := Vector3(drng.randf_range(-14, w + 14), drng.randf_range(-14, -5), drng.randf_range(-14, h + 14))
+		if not is_void(at.x, at.z) or not is_void(at.x + 3, at.z) or not is_void(at.x - 3, at.z) or not is_void(at.x, at.z + 3):
+			continue
+		placed += 1
+		if drng.randf() < 0.55:
+			var rad := drng.randf_range(0.8, 2.0)
+			var isl := Models.float_island(drng, rad, rad * drng.randf_range(1.3, 2.2), top_c.darkened(0.08), side_c, deep_c)
+			isl.position = at
+			isl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			deco.add_child(isl)
+		else:
+			var r := Models.rock(drng, drng.randf_range(0.4, 1.2))
+			r.position = at
+			deco.add_child(r)
 
 ## The home island: one flat round island with room for the farm, house and portal.
 func make_home(seed_val: int) -> void:

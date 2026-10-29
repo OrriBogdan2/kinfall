@@ -2471,9 +2471,13 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 	if h == player:
 		tut_flag = tut_flag or tut_step == 6
 	var lid: Node3D = c["node"].get_node("Body/Lid")
-	lid.rotation.x = -1.1
-	lid.position.y = 0.62
-	lid.position.z = 0.2
+	if lid.has_meta("hinged"):
+		# the lid springs open on its hinge
+		create_tween().tween_property(lid, "rotation:x", 1.9, 0.35).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	else:
+		lid.rotation.x = -1.1
+		lid.position.y = 0.62
+		lid.position.z = 0.2
 	var beacon: Node3D = c["node"].get_node_or_null("Beacon")
 	if beacon: beacon.visible = false
 	sfx("pickup", c["pos"], 0.0, 0.8 - t * 0.1)

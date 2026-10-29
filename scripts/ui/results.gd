@@ -10,7 +10,9 @@ func show_result(r: Dictionary) -> void:
 	Sfx.play_ambience("")
 	var s := Game.apply_result(r)
 	var bg := ColorRect.new(); bg.color = UI.BG; bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(bg)
+	_stage(r, s)
 	var center := CenterContainer.new(); center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(center)
+	center.offset_left = 300.0   # leave the left side for the island
 	var panel := PanelContainer.new(); panel.custom_minimum_size = Vector2(560, 0); center.add_child(panel)
 	UI.pop_in(panel, 0.1)
 	var v := UI.vbox(12)
@@ -85,6 +87,64 @@ func show_result(r: Dictionary) -> void:
 	if r.get("tutorial", false):
 		v.add_child(UI.label("That's the basics. Now come see your home.", 16, UI.GOLD))
 	v.add_child(UI.primary("Go home" if r.get("tutorial", false) else "Back to the farm", func(): Game.goto("home"), 240))
+
+var hunter_node: Node3D
+var h_anim: HunterAnim
+var kin_node: Node3D
+var won_k := false
+var t := 0.0
+
+## Behind the card: your hunter and kin on a little island, cheering if you made it out,
+## sitting it out if you didn't.
+func _stage(r: Dictionary, s: Dictionary) -> void:
+	won_k = r.get("extracted", false)
+	var svc := SubViewportContainer.new(); svc.stretch = true
+	svc.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	svc.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(svc)
+	var vp := SubViewport.new(); vp.own_world_3d = true; vp.msaa_3d = Viewport.MSAA_2X
+	svc.add_child(vp)
+	var w3 := Node3D.new(); vp.add_child(w3)
+	var env := WorldEnvironment.new(); env.environment = Look.environment({}); w3.add_child(env)
+	if not won_k:
+		Look.night(env.environment, 0.6)
+	Look.lights(w3, Color("fff1d8") if won_k else Color("b9c4ff"), 1.05 if won_k else 0.7)
+	var rng := RandomNumberGenerator.new(); rng.seed = 7
+	var isl := Models.float_island(rng, 2.6, 5.0, Color("6aa64a"), Color("9a7a5a"), Color("3a2f48"))
+	w3.add_child(isl)
+	var tr := Models.tree(rng, Color("5a9a4f"), "round"); tr.position = Vector3(-1.4, 0, -1.2); w3.add_child(tr)
+	var rk := Models.rock(rng, 0.7); rk.position = Vector3(1.5, 0, -0.9); w3.add_child(rk)
+	var hero: String = Save.d.get("hero", "")
+	if not Data.HEROES.has(hero): hero = "sage"
+	hunter_node = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], Data.HEROES[hero]["weapon"], hero, Save.d.get("look", {}))
+	hunter_node.position = Vector3(-0.3, 0, 0.3); hunter_node.rotation.y = PI + 0.5
+	var ring := hunter_node.get_node_or_null("TeamRing") as Node3D
+	if ring: ring.visible = false
+	w3.add_child(hunter_node)
+	h_anim = HunterAnim.new(hunter_node)
+	if s.has("kin") and won_k:
+		kin_node = Models.kin(String(s["kin"]["species"]), s["kin"])
+		kin_node.position = Vector3(0.75, 0, 0.6); kin_node.rotation.y = PI + 0.9
+		kin_node.set_meta("happy", true)
+		w3.add_child(kin_node)
+	var cam := Camera3D.new(); cam.fov = 40
+	# the island sits left of the results card
+	cam.position = Vector3(4.6, 2.6, 8.4)
+	w3.add_child(cam)
+	cam.look_at(Vector3(3.3, 0.6, 0))
+
+func _process(dt: float) -> void:
+	t += dt
+	if h_anim:
+		var vy := 0.0
+		if won_k:
+			# a little victory hop every couple of seconds
+			var ph := fmod(t, 2.2)
+			hunter_node.position.y = maxf(0.0, sin(ph / 0.5 * PI)) * 0.35 if ph < 0.5 else 0.0
+			vy = cos(ph / 0.5 * PI) * 2.0 if ph < 0.5 else 0.0
+		h_anim.update(dt, {"grounded": hunter_node.position.y < 0.01, "vel": Vector3(0, vy, 0), "crouch": 0.0 if won_k else 0.7, "downed": false})
+	if kin_node:
+		kin_node.get_node("Body").position.y = absf(sin(t * 5.0)) * 0.25
 
 func _lost_title(why: String) -> String:
 	match why:

@@ -170,7 +170,8 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "", app
 	for sx in [-1.0, 1.0]:
 		part(torso, sphere(0.05, 8), m_skin, Vector3(0.225 * sx, 0.84, 0.01), Vector3(0.6, 1.0, 0.8))   # ears
 	_face(torso, int(lk["face"]), gender, m_dark, m_skin)
-	_hair(torso, int(lk["hair"]), gender, m_hair)
+	# a hood or helmet covers the hair; only what hangs below it shows
+	_hair(torso, int(lk["hair"]), gender, m_hair, look in ["veil", "nyx", "bastion", "tusk", "halo"])
 	match look:
 		"veil":
 			part(torso, sphere(0.265), m_acc, Vector3(0, 0.92, 0.05), Vector3(1.0, 0.95, 1.05))  # hood
@@ -216,14 +217,14 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "", app
 			part(torso, box(0.36, 0.07, 0.06), toon(Color("9af0ff"), false, 0.5), Vector3(0, 0.87, -0.22))  # visor
 			part(torso, cyl(0.03, 0.03, 0.22, 8), m_gold, Vector3(0, 1.17, 0.02))
 			for sx in [-1.0, 1.0]:
-				part(torso, sphere(0.19), m_acc, Vector3(0.31 * sx, 0.55, 0), Vector3(1.2, 0.8, 1.2))
+				part(torso, sphere(0.145), m_acc, Vector3(0.29 * sx, 0.54, 0), Vector3(1.15, 0.75, 1.15))
 			part(torso, cyl(0.32, 0.32, 0.06, 22), m_trim, Vector3(0, 0.38, 0.34), Vector3.ONE, Vector3(PI / 2, 0, 0))   # shield on the back
 			part(torso, cyl(0.13, 0.13, 0.07, 16), m_gold, Vector3(0, 0.38, 0.37), Vector3.ONE, Vector3(PI / 2, 0, 0))
 		"tusk":
 			part(torso, sphere(0.28), m_hero, Vector3(0, 0.94, 0.02), Vector3(1.05, 0.85, 1.05))
 			for sx in [-1.0, 1.0]:
 				part(torso, cyl(0.0, 0.06, 0.32), toon(Color("f3eee2")), Vector3(0.14 * sx, 0.77, -0.21), Vector3.ONE, Vector3(-1.2, 0, -0.3 * sx))
-				part(torso, sphere(0.2), m_hero, Vector3(0.31 * sx, 0.55, 0), Vector3(1.2, 0.8, 1.2))
+				part(torso, sphere(0.145), m_hero, Vector3(0.29 * sx, 0.54, 0), Vector3(1.15, 0.75, 1.15))
 			part(torso, box(0.52, 0.1, 0.44), m_trim, Vector3(0, 0.05, 0))   # heavy belt
 			part(torso, sphere(0.08, 8), toon(Color("f3eee2")), Vector3(0, 0.06, -0.23))
 		"halo":
@@ -232,7 +233,7 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "", app
 			var hr := TorusMesh.new(); hr.inner_radius = 0.17; hr.outer_radius = 0.22
 			part(torso, hr, toon(hc, false, 1.3), Vector3(0, 1.3, 0), Vector3.ONE, Vector3.ZERO, "Halo")
 			for sx in [-1.0, 1.0]:
-				part(torso, sphere(0.18), m_acc, Vector3(0.31 * sx, 0.55, 0), Vector3(1.2, 0.8, 1.2))
+				part(torso, sphere(0.145), m_acc, Vector3(0.29 * sx, 0.54, 0), Vector3(1.15, 0.75, 1.15))
 			var gen := TorusMesh.new(); gen.inner_radius = 0.12; gen.outer_radius = 0.18
 			part(torso, gen, toon(hero_col, false, 1.0), Vector3(0, 0.4, 0.34), Vector3.ONE, Vector3(PI / 2, 0, 0))   # dome generator
 	# the arms and the gun move together from the shoulders ("Aim"), for recoil, reloads and poses
@@ -410,7 +411,13 @@ static func _face(torso: Node3D, face: int, gender: int, m_dark: Material, m_ski
 
 ## Hair that peeks out under whatever the hero wears on their head: a cap of hair, chunky fringe
 ## locks over the forehead, then the style.
-static func _hair(torso: Node3D, style: int, gender: int, m_hair: Material) -> void:
+static func _hair(torso: Node3D, style: int, gender: int, m_hair: Material, covered := false) -> void:
+	if covered:
+		for sx in [-1.0, 1.0]:
+			part(torso, cyl(0.0, 0.06, 0.2, 8), m_hair, Vector3(0.2 * sx, 0.84, -0.06), Vector3(1.0, 1.0, 0.8), Vector3(PI, 0, 0.15 * sx))
+		if style == 1:
+			part(torso, capsule(0.17, 0.52), m_hair, Vector3(0, 0.7, 0.1), Vector3(1.35, 1.0, 0.7))
+		return
 	if style == 5:
 		part(torso, sphere(0.242), m_hair, Vector3(0, 0.885, 0.02), Vector3(1.0, 0.82, 1.0))
 		return
@@ -846,7 +853,11 @@ static func training_yard() -> Node3D:
 	part(dummy, sphere(0.28, 12), straw, Vector3(0, 0.95, 0), Vector3(1, 1.3, 1))
 	part(dummy, sphere(0.16, 10), straw, Vector3(0, 1.45, 0))
 	part(dummy, box(0.7, 0.08, 0.08), wood, Vector3(0, 1.1, 0))
-	part(root, cyl(0.75, 0.75, 0.04, 20), mat, Vector3(0, 0.02, 0))
+	# a sparring mat painted like a target
+	part(root, cyl(0.78, 0.8, 0.05, 24), toon(Color("e9dcc0")), Vector3(0, 0.025, 0))
+	part(root, cyl(0.62, 0.62, 0.02, 24), mat, Vector3(0, 0.055, 0))
+	part(root, cyl(0.44, 0.44, 0.02, 24), toon(Color("e9dcc0"), false), Vector3(0, 0.065, 0))
+	part(root, cyl(0.22, 0.22, 0.02, 20), mat, Vector3(0, 0.075, 0))
 	var ring_m := toon(Color("f2c84a"))
 	for i in 2:
 		var t := TorusMesh.new(); t.inner_radius = 0.26; t.outer_radius = 0.32
@@ -1097,15 +1108,28 @@ static func chest(tier := 0) -> Node3D:
 	var root := Node3D.new()
 	var cc: Array = CHEST_COLS[clampi(tier, 0, 2)]
 	var mw := toon(cc[0]); var mg := toon(cc[1], true, 0.3 + tier * 0.25)
+	var m_seam := toon(Color(cc[0]).darkened(0.35), false)
 	var body := Node3D.new(); body.name = "Body"; root.add_child(body)
-	part(body, box(0.8, 0.45, 0.55), mw, Vector3(0, 0.23, 0))
-	part(body, box(0.84, 0.18, 0.59), mw, Vector3(0, 0.55, 0), Vector3.ONE, Vector3.ZERO, "Lid")
-	part(body, box(0.14, 0.2, 0.06), mg, Vector3(0, 0.42, -0.3))
-	part(body, box(0.86, 0.06, 0.6), mg, Vector3(0, 0.46, 0))
-	if tier >= 1:
-		for x in [-0.42, 0.42]:
-			part(body, box(0.06, 0.5, 0.6), mg, Vector3(x, 0.3, 0))
+	# the box: planks, metal corners and a lock plate
+	part(body, box(0.8, 0.42, 0.55), mw, Vector3(0, 0.21, 0))
+	for k in 2:
+		part(body, box(0.81, 0.015, 0.56), m_seam, Vector3(0, 0.14 + k * 0.14, 0))
+	for x in [-0.36, 0.36]:
+		for z in [-0.25, 0.25]:
+			part(body, box(0.1, 0.44, 0.1), mg, Vector3(x, 0.22, z))
+	part(body, box(0.84, 0.05, 0.59), mg, Vector3(0, 0.03, 0))
+	# the lid hinges at the back; a rounded top with two straps
+	var lid := Node3D.new(); lid.name = "Lid"; lid.position = Vector3(0, 0.42, 0.27); body.add_child(lid)
+	lid.set_meta("hinged", true)
+	part(lid, cyl(0.28, 0.28, 0.8, 14), mw, Vector3(0, 0.0, -0.27), Vector3(0.6, 1.0, 1.0), Vector3(0, 0, PI / 2))
+	for x in [-0.27, 0.27]:
+		part(lid, cyl(0.29, 0.29, 0.07, 14), mg, Vector3(x, 0.0, -0.27), Vector3(0.6, 1.0, 1.0), Vector3(0, 0, PI / 2))
+	part(lid, cyl(0.29, 0.29, 0.04, 14), mg, Vector3(-0.4, 0.0, -0.27), Vector3(0.6, 1.0, 1.0), Vector3(0, 0, PI / 2))
+	part(lid, cyl(0.29, 0.29, 0.04, 14), mg, Vector3(0.4, 0.0, -0.27), Vector3(0.6, 1.0, 1.0), Vector3(0, 0, PI / 2))
+	part(body, box(0.16, 0.2, 0.05), mg, Vector3(0, 0.4, -0.29))
+	part(body, sphere(0.035, 6), toon(Color("2b2a33"), false), Vector3(0, 0.38, -0.32))
 	body.scale = Vector3.ONE * (1.0 + tier * 0.18)
+	body.rotation.y = PI   # lock facing the camera
 	if tier >= 1:
 		# a light pillar you can see from other islands
 		var beam := part(root, cyl(0.16, 0.3, 9.0, 10), glow_mat(Color(cc[1] if tier == 1 else Color("c9a0ff"), 0.22)), Vector3(0, 4.5, 0), Vector3.ONE, Vector3.ZERO, "Beacon")
@@ -1115,16 +1139,35 @@ static func chest(tier := 0) -> Node3D:
 
 static func shrine() -> Node3D:
 	var root := Node3D.new()
-	var stone := toon(Color("b8b2a8"))
-	part(root, cyl(0.9, 1.05, 0.3, 8), stone, Vector3(0, 0.15, 0))
-	part(root, cyl(0.55, 0.7, 0.5, 8), stone, Vector3(0, 0.55, 0))
-	var cr := Node3D.new(); cr.name = "Crystal"; cr.position = Vector3(0, 1.6, 0); root.add_child(cr)
-	var pm := PrismMesh.new(); pm.size = Vector3(0.45, 0.6, 0.45)
-	var cm := toon(Color("8fe3c8"), false, 0.9)
-	part(cr, pm, cm, Vector3(0, 0.3, 0))
-	part(cr, pm, cm, Vector3(0, -0.3, 0), Vector3.ONE, Vector3(PI, 0, 0))
+	var stone := toon(Color("a9a39a"))
+	var stone_l := toon(Color("cfc8bb"))
+	var moss := toon(Color("7fa65a"), false)
+	var glow := Color("8fe3c8")
+	# a two-step hexagonal dais with a carved, glowing inlay
+	part(root, cyl(1.05, 1.15, 0.18, 6), stone, Vector3(0, 0.09, 0))
+	part(root, cyl(0.78, 0.86, 0.18, 6), stone_l, Vector3(0, 0.27, 0))
+	part(root, cyl(0.5, 0.5, 0.02, 6), toon(glow, false, 0.8), Vector3(0, 0.37, 0))
+	part(root, cyl(0.35, 0.42, 0.22, 6), stone, Vector3(0, 0.47, 0))
+	# three leaning standing stones with moss on top
+	for i in 3:
+		var a := TAU * i / 3.0 + 0.5
+		var at := Vector3(cos(a) * 0.98, 0.0, sin(a) * 0.98)
+		var tilt := Vector3(sin(a) * 0.12, -a, -cos(a) * 0.12)
+		part(root, box(0.26, 1.0 - i * 0.12, 0.2), stone, at + Vector3(0, 0.5 - i * 0.06, 0), Vector3.ONE, tilt)
+		part(root, box(0.28, 0.06, 0.22), moss, at + Vector3(0, 1.0 - i * 0.12, 0), Vector3.ONE, tilt)
+		part(root, box(0.04, 0.3, 0.01), toon(glow, false, 0.9), at + Vector3(0, 0.55, 0) - Vector3(cos(a), 0, sin(a)) * 0.105, Vector3.ONE, tilt)
+	# the healing crystal floats and turns above the dais
+	var cr := Node3D.new(); cr.name = "Crystal"; cr.position = Vector3(0, 1.45, 0); root.add_child(cr)
+	var pm := PrismMesh.new(); pm.size = Vector3(0.42, 0.62, 0.42)
+	var cm := toon(glow.darkened(0.15), true, 0.55)
+	part(cr, pm, cm, Vector3(0, 0.31, 0))
+	part(cr, pm, cm, Vector3(0, -0.31, 0), Vector3.ONE, Vector3(PI, 0, 0))
+	for i in 3:
+		var a2 := TAU * i / 3.0
+		part(cr, pm, cm, Vector3(cos(a2) * 0.42, -0.1, sin(a2) * 0.42), Vector3.ONE * 0.3)
+	PropAnim.on(cr, 0.9, 0.08)
 	var base := MeshInstance3D.new(); base.name = "Ring"; base.mesh = flat_quad(3.0)
-	base.material_override = ring_mat(Color("8fe3c8"), 0.08); base.position.y = 0.06
+	base.material_override = ring_mat(glow, 0.06); base.position.y = 0.04
 	root.add_child(base)
 	return root
 
@@ -1143,8 +1186,15 @@ static func nest() -> Node3D:
 static func portal(c: Color) -> Node3D:
 	var root := Node3D.new()
 	var t := TorusMesh.new(); t.inner_radius = 0.95; t.outer_radius = 1.2; t.rings = 24; t.ring_segments = 8
-	var mr := toon(Color("4a4f60"), true)
-	part(root, t, mr, Vector3(0, 1.25, 0), Vector3.ONE, Vector3(PI / 2, 0, 0), "Ring")
+	var mr := toon(Color("6a6f80"), true)
+	var ring := part(root, t, mr, Vector3(0, 1.25, 0), Vector3.ONE, Vector3(PI / 2, 0, 0), "Ring")
+	# runes around the ring that light up, and a pair of stone feet
+	for i in 8:
+		var a := TAU * i / 8.0
+		part(ring, box(0.12, 0.3, 0.14), toon(c, false, 0.9), Vector3(cos(a) * 1.08, 0.0, sin(a) * 1.08), Vector3.ONE, Vector3(0, -a, 0))
+	for sx in [-1.0, 1.0]:
+		part(root, box(0.42, 0.34, 0.5), toon(Color("585c6a")), Vector3(0.95 * sx, 0.17, 0))
+		part(root, box(0.3, 0.06, 0.38), toon(Color("7fa65a"), false), Vector3(0.95 * sx, 0.36, 0))
 	var disc := part(root, cyl(1.0, 1.0, 0.02, 24), glow_mat(c), Vector3(0, 1.25, 0), Vector3.ONE, Vector3(PI / 2, 0, 0), "Disc")
 	disc.visible = false
 	var base := MeshInstance3D.new(); base.name = "Base"; base.mesh = flat_quad(3.2)
