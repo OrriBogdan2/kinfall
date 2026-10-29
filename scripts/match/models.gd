@@ -81,19 +81,34 @@ static func flat_quad(size: float) -> PlaneMesh:
 
 # ---------------------------------------------------------------- hunters
 ## Looks a player can pick for their hunter. Purely visual: the body's size never changes the hitbox.
-const LOOK_SKIN := [Color("f6d3b0"), Color("f1c9a0"), Color("e0ac7e"), Color("c68a5c"), Color("9a6440"), Color("6e4428"), Color("4a2e1e")]
-const LOOK_HAIR := [Color("2b2124"), Color("5a3a26"), Color("9a6a3a"), Color("e8c87a"), Color("d8d2c8"), Color("c4462e"), Color("6a8aff"), Color("ff8ac8")]
+# Natural tones first, then the wild ones (sky, moss, lilac, gold, stone...). New entries only ever
+# go on the end, so saved looks keep their colours.
+const LOOK_SKIN := [Color("f6d3b0"), Color("f1c9a0"), Color("e0ac7e"), Color("c68a5c"), Color("9a6440"), Color("6e4428"), Color("4a2e1e"),
+	Color("fff0e6"), Color("3a2216"), Color("8ab4ff"), Color("4a6ad8"), Color("8ad07a"), Color("4f8f45"), Color("c4a2f0"), Color("7a4ab8"),
+	Color("ff9ab8"), Color("e8c050"), Color("5ac8c0"), Color("d8604a"), Color("9a9aa8"), Color("e8eef8"), Color("ff8a3a")]
+const LOOK_HAIR := [Color("2b2124"), Color("5a3a26"), Color("9a6a3a"), Color("e8c87a"), Color("d8d2c8"), Color("c4462e"), Color("6a8aff"), Color("ff8ac8"),
+	Color("f6efd8"), Color("8a2e2a"), Color("3ac8c0"), Color("8a4ad8"), Color("5ac85a"), Color("ff8a2a"), Color("c8a8ff"), Color("9af0c8"),
+	Color("d81e3c"), Color("2a3a7a"), Color("fbfbfb"), Color("ffd84a")]
 const LOOK_BODIES := ["Slim", "Average", "Sturdy"]
-const LOOK_GENDERS := ["Female", "Male", "Nonbinary"]
-const LOOK_FACES := ["Bright eyes", "Calm", "Sleepy", "Cheerful", "Fierce"]
-const LOOK_HAIRS := ["Short", "Long", "Ponytail", "Bun", "Spiky", "Buzzed"]
+const LOOK_GENDERS := ["Female", "Male"]
+const LOOK_FACES := ["Bright eyes", "Calm", "Sleepy", "Cheerful", "Fierce", "Wink", "Starry", "Determined", "Smug"]
+const LOOK_HAIRS := ["Short", "Long", "Ponytail", "Bun", "Spiky", "Buzzed", "Bob", "Pigtails", "Braid", "Mohawk", "Afro", "Curly", "Swoop", "Bald"]
+const LOOK_DETAILS := ["None", "Freckles", "Scar", "Face paint", "Stubble", "Beard", "Moustache", "Beauty mark"]
 
 static func default_look() -> Dictionary:
-	return {"body": 1, "gender": 2, "face": 0, "skin": 1, "hair": 0, "hair_col": 0}
+	return {"body": 1, "gender": 1, "face": 0, "skin": 1, "hair": 0, "hair_col": 0, "detail": 0}
+
+## A saved look with every value inside its list (older saves had a third gender option).
+static func clean_look(lk: Dictionary) -> Dictionary:
+	var out := default_look()
+	out.merge(lk, true)
+	var lists := {"body": LOOK_BODIES, "gender": LOOK_GENDERS, "face": LOOK_FACES, "skin": LOOK_SKIN, "hair": LOOK_HAIRS, "hair_col": LOOK_HAIR, "detail": LOOK_DETAILS}
+	for k in lists:
+		out[k] = clampi(int(out[k]), 0, (lists[k] as Array).size() - 1)
+	return out
 
 static func hunter(cls: String, team_col: Color, weapon: String, hero := "", appearance := {}) -> Node3D:
-	var lk: Dictionary = default_look()
-	lk.merge(appearance, true)
+	var lk: Dictionary = clean_look(appearance)
 	var root := Node3D.new()
 	var look: String = hero if hero != "" else {"light": "veil", "medium": "sage", "heavy": "bastion"}.get(cls, "sage")
 	var hero_col: Color = Data.HEROES[look]["color"] if Data.HEROES.has(look) else team_col
@@ -136,19 +151,24 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "", app
 		part(knee, sphere(0.085, 10), m_leather, Vector3(0, -0.21, -0.05), Vector3(1.0, 0.62, 1.45))
 		part(knee, box(0.13, 0.03, 0.2), m_dark, Vector3(0, -0.24, -0.04))
 	var torso := Node3D.new(); torso.name = "Torso"; torso.position = Vector3(0, 0.42, 0); rig.add_child(torso)
-	var chest_w := bw * (0.92 if gender == 0 else 1.0)
+	var fem := gender == 0
+	# women: narrower shoulders and waist, wider hips, a bust; men: broader through the chest
+	var chest_w := bw * (0.88 if fem else 1.07)
 	# hips and a coat that flares a little below the belt
-	part(torso, cyl(0.21 * bw, 0.2 * bw, 0.14, 16), m_pants, Vector3(0, 0.02, 0))
-	part(torso, cyl(0.235 * bw, 0.3 * bw, 0.24, 16), m_body, Vector3(0, -0.04, 0.01))
+	part(torso, cyl(0.21 * bw, (0.22 if fem else 0.2) * bw, 0.14, 16), m_pants, Vector3(0, 0.02, 0))
+	part(torso, cyl((0.225 if fem else 0.235) * bw, (0.34 if fem else 0.29) * bw, 0.24, 16), m_body, Vector3(0, -0.04, 0.01))
 	# chest: shirt under an open jacket
 	part(torso, capsule(0.24, 0.62), m_body, Vector3(0, 0.33, 0), Vector3(chest_w, 1.0, bw * 0.95))
+	if fem:
+		for sx in [-1.0, 1.0]:
+			part(torso, sphere(0.1, 14), m_body, Vector3(0.078 * sx * chest_w, 0.405, -0.178 * bw), Vector3(1.0, 0.9, 0.9))
 	# a V of shirt at the collar under the jacket's lapels, and a neckerchief in team colour
 	part(torso, cyl(0.0, 0.1, 0.16, 3), m_shirt, Vector3(0, 0.52, -0.2 * bw), Vector3(1.0, 1.0, 0.35), Vector3(PI, 0, 0))
 	for sx in [-1.0, 1.0]:
 		part(torso, box(0.06, 0.3, 0.05), m_trim, Vector3(0.07 * sx * chest_w, 0.42, -0.215 * bw), Vector3.ONE, Vector3(-0.12, 0, 0.3 * sx))
 	part(torso, cyl(0.0, 0.07, 0.12, 3), m_acc, Vector3(0, 0.54, -0.235 * bw), Vector3(1.0, 1.0, 0.4), Vector3(PI, 0, 0))
 	part(torso, TorusMesh.new() if false else cyl(0.17, 0.2, 0.08, 16), m_trim, Vector3(0, 0.6, 0))   # collar
-	part(torso, cyl(0.075, 0.085, 0.1, 10), m_skin, Vector3(0, 0.66, 0))                              # neck
+	part(torso, cyl(0.07 if fem else 0.085, 0.08 if fem else 0.1, 0.1, 10), m_skin, Vector3(0, 0.66, 0))   # neck
 	# belt with a buckle and pouches, and a strap across the chest
 	part(torso, cyl(0.245 * bw, 0.245 * bw, 0.07, 18), m_leather, Vector3(0, 0.1, 0))
 	part(torso, box(0.08, 0.07, 0.03), m_gold, Vector3(0, 0.1, -0.245 * bw))
@@ -169,7 +189,9 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "", app
 	part(torso, sphere(0.235), m_skin, Vector3(0, 0.86, 0), Vector3(1.0, 0.98, 0.98), Vector3.ZERO, "Head")
 	for sx in [-1.0, 1.0]:
 		part(torso, sphere(0.05, 8), m_skin, Vector3(0.225 * sx, 0.84, 0.01), Vector3(0.6, 1.0, 0.8))   # ears
-	_face(torso, int(lk["face"]), gender, m_dark, m_skin)
+	var skin_c: Color = LOOK_SKIN[int(lk["skin"])]
+	var hair_c: Color = LOOK_HAIR[int(lk["hair_col"])]
+	_face(torso, int(lk["face"]), gender, m_dark, m_skin, skin_c, int(lk["detail"]), hair_c, team_col)
 	# a hood or helmet covers the hair; only what hangs below it shows
 	_hair(torso, int(lk["hair"]), gender, m_hair, look in ["veil", "nyx", "bastion", "tusk", "halo"])
 	match look:
@@ -246,6 +268,13 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "", app
 		part(arm, cyl(0.082, 0.082, 0.06, 12), m_trim, Vector3(0, -0.15, 0))
 		part(arm, sphere(0.08, 10), m_leather, Vector3(0, -0.23, 0), Vector3(1.0, 1.1, 1.0))
 	gun_parts(gun, weapon, m_gun, m_dark, m_acc)
+	# a magazine that comes out and goes back in on a reload
+	part(gun, box(0.06, 0.15, 0.09), m_acc, Vector3(0, -0.13, -0.24), Vector3.ONE, Vector3(0.15, 0, 0), "Mag")
+	# the support arm swings from the shoulder, so it can reach for a fresh magazine
+	var sh_l: Vector3 = arm_l.transform * Vector3(0, 0.21, 0)
+	var arm_piv := Node3D.new(); arm_piv.name = "ArmLPivot"; arm_piv.position = sh_l; aim.add_child(arm_piv)
+	aim.remove_child(arm_l); arm_piv.add_child(arm_l)
+	arm_l.position -= sh_l
 	var muzzle := Node3D.new(); muzzle.name = "Muzzle"; muzzle.position = Vector3(0, 0.02, -0.75); gun.add_child(muzzle)
 	var shoulder := Node3D.new(); shoulder.name = "Shoulder"; shoulder.position = Vector3(-0.3, 0.8, 0.04); torso.add_child(shoulder)
 	# a paraglider canopy that unfolds above the pack: an arched wing in stripes, with lines down to the harness
@@ -368,58 +397,134 @@ static func m_trim0(c: Color) -> ShaderMaterial:
 	return toon(c.darkened(0.55).lerp(Color("3a2f2a"), 0.5))
 
 ## Eyes, brows and a mouth: small shapes, but they carry a lot of character.
-static func _face(torso: Node3D, face: int, gender: int, m_dark: Material, m_skin: Material) -> void:
+static func _face(torso: Node3D, face: int, gender: int, m_dark: Material, m_skin: Material, skin: Color, detail: int, hair_c: Color, paint: Color) -> void:
+	var fem := gender == 0
 	var shine := toon(Color.WHITE, false, 1.0)
 	var white := toon(Color("fbf8f2"), false, 0.1)
-	var iris := toon(Color("4a3a6a") if face != 4 else Color("6a3a2a"), false)
+	var iris := toon([Color("4a3a6a"), Color("3a5a8a"), Color("2a6a4a"), Color("6a3a2a"), Color("7a2a4a")][face % 5], false)
 	var y := 0.865
+	var es := 1.14 if fem else 0.9          # bigger, rounder eyes for her; smaller, narrower for him
+	var m_hairf := toon(hair_c.darkened(0.15), false)
 	for sx in [-1.0, 1.0]:
-		var ex: float = 0.088 * sx
-		match face:
-			0, 4:   # bright eyes (or fierce): white, iris, pupil and a shine
-				part(torso, sphere(0.05, 12), white, Vector3(ex, y, -0.2), Vector3(0.85, 1.15 if face == 0 else 0.9, 0.45))
-				part(torso, sphere(0.036, 10), iris, Vector3(ex + 0.004 * sx, y - 0.004, -0.218), Vector3(0.9, 1.1, 0.4))
-				part(torso, sphere(0.019, 8), m_dark, Vector3(ex + 0.004 * sx, y - 0.004, -0.226), Vector3(1.0, 1.1, 0.4))
-				part(torso, sphere(0.012, 6), shine, Vector3(ex + 0.016, y + 0.022, -0.232))
-				if face == 4:
-					part(torso, box(0.075, 0.02, 0.02), m_dark, Vector3(ex, y + 0.058, -0.212), Vector3.ONE, Vector3(0, 0, -0.38 * sx))
-				else:
-					part(torso, box(0.06, 0.014, 0.014), m_dark, Vector3(ex, y + 0.068, -0.21), Vector3.ONE, Vector3(0, 0, 0.12 * sx))
+		var ex: float = (0.086 if fem else 0.09) * sx
+		var kind := face
+		if face == 5:
+			kind = 3 if sx > 0.0 else 0        # wink: one eye shut
+		var open := kind in [0, 1, 4, 6, 7, 8]
+		match kind:
+			0, 4, 6, 7:   # bright eyes, fierce, starry, determined: white, iris, pupil and a shine
+				part(torso, sphere(0.05 * es, 12), white, Vector3(ex, y, -0.2), Vector3(0.85, 1.15 if kind in [0, 6] else 0.9, 0.45))
+				part(torso, sphere(0.036 * es, 10), iris, Vector3(ex + 0.004 * sx, y - 0.004, -0.218), Vector3(0.9, 1.1, 0.4))
+				part(torso, sphere(0.019 * es, 8), m_dark, Vector3(ex + 0.004 * sx, y - 0.004, -0.226), Vector3(1.0, 1.1, 0.4))
+				part(torso, sphere(0.012 * es, 6), shine, Vector3(ex + 0.016, y + 0.022, -0.232))
+				if kind == 6:
+					part(torso, sphere(0.02 * es, 6), shine, Vector3(ex - 0.01, y + 0.012, -0.233), Vector3(1.0, 1.0, 0.4))
+					part(torso, sphere(0.008, 6), shine, Vector3(ex - 0.014, y - 0.022, -0.233))
+				if kind == 7:
+					part(torso, box(0.085 * es, 0.022, 0.02), m_skin, Vector3(ex, y + 0.034 * es, -0.228))   # heavy lid
 			1:   # calm: soft dark eyes with a shine
-				part(torso, sphere(0.034, 10), m_dark, Vector3(ex, y, -0.215), Vector3(0.9, 1.1, 0.5))
+				part(torso, sphere(0.034 * es, 10), m_dark, Vector3(ex, y, -0.215), Vector3(0.9, 1.1, 0.5))
 				part(torso, sphere(0.01, 6), shine, Vector3(ex + 0.012, y + 0.014, -0.232))
-				part(torso, box(0.055, 0.012, 0.012), m_dark, Vector3(ex, y + 0.06, -0.21))
 			2:   # sleepy: half-closed lids
-				part(torso, box(0.065, 0.016, 0.02), m_dark, Vector3(ex, y - 0.006, -0.222), Vector3.ONE, Vector3(0, 0, 0.12 * sx))
-				part(torso, box(0.05, 0.012, 0.012), m_dark, Vector3(ex, y + 0.05, -0.214), Vector3.ONE, Vector3(0, 0, 0.2 * sx))
+				part(torso, box(0.065 * es, 0.016, 0.02), m_dark, Vector3(ex, y - 0.006, -0.222), Vector3.ONE, Vector3(0, 0, 0.12 * sx))
+			8:   # smug: half-lidded, looking sideways
+				part(torso, sphere(0.04 * es, 10), white, Vector3(ex, y - 0.01, -0.205), Vector3(0.95, 0.6, 0.45))
+				part(torso, sphere(0.022, 8), m_dark, Vector3(ex + 0.016, y - 0.014, -0.224), Vector3(1.0, 0.8, 0.4))
+				part(torso, box(0.08 * es, 0.016, 0.02), m_dark, Vector3(ex, y + 0.008, -0.226))
 			3:   # cheerful: eyes that smile
-				var t := TorusMesh.new(); t.inner_radius = 0.024; t.outer_radius = 0.036; t.rings = 12; t.ring_segments = 6
+				var t := TorusMesh.new(); t.inner_radius = 0.024 * es; t.outer_radius = 0.036 * es; t.rings = 12; t.ring_segments = 6
 				part(torso, t, m_dark, Vector3(ex, y - 0.01, -0.215), Vector3(1.0, 1.0, 0.5), Vector3(PI / 2, 0, 0))
 				part(torso, box(0.08, 0.032, 0.03), m_skin, Vector3(ex, y - 0.032, -0.22))
-		if gender == 0 and face not in [2, 3]:
-			part(torso, box(0.024, 0.012, 0.012), m_dark, Vector3(ex + 0.04 * sx, y + 0.034, -0.21), Vector3.ONE, Vector3(0, 0, 0.6 * sx))   # lashes
-	part(torso, sphere(0.018, 6), m_skin, Vector3(0, 0.83, -0.232), Vector3(1.0, 0.8, 0.8))   # nose
-	if face in [0, 3]:
-		var sm := TorusMesh.new(); sm.inner_radius = 0.022; sm.outer_radius = 0.03; sm.rings = 12; sm.ring_segments = 6
-		part(torso, sm, m_dark, Vector3(0, 0.79, -0.214), Vector3(1.0, 1.0, 0.4), Vector3(PI / 2, 0, PI))
+		# brows: thin and arched for her, thick and straight for him; angled in when fierce
+		var tilt: float = (-0.4 if kind == 4 else (-0.2 if kind == 7 else 0.15)) * sx
+		if fem:
+			part(torso, box(0.058, 0.011, 0.012), m_hairf, Vector3(ex + 0.006 * sx, y + 0.07, -0.21), Vector3.ONE, Vector3(0, 0, tilt + 0.18 * sx))
+		else:
+			part(torso, box(0.078, 0.024, 0.018), m_hairf, Vector3(ex, y + 0.062, -0.212), Vector3.ONE, Vector3(0, 0, tilt * 0.8))
+		# lashes on her open eyes: two flicks at the outer corner
+		if fem and open:
+			part(torso, box(0.03, 0.011, 0.012), m_dark, Vector3(ex + 0.048 * sx, y + 0.032, -0.208), Vector3.ONE, Vector3(0, 0, 0.55 * sx))
+			part(torso, box(0.022, 0.009, 0.012), m_dark, Vector3(ex + 0.05 * sx, y + 0.012, -0.208), Vector3.ONE, Vector3(0, 0, 0.15 * sx))
+			part(torso, box(0.07 * es, 0.012, 0.012), m_dark, Vector3(ex, y + 0.046 * es, -0.222), Vector3.ONE, Vector3(0, 0, -0.08 * sx))
+	# his jaw: wider and squarer at the bottom of the face, with a hint of a chin
+	if not fem:
+		var jaw := cyl(0.205, 0.13, 0.17, 2)   # an eight-sided jaw: flat planes read as square
+		part(torso, jaw, m_skin, Vector3(0, 0.745, -0.035), Vector3(1.0, 1.0, 0.95), Vector3(0, PI / 8.0, 0))
+		part(torso, box(0.1, 0.05, 0.05), m_skin, Vector3(0, 0.672, -0.115), Vector3.ONE, Vector3(-0.35, 0, 0))
+	part(torso, sphere(0.016 if fem else 0.021, 6), m_skin, Vector3(0, 0.83, -0.236), Vector3(1.0, 0.8, 0.8))   # nose
+	# mouth: rosy lips for her, a plain line or grin for him
+	var mz := -0.236
+	var smile := face in [0, 3, 5, 6]
+	var lip_m: Material = toon(skin.lerp(Color("d0405a"), 0.55), false) if fem else m_dark
+	if face == 8:
+		part(torso, box(0.05, 0.012, 0.012), lip_m, Vector3(0.012, 0.79, mz), Vector3.ONE, Vector3(0, 0, 0.3))    # smirk
+	elif smile:
+		var sm := TorusMesh.new(); sm.inner_radius = 0.022; sm.outer_radius = 0.032 if fem else 0.03; sm.rings = 12; sm.ring_segments = 6
+		part(torso, sm, lip_m, Vector3(0, 0.79, mz + 0.004), Vector3(1.0, 1.0, 0.4), Vector3(PI / 2, 0, PI))
+	elif fem:
+		part(torso, sphere(0.022, 8), lip_m, Vector3(0, 0.788, mz), Vector3(1.3, 0.55, 0.4))
 	else:
-		part(torso, box(0.045, 0.012, 0.012), m_dark, Vector3(0, 0.79, -0.222))
-	if gender != 1:
+		part(torso, box(0.05, 0.013, 0.012), m_dark, Vector3(0, 0.788, mz))
+	if fem or face == 3:
 		var blush := toon(Color("ff9a9a"), false)
 		for sx in [-1.0, 1.0]:
 			part(torso, sphere(0.03, 8), blush, Vector3(0.14 * sx, 0.815, -0.185), Vector3(1.0, 0.6, 0.4))
+	# little extras
+	match detail:
+		1:   # freckles
+			var fm := toon(skin.darkened(0.35), false)
+			for sx in [-1.0, 1.0]:
+				for k in 3:
+					part(torso, sphere(0.007, 5), fm, Vector3(sx * (0.1 + k * 0.022), 0.83 + (k % 2) * 0.012, -0.212 + k * 0.006))
+		2:   # a scar over one eye
+			part(torso, box(0.012, 0.11, 0.012), toon(skin.lerp(Color("c86a6a"), 0.6), false), Vector3(0.1, 0.87, -0.228), Vector3.ONE, Vector3(0, 0, 0.25))
+		3:   # face paint in the team colour
+			var pm := toon(paint, false, 0.2)
+			for sx in [-1.0, 1.0]:
+				for k in 2:
+					part(torso, box(0.055, 0.012, 0.012), pm, Vector3(sx * 0.12, 0.812 - k * 0.022, -0.2), Vector3.ONE, Vector3(0, 0.4 * sx, 0))
+		4:   # stubble
+			part(torso, sphere(0.205, 14), toon(skin.lerp(hair_c, 0.45).darkened(0.12), false), Vector3(0, 0.76, -0.025), Vector3(1.18 if not fem else 1.0, 0.6, 1.03))
+		5:   # a full beard
+			var bm := toon(hair_c)
+			part(torso, sphere(0.21, 14), bm, Vector3(0, 0.75, -0.02), Vector3(1.2, 0.72, 1.05))
+			part(torso, sphere(0.08, 10), bm, Vector3(0, 0.69, -0.17), Vector3(1.3, 1.1, 0.9))
+			part(torso, box(0.06, 0.012, 0.012), m_dark, Vector3(0, 0.79, -0.25))
+		6:   # moustache
+			for sx in [-1.0, 1.0]:
+				part(torso, capsule(0.018, 0.08), toon(hair_c), Vector3(0.03 * sx, 0.808, -0.236), Vector3.ONE, Vector3(0, 0, PI / 2 + 0.35 * sx))
+		7:   # beauty mark
+			part(torso, sphere(0.008, 5), m_dark, Vector3(0.055, 0.8, -0.23))
 
 ## Hair that peeks out under whatever the hero wears on their head: a cap of hair, chunky fringe
 ## locks over the forehead, then the style.
 static func _hair(torso: Node3D, style: int, gender: int, m_hair: Material, covered := false) -> void:
+	if style == 13:
+		return   # bald
 	if covered:
-		for sx in [-1.0, 1.0]:
-			part(torso, cyl(0.0, 0.06, 0.2, 8), m_hair, Vector3(0.2 * sx, 0.84, -0.06), Vector3(1.0, 1.0, 0.8), Vector3(PI, 0, 0.15 * sx))
-		if style == 1:
-			part(torso, capsule(0.17, 0.52), m_hair, Vector3(0, 0.7, 0.1), Vector3(1.35, 1.0, 0.7))
+		# under a hood or helmet only what hangs below it shows
+		if style not in [5, 9]:
+			for sx in [-1.0, 1.0]:
+				part(torso, cyl(0.0, 0.06, 0.2, 8), m_hair, Vector3(0.2 * sx, 0.84, -0.06), Vector3(1.0, 1.0, 0.8), Vector3(PI, 0, 0.15 * sx))
+		match style:
+			1: part(torso, capsule(0.17, 0.52), m_hair, Vector3(0, 0.7, 0.1), Vector3(1.35, 1.0, 0.7))
+			7: _pigtails(torso, m_hair)
+			8: _braid(torso, m_hair)
 		return
-	if style == 5:
+	if style == 5 or style == 9:
 		part(torso, sphere(0.242), m_hair, Vector3(0, 0.885, 0.02), Vector3(1.0, 0.82, 1.0))
+		if style == 9:
+			# mohawk: a crest of spikes front to back
+			for i in 6:
+				var z := -0.16 + i * 0.07
+				part(torso, cyl(0.0, 0.05, 0.2 - absf(i - 2.5) * 0.02, 6), m_hair, Vector3(0, 1.08 - absf(i - 2.0) * 0.012, z), Vector3(0.6, 1.0, 1.2), Vector3(-0.3 + i * 0.12, 0, 0))
+		return
+	if style == 10:
+		# afro: a big round cloud of hair
+		part(torso, sphere(0.31, 16), m_hair, Vector3(0, 0.98, 0.08), Vector3(1.1, 0.95, 1.0))
+		for k in 5:
+			var x := -0.13 + k * 0.065
+			part(torso, sphere(0.07, 10), m_hair, Vector3(x, 1.0 - absf(k - 2) * 0.012, -0.165), Vector3(1.0, 0.9, 0.7))
 		return
 	part(torso, sphere(0.25), m_hair, Vector3(0, 0.91, 0.035), Vector3(1.05, 0.86, 1.02))
 	# fringe: soft locks sweeping across the forehead
@@ -444,8 +549,35 @@ static func _hair(torso: Node3D, style: int, gender: int, m_hair: Material, cove
 			for i in 7:
 				var a := -1.2 + i * 0.4
 				part(torso, cyl(0.0, 0.065, 0.22, 8), m_hair, Vector3(sin(a) * 0.14, 1.08, 0.05 + cos(a) * 0.06), Vector3.ONE, Vector3(-0.35, 0, -a * 0.75))
+		6:   # bob: straight sides down to the jaw
+			for sx in [-1.0, 1.0]:
+				part(torso, sphere(0.13, 12), m_hair, Vector3(0.17 * sx, 0.82, 0.04), Vector3(0.6, 1.35, 1.2))
+			part(torso, sphere(0.2, 12), m_hair, Vector3(0, 0.82, 0.12), Vector3(1.2, 1.1, 0.7))
+		7:   # pigtails
+			_pigtails(torso, m_hair)
+		8:   # a long braid down the back
+			_braid(torso, m_hair)
+		11:  # curly: little curls all over
+			for k in 14:
+				var a := TAU * k / 14.0
+				var yy := 0.95 + (k % 3) * 0.05
+				part(torso, sphere(0.075, 8), m_hair, Vector3(cos(a) * 0.21, yy, sin(a) * 0.19 + 0.04))
+			part(torso, sphere(0.09, 8), m_hair, Vector3(0, 1.12, 0.03))
+		12:  # swoop: a big side-swept fringe
+			part(torso, sphere(0.16, 12), m_hair, Vector3(0.06, 1.02, -0.13), Vector3(1.4, 0.7, 0.8), Vector3(0.3, 0, -0.35))
+			part(torso, cyl(0.0, 0.06, 0.22, 8), m_hair, Vector3(0.2, 0.92, -0.13), Vector3.ONE, Vector3(0.2, 0, -2.2))
 		_:   # short: a tuft on the crown
 			part(torso, cyl(0.0, 0.05, 0.12, 8), m_hair, Vector3(0.03, 1.12, 0.02), Vector3.ONE, Vector3(-0.3, 0, -0.5))
+
+static func _pigtails(torso: Node3D, m_hair: Material) -> void:
+	for sx in [-1.0, 1.0]:
+		part(torso, sphere(0.04, 8), toon(Color("e0607e")), Vector3(0.22 * sx, 0.93, 0.12))
+		part(torso, capsule(0.07, 0.34), m_hair, Vector3(0.27 * sx, 0.78, 0.15), Vector3.ONE, Vector3(0.25, 0, 0.3 * sx))
+
+static func _braid(torso: Node3D, m_hair: Material) -> void:
+	for k in 5:
+		part(torso, sphere(0.065 - k * 0.006, 8), m_hair, Vector3(0, 0.86 - k * 0.09, 0.27 + k * 0.01))
+	part(torso, sphere(0.03, 6), toon(Color("e0607e")), Vector3(0, 0.44, 0.3))
 
 ## The gun's pieces, shared by hunters and the weapons lying around on the islands.
 static func gun_parts(gun: Node3D, weapon: String, m_gun: Material, m_dark: Material, m_acc: Material) -> void:
@@ -865,6 +997,42 @@ static func training_yard() -> Node3D:
 		part(root, cyl(0.025, 0.025, 0.34, 6), wood, Vector3(-1.1 - i * 0.6, 0.0, 0.3 - i * 0.2))
 	return root
 
+## The Nesting Nook at home: a flower arbor over a big straw nest with two cushions, where two kin
+## who are close can leave an egg. (The egg itself sits in the middle, from nest_egg().)
+static func nesting_nook() -> Node3D:
+	var root := Node3D.new()
+	var wood := toon(Color("8a6a45")); var straw := toon(Color("d8b46a")); var straw_d := toon(Color("b08a48"))
+	var pink := toon(Color("ff9ab8"), false, 0.15); var leaf := toon(Color("6aa64a"))
+	# a stepping-stone floor
+	for i in 7:
+		var a := TAU * i / 7.0
+		part(root, cyl(0.24, 0.26, 0.06, 8), toon(Color("cfc8bb")), Vector3(cos(a) * 1.45, 0.03, sin(a) * 1.45))
+	# the nest: a thick ring of straw with a few loose stalks
+	var t := TorusMesh.new(); t.inner_radius = 0.42; t.outer_radius = 0.82; t.rings = 18; t.ring_segments = 8
+	part(root, t, straw, Vector3(0, 0.16, 0), Vector3(1.0, 0.7, 1.0))
+	for i in 10:
+		var a := TAU * i / 10.0 + 0.2
+		part(root, box(0.03, 0.03, 0.4), straw_d, Vector3(cos(a) * 0.66, 0.3, sin(a) * 0.66), Vector3.ONE, Vector3(0.3, -a, 0.2))
+	# two cushions for the pair, either side
+	for sx in [-1.0, 1.0]:
+		part(root, sphere(0.3, 14), toon(Color("f2c84a") if sx < 0 else Color("8ab4ff")), Vector3(1.2 * sx, 0.12, 0.55), Vector3(1.0, 0.35, 1.0))
+	# the arbor: two posts and an arch of vine and flowers behind the nest
+	for sx in [-1.0, 1.0]:
+		part(root, cyl(0.06, 0.07, 1.9, 8), wood, Vector3(1.05 * sx, 0.95, -0.7))
+	var arch := TorusMesh.new(); arch.inner_radius = 0.98; arch.outer_radius = 1.12; arch.rings = 24; arch.ring_segments = 6
+	var ar := part(root, arch, leaf, Vector3(0, 1.9, -0.7), Vector3.ONE, Vector3(PI / 2, 0, 0))
+	ar.scale = Vector3(1.0, 1.0, 0.75)
+	for i in 11:
+		var a := PI * i / 10.0
+		part(root, sphere(0.09, 8), pink if i % 2 == 0 else toon(Color("fff3a8"), false, 0.15), Vector3(cos(a) * 1.05, 1.9 + sin(a) * 0.78, -0.7))
+	# a heart sign hanging from the top of the arch
+	var heart := Node3D.new(); heart.name = "Heart"; heart.position = Vector3(0, 2.25, -0.66); root.add_child(heart)
+	part(heart, sphere(0.13, 12), toon(Color("ff5a7a"), false, 0.35), Vector3(-0.08, 0.04, 0))
+	part(heart, sphere(0.13, 12), toon(Color("ff5a7a"), false, 0.35), Vector3(0.08, 0.04, 0))
+	part(heart, cyl(0.0, 0.19, 0.24, 4), toon(Color("ff5a7a"), false, 0.35), Vector3(0, -0.1, 0), Vector3(1.0, 1.0, 0.45), Vector3(PI, PI / 4, 0))
+	PropAnim.on(heart, 0.0, 0.05, 2.0)
+	return root
+
 ## An egg in a straw nest, for kin you raise from an egg at home.
 static func nest_egg(c: Color, spot: Color) -> Node3D:
 	var root := Node3D.new()
@@ -1183,6 +1351,7 @@ static func nest() -> Node3D:
 		part(root, sphere(0.16, 10), toon(cols[i]), Vector3(cos(a) * 0.25, 0.28, sin(a) * 0.25), Vector3(1, 1.25, 1))
 	return root
 
+const EXTRACT_R := 2.6
 static func portal(c: Color) -> Node3D:
 	var root := Node3D.new()
 	var t := TorusMesh.new(); t.inner_radius = 0.95; t.outer_radius = 1.2; t.rings = 24; t.ring_segments = 8
@@ -1199,6 +1368,13 @@ static func portal(c: Color) -> Node3D:
 	disc.visible = false
 	var base := MeshInstance3D.new(); base.name = "Base"; base.mesh = flat_quad(3.2)
 	base.material_override = ring_mat(c, 0.1); base.position.y = 0.05; root.add_child(base)
+	# the extraction circle: dim until you stand in it, then it fills around as you extract
+	var zone := MeshInstance3D.new(); zone.name = "Zone"; zone.mesh = flat_quad(EXTRACT_R * 2.0)
+	zone.material_override = ring_mat(Color(c, 0.35), 0.035); zone.position.y = 0.06; root.add_child(zone)
+	var zf := MeshInstance3D.new(); zf.name = "ZoneFill"; zf.mesh = flat_quad(EXTRACT_R * 2.0)
+	var zm := ring_mat(Color(c.lightened(0.35), 0.95), 0.07)
+	zm.set_shader_parameter("arc", 0.0)
+	zf.material_override = zm; zf.position.y = 0.07; root.add_child(zf)
 	var beam := CPUParticles3D.new(); beam.name = "Beam"
 	beam.amount = 40; beam.lifetime = 1.6; beam.emitting = false
 	var bm := SphereMesh.new(); bm.radius = 0.07; bm.height = 0.14; bm.radial_segments = 6; bm.rings = 3

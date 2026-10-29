@@ -384,6 +384,7 @@ func _start_drop(h: Hunter, at: Vector3) -> void:
 		off = Vector3.ZERO
 	h.teleport(at + off + Vector3(0, 26.0, 0))
 	h.dropping = true
+	h.drop_from = Vector2(at.x + off.x, at.z + off.z)
 	h.grounded = false
 	h.gliding = true
 	h.glide_k = 1.0
@@ -419,10 +420,11 @@ func ship_jump(h: Hunter) -> void:
 	var off := Vector3(rng.randf_range(-0.8, 0.8), 0, rng.randf_range(-0.8, 0.8))
 	h.teleport(ship_pos() + Vector3(0, -1.5, 0) + off)
 	h.dropping = true
+	h.drop_from = Vector2(h.pos.x, h.pos.z) + Vector2(ship["dir"].x, ship["dir"].z) * 3.0
 	h.gliding = true
 	h.glide_k = 1.0
 	h.grounded = false
-	h.vel = ship["dir"] * 6.0
+	h.vel = ship["dir"] * 3.0
 	if h == player:
 		sfx("whoosh", null, -2.0)
 		if hud: hud.toast("Steer with %s%s%s%s to pick where you land" % [Settings.key_cap("up"), Settings.key_cap("left"), Settings.key_cap("down"), Settings.key_cap("right")], Color("cfeaff"))
@@ -998,6 +1000,34 @@ func spawn_wild(rec: Dictionary, at: Vector3, dazed := false) -> Kin:
 # ------------------------------------------------------------------ queries
 func local_player() -> Hunter:
 	return player
+
+## Where the mouse points, at the right height: on a foe under the cursor at that foe's height,
+## otherwise on the ground under the cursor. Aiming on your own height made shots at someone a
+## terrace above (or below) drift sideways past them, because the camera looks down at an angle.
+func _mouse_aim() -> Vector3:
+	var base_y := player.pos.y + 0.95
+	var mp := get_viewport().get_mouse_position()
+	var best: Ent = null
+	var bd := 52.0
+	for e in foes_of(player.team):
+		if e.dead or not e.visible:
+			continue
+		if absf(e.pos.y - player.pos.y) > World.LEVEL * 3.0:
+			continue
+		var sp := cam.unproject_position(e.pos + Vector3(0, 0.8, 0))
+		var d := sp.distance_to(mp)
+		if d < bd:
+			bd = d; best = e
+	if best:
+		var q := cam.mouse_on_plane(best.pos.y + 0.95)
+		return Vector3(q.x, base_y, q.z)
+	var p := cam.mouse_on_plane(base_y)
+	for _i in 2:
+		var g := world.ground_at(p.x, p.z)
+		if g <= World.VOID + 1.0 or absf(g - player.pos.y) > World.LEVEL * 3.0:
+			break
+		p = cam.mouse_on_plane(g + 0.95)
+	return Vector3(p.x, base_y, p.z)
 
 func foes_of(team: int) -> Array:
 	var out: Array = []
@@ -1814,12 +1844,16 @@ func _update_shots(dt: float) -> void:
 		if s["life"] <= 0.0:
 			_shot_end(s, p, null)
 
-## Shots fly level, so a target a step above or below still gets hit: anything from about a
-## terrace under its feet to a little over its head counts. Much higher and the shot sails over.
+## Shots fly level, so a target one terrace above or below still gets hit. Two terraces up and the
+## shot goes under them into the cliff; two down and it sails over their head.
 func shot_height_ok(e: Ent, y: float) -> bool:
 	var top: float = 1.5 if e is Hunter else maxf(0.9, e.r * 2.2)
 	var fy := e.hit_y()
-	return y > fy - 1.0 and y < fy + top + 0.9
+	# someone hopping is still standing on their terrace, as far as shots are concerned
+	var g := e.ground()
+	if g > World.VOID + 1.0 and fy > g:
+		fy = maxf(g, fy - 1.2)
+	return y > fy - 0.45 and y < fy + top + 0.9
 
 func _shot_break(s: Dictionary, p: Vector3) -> Dictionary:
 	for b in breaks:
@@ -2054,7 +2088,7 @@ func _gather_input() -> void:
 			if d < bd: bd = d; best = sp
 		if best != Vector3.INF and bd > 0.8:
 			player.inp["move"] = Vector2(best.x - player.pos.x, best.z - player.pos.z).normalized()
-	player.inp["aim"] = cam.mouse_on_plane(player.pos.y + 0.95)
+	player.inp["aim"] = _mouse_aim()
 	player.inp["fire"] = Input.is_action_pressed("fire") and not paused
 	if paused:
 		player.inp["move"] = Vector2.ZERO
@@ -2363,8 +2397,8 @@ func _update_interact(dt: float) -> void:
 			if o != h and o.team == h.team and o.downed and not o.out and h.flat_dist(o) < 1.8:
 				best = {"kind": "revive", "ent": o, "label": "Hold " + Settings.key_cap("interact") + " to revive %s" % o.pname}
 				break
-		# 2. catch a dazed wild kin
-		if best.is_empty():
+		# 2. catch a dazed wild kin (not in training: practice kin go home with nobody)
+		if best.is_empty() and not opts.get("training", false):
 			for k in kins:
 				if k.state == "dazed" and not k.dead and h.flat_dist(k) < 1.9:
 					best = {"kind": "catch", "ent": k, "label": "Hold " + Settings.key_cap("interact") + " to catch the %s" % Data.KIN[k.species]["name"]}
@@ -2432,6 +2466,8 @@ func _update_interact(dt: float) -> void:
 					_use_shrine(h, sh)
 
 func _catch(h: Hunter, k: Kin) -> void:
+	if opts.get("training", false):
+		return
 	if net_on and not is_host:
 		if k.catch_prog < 5.0:
 			k.catch_prog = 5.0
@@ -2525,7 +2561,7 @@ func _use_shrine(h: Hunter, sh: Dictionary, from_net := false) -> void:
 ## Midway through, the Warden wakes on the heart island and guards it until someone brings it down.
 const TUT := ["Steer with WASD to choose where you land", "Walk around with WASD", "Press Shift to dash",
 	"Press Space to jump. Hold Space in the air to glide", "Hold left click to shoot. Defeat the monsters",
-	"Press %%s to throw %s at a monster", "Stand by the chest and hold E to open it", "An exit opened. Stand inside it to go home"]
+	"Press %%s to throw %s at a monster", "Stand by the chest and hold F to open it", "An exit opened. Stand inside it to go home"]
 
 # ---- training area
 ## [id, what to do, the action whose key it uses ("" for none)]
@@ -2921,20 +2957,45 @@ func _update_portals(dt: float) -> void:
 				ping(p["pos"], Color("8fe3c8"))
 		if p["open"]:
 			n.get_node("Disc").rotation.y += dt * 2.0
+	var shown := {}     # portal index -> progress to show on its circle
 	for h in hunters:
 		if h.out or h.extracted or h.downed:
 			continue
-		var inside := false
-		for p in portals:
-			if p["open"] and h.flat_dist(p["pos"]) < 1.3 and absf(h.pos.y - p["pos"].y) < 1.0:
-				inside = true
+		var inside := -1
+		for pi in portals.size():
+			var p: Dictionary = portals[pi]
+			if p["open"] and h.flat_dist(p["pos"]) < Models.EXTRACT_R and absf(h.pos.y - p["pos"].y) < 1.2:
+				inside = pi
 				break
-		if inside:
+		if inside >= 0:
+			if h.extract_prog <= 0.0 and h == player:
+				sfx("glide", h.pos, -6.0, 0.7)
 			h.extract_prog += dt / Data.MATCH["extract_time"]
+			# your own progress wins the circle you're standing in; otherwise whoever is furthest along
+			if h == player:
+				shown[inside] = h.extract_prog
+				shown["mine"] = inside
+			elif shown.get("mine", -1) != inside and float(shown.get(inside, 0.0)) < h.extract_prog:
+				shown[inside] = h.extract_prog
 			if h.extract_prog >= 1.0:
 				_extract(h)
 		else:
-			h.extract_prog = maxf(0.0, h.extract_prog - dt)
+			h.extract_prog = 0.0
+	for pi in portals.size():
+		var n: Node3D = portals[pi]["node"]
+		var zf := n.get_node_or_null("ZoneFill") as MeshInstance3D
+		var zr := n.get_node_or_null("Zone") as MeshInstance3D
+		if zf == null: continue
+		var want := float(shown.get(pi, 0.0))
+		var cur := float(zf.get_meta("p", 0.0))
+		cur = want if want < cur else lerpf(cur, want, 1.0 - exp(-20.0 * dt))
+		zf.set_meta("p", cur)
+		(zf.material_override as ShaderMaterial).set_shader_parameter("arc", clampf(cur, 0.0, 1.0))
+		zf.visible = portals[pi]["open"] and cur > 0.001
+		zr.visible = portals[pi]["open"]
+		# the circle lights up while someone is inside
+		var zm := zr.material_override as ShaderMaterial
+		zm.set_shader_parameter("fill", 0.08 + 0.06 * sin(time * 6.0) if shown.has(pi) else 0.0)
 
 func _extract(h: Hunter) -> void:
 	h.extracted = true

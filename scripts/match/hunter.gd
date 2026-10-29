@@ -14,8 +14,9 @@ const GLIDE_SPEED := 8.4
 const GLIDE_TIME := 6.0
 const GLIDE_DRAG := 1.6         # speed lost per second while gliding (more when going fast)
 const GLIDE_MAX := 15.0
-const DROP_FALL := 3.8
-const DROP_SPEED := 9.0
+const DROP_FALL := 7.5
+const DROP_SPEED := 5.0
+const DROP_ZONE := 7.0       # how far from where you jumped you can steer on the way down, like Supervive
 const REGEN := 7.0            # health per second once you've gone a while without getting hit
 ## Armor: a layer over health that soaks hits first and comes back on its own, fast, once you've
 ## been out of the fight for a few seconds. Health only regenerates once armor is full.
@@ -122,6 +123,7 @@ var acts: Array = []          # queued ability pieces, see Abil.tick
 var acts_tele: Node3D = null
 var idle_fire := 0.0
 var dropping := false         # gliding down from the sky at the start of a match
+var drop_from := Vector2.INF  # where the drop started; you can only steer within DROP_ZONE of it
 var riding := false           # aboard the skyship, waiting to jump
 var bless_t := 0.0
 var wrar := 0                 # rarity of the weapon in hand, 0 for the one you brought
@@ -149,7 +151,7 @@ func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, n
 	pname = name_txt
 	ctrl = control
 	if control != "local":
-		bot_look = {"gender": randi() % 3, "body": randi() % 3, "face": randi() % Models.LOOK_FACES.size(), "skin": randi() % Models.LOOK_SKIN.size(),
+		bot_look = {"gender": randi() % 2, "body": randi() % 3, "detail": randi() % Models.LOOK_DETAILS.size(), "face": randi() % Models.LOOK_FACES.size(), "skin": randi() % Models.LOOK_SKIN.size(),
 			"hair": randi() % Models.LOOK_HAIRS.size(), "hair_col": randi() % 6}
 	max_hp = cdat["hp"] + (15 if perk == "toughskin" else 0); hp = max_hp
 	max_armor = float(ARMOR.get(cls, 50.0)); armor = max_armor; base_armor = max_armor
@@ -280,8 +282,13 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 		gliding = false
 		glide_cd = 0.8
 		m.fx.burst(pos + Vector3(0, 1.6, 0), Color("f3eee2"), 10, 3.0, 0.4, 8.0)
-	if extract_prog > 0.0:
-		extract_prog = 0.0
+	# only another hunter's damage (or their kin's) knocks you out of extracting, not monsters
+	if extract_prog > 0.0 and d > 0.0 and by != null and not (by is Mob):
+		var src: Ent = by
+		if by is Kin and (by as Kin).owner_h: src = (by as Kin).owner_h
+		if src is Hunter and src.team != team:
+			extract_prog = 0.0
+			if is_local() and m.hud: m.hud.toast("Extraction interrupted", Color("ff9a8a"))
 	return d
 
 func hit_y() -> float:
@@ -466,7 +473,7 @@ func _shove_along() -> void:
 		m.shake(0.25, f.pos)
 
 func can_fire() -> bool:
-	return not (reload_t > 0.0 or roll_t > 0.0 or downed or out or stun_t > 0.0 or grap.size() > 0 or gliding or charge.size() > 0)
+	return not (drink_t > 0.0 or reload_t > 0.0 or roll_t > 0.0 or downed or out or stun_t > 0.0 or grap.size() > 0 or gliding or charge.size() > 0)
 
 func fire() -> void:
 	if not can_fire() or fire_cd > 0.0:
@@ -608,13 +615,31 @@ func heal(n: float) -> void:
 	if hp - before > 1.0:
 		m.fx.number(pos + Vector3(0, 1.6, 0), hp - before, Color("8ff0a0"), false, "+")
 
+## Drinking a tonic takes a moment: you slow down, lower your gun and drink. Dashing, getting
+## stunned or going down spills it (you keep the tonic). It heals when you finish.
+const DRINK_TIME := 1.1
+var drink_t := 0.0
 func use_tonic() -> void:
-	if tonics <= 0 or downed or hp >= max_hp:
+	if tonics <= 0 or downed or hp >= max_hp or drink_t > 0.0 or gliding or not grounded:
 		return
-	tonics -= 1
-	free_tonics = maxi(0, free_tonics - 1)
-	heal(45.0)
-	m.sfx("heal", pos, -2.0)
+	drink_t = DRINK_TIME
+	m.sfx("pickup", pos, -6.0, 0.7)
+
+func _tick_drink(dt: float) -> void:
+	if drink_t <= 0.0:
+		return
+	if downed or stun_t > 0.0 or roll_t > 0.0 or gliding or out:
+		drink_t = 0.0
+		return
+	drink_t -= dt
+	if drink_t <= 0.0:
+		drink_t = 0.0
+		if tonics > 0:
+			tonics -= 1
+			free_tonics = maxi(0, free_tonics - 1)
+			heal(45.0)
+			m.sfx("heal", pos, -2.0)
+			m.fx.burst(pos + Vector3(0, 1.2, 0), Color("8ff0a0"), 14, 2.5, 0.5, -3.0)
 
 func launch_to(target: Vector3, t: float) -> void:
 	vel.x = (target.x - pos.x) / t
@@ -715,6 +740,7 @@ func sim(dt: float) -> void:
 	Abil.tick_s(self, dt)
 	if inp["reload"]: start_reload()
 	if inp["tonic"]: use_tonic()
+	_tick_drink(dt)
 	if inp["ult"]: use_ultimate()
 	if inp["fire"]: fire()
 	inp["dash"] = false; inp["jump"] = false; inp["sig"] = false; inp["reload"] = false; inp["tonic"] = false; inp["ult"] = false; inp["sec"] = false; inp["gear1"] = false; inp["gear2"] = false
@@ -758,7 +784,7 @@ func _physics(dt: float) -> void:
 		_grapple(dt)
 		return
 	var mv: Vector2 = inp["move"] if stun_t <= 0.0 and root_t <= 0.0 else Vector2.ZERO
-	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * (0.6 if bshield_on else 1.0) * (0.55 if crouch else 1.0) * (1.0 + gear_stat("speed")) * fuse_mod("speed")
+	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * (0.45 if drink_t > 0.0 else 1.0) * (0.6 if bshield_on else 1.0) * (0.55 if crouch else 1.0) * (1.0 + gear_stat("speed")) * fuse_mod("speed")
 	var hv := Vector2(vel.x, vel.z)
 	var cur := hv.length()
 	if charge.size() > 0:
@@ -815,6 +841,13 @@ func _physics(dt: float) -> void:
 		var over := cur > spd * 1.15
 		var k := (2.6 if over else 16.0) if grounded else (1.5 if over else 3.5)
 		hv += (wish - hv) * (1.0 - exp(-k * dt))
+	if dropping and drop_from != Vector2.INF:
+		# the drop only lets you pick a spot near where you jumped: steering pushes against the edge of a small circle
+		var rel := Vector2(pos.x, pos.z) - drop_from
+		var nxt := rel + hv * dt
+		if nxt.length() > DROP_ZONE:
+			var nrm := nxt.normalized()
+			hv -= nrm * maxf(0.0, hv.dot(nrm))
 	vel.x = hv.x; vel.z = hv.y
 	update_lip()
 	_update_glide(dt)
@@ -1119,7 +1152,7 @@ func render(delta: float, alpha: float) -> void:
 	var spd := hv.length()
 	crouch_k = move_toward(crouch_k, 1.0 if crouch else 0.0, delta * 8.0)
 	anim.update(delta, {"vel": vel, "face": face, "grounded": grounded and pad.is_empty(), "gliding": gliding, "rolling": roll_t > 0.0,
-		"crouch": crouch_k, "downed": downed, "ledge": grap.size() > 0, "reload": (1.0 - reload_t / maxf(0.1, float(wpn["reload"]))) if reload_t > 0.0 else -1.0,
+		"crouch": crouch_k, "downed": downed, "ledge": grap.size() > 0, "reload": (1.0 - reload_t / maxf(0.1, float(wpn["reload"]))) if reload_t > 0.0 else -1.0, "drink": (1.0 - drink_t / DRINK_TIME) if drink_t > 0.0 else -1.0,
 		"recoil": recoil, "flash": clampf(flash_t / 0.12, 0.0, 1.0), "fired": idle_fire})
 	if anim.stepped and not downed and not crouch:
 		Sfx.step(pos, -14.0 if is_local() else -20.0)
@@ -1141,6 +1174,10 @@ func render(delta: float, alpha: float) -> void:
 				var gy: float = m.world.ground_at(pos.x, pos.z)
 				if gy > World.VOID + 1.0:
 					m.fx.ring(Vector3(pos.x, gy, pos.z), 1.1, Color(1, 1, 1, 0.7), 0.25)
+				# and the circle you can still steer within
+				if drop_from != Vector2.INF:
+					var zy: float = m.world.ground_at(drop_from.x, drop_from.y)
+					m.fx.ring(Vector3(drop_from.x, maxf(zy, 0.0) + 0.1, drop_from.y), DROP_ZONE + 0.8, Color(0.75, 0.95, 1.0, 0.35), 0.3)
 		wind_t -= delta
 		if wind_t <= 0.0:
 			wind_t = 0.09

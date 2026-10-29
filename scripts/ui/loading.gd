@@ -19,7 +19,7 @@ const TIPS := [
 	"Weapons you find out here are stronger than your own, but only for this expedition.",
 	"Press 1 to drink a tonic. They heal over a few seconds, so drink before it's desperate.",
 	"Fight alongside your kin to fill the bond meter, then R calls its bond ultimate.",
-	"Q and V are your kin's abilities. Each kin you bring gives you a different kit.",
+	"Q and E are your kin's abilities. Each kin you bring gives you a different kit.",
 	"Your kin stuns or roots a foe? Shoot it right away for a combo.",
 	"Bring two kin and press X to swap between them mid-fight.",
 	"Go down for good and the kin you brought are left behind. Old Pell's Ransom House sells back the ones nobody collects.",
@@ -27,9 +27,9 @@ const TIPS := [
 	"Wild kin with a ring under them can be caught. Weaken them first.",
 	"Jump off the skyship over an island nobody else picked, and loot in peace.",
 	"Lives are shared out per tier. In the Hollow you only get one.",
-	"A teammate is down? Stand next to them and hold E to bring them back.",
+	"A teammate is down? Stand next to them and hold F to bring them back.",
 	"Dash through a shot at the last moment and you take nothing.",
-	"Shrines on the islands give a short power-up. Stand by one and press E.",
+	"Shrines on the islands give a short power-up. Stand by one and press F.",
 ]
 const STAGES := ["Raising the islands", "Waking the monsters", "Hiding the loot", "Fueling the skyship", "Ready"]
 

@@ -292,7 +292,7 @@ func _draw_top(sz: Vector2) -> void:
 		_ctext(Vector2(sz.x * 0.5, 56), "Nothing can hurt you here  ·  Esc to leave", 15, INK)
 		# the checklist
 		var lines: Array = m.train_rows()
-		var box := Rect2(Vector2(16, 90), Vector2(330, 34 + lines.size() * 24))
+		var box := Rect2(Vector2(sz.x - 346, 16), Vector2(330, 34 + lines.size() * 24))
 		_panel(box, Color(0.06, 0.07, 0.1, 0.82), 12)
 		_text(box.position + Vector2(14, 24), "Try everything", 15, GOLD, big)
 		for i in lines.size():
@@ -333,7 +333,7 @@ func _draw_top(sz: Vector2) -> void:
 	_text(Vector2(r.end.x + 12, 34), "%d squads left" % teams.size(), 14, MUTED)
 
 func _draw_feed(sz: Vector2) -> void:
-	var y := 250.0
+	var y := 36.0
 	for f in m.feed:
 		var a := clampf(6.0 - f["t"], 0.0, 1.0)
 		var s: String = f["text"]
@@ -345,7 +345,7 @@ func _draw_feed(sz: Vector2) -> void:
 func _draw_minimap(sz: Vector2) -> void:
 	var riding: bool = m.player != null and (m.player.riding or m.player.dropping)
 	var s := 340.0 if riding else 210.0
-	var r := Rect2(Vector2(sz.x - s - 16, 16), Vector2(s, s))
+	var r := Rect2(Vector2(16, 16), Vector2(s, s))
 	_panel(r, Color(0.05, 0.06, 0.09, 0.78), 12)
 	var w := m.world
 	var inner := Rect2(r.position + Vector2(8, 8), r.size - Vector2(16, 16))
@@ -982,8 +982,19 @@ func _draw_overhead(p: Hunter) -> void:
 		var col := Color("bfe6ff") if fill >= 1.0 else Color("5f7f99")
 		c.draw_rect(Rect2(r.position, Vector2(segw * fill, 5)), col)
 	if p.reload_t > 0.0:
+		# reloading: a filling ring beside your head, and the word under your bars
 		var rf := 1.0 - p.reload_t / float(p.wpn["reload"])
-		c.draw_rect(Rect2(sp + Vector2(-w * 0.5, 21), Vector2(w * rf, 2)), Color("ffe7a8"))
+		var rc := sp + Vector2(w * 0.5 + 16, 4)
+		c.draw_circle(rc, 11.0, Color(0.04, 0.04, 0.06, 0.75))
+		c.draw_arc(rc, 8.0, 0, TAU, 24, Color(1, 1, 1, 0.15), 3.0, true)
+		_arc(rc, 8.0, rf, Color("ffe7a8"), 3.0)
+		_ctext(sp + Vector2(0, 33), "RELOADING", 11, Color("ffe7a8"), big)
+	if p.drink_t > 0.0:
+		var df := 1.0 - p.drink_t / Hunter.DRINK_TIME
+		var dc := sp + Vector2(-w * 0.5 - 16, 4)
+		c.draw_circle(dc, 11.0, Color(0.04, 0.04, 0.06, 0.75))
+		_arc(dc, 8.0, df, Color("8ff0a0"), 3.0)
+		_ctext(sp + Vector2(0, 33 if p.reload_t <= 0.0 else 46), "DRINKING", 11, Color("8ff0a0"), big)
 
 # ------------------------------------------------------------------ hover tips
 ## Point at anything on the bottom bar (abilities, health, weapon, kin) to see what it is.

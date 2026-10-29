@@ -49,8 +49,11 @@ func use(slot: String, ctx := {}) -> bool:
 	var c := ctx.duplicate()
 	c["slot"] = slot
 	c["ability"] = d.id
-	Effects.run(d.effects, caster, c)
-	CombatBus.ability_used.emit(caster, d.id, slot)
+	# "as": someone else performs it (a kin on your shoulder lends you its ability)
+	var who: Node = c.get("as", caster)
+	c.erase("as")
+	Effects.run(d.effects, who, c)
+	CombatBus.ability_used.emit(who, d.id, slot)
 	return true
 
 func tick(dt: float) -> void:

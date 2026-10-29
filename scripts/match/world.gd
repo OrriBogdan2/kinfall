@@ -565,7 +565,7 @@ func _place_updrafts() -> void:
 				for u in updrafts:
 					if Vector2((u["pos"] as Vector3).x, (u["pos"] as Vector3).z).distance_to(p) < 10.0: ok = false
 				if not ok: continue
-				updrafts.append({"pos": Vector3(p.x, base, p.y), "r": 1.6, "top": float(top_lvl) * LEVEL + 7.0})
+				updrafts.append({"pos": Vector3(p.x, base, p.y), "r": 1.6, "top": float(top_lvl) * LEVEL + 1.6})
 				break
 
 ## A glide route both ways between two close islands, with air rings over anything but a hop.

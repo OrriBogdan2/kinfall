@@ -62,16 +62,16 @@ func _setup_input() -> void:
 	_key("left", [KEY_A, KEY_LEFT]); _key("right", [KEY_D, KEY_RIGHT])
 	_key("fire", [], MOUSE_BUTTON_LEFT)
 	_key("secondary", [], MOUSE_BUTTON_RIGHT) # your hero's right-click ability
-	# match keys follow Supervive's defaults: Q ability, RMB secondary, R ultimate, Shift dash,
-	# Space jump and glide, Ctrl sneak, E interact, F and G for gear actives. Your kin add V
-	# (second ability), C (throw / recall) and X (swap kin).
+	# match keys: Q and E your kin's two abilities, RMB your hero's secondary, R the bond ultimate,
+	# Shift dash, Space jump and glide, Ctrl sneak, F interact, C throw / recall your kin, X swap
+	# kin, 1 tonic, 2 and 3 your gear actives.
 	_key("signature", [KEY_Q])                # your active kin's first ability
-	_key("interact", [KEY_E])                 # catch, revive, open, pick up
-	_key("gear1", [KEY_F])                    # active on your first piece of gear
-	_key("gear2", [KEY_G])                    # active on your second piece of gear
+	_key("kin_skill", [KEY_E])                # your active kin's second ability
+	_key("interact", [KEY_F])                 # catch, revive, open, pick up
+	_key("gear1", [KEY_2])                    # active on your first piece of gear
+	_key("gear2", [KEY_3])                    # active on your second piece of gear
 	_key("crouch", [KEY_CTRL])                # sneak
 	_key("throw", [KEY_C])                    # throw your kin, or call it back
-	_key("kin_skill", [KEY_V])                # your active kin's second ability
 	_key("swap_kin", [KEY_X])                 # swap which of your two kin is active
 	_key("dash", [KEY_SHIFT])
 	_key("jump", [KEY_SPACE])

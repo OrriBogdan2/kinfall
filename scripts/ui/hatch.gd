@@ -245,13 +245,12 @@ func _clear_bottom() -> void:
 
 # ---- your hunter
 const LOOK_ROWS := [["gender", "Gender", Models.LOOK_GENDERS], ["body", "Body", Models.LOOK_BODIES], ["face", "Face", Models.LOOK_FACES],
-	["skin", "Skin", Models.LOOK_SKIN], ["hair", "Hair", Models.LOOK_HAIRS], ["hair_col", "Hair colour", Models.LOOK_HAIR]]
+	["detail", "Details", Models.LOOK_DETAILS], ["skin", "Skin", Models.LOOK_SKIN], ["hair", "Hair", Models.LOOK_HAIRS], ["hair_col", "Hair colour", Models.LOOK_HAIR]]
 
 func _show_create() -> void:
 	stage = "create"
 	if look.is_empty():
-		look = Models.default_look()
-		look.merge(Save.d.get("look", {}), true)
+		look = Models.clean_look(Save.d.get("look", {}))
 	title.text = "Make your hunter"
 	_clear_bottom()
 	if create_box: create_box.queue_free()

@@ -20,6 +20,10 @@ var knee_l: Node3D
 var knee_r: Node3D
 var head: Node3D
 var aim: Node3D
+var arm_l: Node3D
+var mag: Node3D
+var mag_base := Vector3.ZERO
+var flask: Node3D
 var ph := 0.0            # walk phase, advances with distance travelled
 var t := 0.0
 var stepped := false     # a foot just came down this frame (for footstep sounds)
@@ -40,6 +44,7 @@ var head_look := 0.0
 var glance_t := 2.0
 var glance_to := 0.0
 var lower_k := 0.0       # gun lowered while running and not shooting
+var drink_k := 0.0
 
 func _init(m: Node3D) -> void:
 	model = m
@@ -52,6 +57,10 @@ func _init(m: Node3D) -> void:
 	knee_r = leg_r.get_node_or_null("Knee")
 	head = torso.get_node_or_null("HeadPivot")
 	aim = torso.get_node_or_null("Aim")
+	if aim:
+		arm_l = aim.get_node_or_null("ArmLPivot")
+		mag = aim.get_node_or_null("Gun/Mag")
+		if mag: mag_base = mag.position
 
 static func _ease(cur: float, want: float, rate: float, dt: float) -> float:
 	return lerpf(cur, want, 1.0 - exp(-rate * dt))
@@ -160,12 +169,59 @@ func update(dt: float, s: Dictionary) -> void:
 		var az := 0.0
 		var ay := 0.0
 		var reload: float = s.get("reload", -1.0)
+		var arm_x := 0.0
+		var arm_z := 0.0
 		if reload >= 0.0:
-			# tip the gun over, slap in a new magazine, bring it back up
-			var rk := sin(clampf(reload, 0.0, 1.0) * PI)
-			ax += -rk * 0.45
-			az += rk * 0.55
-			ay += sin(reload * TAU * 2.0) * 0.05 * rk
+			# tip the gun over and drop the magazine, reach down to the belt for a new one, slap it
+			# in, then bring the gun back up level
+			var r := clampf(reload, 0.0, 1.0)
+			var rk := smoothstep(0.0, 0.15, r) * (1.0 - smoothstep(0.82, 1.0, r))
+			ax += -rk * 0.55
+			az -= rk * 0.6
+			ay += rk * 0.3
+			# the support hand: down to the belt, back up under the gun
+			var reach := smoothstep(0.12, 0.3, r) * (1.0 - smoothstep(0.42, 0.62, r))
+			arm_x = -reach * 1.5
+			arm_z = reach * 0.5
+			# the slap: a quick jolt as the new magazine seats
+			var slap := smoothstep(0.62, 0.68, r) * (1.0 - smoothstep(0.68, 0.8, r))
+			ax += slap * 0.25
+			if mag:
+				if r < 0.2:
+					mag.visible = true
+					mag.position = mag_base + Vector3(0, -r / 0.2 * 0.35, 0)
+				elif r < 0.5:
+					mag.visible = false
+				elif r < 0.66:
+					mag.visible = true
+					mag.position = mag_base + Vector3(0, -(1.0 - (r - 0.5) / 0.16) * 0.3, 0)
+				else:
+					mag.position = mag_base
+		elif mag and not mag.visible:
+			mag.visible = true
+			mag.position = mag_base
+		# drinking a tonic: gun down, the free hand brings a flask up to the mouth, head tips back
+		var drink: float = s.get("drink", -1.0)
+		var dk := 0.0
+		if drink >= 0.0 and arm_l:
+			dk = smoothstep(0.0, 0.2, drink) * (1.0 - smoothstep(0.85, 1.0, drink))
+			ax -= dk * 0.5
+			arm_x = lerpf(arm_x, 1.25, dk)
+			arm_z = lerpf(arm_z, -0.35, dk)
+			if flask == null:
+				flask = Node3D.new(); flask.name = "Flask"
+				var hand := arm_l.get_node_or_null("ArmL") as Node3D
+				(hand if hand else arm_l).add_child(flask)
+				flask.position = Vector3(0, -0.3, 0)
+				Models.part(flask, Models.sphere(0.07, 10), Models.toon(Color("8ff0a0"), true, 0.5), Vector3.ZERO, Vector3(1.0, 1.15, 1.0))
+				Models.part(flask, Models.cyl(0.025, 0.03, 0.08, 8), Models.toon(Color("e8e0d0")), Vector3(0, 0.09, 0))
+				Models.part(flask, Models.cyl(0.03, 0.03, 0.03, 8), Models.toon(Color("8a5a3a")), Vector3(0, 0.14, 0))
+		if flask:
+			flask.visible = dk > 0.05
+		drink_k = dk
+		if arm_l:
+			arm_l.rotation.x = _ease(arm_l.rotation.x, arm_x, 18.0, dt)
+			arm_l.rotation.z = _ease(arm_l.rotation.z, arm_z, 18.0, dt)
 		ax += float(s.get("recoil", 0.0)) * 0.32
 		# keep the gun level while the body leans (crouching, running, landing)
 		ax -= (pitch - float(s.get("flash", 0.0)) * 0.6) * 0.85 * (1.0 - roll_k) * (1.0 - down_k)
@@ -187,5 +243,5 @@ func update(dt: float, s: Dictionary) -> void:
 			glance_to = randf_range(-0.45, 0.45) if randf() < 0.6 else 0.0
 		head_look = _ease(head_look, glance_to * idle, 3.0, dt)
 		head.rotation.y = head_look - torso.rotation.y * 0.8
-		head.rotation.x = -pitch * 0.45 + sin(ph * 2.0 + 0.6) * 0.03 * r1 + down_k * 0.4
+		head.rotation.x = -pitch * 0.45 + sin(ph * 2.0 + 0.6) * 0.03 * r1 + down_k * 0.4 - drink_k * 0.35
 		head.rotation.z = lean_s * 0.6 + sin(t * 0.9) * 0.03 * idle

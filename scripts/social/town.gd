@@ -561,7 +561,7 @@ func _open_visits() -> void:
 # ---- market
 func _open_market() -> void:
 	var v := _new_panel("Market", 600)
-	v.add_child(UI.label("Players sell seeds and crops here. You have %d gems." % int(Save.d["gems"]), 14, UI.MUTED))
+	v.add_child(UI.label("Players sell seeds, crops and kin here. You have %d gems." % int(Save.d["gems"]), 14, UI.MUTED))
 	var list := _loading(v)
 	Social.list_market(func(rows: Array):
 		if not _clear(list): return
@@ -571,8 +571,14 @@ func _open_market() -> void:
 			var l: Dictionary = r["l"]
 			var key: String = l["key"]
 			var mine: bool = l["seller"] == Social.me
-			var row := _row(list, "%s%s  ·  %d gems  ·  from %s" % [Data.CROPS[key]["name"], " seed" if l["kind"] == "seed" else "",
-				int(l["price"]), l["seller_name"]], Data.CROPS[key]["color"])
+			var row: HBoxContainer
+			if l["kind"] == "kin":
+				var ck: Dictionary = l["kin"]
+				row = _row(list, "%s the %s  ·  Lv %d%s  ·  %d gems  ·  from %s" % [ck["name"], Data.KIN[key]["name"], int(ck["level"]), "  ·  shimmer" if ck["shimmer"] else "",
+					int(l["price"]), l["seller_name"]], Data.KIN[key]["color"])
+			else:
+				row = _row(list, "%s%s  ·  %d gems  ·  from %s" % [Data.CROPS[key]["name"], " seed" if l["kind"] == "seed" else "",
+					int(l["price"]), l["seller_name"]], Data.CROPS[key]["color"])
 			var lid: String = r["id"]
 			if mine:
 				var tb := UI.button("Take back", func():
@@ -610,7 +616,23 @@ func _open_market() -> void:
 					if okk: _toast("Listed. You'll be paid when it sells.")
 					if panel_open == "Market": _open_market()), 200))
 	if not any:
-		v.add_child(UI.label("You have nothing to sell yet.", 14, UI.MUTED))
+		v.add_child(UI.label("You have no seeds or crops to sell yet.", 14, UI.MUTED))
+	# kin: one at a time leaves your farm and waits at the market until someone buys it
+	v.add_child(UI.section("Sell a kin"))
+	var roster: Array = Save.d["roster"]
+	if roster.size() <= 1:
+		v.add_child(UI.label("You need at least two kin to sell one.", 14, UI.MUTED))
+	else:
+		for rec in roster:
+			var price := Social.kin_price(int(rec["level"]))
+			var row := _row(v, "%s  ·  Lv %d %s" % [rec["name"], int(rec["level"]), Evo.form_name(rec)], Data.KIN[rec["species"]]["color"])
+			var uid: String = rec["uid"]
+			var nm: String = rec["name"]
+			row.add_child(UI.button("Sell for %d gems" % price, func():
+				_lock()
+				Social.sell_kin(uid, price, func(okk: bool):
+					if okk: _toast("%s is waiting at the market. You'll be paid when someone takes them home." % nm)
+					if panel_open == "Market": _open_market()), 200))
 
 # ---- notice board
 func _open_notices() -> void:

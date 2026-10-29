@@ -237,15 +237,19 @@ func recall() -> void:
 func command_skill(p: Vector3, slot := "k1") -> void:
 	use_ability(slot, p)
 
-## Uses ability k1 or k2 at a spot. From the shoulder, a kin-cast ability throws it out first.
+## Uses ability k1 or k2 at a spot. Out on the field the kin casts it itself. On your shoulder it
+## never leaves you: it lends you the ability and you perform it (its charge moves you, its
+## fireball comes from your hands). Only the throw key sends it out.
 func use_ability(slot: String, p: Vector3, auto := false) -> bool:
 	if runner == null or not runner.is_ready(slot) or not ready_to_fight() or state == "fused":
 		return false
 	var def := runner.def_of(slot)
 	if def.from == "kin":
 		if state == "shoulder":
-			throw_to(p, slot)
-			return false
+			if auto or owner_h == null:
+				return false        # a riding kin never acts on its own
+			_cast(slot, p, auto, owner_h)
+			return true
 		if state in ["returning", "flying_home"]:
 			state = "active"
 			fly = {}
@@ -261,14 +265,17 @@ func use_ability(slot: String, p: Vector3, auto := false) -> bool:
 	_cast(slot, p, auto)
 	return true
 
-func _cast(slot: String, p: Vector3, auto := false) -> void:
+func _cast(slot: String, p: Vector3, auto := false, through: Node = null) -> void:
 	var def := runner.def_of(slot)
 	pend_skill = Vector3.INF
 	pend_slot = ""
 	var dd := Vector2(p.x - pos.x, p.z - pos.z)
-	if dd.length() > 0.1 and def.from == "kin":
+	if dd.length() > 0.1 and def.from == "kin" and through == null:
 		face = atan2(-dd.x, -dd.y)
-	runner.use(slot, {"aim": p, "power": ability_power()})
+	var ctx := {"aim": p, "power": ability_power() * (0.85 if through else 1.0)}
+	if through:
+		ctx["as"] = through
+	runner.use(slot, ctx)
 	if model:
 		model.set_meta("pulse", Time.get_ticks_msec())
 	st_skills += 1

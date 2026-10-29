@@ -159,7 +159,7 @@ func _ready() -> void:
 	var pond := Models.pond(1.9, 1.5); pond.position = Vector3(33.5, 0, 37.5); add_child(pond)
 	for fp in [[Vector3(45.4, 0, 29.4), 0.0, 5.0], [Vector3(45.4, 0, 37.6), 0.0, 5.0], [Vector3(47.8, 0, 33.5), PI / 2, 8.0], [Vector3(42.4, 0, 35.6), PI / 2, 4.0]]:
 		var f := Models.fence(fp[2]); f.position = fp[0]; f.rotation.y = fp[1]; add_child(f)
-	for lp in [Vector3(36.2, 0, 30.0), Vector3(39.6, 0, 35.5), Vector3(34.5, 0, 34.2), Vector3(41.0, 0, 30.0), Vector3(26.0, 0, 29.2), Vector3(51.2, 0, 36.6)]:
+	for lp in [Vector3(36.2, 0, 30.0), Vector3(39.6, 0, 35.5), Vector3(36.4, 0, 35.6), Vector3(41.0, 0, 30.0), Vector3(26.0, 0, 29.2), Vector3(51.2, 0, 36.6)]:
 		var l := Models.lamp(); l.position = lp; add_child(l)
 		for ch in l.get_children():
 			if ch is OmniLight3D: lamps.append(ch)
@@ -411,9 +411,12 @@ func _bridge_stub(k: String) -> void:
 		var post := Models.part(node, Models.box(0.16, 1.2, 0.16), Models.toon(Color("7a5a3c")), p0 + side * sgn * (ax["width"] * 0.5) + Vector3(0, 0.6, 0))
 		post.name = "Post"
 	var rng := RandomNumberGenerator.new(); rng.seed = 5
+	# two loose planks side by side (stacked in the same spot they flickered through each other)
+	var along := Vector3(1, 0, 0) if ax["horiz"] else Vector3(0, 0, 1)
+	var outward := signf((spots_l[spots_l.size() - 1] as Vector3 - p0).dot(along)) if spots_l.size() > 1 else 1.0
 	for i in 2:
-		var pl := Models.plank(rng, ax["width"] + 0.1)
-		pl.position = p0 + Vector3(0, 0.07, 0)
+		var pl := Models.plank(rng, ax["width"] - 0.02)
+		pl.position = p0 + along * outward * (i * 0.5) + Vector3(0, 0.07 - i * 0.012, 0)
 		if ax["horiz"]: pl.rotation.y += PI / 2
 		node.add_child(pl)
 
@@ -429,8 +432,8 @@ func _lay_planks(k: String, animate: bool) -> void:
 	var post_m := Models.toon(Color("7a5a3c"))
 	for i in sp.size():
 		var p: Vector3 = sp[i]
-		var pl := Models.plank(rng, ax["width"] + 0.1)
-		pl.position = p
+		var pl := Models.plank(rng, ax["width"] - 0.02)
+		pl.position = p + Vector3(0, 0.03, 0)
 		if ax["horiz"]: pl.rotation.y += PI / 2
 		node.add_child(pl)
 		var extra: Array = [pl]
@@ -846,8 +849,8 @@ func _find_interact() -> void:
 	for k in kins:
 		var d := p2.distance_to(Vector2(k["pos"].x, k["pos"].z))
 		if d < bd: bd = d; best = {"kind": "kin", "k": k}
-	if is_instance_valid(nest) and p2.distance_to(Vector2(NEST_AT.x, NEST_AT.z)) < 1.5:
-		best = {"kind": "egg"}
+	if p2.distance_to(Vector2(NEST_AT.x, NEST_AT.z)) < 1.8 and visit.is_empty():
+		best = {"kind": "egg"} if is_instance_valid(nest) else {"kind": "nook"}
 	if p2.distance_to(Vector2(YARD_AT.x, YARD_AT.z)) < 1.6 and best.is_empty():
 		best = {"kind": "yard"}
 	interact = best
@@ -949,6 +952,7 @@ func _label_for(it: Dictionary) -> String:
 			return "Spend time with %s" % rec["name"]
 		"egg": return "Help it hatch!" if _egg_ready() else "Warm the egg"
 		"yard": return "Train your partner"
+		"nook": return "Pair two kin for an egg"
 	return ""
 
 func _use(it: Dictionary) -> void:
@@ -975,6 +979,7 @@ func _use(it: Dictionary) -> void:
 		"yard":
 			var ak := Save.active_kin()
 			if not ak.is_empty(): _open_train(ak)
+		"nook": _open_nook()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not train.is_empty():
@@ -2667,7 +2672,7 @@ func _open_settings() -> void:
 # ------------------------------------------------------------------ raising: needs, care, training, eggs
 const YARD_AT := Vector3(40.9, 0, 32.7)
 const YARD_KIN := Vector3(40.6, 0, 32.9)
-const NEST_AT := Vector3(32.1, 0, 28.1)
+const NEST_AT := Vector3(34.4, 0, 33.7)    # the Nesting Nook, between the market stall and the pond
 const POND_EDGE := Vector3(35.7, 0, 37.4)
 var care_acc := 0.0
 var care_save := 0.0
@@ -2683,6 +2688,15 @@ func _setup_care() -> void:
 	yard = Models.training_yard()
 	yard.position = YARD_AT
 	add_child(yard)
+	# the Nesting Nook: where two close kin leave an egg
+	var nook := Models.nesting_nook()
+	nook.position = NEST_AT
+	add_child(nook)
+	var nl := Label3D.new()
+	nl.text = "Nesting Nook"; nl.font = UI.big; nl.font_size = 40; nl.pixel_size = 0.008; nl.outline_size = 10
+	nl.modulate = Color("ffc0d0"); nl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	nl.position = NEST_AT + Vector3(0, 2.95, -0.7)
+	add_child(nl)
 	if not visit.is_empty():
 		return
 	for rec in _d()["roster"]:
@@ -3168,9 +3182,56 @@ func _can_pair(rec: Dictionary) -> String:
 	if not Save.d.get("egg", {}).is_empty(): return "There's already an egg in the nest"
 	return ""
 
+## The Nesting Nook: choose two kin who are ready, and they leave an egg in the nest.
+var nook_pick: Array = []
+func _open_nook() -> void:
+	var v := _new_panel("Nesting Nook", 600)
+	v.add_child(UI.label("Pick two kin who are close. They curl up in the nest together and leave an egg; it mixes their personalities and may take after either parent. It hatches after your next expedition, or in about ten minutes at home.", 14, UI.MUTED))
+	if not Save.d.get("egg", {}).is_empty():
+		v.add_child(UI.label("There's already an egg in the nest.", 16, UI.GOLD))
+		return
+	nook_pick = nook_pick.filter(func(u): return not Save.kin(String(u)).is_empty() and _can_pair(Save.kin(String(u))) == "")
+	for o in Save.d["roster"]:
+		var why := _can_pair(o)
+		var row := UI.hbox(10)
+		var picked: bool = nook_pick.has(o["uid"])
+		var l := UI.label("%s  ·  Lv %d %s" % [o["name"], int(o["level"]), Evo.form_name(o)], 16, Data.KIN[o["species"]]["color"] if why == "" else UI.MUTED)
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+		if why != "":
+			var wl := UI.label(why, 13, UI.MUTED); wl.autowrap_mode = TextServer.AUTOWRAP_OFF
+			row.add_child(wl)
+		else:
+			var uid: String = o["uid"]
+			var cb := func():
+				if nook_pick.has(uid): nook_pick.erase(uid)
+				elif nook_pick.size() < 2: nook_pick.append(uid)
+				_close_panel(); _open_nook()
+			row.add_child(UI.primary("Picked", cb, 110) if picked else UI.button("Pick", cb, 110))
+		v.add_child(row)
+	if nook_pick.size() == 2:
+		var a := Save.kin(String(nook_pick[0])); var b := Save.kin(String(nook_pick[1]))
+		v.add_child(UI.primary("Pair %s and %s" % [a["name"], b["name"]], func():
+			nook_pick = []
+			_make_egg(a, b), 320))
+	else:
+		v.add_child(UI.label("Pick %d more." % (2 - nook_pick.size()), 14, UI.MUTED))
+
+func _make_egg(rec: Dictionary, ok: Dictionary) -> void:
+	Save.d["egg"] = {"a": rec["uid"], "b": ok["uid"], "m": int(Save.d["matches"]) + 1, "t": Time.get_unix_time_from_system() + 600.0}
+	rec["bred_m"] = int(Save.d["matches"]); ok["bred_m"] = int(Save.d["matches"])
+	Save.remember(rec, "egg", "had an egg with %s" % ok["name"], 2.0)
+	Save.remember(ok, "egg", "had an egg with %s" % rec["name"], 2.0)
+	Save.save_game()
+	_close_panel()
+	_refresh_nest()
+	fx.burst(NEST_AT + Vector3(0, 0.6, 0), Color("ff8fb0"), 24, 3.0)
+	Sfx.play("unlock")
+	_toast("An egg appeared in the Nesting Nook")
+
 func _open_pair(rec: Dictionary) -> void:
 	var v := _new_panel("Pair %s" % rec["name"], 560)
-	v.add_child(UI.label("Two kin who are close leave an egg in the nest by the beds. It hatches after your next expedition (or about ten minutes at home).", 14, UI.MUTED))
+	v.add_child(UI.label("Two kin who are close leave an egg in the Nesting Nook. It hatches after your next expedition (or about ten minutes at home).", 14, UI.MUTED))
 	var any := false
 	for o in Save.d["roster"]:
 		if o == rec or _can_pair(o) != "":
@@ -3181,17 +3242,7 @@ func _open_pair(rec: Dictionary) -> void:
 		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		row.add_child(l)
 		var ok: Dictionary = o
-		row.add_child(UI.primary("Pair them", func():
-			Save.d["egg"] = {"a": rec["uid"], "b": ok["uid"], "m": int(Save.d["matches"]) + 1, "t": Time.get_unix_time_from_system() + 600.0}
-			rec["bred_m"] = int(Save.d["matches"]); ok["bred_m"] = int(Save.d["matches"])
-			Save.remember(rec, "egg", "had an egg with %s" % ok["name"], 2.0)
-			Save.remember(ok, "egg", "had an egg with %s" % rec["name"], 2.0)
-			Save.save_game()
-			_close_panel()
-			_refresh_nest()
-			fx.burst(NEST_AT + Vector3(0, 0.6, 0), Color("ff8fb0"), 24, 3.0)
-			Sfx.play("unlock")
-			_toast("An egg appeared in the nest by the beds"), 150))
+		row.add_child(UI.primary("Pair them", func(): _make_egg(rec, ok), 150))
 		v.add_child(row)
 	if not any:
 		v.add_child(UI.label("No other kin is ready yet. Partners need level 5, a Close bond and a few expeditions' rest.", 15))

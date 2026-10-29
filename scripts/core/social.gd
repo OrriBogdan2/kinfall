@@ -410,8 +410,67 @@ static func price_range(kind: String, key: String) -> Vector2i:
 	var base := int(Data.CROPS[key]["price"]) * (2 if kind == "crop" else 1)
 	return Vector2i(maxi(1, base / 2), base * 3)
 
+## A kin's asking price range, by level: listings outside it are ignored by everyone.
+static func kin_price_range(level: int) -> Vector2i:
+	var base := 40 + clampi(level, 1, 30) * 20
+	return Vector2i(base / 2, base * 3)
+
+static func kin_price(level: int) -> int:
+	return 40 + clampi(level, 1, 30) * 20
+
+## Only the parts of a kin that are safe to pass between players: species, name, level, how it's
+## grown, its personality. Anything else is rebuilt fresh for the new owner.
+static func clean_kin(v) -> Dictionary:
+	if typeof(v) != TYPE_DICTIONARY:
+		return {}
+	var d: Dictionary = v
+	var sp := txt_of(d.get("species"))
+	if not Data.KIN.has(sp):
+		return {}
+	var out := {"species": sp, "name": say_of(d.get("name"), "Kin", 16), "level": clampi(int_of(d.get("level"), 1), 1, 30),
+		"shimmer": d.get("shimmer", false) == true, "traits": {}, "forms": [], "aff": {}}
+	var tr = d.get("traits", {})
+	if typeof(tr) == TYPE_DICTIONARY:
+		for k in Data.KIN[sp]["traits"]:
+			out["traits"][k] = clampf(num_of(tr.get(k), 0.5), 0.05, 0.95)
+	var fm = d.get("forms", [])
+	if typeof(fm) == TYPE_ARRAY:
+		for f in fm.slice(0, 3):
+			if typeof(f) == TYPE_STRING and Evo.AFF.has(f): out["forms"].append(f)
+	var af = d.get("aff", {})
+	if typeof(af) == TYPE_DICTIONARY:
+		for a in Evo.AFF:
+			out["aff"][a] = clampf(num_of(af.get(a), 0.0), 0.0, 400.0)
+	var acc := txt_of(d.get("acc"))
+	if acc != "" and Data.ACCS.has(acc): out["acc"] = acc
+	return out
+
+## A full kin record for its new owner, built from a cleaned one.
+static func kin_for_buyer(c: Dictionary, seller_name: String) -> Dictionary:
+	var rec := Save.new_kin(c["species"], c["name"])
+	rec["level"] = int(c["level"])
+	rec["shimmer"] = c["shimmer"]
+	for k in c["traits"]: rec["traits"][k] = c["traits"][k]
+	Evo.ensure(rec)
+	rec["forms"] = (c["forms"] as Array).duplicate()
+	for a in c["aff"]: rec["aff"][a] = c["aff"][a]
+	if c.has("acc"): rec["acc"] = c["acc"]
+	rec["trust"] = 25.0           # it doesn't know you yet
+	Save.remember(rec, "market", "was bought from %s at the market" % seller_name, 0.0)
+	return rec
+
 static func clean_listing(d: Dictionary) -> Dictionary:
 	var kind := txt_of(d.get("kind"))
+	if kind == "kin":
+		var ck := clean_kin(d.get("kin"))
+		var sel := txt_of(d.get("seller"))
+		if ck.is_empty() or sel == "" or ck["species"] != txt_of(d.get("key")):
+			return {}
+		var kp := int_of(d.get("price"))
+		var kr := kin_price_range(int(ck["level"]))
+		if kp < kr.x or kp > kr.y:
+			return {}
+		return {"kind": "kin", "key": ck["species"], "n": 1, "price": kp, "seller": sel, "seller_name": say_of(d.get("seller_name")), "t": num_of(d.get("t")), "kin": ck}
 	var key := txt_of(d.get("key"))
 	var seller := txt_of(d.get("seller"))
 	if not (kind == "seed" or kind == "crop") or not Data.CROPS.has(key) or seller == "" or int_of(d.get("n")) != 1:
@@ -454,6 +513,34 @@ func sell(kind: String, key: String, price: int, cb: Callable) -> void:
 		Save.save_game()
 		cb.call(true))
 
+## Puts one of your kin up for sale. It leaves your farm while it's listed (it waits at the
+## market) and comes back if you take the listing down.
+func sell_kin(uid: String, price: int, cb: Callable) -> void:
+	var rec := Save.kin(uid)
+	if rec.is_empty() or busy("market") or Save.d["roster"].size() <= 1:
+		cb.call(false)
+		return
+	var ck := clean_kin(rec)
+	var pr := kin_price_range(int(ck["level"]))
+	if price < pr.x or price > pr.y:
+		cb.call(false)
+		return
+	_busy["market"] = true
+	Save.d["roster"].erase(rec)
+	if String(Save.d.get("active", "")) == uid: Save.d["active"] = ""
+	if String(Save.d.get("active2", "")) == uid: Save.d["active2"] = ""
+	add_doc("market", {"seller": me, "seller_name": Save.d.get("name", "Hunter"), "kind": "kin", "key": ck["species"], "n": 1, "price": price, "kin": ck, "t": now_ms()}, func(id: String):
+		_busy.erase("market")
+		if id == "":
+			Save.d["roster"].append(rec)
+			Save.save_game()
+			cb.call(false)
+			return
+		# the full record waits in your save, so taking it back returns exactly your kin
+		_save_dict("listings")[id] = {"price": price, "kind": "kin", "key": ck["species"], "rec": rec, "t": now_ms()}
+		Save.save_game()
+		cb.call(true))
+
 func buy(listing_id: String, cb: Callable) -> void:
 	if busy("market"):
 		cb.call("")
@@ -461,13 +548,15 @@ func buy(listing_id: String, cb: Callable) -> void:
 	_busy["market"] = true
 	claim("market/" + listing_id, func(raw: Dictionary):
 		var l := clean_listing(raw)
-		if l.is_empty() or l["seller"] == me or int(Save.d["gems"]) < int(l["price"]):
+		if l.is_empty() or l["seller"] == me or int(Save.d["gems"]) < int(l["price"]) or (l["kind"] == "kin" and Save.d["roster"].size() >= 12):
 			_busy.erase("market")
 			cb.call("")
 			return
 		var price: int = l["price"]
 		Save.d["gems"] = int(Save.d["gems"]) - price          # held until the listing is gone
-		var what := ("%s seed" if l["kind"] == "seed" else "%s") % Data.CROPS[l["key"]]["name"]
+		var what := ""
+		if l["kind"] == "kin": what = "%s the %s" % [l["kin"]["name"], Data.KIN[l["key"]]["name"]]
+		else: what = ("%s seed" if l["kind"] == "seed" else "%s") % Data.CROPS[l["key"]]["name"]
 		# the payout goes first: the seller only honours it once the listing has disappeared
 		add_doc("payouts", {"to": l["seller"], "lid": listing_id, "gems": price, "t": now_ms()}, func(pid: String):
 			if pid == "":
@@ -478,7 +567,11 @@ func buy(listing_id: String, cb: Callable) -> void:
 			del_doc("market/" + listing_id, func(okk: bool):
 				_busy.erase("market")
 				if okk:
-					if l["kind"] == "seed": Save.add_seed(l["key"], 1)
+					if l["kind"] == "kin":
+						var nk := kin_for_buyer(l["kin"], String(l["seller_name"]))
+						Save.d["roster"].append(nk)
+						Care.dex_mark(nk["species"], "caught")
+					elif l["kind"] == "seed": Save.add_seed(l["key"], 1)
 					else: Save.d["crops"][l["key"]] = int(Save.d["crops"].get(l["key"], 0)) + 1
 				else:
 					Save.d["gems"] = int(Save.d["gems"]) + price
@@ -509,7 +602,11 @@ func _refund(listing_id: String) -> void:
 	var m: Dictionary = listings.get(listing_id, {})
 	listings.erase(listing_id)
 	var key := String(m.get("key", ""))
-	if Data.CROPS.has(key):
+	if m.get("kind", "") == "kin":
+		var rec = m.get("rec", {})
+		if typeof(rec) == TYPE_DICTIONARY and not rec.is_empty():
+			Save.d["roster"].append(rec)
+	elif Data.CROPS.has(key):
 		if m.get("kind", "") == "seed": Save.add_seed(key, 1)
 		else: Save.d["crops"][key] = int(Save.d["crops"].get(key, 0)) + 1
 	Save.save_game()
