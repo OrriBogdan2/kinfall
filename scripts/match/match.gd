@@ -338,6 +338,12 @@ func _spawn_hunters() -> void:
 				player = make_hunter("p0", 0, Save.d.get("cls", "medium"), Save.d.get("name", "Hunter"), "bot" if opts.get("autoplay", false) else "local", rec, at, my_kit(), rec2)
 				if opts.get("autoplay", false):
 					player.ai = bot_brain.new_mind(rng, 0.7)
+				if "--at-stairs" in OS.get_cmdline_user_args() and not world.stairs.is_empty():
+					# test: start beside a flight of stairs
+					var si: int = world.stairs.keys()[0]
+					var sd: Vector2i = world.stairs[si]
+					at = Vector3(si % world.w + 0.5 - sd.x * 1.5, 0, si / world.w + 0.5 - sd.y * 1.5)
+					at.y = world.ground_at(at.x, at.z)
 				player.teleport(at)
 				player.tonics = int(Save.d["items"].get("tonic", 0))
 				_apply_home_perks(player)

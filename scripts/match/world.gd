@@ -50,6 +50,12 @@ func ground_at(x: float, z: float) -> float:
 	var i := idx(ix, iz)
 	if kind[i] == T_VOID:
 		return VOID
+	if stairs.has(i):
+		# a flight of stairs up to the next terrace: the ground rises smoothly across the tile
+		var d: Vector2i = stairs[i]
+		var fx := x - ix; var fz := z - iz
+		var t: float = fx if d.x > 0 else (1.0 - fx if d.x < 0 else (fz if d.y > 0 else 1.0 - fz))
+		return (level[i] + clampf(t, 0.0, 1.0)) * LEVEL
 	return level[i] * LEVEL
 
 func is_void(x: float, z: float) -> bool:
@@ -305,6 +311,48 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 	_place_pads()
 	_place_updrafts()
 	_place_spots()
+	_place_stairs()
+
+## Stairs: where one terrace steps up to the next, some edges get a flight of steps so you can
+## walk up instead of hopping, like the stone stairs between levels in Supervive.
+var stairs := {}          # tile index -> Vector2i pointing up the stairs
+func _place_stairs() -> void:
+	stairs.clear()
+	var srng := RandomNumberGenerator.new(); srng.seed = rng.seed + 41
+	var spots_all: Array = spawns + portal_spots
+	for c in chest_spots: spots_all.append(c["pos"])
+	for c in camp_spots: spots_all.append(c["pos"])
+	for ii in islands.size():
+		var cells: Array = islands[ii]["cells"]
+		var cands: Array = []
+		for c in cells:
+			var i := idx(c.x, c.y)
+			if kind[i] != T_GROUND or bridge.has(i):
+				continue
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var up := Vector2i(c.x + d.x, c.y + d.y)
+				var back := Vector2i(c.x - d.x, c.y - d.y)
+				if not inb(up.x, up.y) or not inb(back.x, back.y):
+					continue
+				var iu := idx(up.x, up.y); var ib := idx(back.x, back.y)
+				# exactly one terrace up ahead, the same level behind to walk in from
+				if kind[iu] != T_GROUND or kind[ib] != T_GROUND or level[iu] != level[i] + 1 or level[ib] != level[i]:
+					continue
+				cands.append([c, d])
+		cands.shuffle()
+		var placed: Array = []
+		var want := clampi(cells.size() / 45, 1, 6)
+		for cd in cands:
+			if placed.size() >= want: break
+			var c: Vector2i = cd[0]
+			var ok := true
+			for p in placed:
+				if (p as Vector2i).distance_to(c) < 6.0: ok = false
+			for sp in spots_all:
+				if Vector2((sp as Vector3).x - c.x - 0.5, (sp as Vector3).z - c.y - 0.5).length() < 2.0: ok = false
+			if not ok: continue
+			stairs[idx(c.x, c.y)] = cd[1]
+			placed.append(c)
 
 var wall_mat: ShaderMaterial = null   # walls fade where they hide the player
 var walls := {}           # tile index -> true: built stone walls (drawn as walls, not rocks)
@@ -802,7 +850,10 @@ func build_meshes() -> void:
 					if pn > 0:
 						col = col.lerp(pc / pn, minf(1.0, pn / 2.0) * (0.85 + v2 * 0.15))
 				cols.append(col)
-			_quad4(st, Vector3(x, y, z) + _corner(x, z), Vector3(x + 1, y, z) + _corner(x + 1, z), Vector3(x + 1, y, z + 1) + _corner(x + 1, z + 1), Vector3(x, y, z + 1) + _corner(x, z + 1), Vector3.UP, cols)
+			if stairs.has(i):
+				_stair_mesh(st, x, z, stairs[i], y)
+			else:
+				_quad4(st, Vector3(x, y, z) + _corner(x, z), Vector3(x + 1, y, z) + _corner(x + 1, z), Vector3(x + 1, y, z + 1) + _corner(x + 1, z + 1), Vector3(x, y, z + 1) + _corner(x, z + 1), Vector3.UP, cols)
 			var bottom := depth[i] + y * 0.3
 			for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
 				var nx: int = x + dir.x; var nz: int = z + dir.y
@@ -933,6 +984,41 @@ func _root(st: SurfaceTool, rr: RandomNumberGenerator, at: Vector3, r: float, le
 			st.set_color(ca); st.add_vertex(a)
 			st.set_color(cb); st.add_vertex(c)
 			st.set_color(cb); st.add_vertex(d)
+
+## A quad facing n, whatever order its corners came in.
+func _face(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, col: Color) -> void:
+	if (b - a).cross(c - a).dot(n) > 0.0:
+		_quad(st, d, c, b, a, n, col)
+	else:
+		_quad(st, a, b, c, d, n, col)
+
+## Four stone steps climbing across a tile toward dir, with their sides closed in.
+func _stair_mesh(st: SurfaceTool, x: int, z: int, dir: Vector2i, y: float) -> void:
+	var stone := Color("b9b2a6").lerp(Color(cur_bio["side"]), 0.25)
+	var n := 4
+	# local frame: u runs up the stairs (0..1), v across them (0..1)
+	var to_world := func(u: float, v: float, hgt: float) -> Vector3:
+		var fx: float; var fz: float
+		match dir:
+			Vector2i(1, 0): fx = u; fz = v
+			Vector2i(-1, 0): fx = 1.0 - u; fz = 1.0 - v
+			Vector2i(0, 1): fx = 1.0 - v; fz = u
+			_: fx = v; fz = 1.0 - u
+		return Vector3(x + fx, y + hgt, z + fz)
+	var upv := Vector3(dir.x, 0, dir.y)
+	var side_a := Vector3(-dir.y, 0, dir.x)
+	for k in n:
+		var u0 := float(k) / n; var u1 := float(k + 1) / n
+		var hgt := LEVEL * float(k + 1) / n
+		var tread := stone.lightened(0.06 * (k % 2))
+		# tread
+		_face(st, to_world.call(u0, 0.0, hgt), to_world.call(u1, 0.0, hgt), to_world.call(u1, 1.0, hgt), to_world.call(u0, 1.0, hgt), Vector3.UP, tread)
+		# riser, facing down the stairs
+		_face(st, to_world.call(u0, 0.0, hgt - LEVEL / n), to_world.call(u0, 1.0, hgt - LEVEL / n), to_world.call(u0, 1.0, hgt), to_world.call(u0, 0.0, hgt), -upv, stone.darkened(0.18))
+		# the two sides of this step, down to the ground
+		for sv in [0.0, 1.0]:
+			var nn: Vector3 = (-side_a if sv == 0.0 else side_a) if dir.x != 0 or dir.y != 0 else Vector3.ZERO
+			_face(st, to_world.call(u0, sv, 0.0), to_world.call(u1, sv, 0.0), to_world.call(u1, sv, hgt), to_world.call(u0, sv, hgt), nn, stone.darkened(0.25))
 
 func _quad4(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, cols: Array) -> void:
 	st.set_normal(n)
