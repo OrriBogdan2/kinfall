@@ -163,7 +163,7 @@ static func dress(root: Node3D, rec: Dictionary) -> void:
 	var muts: Array = rec["muts"]
 	if forms.is_empty() and muts.is_empty():
 		return
-	var body: Node3D = root.get_node("Body")
+	var body: Node3D = root.get_node("Body/Flex") if root.has_node("Body/Flex") else root.get_node("Body")
 	var sp: Dictionary = Data.KIN[rec.get("species", "cindle")]
 	var base: Color = Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"]
 	if forms.size() > 0:

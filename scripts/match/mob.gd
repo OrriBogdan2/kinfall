@@ -17,6 +17,7 @@ var lunge_hit := {}
 var anim := 0.0
 var dmg_mult := 1.0
 var calm_t := 0.0
+var death_t := 0.0
 ## Stagger, as in Supervive: elites and bosses open short "staggerable" windows (a purple ring),
 ## always while winding up a slam. Land an ability in one (not a regular shot) and it takes a big
 ## hit, is stunned for a few seconds, takes extra damage the whole time, and the ability that did
@@ -314,36 +315,93 @@ func render(delta: float, alpha: float) -> void:
 			stag_stars.rotation.y += delta * 5.0
 	if not model:
 		return
+	if dead:
+		# a death pop: swell, flatten and blink out
+		death_t += delta
+		visible = death_t < 0.32
+		if visible:
+			var dk := death_t / 0.32
+			var bd: Node3D = model.get_node("Body")
+			var w := 1.0 + sin(minf(dk * 1.6, 1.0) * PI) * 0.35
+			bd.scale = Vector3(w + dk * 0.3, maxf(0.05, 1.0 - dk * dk), w + dk * 0.3)
+			for mt in mats:
+				mt.set_shader_parameter("flash", 1.0 - dk * 0.5)
+		return
 	model.rotation.y = face
-	anim += delta * (10.0 if Vector2(vel.x, vel.z).length() > 0.3 else 2.0)
+	var spd := Vector2(vel.x, vel.z).length()
+	var moving := spd > 0.3
+	anim += delta * (2.0 + minf(spd, 6.0) * 1.8 if moving else 2.0)
 	var body: Node3D = model.get_node("Body")
 	var wind := 0.0
 	if st == "windup":
 		wind = 1.0 - st_t / float(md["windup"])
+	# shared body language: lean back and gather while winding up, shiver as it is about to go,
+	# throw the weight forward on the attack, recoil when hit
+	var shiver := sin(m.time * 60.0) * 0.03 * maxf(0.0, wind - 0.6) * 2.5
+	var hurt_k := clampf(flash_t / 0.12, 0.0, 1.0)
+	var lean := wind * 0.22 + hurt_k * 0.25
+	if st == "lunge": lean = -0.45
+	elif st == "recover" and stagger_t <= 0.0: lean = lerpf(body.rotation.x, -0.15, 0.5)
+	if stagger_t > 0.0: lean = 0.2 + sin(m.time * 3.0) * 0.1
+	body.rotation.x = lerpf(body.rotation.x, lean, 1.0 - exp(-16.0 * delta))
+	body.rotation.z = shiver + (sin(m.time * 2.5) * 0.12 if stagger_t > 0.0 else 0.0)
+	var gather := wind * 0.12
 	match mkind:
 		"skitter":
-			body.position.y = absf(sin(anim)) * 0.06
-			body.rotation.x = wind * 0.35 - (0.3 if st == "lunge" else 0.0)
+			body.position.y = absf(sin(anim)) * 0.05 * float(moving) - gather * 0.3
+			for i in 3:
+				for sx in [-1, 1]:
+					var lg := body.get_node_or_null("Leg%d%d" % [i, sx]) as Node3D
+					if lg == null: continue
+					# tripod gait: legs 0 and 2 on one side move with leg 1 on the other
+					var ph := anim * 1.6 + (PI if (i % 2 == 0) == (sx > 0) else 0.0)
+					var mv := 1.0 if moving else 0.15
+					lg.rotation.y = sin(ph) * 0.45 * mv
+					lg.rotation.z = maxf(0.0, cos(ph)) * 0.35 * sx * mv - wind * 0.3 * sx
+			var jaw := 0.25 + wind * 0.5 + (0.6 if st == "lunge" else 0.0) + sin(m.time * 7.0) * 0.06
+			for jn in ["JawL", "JawR"]:
+				var j := body.get_node_or_null(jn) as Node3D
+				if j: j.rotation.y = jaw * (1.0 if jn == "JawL" else -1.0)
 		"spitter":
 			var bulb: Node3D = body.get_node("Bulb")
-			bulb.scale = Vector3.ONE * (1.0 + wind * 0.35 + sin(anim) * 0.03)
+			bulb.scale = Vector3(1.0 - wind * 0.15, 0.9 + wind * 0.4, 1.0 - wind * 0.15) * (1.0 + sin(anim) * 0.03)
+			bulb.rotation.x = -wind * 0.5 + (0.5 if st == "recover" else 0.0) * 0.5
+			body.rotation.y = sin(m.time * 1.3) * 0.05
 		"bomber":
 			var sw := 1.0 + wind * 0.45 + sin(anim * (1.0 + wind * 6.0)) * 0.04 * (1.0 + wind * 3.0)
 			body.get_node("Puff").scale = Vector3.ONE * sw
-			body.position.y = absf(sin(anim)) * 0.08
+			body.position.y = absf(sin(anim)) * 0.1
 		"glimmer":
 			body.position.y = absf(sin(anim * 1.3)) * 0.16
 			body.rotation.y += delta * 2.0
 		"sentinel":
 			var cr: Node3D = body.get_node("Crystal")
 			cr.rotation.y += delta * (1.5 + wind * 10.0)
-			cr.position.y = 1.25 + sin(anim * 0.6) * 0.08
+			cr.position.y = 1.25 + sin(anim * 0.6) * 0.08 + wind * 0.25
 		"brute", "warden":
-			body.get_node("ArmL").rotation.x = -wind * 2.4
-			body.get_node("ArmR").rotation.x = -wind * 2.4
-			body.position.y = absf(sin(anim * 0.5)) * 0.05
+			var tor := body.get_node_or_null("Torso") as Node3D
+			var ll := body.get_node_or_null("LegL") as Node3D
+			var lr := body.get_node_or_null("LegR") as Node3D
+			var al := tor.get_node_or_null("ArmL") as Node3D if tor else null
+			var ar := tor.get_node_or_null("ArmR") as Node3D if tor else null
+			var ph2 := anim * 0.9
+			var mv := 1.0 if moving else 0.0
+			var stride := sin(ph2) * 0.5 * mv
+			if ll: ll.rotation.x = stride - wind * 0.3
+			if lr: lr.rotation.x = -stride + wind * 0.2
+			body.position.y = absf(cos(ph2)) * 0.06 * mv - wind * 0.1
+			var arm_x := 0.0
+			if st == "windup": arm_x = wind * 2.7                    # both fists up overhead
+			elif st == "recover" and stagger_t <= 0.0 and st_t > 0.35: arm_x = 0.9   # slammed down in front
+			if al: al.rotation.x = lerpf(al.rotation.x, arm_x - stride * 0.6, 1.0 - exp(-(30.0 if st == "recover" else 12.0) * delta))
+			if ar: ar.rotation.x = lerpf(ar.rotation.x, arm_x + stride * 0.6, 1.0 - exp(-(30.0 if st == "recover" else 12.0) * delta))
+			if al: al.rotation.z = -0.15 - wind * 0.2
+			if ar: ar.rotation.z = 0.15 + wind * 0.2
+			if tor:
+				tor.rotation.y = sin(ph2) * 0.12 * mv
+				tor.rotation.x = -0.12 * mv + wind * 0.15
 	var sq := squash
-	body.scale = Vector3(1.0 + sq * 0.3, 1.0 - sq * 0.35, 1.0 + sq * 0.3)
+	body.scale = Vector3(1.0 + sq * 0.3 + gather, 1.0 - sq * 0.35 - gather, 1.0 + sq * 0.3 + gather)
 
 ## Telegraphs on proxies follow the host's attack state.
 func _net_telegraph() -> void:

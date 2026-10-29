@@ -323,10 +323,8 @@ func _process(delta: float) -> void:
 		var n: Node3D = o["node"]
 		n.position = o["pos"]
 		n.rotation.y = lerp_angle(n.rotation.y, o["face"], minf(1.0, d * 10.0))
-		o["ph"] += d * step.length() * 20.0
-		var sw := sin(o["ph"]) * clampf(step.length() * 4.0, 0.0, 0.6)
-		n.get_node("Rig/Legs/LegL").rotation.x = sw
-		n.get_node("Rig/Legs/LegR").rotation.x = -sw
+		if not n.has_meta("anim"): n.set_meta("anim", HunterAnim.new(n))
+		(n.get_meta("anim") as HunterAnim).update(d, {"vel": step * 8.0, "face": n.rotation.y, "fired": 99.0})
 		if o["kin"]:
 			var kn: Node3D = o["kin"]
 			kn.position = kn.position.lerp(o["pos"] + Vector3(0.9, 0, 0.5), minf(1.0, d * 3.0))
@@ -385,13 +383,11 @@ func _move_player(d: float) -> void:
 		want = atan2(-hv.x, -hv.y)
 	pface = lerp_angle(pface, want, minf(1.0, d * 14.0))
 	player.rotation.y = pface
-	var ph0 := walk_ph
-	walk_ph += d * hv.length() * 2.2
-	if hv.length() > 1.0 and int(walk_ph / PI) != int(ph0 / PI):
+	if not player.has_meta("anim"): player.set_meta("anim", HunterAnim.new(player))
+	var pa: HunterAnim = player.get_meta("anim")
+	pa.update(d, {"vel": Vector3(hv.x, 0, hv.y), "face": pface, "fired": 99.0})
+	if pa.stepped:
 		Sfx.step(null, -20.0)
-	var sw := sin(walk_ph) * clampf(hv.length() / 4.0, 0.0, 1.0) * 0.6
-	player.get_node("Rig/Legs/LegL").rotation.x = sw
-	player.get_node("Rig/Legs/LegR").rotation.x = -sw
 
 func _blocked(x: float, z: float, r: float) -> bool:
 	if world.occupy(x, z, r, 0.0, true) != 0.0:

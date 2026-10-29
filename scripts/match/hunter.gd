@@ -58,6 +58,7 @@ var shield := 0.0
 var shield_t := 0.0
 var recoil := 0.0
 var walk_ph := 0.0
+var anim: HunterAnim = null     # the procedural animation for the model
 var downed := false
 var down_hp := 0.0
 var revive := 0.0
@@ -1112,33 +1113,21 @@ func render(delta: float, alpha: float) -> void:
 	if bs: bs.visible = bshield_on
 	var rig: Node3D = model.get_node("Rig")
 	var torso: Node3D = rig.get_node("Torso")
-	var legs: Node3D = rig.get_node("Legs")
+	if anim == null or anim.model != model:
+		anim = HunterAnim.new(model)
 	var hv := Vector2(vel.x, vel.z)
 	var spd := hv.length()
-	var ph0 := walk_ph
-	walk_ph += delta * spd * 2.2
-	if grounded and spd > 1.0 and int(walk_ph / PI) != int(ph0 / PI) and not downed and not crouch:
+	crouch_k = move_toward(crouch_k, 1.0 if crouch else 0.0, delta * 8.0)
+	anim.update(delta, {"vel": vel, "face": face, "grounded": grounded and pad.is_empty(), "gliding": gliding, "rolling": roll_t > 0.0,
+		"crouch": crouch_k, "downed": downed, "ledge": grap.size() > 0, "reload": (1.0 - reload_t / maxf(0.1, float(wpn["reload"]))) if reload_t > 0.0 else -1.0,
+		"recoil": recoil, "flash": clampf(flash_t / 0.12, 0.0, 1.0), "fired": idle_fire})
+	if anim.stepped and not downed and not crouch:
 		Sfx.step(pos, -14.0 if is_local() else -20.0)
-	var sw := sin(walk_ph) * clampf(spd / 5.0, 0.0, 1.0) * 0.6 if grounded else 0.35
-	legs.get_node("LegL").rotation.x = sw
-	legs.get_node("LegR").rotation.x = -sw
-	# lean into movement relative to facing
-	var fwd := Vector2(-sin(face), -cos(face))
-	var right := Vector2(cos(face), -sin(face))
-	var lean_f := clampf(hv.dot(fwd) / 12.0, -0.3, 0.3)
-	var lean_s := clampf(hv.dot(right) / 12.0, -0.25, 0.25)
-	torso.rotation.x = -lean_f - recoil * 0.12
-	torso.rotation.z = -lean_s
-	var bob := absf(sin(walk_ph)) * 0.05 * clampf(spd / 5.0, 0.0, 1.0) if grounded else 0.0
-	torso.position.y = 0.42 + bob
 	var sq := squash
 	var stretch := 0.0
 	var tc: Color = Data.TEAM_COLORS[team % Data.TEAM_COLORS.size()]
 	if roll_t > 0.0:
-		stretch = 0.3
-		torso.rotation.x = -0.55          # dive forward into the dash
-		legs.get_node("LegL").rotation.x = 0.9
-		legs.get_node("LegR").rotation.x = 0.5
+		stretch = 0.25
 		ghost_t -= delta
 		if ghost_t <= 0.0 and model.visible:
 			ghost_t = 0.028
@@ -1152,50 +1141,37 @@ func render(delta: float, alpha: float) -> void:
 				var gy: float = m.world.ground_at(pos.x, pos.z)
 				if gy > World.VOID + 1.0:
 					m.fx.ring(Vector3(pos.x, gy, pos.z), 1.1, Color(1, 1, 1, 0.7), 0.25)
-		# hang under the glider, legs trailing
-		torso.rotation.x = -0.35
-		torso.rotation.z = -lean_s * 1.6
-		legs.get_node("LegL").rotation.x = 0.5 + sin(m.time * 6.0) * 0.12
-		legs.get_node("LegR").rotation.x = 0.7 - sin(m.time * 6.0) * 0.12
 		wind_t -= delta
 		if wind_t <= 0.0:
 			wind_t = 0.09
 			m.fx.burst(pos + Vector3(randf_range(-0.8, 0.8), 1.9, randf_range(-0.4, 0.4)), Color(1, 1, 1, 0.5), 2, 1.0, 0.4, -1.0, 0.7, Vector3(-vel.x, 0, -vel.z).normalized(), 20.0)
 	elif not grounded and pad.is_empty():
-		# tuck the legs in the air
-		legs.get_node("LegL").rotation.x = -0.6
-		legs.get_node("LegR").rotation.x = 0.4
 		stretch = clampf(vel.y / 30.0, -0.1, 0.18)
-	# a flinch when hit
-	if flash_t > 0.0:
-		torso.rotation.x += flash_t * 2.5
-	# little puffs of dust while running
+	# little puffs of dust while running, and a kick of dust when you turn hard
 	if grounded and spd > 4.0 and not downed:
 		step_t -= delta
 		if step_t <= 0.0:
 			step_t = 0.32
 			m.fx.dust(pos, 2)
-	crouch_k = move_toward(crouch_k, 1.0 if crouch else 0.0, delta * 8.0)
-	torso.rotation.x -= crouch_k * 0.32          # hunch forward
-	rig.scale = Vector3(1.0 + sq * 0.35 - stretch * 0.3 + crouch_k * 0.06, 1.0 - sq * 0.4 + stretch * 0.15 - crouch_k * 0.3, 1.0 + sq * 0.35 + stretch * 0.5 + crouch_k * 0.06)
+	rig.scale = Vector3(1.0 + sq * 0.35 - stretch * 0.3, 1.0 - sq * 0.4 + stretch * 0.15, 1.0 + sq * 0.35 + stretch * 0.5)
 	if downed:
 		rig.rotation.x = lerpf(rig.rotation.x, -1.35, delta * 8.0)
 		rig.position.y = 0.15
 	else:
 		rig.rotation.x = lerpf(rig.rotation.x, 0.0, delta * 10.0)
-		rig.position.y = 0.0
 	glide_k = move_toward(glide_k, 1.0 if gliding else 0.0, delta * (7.0 if gliding else 9.0))
 	var gl: Node3D = torso.get_node("Glider")
 	gl.visible = glide_k > 0.02
 	if gl.visible:
-		var ek := 1.0 - pow(1.0 - glide_k, 3.0)
+		var gk := glide_k - 1.0
+		var ek := 1.0 + 2.7 * gk * gk * gk + 1.7 * gk * gk      # pops open with a little overshoot
 		gl.scale = Vector3(ek * (1.0 + sin(m.time * 9.0) * 0.02), ek, ek)
 		gl.rotation.x = 0.35 * ek - 0.1
 	var halo := torso.get_node_or_null("Halo")
 	if halo:
 		halo.rotation.y += delta * 2.0
 		halo.position.y = 1.26 + sin(m.time * 3.0) * 0.03
-	var gun: Node3D = torso.get_node("Gun")
+	var gun: Node3D = torso.get_node("Aim/Gun")
 	gun.position.z = -0.18 + recoil * 0.08
 	gun.visible = not downed
 	# cloaked: allies see a shimmer, enemies see nothing unless very close

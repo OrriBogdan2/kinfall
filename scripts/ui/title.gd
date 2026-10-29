@@ -258,7 +258,8 @@ func _process(delta: float) -> void:
 		var k: Node3D = kin_nodes[i]
 		k.get_node("Body").position.y = absf(sin(t * (2.6 + i * 0.4) + i)) * 0.14
 	if hunter_node:
-		hunter_node.get_node("Rig/Torso").position.y = 0.42 + sin(t * 1.6) * 0.015
+		if not hunter_node.has_meta("anim"): hunter_node.set_meta("anim", HunterAnim.new(hunter_node))
+		(hunter_node.get_meta("anim") as HunterAnim).update(delta, {"face": hunter_node.rotation.y, "fired": 99.0})
 
 
 ## The game's name, drawn big: a chunky extruded word with a warm glow and a little paraglider

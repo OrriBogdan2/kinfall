@@ -127,11 +127,14 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "", app
 		leg.position = Vector3(0.11 * sx * bw, 0.44, 0)
 		legs.add_child(leg)
 		part(leg, capsule(0.085 * bw, 0.3), m_pants, Vector3(0, -0.12, 0))
-		part(leg, capsule(0.08, 0.22), m_leather, Vector3(0, -0.31, 0))
-		part(leg, cyl(0.092, 0.092, 0.05, 12), m_trim, Vector3(0, -0.21, 0))
-		part(leg, sphere(0.085, 10), m_leather, Vector3(0, -0.41, -0.05), Vector3(1.0, 0.62, 1.45))
-		part(leg, box(0.13, 0.03, 0.2), m_dark, Vector3(0, -0.44, -0.04))
 		part(leg, sphere(0.045, 8), m_acc, Vector3(0, -0.2, -0.07), Vector3(1.0, 1.0, 0.6))
+		# the shin and boot hang from the knee, so legs can bend
+		var knee := Node3D.new(); knee.name = "Knee"; knee.position = Vector3(0, -0.2, 0)
+		leg.add_child(knee)
+		part(knee, capsule(0.08, 0.22), m_leather, Vector3(0, -0.11, 0))
+		part(knee, cyl(0.092, 0.092, 0.05, 12), m_trim, Vector3(0, -0.01, 0))
+		part(knee, sphere(0.085, 10), m_leather, Vector3(0, -0.21, -0.05), Vector3(1.0, 0.62, 1.45))
+		part(knee, box(0.13, 0.03, 0.2), m_dark, Vector3(0, -0.24, -0.04))
 	var torso := Node3D.new(); torso.name = "Torso"; torso.position = Vector3(0, 0.42, 0); rig.add_child(torso)
 	var chest_w := bw * (0.92 if gender == 0 else 1.0)
 	# hips and a coat that flares a little below the belt
@@ -139,9 +142,11 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "", app
 	part(torso, cyl(0.235 * bw, 0.3 * bw, 0.24, 16), m_body, Vector3(0, -0.04, 0.01))
 	# chest: shirt under an open jacket
 	part(torso, capsule(0.24, 0.62), m_body, Vector3(0, 0.33, 0), Vector3(chest_w, 1.0, bw * 0.95))
-	part(torso, box(0.14 * chest_w, 0.26, 0.06), m_shirt, Vector3(0, 0.4, -0.215 * bw), Vector3.ONE, Vector3(-0.1, 0, 0))
+	# a V of shirt at the collar under the jacket's lapels, and a neckerchief in team colour
+	part(torso, cyl(0.0, 0.1, 0.16, 3), m_shirt, Vector3(0, 0.52, -0.2 * bw), Vector3(1.0, 1.0, 0.35), Vector3(PI, 0, 0))
 	for sx in [-1.0, 1.0]:
-		part(torso, box(0.07, 0.38, 0.05), m_trim, Vector3(0.1 * sx * chest_w, 0.35, -0.205 * bw), Vector3.ONE, Vector3(-0.08, 0, 0.12 * sx))
+		part(torso, box(0.06, 0.3, 0.05), m_trim, Vector3(0.07 * sx * chest_w, 0.42, -0.215 * bw), Vector3.ONE, Vector3(-0.12, 0, 0.3 * sx))
+	part(torso, cyl(0.0, 0.07, 0.12, 3), m_acc, Vector3(0, 0.54, -0.235 * bw), Vector3(1.0, 1.0, 0.4), Vector3(PI, 0, 0))
 	part(torso, TorusMesh.new() if false else cyl(0.17, 0.2, 0.08, 16), m_trim, Vector3(0, 0.6, 0))   # collar
 	part(torso, cyl(0.075, 0.085, 0.1, 10), m_skin, Vector3(0, 0.66, 0))                              # neck
 	# belt with a buckle and pouches, and a strap across the chest
@@ -230,10 +235,12 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "", app
 				part(torso, sphere(0.18), m_acc, Vector3(0.31 * sx, 0.55, 0), Vector3(1.2, 0.8, 1.2))
 			var gen := TorusMesh.new(); gen.inner_radius = 0.12; gen.outer_radius = 0.18
 			part(torso, gen, toon(hero_col, false, 1.0), Vector3(0, 0.4, 0.34), Vector3.ONE, Vector3(PI / 2, 0, 0))   # dome generator
-	var gun := Node3D.new(); gun.name = "Gun"; gun.position = Vector3(0.22, 0.32, -0.18); torso.add_child(gun)
+	# the arms and the gun move together from the shoulders ("Aim"), for recoil, reloads and poses
+	var aim := Node3D.new(); aim.name = "Aim"; aim.position = Vector3(0, 0.5, 0.0); torso.add_child(aim)
+	var gun := Node3D.new(); gun.name = "Gun"; gun.position = Vector3(0.22, -0.18, -0.18); aim.add_child(gun)
 	# arms: sleeve, a cuff in the trim colour and a glove
-	var arm_r := part(torso, capsule(0.075, 0.42), m_body, Vector3(0.25, 0.48, -0.08), Vector3.ONE, Vector3(1.2, 0, 0.15), "ArmR")
-	var arm_l := part(torso, capsule(0.075, 0.46), m_body, Vector3(-0.11, 0.46, -0.16), Vector3.ONE, Vector3(1.25, 0, -0.7), "ArmL")
+	var arm_r := part(aim, capsule(0.075, 0.42), m_body, Vector3(0.25, -0.02, -0.08), Vector3.ONE, Vector3(1.2, 0, 0.15), "ArmR")
+	var arm_l := part(aim, capsule(0.075, 0.46), m_body, Vector3(-0.11, -0.04, -0.16), Vector3.ONE, Vector3(1.25, 0, -0.7), "ArmL")
 	for arm in [arm_r, arm_l]:
 		part(arm, cyl(0.082, 0.082, 0.06, 12), m_trim, Vector3(0, -0.15, 0))
 		part(arm, sphere(0.08, 10), m_leather, Vector3(0, -0.23, 0), Vector3(1.0, 1.1, 1.0))
@@ -254,9 +261,19 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "", app
 	var ring := MeshInstance3D.new(); ring.name = "TeamRing"; ring.mesh = flat_quad(1.0)
 	ring.material_override = ring_mat(team_col, 0.16); ring.position = Vector3(0, 0.04, 0)
 	root.add_child(ring)
+	# the head and everything on it turn and nod together from the neck
+	var head := Node3D.new(); head.name = "HeadPivot"; head.position = Vector3(0, 0.68, 0)
+	torso.add_child(head)
+	for ch in torso.get_children():
+		if ch is MeshInstance3D and (String(ch.name).begins_with("@") or ch.name == "Head") and (ch as Node3D).position.y > 0.72:
+			torso.remove_child(ch)
+			head.add_child(ch)
+			(ch as Node3D).position.y -= 0.68
 	merge_static(torso)
-	merge_static(legs.get_node("LegL"))
-	merge_static(legs.get_node("LegR"))
+	merge_static(head)
+	for nm in ["LegL", "LegR"]:
+		merge_static(legs.get_node(nm))
+		merge_static(legs.get_node(nm + "/Knee"))
 	root.set_meta("mats", collect_mats(root))
 	root.scale = Vector3.ONE * float(Data.CLASSES[cls]["scale"])
 	return root
@@ -398,10 +415,10 @@ static func _hair(torso: Node3D, style: int, gender: int, m_hair: Material) -> v
 		part(torso, sphere(0.242), m_hair, Vector3(0, 0.885, 0.02), Vector3(1.0, 0.82, 1.0))
 		return
 	part(torso, sphere(0.25), m_hair, Vector3(0, 0.91, 0.035), Vector3(1.05, 0.86, 1.02))
-	# fringe: a few locks sweeping across the forehead
+	# fringe: soft locks sweeping across the forehead
 	for k in 4:
-		var x := -0.13 + k * 0.087
-		part(torso, cyl(0.0, 0.07, 0.17, 8), m_hair, Vector3(x, 0.98, -0.17), Vector3(1.0, 1.0, 0.7), Vector3(-2.4, 0, -0.25 + k * 0.17))
+		var x := -0.12 + k * 0.08
+		part(torso, sphere(0.075, 10), m_hair, Vector3(x, 0.99 - absf(k - 1.5) * 0.015, -0.17), Vector3(0.9, 1.0, 0.7), Vector3(0.4, 0, -0.3 + k * 0.2))
 	for sx in [-1.0, 1.0]:
 		part(torso, cyl(0.0, 0.06, 0.2, 8), m_hair, Vector3(0.2 * sx, 0.84, -0.06), Vector3(1.0, 1.0, 0.8), Vector3(PI, 0, 0.15 * sx))   # sideburn locks
 	match style:
@@ -572,7 +589,9 @@ static func kin(species: String, rec := {}) -> Node3D:
 	var m_eye := toon(Color("1a1620"), false); mats.append(m_eye)
 	var m_white := toon(Color.WHITE, false, 0.6)
 	var m_blush := toon(Color("ff9aa8"), false, 0.2)
-	var body := Node3D.new(); body.name = "Body"; root.add_child(body)
+	# Body moves the kin around (hops, lunges, tumbles); Flex inside it squashes and stretches (KinPuppet)
+	var body_root := Node3D.new(); body_root.name = "Body"; root.add_child(body_root)
+	var body := Node3D.new(); body.name = "Flex"; body_root.add_child(body)
 	var shape := String(look.get("body", "round"))
 	var head_y := 0.44      # where the eyes sit
 	var top_y := 0.68       # where ears sit
@@ -621,8 +640,9 @@ static func kin(species: String, rec := {}) -> Node3D:
 			part(body, sphere(0.24), m_belly, Vector3(0, 0.3, -0.14), Vector3(1.0, 0.95, 0.7))
 	# face: big eyes with a catch light, and rosy cheeks
 	for sx in [-1.0, 1.0]:
-		part(body, sphere(0.068, 10), m_eye, Vector3(0.12 * sx, head_y, front_z), Vector3(1, 1.15, 1))
-		part(body, sphere(0.024, 6), m_white, Vector3(0.12 * sx + 0.025, head_y + 0.035, front_z - 0.05))
+		var sd := "L" if sx < 0.0 else "R"
+		part(body, sphere(0.068, 10), m_eye, Vector3(0.12 * sx, head_y, front_z), Vector3(1, 1.15, 1), Vector3.ZERO, "Eye" + sd)
+		part(body, sphere(0.024, 6), m_white, Vector3(0.12 * sx + 0.025, head_y + 0.035, front_z - 0.05), Vector3.ONE, Vector3.ZERO, "Shine" + sd)
 		part(body, sphere(0.04, 6), m_blush, Vector3(0.2 * sx, head_y - 0.08, front_z + 0.05), Vector3(1, 0.5, 0.4))
 	# feet
 	match String(look.get("feet", "paws")):
@@ -635,7 +655,10 @@ static func kin(species: String, rec := {}) -> Node3D:
 		_:
 			for sx in [-1.0, 1.0]:
 				part(body, sphere(0.08, 8), m_body, Vector3(0.2 * sx, 0.06, -0.08), Vector3(1, 0.6, 1.2))
-	# tail
+	# tail, on its own pivot so it can wag
+	var flex := body
+	var tail_n := Node3D.new(); tail_n.name = "Tail"; flex.add_child(tail_n)
+	body = tail_n
 	match String(look.get("tail", "nub")):
 		"flame":
 			part(body, cyl(0.0, 0.11, 0.3, 8), m_glow, Vector3(0, 0.36, 0.38), Vector3.ONE, Vector3(-1.0, 0, 0))
@@ -656,6 +679,10 @@ static func kin(species: String, rec := {}) -> Node3D:
 				part(body, sphere(0.07 - i * 0.015, 8), m_glow, Vector3(0, 0.36 + i * 0.05, 0.36 + i * 0.12), Vector3.ONE, Vector3.ZERO, "Wisp%d" % i)
 		_:
 			part(body, sphere(0.1, 8), m_body, Vector3(0, 0.26, 0.32))
+	body = flex
+	_repivot(tail_n, Vector3(0, 0.3, 0.3))
+	var ears_n := Node3D.new(); ears_n.name = "Ears"; flex.add_child(ears_n)
+	body = ears_n
 	match String(sp["ears"]):
 		"flame":
 			var m_f := toon(Color("ffb347"), true, 0.5); mats.append(m_f)
@@ -685,8 +712,10 @@ static func kin(species: String, rec := {}) -> Node3D:
 			for i in 3:
 				var a := float(i) / 3.0 * TAU
 				part(body, sphere(0.06, 8), m_w, Vector3(cos(a) * 0.3, top_y + 0.04 + sin(a * 2.0) * 0.04, sin(a) * 0.3), Vector3.ONE, Vector3.ZERO, "Orb%d" % i)
+	body = flex
+	_repivot(ears_n, Vector3(0, top_y - 0.06, 0))
 	# the aura shell: an outline of light in its glow colour, brightest at the silhouette
-	var shell := part(body, sphere(0.4, 18), aura_mat(glow_c, 0.0), Vector3(0, 0.4, 0.02), Vector3(1.12, 1.15, 1.1), Vector3.ZERO, "Shell")
+	var shell := part(body_root, sphere(0.4, 18), aura_mat(glow_c, 0.0), Vector3(0, 0.4, 0.02), Vector3(1.12, 1.15, 1.1), Vector3.ZERO, "Shell")
 	shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	shell.visible = false
 	# a few particles that say what it is: embers, bubbles, leaves, sparks, grit, wind
@@ -729,11 +758,18 @@ static func kin(species: String, rec := {}) -> Node3D:
 	var acc: String = rec.get("acc", "")
 	if acc != "" and Data.ACCS.has(acc):
 		accessory(body, acc)
+	root.add_child(KinPuppet.new())
 	if int(rec.get("level", 1)) < 4 and (rec.get("forms", []) as Array).is_empty() and not rec.is_empty():
 		# hatchlings are small
 		root.set_meta("evo_scale", 0.82)
 		root.scale = Vector3.ONE * 0.82
 	return root
+
+## Moves a group's pivot to `at` without moving what's in it.
+static func _repivot(n: Node3D, at: Vector3) -> void:
+	n.position = at
+	for ch in n.get_children():
+		(ch as Node3D).position -= at
 
 ## Something a kin wears, on its body at head height.
 static func accessory(body: Node3D, id: String) -> void:
@@ -841,15 +877,26 @@ static func mob(kind: String) -> Node3D:
 	var body := Node3D.new(); body.name = "Body"; root.add_child(body)
 	match kind:
 		"skitter":
-			part(body, sphere(0.38), m, Vector3(0, 0.38, 0), Vector3(1.1, 0.75, 1.25))
-			part(body, sphere(0.22), m_dark, Vector3(0, 0.5, 0.18), Vector3(1.2, 0.7, 1.0))
+			# a scuttling beetle: domed shell with a seam, mandibles, six jointed legs on pivots
+			part(body, sphere(0.36), m_dark, Vector3(0, 0.36, 0.02), Vector3(1.05, 0.62, 1.2))
+			part(body, sphere(0.36), m, Vector3(0, 0.44, 0.06), Vector3(1.0, 0.62, 1.15))
+			part(body, box(0.03, 0.05, 0.62), m_dark, Vector3(0, 0.66, 0.08), Vector3.ONE, Vector3(-0.08, 0, 0))
+			part(body, sphere(0.2), m_dark, Vector3(0, 0.36, -0.36), Vector3(1.1, 0.8, 0.9))
 			for sx in [-1.0, 1.0]:
-				part(body, sphere(0.05, 6), m_eye, Vector3(0.12 * sx, 0.46, -0.38))
+				part(body, sphere(0.055, 6), m_eye, Vector3(0.1 * sx, 0.44, -0.5))
+				var jaw := Node3D.new(); jaw.name = "Jaw" + ("L" if sx < 0 else "R"); jaw.position = Vector3(0.09 * sx, 0.3, -0.5); body.add_child(jaw)
+				part(jaw, cyl(0.0, 0.035, 0.2, 5), m_dark, Vector3(0.02 * sx, 0, -0.08), Vector3.ONE, Vector3(-PI / 2, 0, -0.5 * sx))
 				for i in 3:
-					part(body, box(0.05, 0.05, 0.42), m_dark, Vector3(0.36 * sx, 0.2, -0.18 + i * 0.2), Vector3.ONE, Vector3(0, PI / 2, 0.6 * sx), "Leg%d%d" % [i, int(sx)])
+					var lg := Node3D.new(); lg.name = "Leg%d%d" % [i, int(sx)]
+					lg.position = Vector3(0.24 * sx, 0.3, -0.2 + i * 0.2); body.add_child(lg)
+					part(lg, box(0.26, 0.05, 0.05), m_dark, Vector3(0.12 * sx, 0.03, 0), Vector3.ONE, Vector3(0, 0, 0.35 * sx))
+					part(lg, box(0.05, 0.3, 0.05), m_dark, Vector3(0.25 * sx, -0.12, 0), Vector3.ONE, Vector3(0, 0, 0.2 * sx))
 		"spitter":
 			part(body, cyl(0.1, 0.16, 0.6), m_dark, Vector3(0, 0.3, 0))
 			part(body, sphere(0.36), m, Vector3(0, 0.8, 0), Vector3(1.0, 0.9, 1.0), Vector3.ZERO, "Bulb")
+			for i in 5:
+				var a2 := TAU * i / 5.0
+				part(body.get_node("Bulb"), sphere(0.16, 8), m_dark, Vector3(cos(a2) * 0.3, 0.12, sin(a2) * 0.3), Vector3(1.2, 0.3, 0.7), Vector3(0, -a2, 0.6))
 			part(body, cyl(0.16, 0.2, 0.12), m_eye, Vector3(0, 0.8, -0.3), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			for i in 4:
 				var a := float(i) / 4.0 * TAU + 0.4
@@ -886,21 +933,36 @@ static func mob(kind: String) -> Node3D:
 			part(cr, pm, cm, Vector3(0, -0.25, 0), Vector3.ONE, Vector3(PI, 0, 0))
 			part(cr, sphere(0.08, 8), m_eye, Vector3(0, 0, -0.2))
 		"brute", "warden":
+			# a hulking brute: barrel chest, hunched head with tusks, arms and legs on joints so it can swing
+			var torso := Node3D.new(); torso.name = "Torso"; torso.position = Vector3(0, 0.62, 0); body.add_child(torso)
+			part(torso, sphere(0.6, 14), m, Vector3(0, 0.38, 0), Vector3(1.05, 0.85, 0.85))
+			part(torso, sphere(0.42, 12), toon(Color(md["color"]).lightened(0.25)), Vector3(0, 0.28, -0.22), Vector3(1.0, 0.85, 0.6))
+			part(torso, sphere(0.34, 10), m_dark, Vector3(-0.48, 0.66, 0.0), Vector3(1.1, 0.8, 1.0))
+			part(torso, sphere(0.34, 10), m_dark, Vector3(0.48, 0.66, 0.0), Vector3(1.1, 0.8, 1.0))
+			var hd := Node3D.new(); hd.name = "Head"; hd.position = Vector3(0, 0.82, -0.28); torso.add_child(hd)
+			part(hd, box(0.5, 0.38, 0.42), m_dark, Vector3(0, 0.05, 0))
+			part(hd, box(0.56, 0.1, 0.2), m_dark, Vector3(0, 0.2, -0.16), Vector3.ONE, Vector3(0.25, 0, 0))
+			part(hd, sphere(0.055, 6), m_eye, Vector3(-0.12, 0.1, -0.22))
+			part(hd, sphere(0.055, 6), m_eye, Vector3(0.12, 0.1, -0.22))
+			var tusk := toon(Color("efe6cf")); mats.append(tusk)
+			part(hd, cyl(0.0, 0.05, 0.18, 6), tusk, Vector3(-0.15, -0.1, -0.22), Vector3.ONE, Vector3(-0.3, 0, 0.25))
+			part(hd, cyl(0.0, 0.05, 0.18, 6), tusk, Vector3(0.15, -0.1, -0.22), Vector3.ONE, Vector3(-0.3, 0, -0.25))
+			for sx in [-1.0, 1.0]:
+				var arm := Node3D.new(); arm.name = "ArmL" if sx < 0 else "ArmR"
+				arm.position = Vector3(0.62 * sx, 0.62, -0.02); torso.add_child(arm)
+				part(arm, box(0.3, 0.62, 0.3), m_dark, Vector3(0.04 * sx, -0.3, 0))
+				part(arm, sphere(0.24, 10), m, Vector3(0.05 * sx, -0.7, -0.02), Vector3(1.0, 0.9, 1.0))
+				var leg := Node3D.new(); leg.name = "LegL" if sx < 0 else "LegR"
+				leg.position = Vector3(0.26 * sx, 0.58, 0); body.add_child(leg)
+				part(leg, box(0.3, 0.5, 0.34), m_dark, Vector3(0, -0.28, 0))
+				part(leg, box(0.34, 0.12, 0.42), m_dark, Vector3(0, -0.52, -0.04))
 			if kind == "warden":
 				root.scale = Vector3.ONE * 1.5
 				var gold := toon(Color("f2c84a"), true, 0.5); mats.append(gold)
 				for sx in [-1.0, 0.0, 1.0]:
-					part(body, cyl(0.0, 0.09, 0.32, 6), gold, Vector3(0.16 * sx, 1.93, -0.12))
-				part(body, box(0.62, 0.08, 0.56), gold, Vector3(0, 1.8, -0.12))
-				part(body, sphere(0.12, 8), toon(Color("c9a0ff"), false, 1.2), Vector3(0, 1.0, -0.42))
-			part(body, box(1.0, 0.9, 0.8), m, Vector3(0, 0.95, 0))
-			part(body, box(0.55, 0.45, 0.5), m_dark, Vector3(0, 1.55, -0.12), Vector3.ONE, Vector3.ZERO, "Head")
-			part(body, sphere(0.06, 6), m_eye, Vector3(-0.13, 1.6, -0.38))
-			part(body, sphere(0.06, 6), m_eye, Vector3(0.13, 1.6, -0.38))
-			part(body, box(0.34, 0.95, 0.34), m_dark, Vector3(-0.68, 0.8, -0.05), Vector3.ONE, Vector3.ZERO, "ArmL")
-			part(body, box(0.34, 0.95, 0.34), m_dark, Vector3(0.68, 0.8, -0.05), Vector3.ONE, Vector3.ZERO, "ArmR")
-			part(body, box(0.3, 0.5, 0.34), m_dark, Vector3(-0.25, 0.25, 0))
-			part(body, box(0.3, 0.5, 0.34), m_dark, Vector3(0.25, 0.25, 0))
+					part(hd, cyl(0.0, 0.08, 0.3, 6), gold, Vector3(0.15 * sx, 0.42, 0.02))
+				part(hd, box(0.56, 0.08, 0.46), gold, Vector3(0, 0.28, 0.02))
+				part(torso, sphere(0.12, 8), toon(Color("c9a0ff"), false, 1.2), Vector3(0, 0.4, -0.52))
 	root.set_meta("mats", mats)
 	return root
 

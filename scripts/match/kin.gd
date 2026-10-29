@@ -269,6 +269,8 @@ func _cast(slot: String, p: Vector3, auto := false) -> void:
 	if dd.length() > 0.1 and def.from == "kin":
 		face = atan2(-dd.x, -dd.y)
 	runner.use(slot, {"aim": p, "power": ability_power()})
+	if model:
+		model.set_meta("pulse", Time.get_ticks_msec())
 	st_skills += 1
 	m.sfx("skill", pos, -2.0 if not auto else -6.0)
 	m.on_kin_ability(self, def, auto)
@@ -875,6 +877,7 @@ func render(delta: float, alpha: float) -> void:
 	body.position.y = absf(sin(hop_ph)) * (0.14 if moving else 0.03) + (0.12 if lunge_t > 0.0 else 0.0)
 	var sq := squash
 	body.scale = Vector3(1.0 + sq * 0.4, 1.0 - sq * 0.45, 1.0 + sq * 0.4)
+	model.set_meta("dazed", state in ["fainted", "dazed"] or stun_t > 0.0)
 	if state in ["fainted", "dazed"]:
 		body.rotation.z = lerpf(body.rotation.z, 1.4 if state == "fainted" else 0.0, delta * 6.0)
 		body.rotation.y += delta * (4.0 if state == "dazed" else 0.0)

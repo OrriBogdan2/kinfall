@@ -59,6 +59,7 @@ var building_now := false
 const DAY_LEN := 300.0          # seconds for a full day at home
 var env_res: Environment
 var sun_l: DirectionalLight3D
+var p_anim: HunterAnim = null
 var lamps: Array = []           # OmniLight3D
 var day_t := 0.3                # 0..1, 0.25 is morning, 0.5 noon, 0.75 dusk
 var rain: CPUParticles3D
@@ -689,16 +690,11 @@ func _move_player(d: float) -> void:
 		want = atan2(-hv.x, -hv.y)
 	pface = lerp_angle(pface, want, minf(1.0, d * 14.0))
 	player.rotation.y = pface
-	var ph0 := walk_ph
-	walk_ph += d * hv.length() * 2.2 * (0.0 if py > 0.0 else 1.0)
-	if hv.length() > 1.0 and int(walk_ph / PI) != int(ph0 / PI):
+	if p_anim == null or p_anim.model != player:
+		p_anim = HunterAnim.new(player)
+	p_anim.update(d, {"vel": Vector3(hv.x, pvy if py > 0.0 else 0.0, hv.y), "face": pface, "grounded": py <= 0.0, "fired": 99.0})
+	if p_anim.stepped:
 		Sfx.step(null, -20.0)
-	var legs: Node3D = player.get_node("Rig/Legs")
-	var sw := sin(walk_ph) * clampf(hv.length() / 4.0, 0.0, 1.0) * 0.6
-	if py > 0.0: sw = 0.0
-	legs.get_node("LegL").rotation.x = sw if py <= 0.0 else -0.5
-	legs.get_node("LegR").rotation.x = -sw if py <= 0.0 else 0.3
-	player.get_node("Rig/Torso").position.y = 0.42 + absf(sin(walk_ph)) * 0.04 * clampf(hv.length() / 4.0, 0.0, 1.0)
 
 func _move_kin(d: float) -> void:
 	for k in kins:
@@ -805,6 +801,7 @@ func _move_kin(d: float) -> void:
 			k["joy_t"] = joy - d
 			k["hop"] += d * 10.0
 		n.get_node("Body").position.y = absf(sin(k["hop"])) * (0.26 if joy > 0.0 else (0.14 if hv.length() > 0.3 else 0.03))
+		n.set_meta("happy", joy > 0.0)
 		if k.has("say"):
 			k["say_t"] = float(k.get("say_t", 0.0)) - d
 			(k["say"] as Label3D).visible = k["say_t"] > 0.0
