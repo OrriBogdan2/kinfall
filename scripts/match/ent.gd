@@ -28,6 +28,9 @@ var burn_by: Ent = null
 var slow_t := 0.0
 var root_t := 0.0
 var stun_t := 0.0
+var guard_t := 0.0          # taking less damage for a moment (Rock Guard)
+var guard_k := 0.0
+var marks := {}             # combo setups on this body: status -> {by, owner, until}
 var squash := 0.0           # landing / hit squash for the model
 var remote := false         # driven by another player's game
 var last_hit_by: Ent = null
@@ -89,6 +92,11 @@ func hurt(dmg: float, by: Ent, opts := {}) -> float:
 			m.on_damage(self, by, dmg, opts)
 			return dmg
 		return 0.0
+	# a combo: a status your partner (or you) set up pays off on this hit
+	if by and not opts.has("combo") and not marks.is_empty():
+		dmg = Combos.payoff(self, by, dmg, opts)
+	if guard_t > 0.0:
+		dmg *= 1.0 - guard_k
 	var d := _mitigate(dmg, by, opts)
 	if d <= 0.0:
 		return 0.0
@@ -107,6 +115,9 @@ func hurt(dmg: float, by: Ent, opts := {}) -> float:
 		root_t = maxf(root_t, float(opts["root"]))
 	if opts.get("stun", 0.0) > 0.0:
 		stun_t = maxf(stun_t, float(opts["stun"]))
+	for st in ["stun", "root", "slow", "burn"]:
+		if float(opts.get(st, 0.0)) > 0.0:
+			CombatBus.status_applied.emit(self, st, by, float(opts[st]))
 	m.on_damage(self, by, d, opts)
 	# kin learn from fighting: count the hits and knockouts they land for their owner
 	if opts.get("src", "") == "kin":
@@ -191,6 +202,7 @@ func tick_status(dt: float) -> void:
 	if slow_t > 0.0: slow_t -= dt
 	if root_t > 0.0: root_t -= dt
 	if stun_t > 0.0: stun_t -= dt
+	if guard_t > 0.0: guard_t -= dt
 	if burn_t > 0.0 and not dead:
 		burn_t -= dt
 		if not remote:

@@ -11,7 +11,7 @@ const DEFAULTS := {
 	# video
 	"fullscreen": false, "vsync": true, "max_fps": 0, "msaa": 2, "shadows": true, "ui_scale": 1.0, "show_fps": false,
 	# gameplay
-	"shake": 1.0, "cam_lead": 1.0, "damage_numbers": true, "tips": true, "quick_cast": false, "crouch_toggle": false, "mod_mode": false,
+	"shake": 1.0, "cam_lead": 1.0, "damage_numbers": true, "tips": true, "quick_cast": false, "crouch_toggle": false, "mod_mode": false, "kin_autocast": true,
 	# accessibility
 	"reduce_flashes": false, "hud_opacity": 1.0,
 	# controls: action -> list of "key:<physical keycode>" / "mouse:<button>"
@@ -21,8 +21,8 @@ const DEFAULTS := {
 ## Rebindable actions, in the order the controls list shows them.
 const ACTIONS := [
 	["up", "Move up"], ["down", "Move down"], ["left", "Move left"], ["right", "Move right"],
-	["fire", "Fire"], ["secondary", "Hero secondary (right click)"], ["dash", "Dash"], ["jump", "Jump (hold to glide)"], ["crouch", "Crouch"], ["signature", "Hero ability"],
-	["ultimate", "Ultimate"], ["gear1", "Gear active 1"], ["gear2", "Gear active 2"], ["throw", "Throw / call back kin"], ["kin_skill", "Kin skill"],
+	["fire", "Fire"], ["secondary", "Weapon utility (right click)"], ["dash", "Dodge"], ["jump", "Jump (hold to glide)"], ["crouch", "Crouch"], ["signature", "Kin ability 1"],
+	["kin_skill", "Kin ability 2"], ["ultimate", "Bond ultimate"], ["throw", "Throw / recall kin"], ["swap_kin", "Swap kin"], ["gear1", "Gear active 1"], ["gear2", "Gear active 2"],
 	["interact", "Use, catch, revive, pet"], ["tonic", "Drink a tonic"], ["scores", "Scoreboard"],
 	["play", "Play fetch with a kin"], ["talk", "Talk to a kin"], ["details", "A kin's details"], ["inventory", "Inventory"],
 ]

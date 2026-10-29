@@ -1,0 +1,36 @@
+{
+	"id": "flare_dash",
+	"name": "Flare Dash",
+	"icon": "dash",
+	"color": "#ffb347",
+	"cooldown": 9,
+	"range": 7,
+	"desc": "Your kin bursts forward in flames, burning everything it passes through.",
+	"auto": {
+		"when": "foe_in_range",
+		"range": 6
+	},
+	"effects": [
+		{
+			"type": "rush",
+			"distance": 7,
+			"speed": 24,
+			"width": 1.1,
+			"dmg": 14,
+			"burn": 6,
+			"color": "#ffb347",
+			"on_end": [
+				{
+					"type": "area",
+					"at": "here",
+					"radius": 1.6,
+					"dmg": 8,
+					"kb": 5,
+					"color": "#ff7a3d"
+				}
+			]
+		}
+	],
+	"from": "kin",
+	"charges": 1
+}

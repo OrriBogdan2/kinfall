@@ -96,8 +96,9 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 			if k.state == "shoulder" and d < 8.0 and (tgt is Hunter or (tgt is Mob and tgt.mkind == "brute") or randf() < 0.3):
 				k.throw_to(Vector3(tgt.pos.x, tgt.pos.y, tgt.pos.z))
 				a["throw_cd"] = randf_range(4, 8)
-			elif k.state == "active" and k.skill_cd <= 0.0 and k.flat_dist(tgt) < 6.0:
-				k.command_skill(tgt.pos)
+			elif k.state == "active" and k.runner.is_ready("k1") and k.flat_dist(tgt) < 6.0 and randf() < 0.5:
+				h.inp["aim"] = Vector3(tgt.pos.x, tgt.pos.y, tgt.pos.z)
+				h.inp["sig"] = true
 				a["throw_cd"] = randf_range(1, 3)
 			elif k.state == "active" and (k.hp < k.max_hp * 0.3 or k.flat_dist(h) > 11.0):
 				k.recall()
@@ -128,8 +129,9 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 			h.kin.recall()
 		if h.hp < h.max_hp * 0.45 and h.tonics > 0:
 			inp["tonic"] = true
-		if Abil.e_id(h) == "mend" and h.sig_cd <= 0.0 and h.hp < h.max_hp * 0.6:
-			inp["sig"] = true
+		# swap a fainted kin out for the other one
+		if h.kin and (h.kin as Kin).state == "fainted" and h.kin2 and (h.kin2 as Kin).hp > 0.0:
+			inp["swap"] = true
 	# ---- don't walk off edges (except onto the jump pad we're heading for), and keep off other pads
 	var to_pad: bool = (a.has("pad_at") and h.flat_dist(a["pad_at"]) < 2.5) or (a.has("cross") and h.flat_dist(a["cross"]["take"]) < 2.5)
 	for pd in m.world.pads:
@@ -257,42 +259,41 @@ func _use_sec(m: Match, h: Hunter, tgt: Ent) -> void:
 	if go:
 		h.inp["sec"] = true
 
-## Hero abilities: E when it fits the moment, R once it's charged and worth it.
+## Kin abilities (Q, V) when they fit the moment, and the bond ultimate (R) once it's full.
+## (The kin also uses its abilities on its own; this is the hunter asking for them.)
 func _use_sig(m: Match, h: Hunter, tgt: Ent) -> void:
-	var d := h.flat_dist(tgt) if tgt else 1e9
-	var to := h.dir_to(tgt) if tgt else Vector2.ZERO
-	var hurt := h.hp < h.max_hp * 0.45
-	if h.sig_cd <= 0.0:
+	var k: Kin = h.kin
+	if k == null or not k.ready_to_fight() or tgt == null:
+		return
+	var d := h.flat_dist(tgt)
+	var kd := k.flat_dist(tgt)
+	for slot in ["k1", "k2"]:
+		if not k.runner.is_ready(slot):
+			continue
+		var def := k.runner.def_of(slot)
 		var go := false
-		match Abil.e_id(h):
-			"cloak": go = hurt
-			"mend": go = h.hp < h.max_hp * 0.55 or m.hunters.any(func(o): return o != h and o.team == h.team and o.downed and o.flat_dist(h) < 5.0)
-			"fortify": go = d < 7.0 and h.hp < h.max_hp * 0.8
-			"blink": go = d > 3.0 and d < 8.0 and randf() < 0.25 and _safe(m, h, to, minf(d, 6.0))
-			"tether": go = d < 12.0 and tgt is Hunter
-			"hook": go = d > 3.0 and d < 8.5 and (tgt is Hunter or (tgt is Mob and tgt.mkind != "brute" and tgt.mkind != "warden"))
-			"rocketjump":
-				go = (d < 2.4 and randf() < 0.4) or (hurt and randf() < 0.3)
-				if hurt and go:
-					h.inp["aim"] = Vector3(h.pos.x - to.x * 6.0, h.pos.y, h.pos.z - to.y * 6.0)
-			"ram": go = d < 5.5 and d > 1.0 and _safe(m, h, to, d + 1.5)
-			"dome": go = tgt is Hunter and h.hp < h.max_hp * 0.65
-		# a staggerable monster in reach: any damaging ability will do
-		if tgt is Mob and (tgt as Mob).stag_open > 0.0 and d < 6.0 and Abil.e_id(h) in ["tether", "hook", "rocketjump", "ram"]:
-			go = true
+		if def.from == "owner":
+			var auto: Dictionary = def.auto
+			match String(auto.get("when", "")):
+				"owner_hurt": go = h.hp < h.max_hp * float(auto.get("below", 0.5))
+				"owner_falling": go = h.below_lip
+				_: go = d < 9.0 and randf() < 0.3
+		else:
+			var reach := def.cast_range if def.cast_range > 0.0 else 7.0
+			go = (kd < reach or (k.state == "shoulder" and d < 8.0)) and randf() < 0.35
+			if tgt is Mob and (tgt as Mob).stag_open > 0.0 and kd < reach:
+				go = true
 		if go:
-			h.inp["sig"] = true
-	if h.ult >= 1.0 and tgt:
+			h.inp["aim"] = Vector3(tgt.pos.x, tgt.pos.y, tgt.pos.z)
+			h.inp["sig" if slot == "k1" else "skill"] = true
+			break
+	if Ultimate.can_cast(h):
+		var u := Ultimate.def_for(k)
 		var go_r := false
-		match Abil.r_id(h):
-			"vanish": go_r = hurt
-			"sanctuary", "bulwark": go_r = h.hp < h.max_hp * 0.6 and d < 8.0
-			"dance": go_r = d < 8.0
-			"skypierce": go_r = d < 20.0 and m.world.los(h.pos, tgt.pos, h.pos.y + 0.95)
-			"anchor": go_r = d < 9.0 and _safe(m, h, to, d)
-			"barrage", "well": go_r = d < 10.0
-			"quake": go_r = d < 6.0
+		if u:
+			go_r = (d < 7.0 and tgt is Hunter) or (d < 5.0 and tgt is Mob and (tgt as Mob).max_hp > 150.0) or (h.hp < h.max_hp * 0.4 and d < 9.0)
 		if go_r:
+			h.inp["aim"] = Vector3(tgt.pos.x, tgt.pos.y, tgt.pos.z)
 			h.inp["ult"] = true
 
 func _choose(m: Match, h: Hunter) -> void:

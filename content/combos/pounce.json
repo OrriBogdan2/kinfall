@@ -1,0 +1,16 @@
+{
+	"id": "pounce",
+	"name": "Pounce",
+	"label": "POUNCE",
+	"desc": "You stun or slow a foe: your kin's next hit on it within 2.5s deals 60% more.",
+	"setup_by": "owner",
+	"statuses": [
+		"stun",
+		"slow"
+	],
+	"payoff_by": "kin",
+	"window": 2.5,
+	"bonus": 1.6,
+	"bond": 0.06,
+	"color": "#9af0ff"
+}

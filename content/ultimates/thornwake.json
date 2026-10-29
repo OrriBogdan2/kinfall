@@ -1,0 +1,35 @@
+{
+	"id": "thornwake",
+	"name": "Thornwake",
+	"form": "giant",
+	"time": 8,
+	"color": "#8fd16a",
+	"desc": "Burrlet grows into a giant briar beast for 8s. Its stomps root everything around it.",
+	"giant": {
+		"scale": 2.3,
+		"hp": 150,
+		"dmg": 2.2,
+		"range": 2.6,
+		"speed": 1.1,
+		"stomp": [
+			{
+				"type": "area",
+				"at": "self",
+				"radius": 2.8,
+				"dmg": 10,
+				"root": 1.0,
+				"color": "#8fd16a"
+			}
+		]
+	},
+	"on_start": [
+		{
+			"type": "area",
+			"at": "self",
+			"radius": 4,
+			"dmg": 14,
+			"root": 1.6,
+			"color": "#6fbf5a"
+		}
+	]
+}

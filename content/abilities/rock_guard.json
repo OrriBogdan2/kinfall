@@ -1,0 +1,36 @@
+{
+	"id": "rock_guard",
+	"name": "Rock Guard",
+	"icon": "fortify",
+	"color": "#f0e2c0",
+	"cooldown": 12,
+	"desc": "Your kin turns to stone for 4s (takes 60% less damage), shoves foes off it and gives you a 30 point shield.",
+	"auto": {
+		"when": "owner_hurt",
+		"below": 0.6
+	},
+	"effects": [
+		{
+			"type": "guard",
+			"amount": 0.6,
+			"time": 4,
+			"target": "self"
+		},
+		{
+			"type": "shield",
+			"amount": 30,
+			"time": 5,
+			"target": "owner"
+		},
+		{
+			"type": "area",
+			"at": "self",
+			"radius": 2.0,
+			"dmg": 6,
+			"kb": 8,
+			"color": "#f0e2c0"
+		}
+	],
+	"from": "kin",
+	"charges": 1
+}

@@ -1,0 +1,33 @@
+{
+	"id": "snare",
+	"name": "Bramble Snare",
+	"icon": "snare",
+	"color": "#8fd16a",
+	"cooldown": 8,
+	"range": 8,
+	"desc": "Brambles burst up at the spot a moment later and root every foe there for 1.6s.",
+	"auto": {
+		"when": "foe_in_range",
+		"range": 7
+	},
+	"effects": [
+		{
+			"type": "telegraph",
+			"at": "aim",
+			"radius": 2.2,
+			"time": 0.35,
+			"color": "#8fd16a"
+		},
+		{
+			"type": "area",
+			"at": "aim",
+			"radius": 2.2,
+			"dmg": 8,
+			"root": 1.6,
+			"color": "#6fbf5a",
+			"delay": 0.35
+		}
+	],
+	"from": "kin",
+	"charges": 1
+}

@@ -1,0 +1,15 @@
+{
+	"id": "kindling",
+	"name": "Kindling",
+	"label": "FLARE",
+	"desc": "A burning foe hit by your kin's ability takes a burst of extra damage.",
+	"setup_by": "any",
+	"statuses": [
+		"burn"
+	],
+	"payoff_by": "kin_ability",
+	"window": 3.0,
+	"bonus": 1.25,
+	"bond": 0.04,
+	"color": "#ff9a5a"
+}

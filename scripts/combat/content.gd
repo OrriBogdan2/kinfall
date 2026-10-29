@@ -32,6 +32,25 @@ static func class_dodge(cls: String) -> AbilityDef:
 	var d := _load("classes", cls)
 	return ability(String(d.get("dodge", "dash")))
 
+static func kin(id: String) -> KinDef:
+	var d := _load("kin", id)
+	return KinDef.from_dict(d) if not d.is_empty() else null
+
+static func ultimate(id: String) -> UltimateDef:
+	var d := _load("ultimates", id)
+	return UltimateDef.from_dict(d) if not d.is_empty() else null
+
+## Tuning tables under content/rules (bond meter, kin AI).
+static func rules(id: String) -> Dictionary:
+	return _load("rules", id)
+
+static var _combos: Array = []
+static func combos() -> Array:
+	if _combos.is_empty():
+		for id in ids("combos"):
+			_combos.append(_load("combos", id))
+	return _combos
+
 static func ids(kind: String) -> Array:
 	var out: Array = []
 	var dir := DirAccess.open("res://content/" + kind)

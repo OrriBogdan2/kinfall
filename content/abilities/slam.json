@@ -1,0 +1,33 @@
+{
+	"id": "slam",
+	"name": "Boulder Slam",
+	"icon": "slam",
+	"color": "#d8c9b0",
+	"cooldown": 8,
+	"range": 7,
+	"desc": "Your kin leaps onto the spot and blasts foes away. Great near edges.",
+	"auto": {
+		"when": "foe_in_range",
+		"range": 7
+	},
+	"effects": [
+		{
+			"type": "leap",
+			"time": 0.45,
+			"height": 1.8,
+			"on_land": [
+				{
+					"type": "area",
+					"at": "here",
+					"radius": 2.2,
+					"dmg": 20,
+					"kb": 10,
+					"lift": 6,
+					"color": "#d8c9b0"
+				}
+			]
+		}
+	],
+	"from": "kin",
+	"charges": 1
+}

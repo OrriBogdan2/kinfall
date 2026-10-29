@@ -1,0 +1,43 @@
+{
+	"id": "pebbit",
+	"name": "Pebbit",
+	"type": "stone",
+	"color": "#a39a8c",
+	"belly": "#e0d8c8",
+	"glow": "#f0e2c0",
+	"stats": {
+		"hp": 120,
+		"dmg": 11,
+		"speed": 5.4,
+		"range": 1.4
+	},
+	"look": {
+		"ears": "horn",
+		"body": "boulder",
+		"tail": "stub",
+		"feet": "stumps",
+		"aura": "pebbles"
+	},
+	"traits": {
+		"bravery": 0.9,
+		"loyalty": 0.7,
+		"temper": 0.3,
+		"curiosity": 0.2
+	},
+	"voice": "slow, steady, few words, deeply loyal once trust is earned",
+	"shoulder": "bedrock",
+	"abilities": [
+		"slam",
+		"rock_guard"
+	],
+	"ultimate": "titan",
+	"ai": {
+		"aggression": 0.55,
+		"loyalty": 0.75,
+		"caution": 0.15,
+		"style": "tank"
+	},
+	"throw_hit": {
+		"kb": 7
+	}
+}

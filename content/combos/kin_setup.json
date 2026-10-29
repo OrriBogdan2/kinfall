@@ -1,0 +1,16 @@
+{
+	"id": "kin_setup",
+	"name": "Combo",
+	"label": "COMBO",
+	"desc": "Your kin stuns or roots a foe: your next hit on it within 2.5s deals 35% more and fills your bond.",
+	"setup_by": "kin",
+	"statuses": [
+		"stun",
+		"root"
+	],
+	"payoff_by": "owner",
+	"window": 2.5,
+	"bonus": 1.35,
+	"bond": 0.08,
+	"color": "#ffd23f"
+}

@@ -18,17 +18,18 @@ The project uses the Compatibility renderer so the same build runs on the web.
 |---|---|
 | WASD | Move |
 | Mouse | Aim |
-| Left click | Shoot |
-| Right click | Hero secondary (each hero has their own) |
-| C | Throw your kin at the cursor, or call it back |
-| Q | Your kin's skill at the cursor (throws it first if it's on your shoulder) |
-| E | Hero ability |
-| R | Ultimate |
-| Shift | Dash |
+| Left click | Shoot (your weapon) |
+| Right click | Weapon utility, or your hero's secondary if the weapon has none |
+| Q | Your active kin's first ability (thrown out first if it's on your shoulder) |
+| V | Your active kin's second ability |
+| R | Bond ultimate, once the bond meter is full |
+| C | Throw your kin at the cursor, or recall it (short cooldown after a recall) |
+| X | Swap which of your two kin is active |
+| Shift | Dodge (your class decides how: slip, dash or shoulder charge) |
 | Space | Jump; hold it in the air to glide |
 | Ctrl | Crouch (hold; tap to toggle on the web version, since Ctrl+W closes browser tabs) |
-| F (hold) | Catch a dazed wild kin, revive a teammate, open a chest |
-| F (tap) | Swap to a found weapon on the ground |
+| E | Catch a dazed kin, revive a teammate, open a chest, take a found weapon |
+| F / G | Gear actives |
 | 1 | Tonic |
 | Tab | Scoreboard |
 | Esc | Menu: settings, controls, save files |
@@ -51,8 +52,14 @@ Touch the side of an island while you're falling (or gliding) and you float back
 - **Secondaries.** Every hero has a right-click ability, as in Supervive: Veil shadowsteps behind a target, Nyx throws bolas, Kestrel calls a divehawk, Sage rides a breeze (3 charges), Marlow throws a haymaker, Pyra plants a satchel you set off with a second click (ride the blast), Bastion holds up a frontal shield, Tusk cleaves, Halo binds.
 - **Walls and grass.** Islands have stone walls, corners, pillars and small keeps to fight around. Walls block shots and sight, so you can peek and duck back. Jump at a wall in the air to kick off it (light heroes get two kicks). Anyone knocked hard into a wall is stunned, monsters too.
 - **Sight.** You see a cone in front of you (where you aim) plus a small circle around you; everything else is dimmed and rival hunters there are hidden. Walls cast sight shadows. Teammates share what they see. Tall grass hides you from anyone outside it, and firing or getting hit gives you away for a moment. Crouching (Ctrl) slows you down and steadies your aim, and rivals only spot you at close range.
-- **Stagger.** Big monsters (Brutes, Sentinels, the Warden, the Glimmerkin) open short purple-ring windows, always while winding up a slam. Hit one with an ability (E, R, your kin's skill or a throw) in that window, not a regular shot: it takes a big hit, is stunned for a few seconds, takes extra damage the whole time, and your E or kin skill comes straight back.
-- **The Hollow.** If you fall there and your partner's trust is below 80, it stays behind.
+- **Stagger.** Big monsters (Brutes, Sentinels, the Warden, the Glimmerkin) open short purple-ring windows, always while winding up a slam. Hit one with an ability (a kin ability, your utility or a throw) in that window, not a regular shot: it takes a big hit, is stunned for a few seconds, takes extra damage the whole time, and your kin's abilities come straight back.
+- **Your kit.** Class (light, medium, heavy) sets health, armor, speed and your dodge. Your weapon gives left click and, for some weapons, a right-click utility (otherwise your hero's secondary). Everything else comes from your kin. Heroes are presets of class, weapon and look.
+- **Two kin per run.** The active kin gives you Q, V and the R ultimate; X swaps the benched one in (3s cooldown), and the one you swap out rests and heals. Change kin and your build changes.
+- **Throw and recall.** C throws the kin into a fight, where it picks targets and fights on its own. C again recalls it straight to your shoulder; after a recall there's a one-second wait before the next throw.
+- **Bond meter.** Your hits, your kin's hits, combos and kin knockouts fill a shared meter. When it's full, R calls the active kin's bond ultimate: an armor form (it fuses onto you: bonus damage, shields, shots that burn, slow or arc) or a giant form (it grows huge and stomps).
+- **Combos.** Your kin stuns or roots a foe and your next hit on it lands a COMBO (bonus damage and bond). You stun or slow a foe and your kin's next hit POUNCES for more. A kin ability on a burning foe FLARES.
+- **How kin fight.** Each kin's aggression, loyalty and caution (from its species and its own traits) decide how far it chases, how close it stays, who it goes after and when it backs off. Kin also use their abilities on their own (Settings can turn that off); Wisplet's Updraft will lift you out of a fall into the abyss if it's loyal enough.
+- **Lost kin and the Ransom House.** Go down for good and the kin you brought are left behind, dazed, where you fell. A squadmate may carry them home. Otherwise someone else might collect them: unclaimed kin go to Old Pell's Ransom House on your farm (buy them back or haggle; after 6 expeditions he sells them on), and kin a rival collected stay with that rival (make them an offer, or meet them on a later expedition, sense your kin nearby, knock them out and take it back). Kin you take home from a rival keep their name, and that rival may offer to buy them back. Very trusting kin sometimes find their own way home. Everything is paid in gems you earn in play.
 
 ## Raising kin
 
@@ -106,10 +113,16 @@ Anything read from the shared store is untrusted and cleaned before use (`Social
 
 The soundtrack is original folk-style music written as note data in `tools/compose.py` and rendered through the GeneralUser GS instrument bank by S. Christian Collins. Each area has its own track (home by day and night, each outer island, the town, guild isles, expeditions, the Hollow) and every track you've heard is kept in the music list in your house.
 
+## Adding content
+
+Kin, abilities, ultimates, weapons, class dodges, combos and the bond and kin-AI tuning are JSON files under `content/`. Drop in a new file and the game picks it up; see `CONTENT.md`. `tests/kin_gallery.tscn` (F6 in the editor) shows every kin side by side, and `tests/combat_sandbox.tscn` drops you in the training area to try a kit.
+
 ## Project layout
 
 ```
-scripts/core/    data.gd (all tuning), save.gd, game.gd, sfx.gd, bridge.gd, net.gd, social.gd, evo.gd
+content/         kin, abilities, ultimates, weapons, classes, combos, rules (JSON, no code needed)
+scripts/combat/  the combat systems: CombatBus signals, AbilityRunner, Effects, KinTactics (kin AI), Bond, Combos, Ultimate, Fields
+scripts/core/    data.gd (all tuning), save.gd, game.gd, ransom.gd, sfx.gd, bridge.gd, net.gd, social.gd, evo.gd
 scripts/match/   match.gd, world.gd, hunter.gd, kin.gd, mob.gd, bot.gd, fx.gd, cam.gd, models.gd
 scripts/home/    home.gd
 scripts/social/  town.gd (the town and guild isles)

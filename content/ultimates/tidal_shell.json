@@ -1,0 +1,32 @@
+{
+	"id": "tidal_shell",
+	"name": "Tidal Shell",
+	"form": "armor",
+	"time": 7,
+	"color": "#6cc8ff",
+	"desc": "Puddlet wraps around you as a shell of water for 7s: an 80 point shield, steady healing, and shots that slow.",
+	"owner": {
+		"shield": 80,
+		"regen": 6
+	},
+	"shots": {
+		"slow": 1.2
+	},
+	"on_start": [
+		{
+			"type": "area",
+			"at": "owner",
+			"radius": 3.5,
+			"dmg": 6,
+			"kb": 12,
+			"slow": 2,
+			"color": "#6cc8ff"
+		},
+		{
+			"type": "heal",
+			"amount": 20,
+			"target": "allies",
+			"radius": 5
+		}
+	]
+}

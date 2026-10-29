@@ -1,0 +1,35 @@
+{
+	"id": "overcharge",
+	"name": "Overcharge",
+	"icon": "charge",
+	"color": "#f5d03a",
+	"cooldown": 13,
+	"desc": "Your kin charges you up: 3s of speed, every dash back, and crits for 2s.",
+	"auto": {
+		"when": "owner_fighting",
+		"chance": 0.25
+	},
+	"effects": [
+		{
+			"type": "haste",
+			"time": 3,
+			"target": "owner"
+		},
+		{
+			"type": "refill_dash",
+			"target": "owner"
+		},
+		{
+			"type": "crit",
+			"time": 2,
+			"target": "owner"
+		},
+		{
+			"type": "burst",
+			"target": "owner",
+			"color": "#fff27a"
+		}
+	],
+	"from": "owner",
+	"charges": 1
+}

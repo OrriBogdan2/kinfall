@@ -75,6 +75,10 @@ func fresh() -> Dictionary:
 		"bridges": [],
 		"gh_plots": _empty_plots(4),
 		"stats": {"kills": 0, "best_kills": 0, "best_gems": 0, "caught": 0, "knocks": 0},
+		"lost_kin": [],       # your kin left behind on expeditions: at the Ransom House or held by a rival
+		"rivals": {},         # rival hunters you've dealt with: how greedy they are, how they feel about you
+		"offers": [],         # rivals asking to buy back kin you took from them
+		"ransom_log": [],     # what happened at the Ransom House, newest last
 	}
 
 func _empty_plots(n: int) -> Array:
@@ -136,6 +140,24 @@ func active_kin() -> Dictionary:
 		k = d["roster"][0]
 		d["active"] = k["uid"]
 	return k
+
+## The kin you bring as your second (benched, swapped in with X). "none" means bring only one.
+## If you haven't picked, your most trusted other kin comes along.
+func second_kin() -> Dictionary:
+	var a := str(d.get("active", ""))
+	var b := str(d.get("active2", ""))
+	if b == "none":
+		return {}
+	var k := kin(b)
+	if not k.is_empty() and b != a:
+		return k
+	var best: Dictionary = {}
+	for r in d["roster"]:
+		if r["uid"] != a and (best.is_empty() or float(r.get("trust", 0.0)) > float(best.get("trust", 0.0))):
+			best = r
+	if not best.is_empty():
+		d["active2"] = best["uid"]
+	return best
 
 func remember(k: Dictionary, kind: String, text: String, trust_delta := 0.0) -> void:
 	if k.is_empty():

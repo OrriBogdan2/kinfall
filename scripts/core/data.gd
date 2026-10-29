@@ -168,9 +168,10 @@ const SIGS := {
 	"fortify": {"name": "Fortify", "cd": 16.0, "desc": "A 60 point shield for 5s. Nothing can knock you back."},
 }
 
-## Kin species. Crowdsourced creatures would add entries here.
+## Kin species. These are the built-in defaults; every content/kin/*.json file is merged over them
+## (or adds a new species) when the game starts, so new kin need no code.
 ## skill: what Q does while the kin is out. shoulder: what you get while it rides on you.
-const KIN := {
+var KIN := {
 	"cindle": {"name": "Cindle", "type": "ember", "color": Color("ff7a3d"), "belly": Color("ffd28a"),
 		"hp": 80.0, "dmg": 9.0, "speed": 6.8, "range": 1.3, "ears": "flame",
 		"skill": "fireball", "shoulder": "kindle",
@@ -215,6 +216,21 @@ const ACCS := {
 	"tophat": {"name": "Tiny top hat", "price": 80, "col": Color("2b2a33")},
 }
 
+func _init() -> void:
+	load_kin_content()
+
+## Reads content/kin/*.json into KIN. A file with a new id adds a new species.
+func load_kin_content() -> void:
+	for id in Content.ids("kin"):
+		var kd := Content.kin(id)
+		if kd == null:
+			continue
+		var sp: Dictionary = kd.to_species()
+		var base: Dictionary = KIN.get(id, {})
+		sp["voice"] = String(Content._load("kin", id).get("voice", base.get("voice", "friendly")))
+		KIN[id] = sp
+
+## Old single skills, kept for older saves and tips. Kin now use content/abilities.
 const KIN_SKILLS := {
 	"fireball": {"name": "Fireball", "cd": 6.0, "desc": "A fireball that explodes and sets foes burning."},
 	"wave": {"name": "Tidal Wave", "cd": 7.0, "desc": "A wave that shoves and slows everything in front of it."},
@@ -321,15 +337,15 @@ const BOT_NAMES := ["Vexa", "Moss", "Tarn", "Juno", "Rook", "Kestrel", "Nim", "S
 
 ## Expedition tiers: deeper islands are harder and richer, and in the Hollow your partner can be lost.
 const TIERS := [
-	{"name": "The Meadow", "desc": "Gentle islands. 3 lives. Run out and you only lose what you carried.",
+	{"name": "The Meadow", "desc": "Gentle islands. 3 lives. Go down for good and the kin you brought are left behind (the Ransom House sells them back cheap here).",
 		"mob": 1.0, "loot": 1.0, "kin_lvl": [1, 3], "unlock": 0, "risk_kin": false, "lives": 3,
 		"biome": {"top": Color("5f8d45"), "top2": Color("4a7538"), "side": Color("8b6d52"), "deep": Color("3a3140"), "leaf": Color("5a9a4f")},
 		"sky": Color("10131f"), "ambient": Color("b9c4e6"), "sun": Color("fff1dc"), "clouds": [Color(0.06, 0.07, 0.13), Color(0.22, 0.24, 0.38)]},
-	{"name": "Dusk Isles", "desc": "Tougher monsters, about twice the loot, and rarer kin. 2 lives.",
+	{"name": "Dusk Isles", "desc": "Tougher monsters, about twice the loot, and rarer kin. 2 lives. Kin you bring are at risk if you go down.",
 		"mob": 1.45, "loot": 1.9, "kin_lvl": [2, 5], "unlock": 2, "risk_kin": false, "lives": 2,
 		"biome": {"top": Color("56688a"), "top2": Color("465576"), "side": Color("6d5a74"), "deep": Color("2a2440"), "leaf": Color("8a6fb8")},
 		"sky": Color("150f22"), "ambient": Color("c9b4e6"), "sun": Color("ffc9a8"), "clouds": [Color(0.09, 0.05, 0.14), Color(0.32, 0.2, 0.4)]},
-	{"name": "The Hollow", "desc": "Brutal and rich, and only 1 life. If you don't make it out, a partner that doesn't fully trust you stays behind.",
+	{"name": "The Hollow", "desc": "Brutal and rich, and only 1 life. Rival hunters here love to collect kin left behind.",
 		"mob": 2.0, "loot": 3.2, "kin_lvl": [4, 8], "unlock": 5, "risk_kin": true, "lives": 1,
 		"biome": {"top": Color("4f6b5e"), "top2": Color("3d5650"), "side": Color("5a4a44"), "deep": Color("1e1a22"), "leaf": Color("c25a4a")},
 		"sky": Color("0d0b10"), "ambient": Color("d0a0a0"), "sun": Color("ffb090"), "clouds": [Color(0.07, 0.03, 0.04), Color(0.3, 0.12, 0.12)]},
@@ -361,6 +377,8 @@ const BUILDINGS := {
 		"desc": "If you go down, you still keep a third of the gems you were carrying."},
 	"board": {"name": "Challenge House", "isle": "main", "cost": 0, "rect": [31, 22, 33, 23], "free": true,
 		"desc": "Challenges to take on, their rewards, and what they unlock at the market."},
+	"ransom": {"name": "Ransom House", "isle": "main", "cost": 0, "rect": [39, 33, 41, 34], "free": true,
+		"desc": "Old Pell's place. Kin left behind on expeditions end up here, and it's where you deal with rivals who took yours."},
 	"hall": {"name": "Trophy Hall", "isle": "summit", "cost": 120, "rect": [47, 6, 49, 8],
 		"desc": "Keeps your records and every kin you've brought home."},
 }

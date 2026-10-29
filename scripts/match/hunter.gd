@@ -31,7 +31,7 @@ var wpn: Dictionary = {}
 var ctrl := "bot"             # local | bot | remote
 var inp := {"move": Vector2.ZERO, "aim": Vector3.ZERO, "fire": false, "dash": false, "jump": false,
 	"throw": false, "skill": false, "sig": false, "interact": false, "reload": false, "tonic": false, "glide": false, "ult": false,
-	"sec": false, "sec_hold": false, "crouch": false, "gear1": false, "gear2": false}
+	"sec": false, "sec_hold": false, "crouch": false, "gear1": false, "gear2": false, "swap": false}
 var base_speed := 5.4
 var ammo := 12
 var reload_t := 0.0
@@ -64,7 +64,10 @@ var revive := 0.0
 var out := false
 var extracted := false
 var extract_prog := 0.0
-var kin: Ent = null
+var kin: Ent = null             # the active kin: its abilities are on Q and V, its ultimate on R
+var kin2: Ent = null            # the benched kin, swapped in with X
+var swap_cd := 0.0
+var fuse: Dictionary = {}       # a kin fused onto you as armor (bond ultimate): {def, t}
 var gems := 0
 var lost_gems := 0
 var free_tonics := 0          # the guild forge's tonic: used first, never taken home
@@ -111,7 +114,7 @@ var glide_k := 0.0             # how far the glider is unfolded, for the model
 var wind_t := 0.0
 var hero := "sage"
 var perk := ""
-var ult := 0.0                # 0..1, R is ready at 1
+var ult := 0.0                # the bond meter, 0..1: R calls your kin's bond ultimate at 1
 var crit_t := 0.0             # shots crit while this runs (Blink)
 var charge: Dictionary = {}   # Ram
 var acts: Array = []          # queued ability pieces, see Abil.tick
@@ -501,6 +504,16 @@ func fire() -> void:
 		extra["boom_kb"] = float(extra["boom_kb"]) * 1.2
 	if sp == "kindle": extra["burn"] = 4.0
 	if sp == "briar": extra["slow"] = 0.7
+	if not fuse.is_empty():
+		# a fused kin changes every shot: burning, slowing, bursting or arcing to another foe
+		var fs: Dictionary = (fuse["def"] as UltimateDef).shots
+		if fs.has("burn"): extra["burn"] = maxf(float(extra.get("burn", 0.0)), float(fs["burn"]))
+		if fs.has("slow"): extra["slow"] = maxf(float(extra.get("slow", 0.0)), float(fs["slow"]))
+		if fs.has("boom") and not extra.has("boom"):
+			extra["boom"] = float(fs["boom"]); extra["boom_kb"] = 4.0; extra["boom_small"] = true
+		if int(fs.get("chain", 0)) > 0:
+			extra["fx_hit"] = [{"type": "chain", "count": int(fs["chain"]), "first": 5.0, "dmg": float(wpn["dmg"]) * 0.5, "color": "#fff27a", "skip_here": true}]
+			extra["fx_ctx"] = {"slot": "ult", "ability": "fuse"}
 	m.spawn_shot(self, start, Vector2(cos(a), sin(a)) * spd, wpn["dmg"] * m.dmg_mult(self), life, wpn["size"], wpn["color"], extra)
 	m.sfx(wpn["sfx"], pos, -2.0 if is_local() else -6.0)
 	if ammo <= 0:
@@ -513,7 +526,53 @@ func start_reload() -> void:
 	m.sfx("reload", pos, -8.0)
 
 func use_signature() -> void:
-	Abil.use_e(self)
+	use_kin_ability("k1")
+
+## Is a kin with you and able to fight? (The bond meter only fills while one is.)
+func has_kin_ready() -> bool:
+	return kin != null and (kin as Kin).ready_to_fight()
+
+func _ground_aim() -> Vector3:
+	var a: Vector3 = inp["aim"]
+	var g: float = m.world.ground_at(a.x, a.z)
+	return Vector3(a.x, g if g > World.VOID + 1.0 else pos.y, a.z)
+
+## Q and V: your active kin's abilities, aimed at the cursor.
+func use_kin_ability(slot: String) -> void:
+	var k: Kin = kin
+	if k == null or downed or dropping or riding:
+		return
+	if not k.ready_to_fight():
+		if is_local() and m.hud:
+			m.hud.toast("%s is resting%s" % [k.rec.get("name", "Your kin"), ("  ·  %s swaps in %s" % [Settings.key_cap("swap_kin"), (kin2 as Kin).rec.get("name", "your other kin")]) if kin2 and (kin2 as Kin).hp > 0.0 else ""], Color("a2a8bb"))
+		return
+	k.use_ability(slot, _ground_aim())
+
+## R: the bond ultimate, once fighting together has filled the meter.
+func use_ultimate() -> void:
+	if not Ultimate.cast(self) and is_local() and m.hud and ult >= 1.0 and kin and not (kin as Kin).ready_to_fight():
+		m.hud.toast("Your kin has to be with you", Color("a2a8bb"))
+
+## X: swap which of your two kin is out. The benched one rests in your satchel.
+func swap_kin(force := false) -> void:
+	if kin2 == null or riding or out or (not force and (swap_cd > 0.0 or downed)):
+		return
+	var a: Kin = kin
+	var b: Kin = kin2
+	if b.dead or (a and a.state == "fused"):
+		return
+	if a: a.bench()
+	b.unbench()
+	kin = b
+	kin2 = a
+	swap_cd = float(Content.rules("kin_ai").get("swap_cooldown", 3.0))
+	m.on_kin_swap(self, b, a)
+
+## A bonus from a kin fused onto you (armor ultimate): dmg, speed.
+func fuse_mod(k: String) -> float:
+	if fuse.is_empty():
+		return 1.0
+	return float((fuse["def"] as UltimateDef).owner_mods.get(k, 1.0))
 
 func _old_signature() -> void:
 	match cdat["sig"]:
@@ -579,7 +638,7 @@ func sim(dt: float) -> void:
 			vel = Vector3.ZERO
 			if ctrl == "local" and inp["jump"]:
 				m.ship_jump(self)
-			for k in ["jump", "dash", "sig", "reload", "tonic", "ult", "fire"]:
+			for k in ["jump", "dash", "sig", "reload", "tonic", "ult", "fire", "skill", "swap"]:
 				inp[k] = false
 		return
 	tick_status(dt)
@@ -614,7 +673,10 @@ func sim(dt: float) -> void:
 		net_follow(dt)
 		return
 	if not downed and not dropping:
-		ult = minf(1.0, ult + dt / 110.0 * (1.3 if perk == "overcharge" else 1.0))
+		Bond.passive(self, dt)
+	swap_cd = maxf(0.0, swap_cd - dt)
+	if not fuse.is_empty():
+		fuse["t"] = float(fuse["t"]) - dt
 	if not downed:
 		Abil.tick(self, dt)
 	# reload by itself once you stop shooting for a moment
@@ -622,6 +684,9 @@ func sim(dt: float) -> void:
 	if idle_fire > 1.3 and ammo < int(wpn["mag"]) and reload_t <= 0.0 and not inp["fire"]:
 		start_reload()
 	if downed:
+		# your other kin comes out of the satchel to pick you up if the active one can't
+		if kin and (kin as Kin).state == "fainted" and kin2 and (kin2 as Kin).hp > 0.0:
+			swap_kin(true)
 		down_hp -= Data.MATCH["bleed"] * dt
 		if down_hp <= 0.0:
 			m.eliminate(self, last_hit_by, "bled out")
@@ -640,16 +705,19 @@ func sim(dt: float) -> void:
 		gear_cd[gi] = maxf(0.0, float(gear_cd[gi]) - dt)
 		if inp.get("gear%d" % (gi + 1), false):
 			m.use_gear(self, gi)
-		if inp["sig"]: use_signature()
+	if inp["sig"]: use_kin_ability("k1")
+	if inp["skill"]: use_kin_ability("k2")
+	if inp["swap"]: swap_kin()
 	if inp["sec"]:
 		if runner and runner.has_slot("utility"): runner.use("utility")
 		else: Abil.use_s(self)
 	Abil.tick_s(self, dt)
 	if inp["reload"]: start_reload()
 	if inp["tonic"]: use_tonic()
-	if inp["ult"]: Abil.use_r(self)
+	if inp["ult"]: use_ultimate()
 	if inp["fire"]: fire()
 	inp["dash"] = false; inp["jump"] = false; inp["sig"] = false; inp["reload"] = false; inp["tonic"] = false; inp["ult"] = false; inp["sec"] = false; inp["gear1"] = false; inp["gear2"] = false
+	inp["skill"] = false; inp["swap"] = false
 	_physics(dt)
 	var ad := aim_dir()
 	var want := atan2(-ad.x, -ad.y)
@@ -689,7 +757,7 @@ func _physics(dt: float) -> void:
 		_grapple(dt)
 		return
 	var mv: Vector2 = inp["move"] if stun_t <= 0.0 and root_t <= 0.0 else Vector2.ZERO
-	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * (0.6 if bshield_on else 1.0) * (0.55 if crouch else 1.0) * (1.0 + gear_stat("speed"))
+	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * (0.6 if bshield_on else 1.0) * (0.55 if crouch else 1.0) * (1.0 + gear_stat("speed")) * fuse_mod("speed")
 	var hv := Vector2(vel.x, vel.z)
 	var cur := hv.length()
 	if charge.size() > 0:

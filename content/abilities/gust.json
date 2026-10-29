@@ -1,0 +1,26 @@
+{
+	"id": "gust",
+	"name": "Gust",
+	"icon": "gust",
+	"color": "#d8ccff",
+	"cooldown": 6,
+	"range": 6,
+	"desc": "A burst of wind that hurls nearby foes outward and up.",
+	"auto": {
+		"when": "foe_in_range",
+		"range": 3
+	},
+	"effects": [
+		{
+			"type": "area",
+			"at": "self",
+			"radius": 2.8,
+			"dmg": 8,
+			"kb": 10.5,
+			"lift": 5,
+			"color": "#d8ccff"
+		}
+	],
+	"from": "kin",
+	"charges": 1
+}

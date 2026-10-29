@@ -240,6 +240,7 @@ func _show_settings() -> void:
 			_toggle(v, "Tips during matches", "tips")
 			_toggle(v, "Quick cast (abilities fire on press, no aiming preview)", "quick_cast")
 			_toggle(v, "Tap to crouch (instead of holding the crouch key)", "crouch_toggle")
+			_toggle(v, "Kin use their abilities on their own", "kin_autocast")
 			if admin_allowed():
 				_toggle(v, "Mod mode: everything unlocked, free building and bridges, god mode, spawn kin (F1)", "mod_mode")
 		"Accessibility":

@@ -597,31 +597,40 @@ func _draw_vitals(sz: Vector2, p: Hunter) -> void:
 		if p.gliding or hot:
 			_ctext(Vector2(sz.x * 0.5, gr.position.y - 4), "OVERHEATED" if hot else "GLIDER HEAT", 11, gcol if hot else Color(INK, 0.7), big)
 
-## The ability row: kin throw and skill, hero ability, the ultimate in the middle, dash, tonic.
+## The ability row: kin throw, the active kin's two abilities, your weapon's utility, the bond
+## ultimate in the middle, your dodge, tonics, and gear actives.
 func _draw_abilities(sz: Vector2, p: Hunter) -> void:
 	var s := 60.0
 	var gap := 12.0
 	var us := 72.0
 	var k: Kin = p.kin
-	var n_small := (6 if k else 4) - (1 if Abil.s_id(p) == "" and not (p.runner and p.runner.def_of("utility")) else 0)
-	var total := n_small * s + us + (n_small) * gap
+	var gear_n := 0
+	for gi in 2:
+		if not (p.gear[gi] as Dictionary).is_empty() and Gear.active(String(p.gear[gi]["id"])): gear_n += 1
+	var util: AbilityDef = p.runner.def_of("utility") if p.runner else null
+	var s_id := Abil.s_id(p)
+	var has_sec := util != null or s_id != ""
+	var n_small := (3 if k else 0) + (1 if has_sec else 0) + 2
+	var total := n_small * s + us + n_small * gap + gear_n * (48.0 + 8.0) + (8.0 if gear_n > 0 else 0.0)
 	var x := sz.x * 0.5 - total * 0.5
 	var y := sz.y - 88.0
 	var hc: Color = Data.HEROES[p.hero]["color"]
 	if k:
 		var kc: Color = Data.KIN[k.species]["color"]
-		var out_now: bool = k.state in ["active", "flying"]
-		var can_throw: bool = k.state in ["shoulder", "active", "flying"]
-		_ab_slot("throw", Rect2(Vector2(x, y), Vector2(s, s)), "recall" if out_now else "throw", Settings.key_cap("throw"), kc, 0.0, 0.0, can_throw, -1, 0, "Recall" if out_now else "")
+		var out_now: bool = k.state in ["active", "flying", "returning"]
+		var can_throw: bool = (k.state == "shoulder" and k.throw_cd <= 0.0) or out_now
+		_ab_slot("throw", Rect2(Vector2(x, y), Vector2(s, s)), "recall" if out_now else "throw", Settings.key_cap("throw"), kc, k.throw_cd / 1.0 if k.throw_cd > 0.0 else 0.0, k.throw_cd, can_throw, -1, 0, "Recall" if out_now else "")
 		x += s + gap
-		var sk_id: String = Data.KIN[k.species]["skill"]
-		var sk: Dictionary = Data.KIN_SKILLS[sk_id]
-		var kready: bool = k.skill_cd <= 0.0 and k.state not in ["fainted", "reviving"]
-		_ab_slot("kskill", Rect2(Vector2(x, y), Vector2(s, s)), sk_id, Settings.key_cap("kin_skill"), kc, k.skill_cd / float(sk["cd"]) if k.skill_cd > 0.0 else 0.0, k.skill_cd, kready)
-		x += s + gap
+		for slot in ["k1", "k2"]:
+			var kd: AbilityDef = k.runner.def_of(slot)
+			var act := "signature" if slot == "k1" else "kin_skill"
+			if kd:
+				var rdy: bool = k.runner.is_ready(slot) and k.ready_to_fight() and k.state != "fused"
+				_ab_slot(slot, Rect2(Vector2(x, y), Vector2(s, s)), kd.icon, Settings.key_cap(act), kd.color, k.runner.cd_frac(slot), k.runner.cd_left(slot) if not k.runner.is_ready(slot) else 0.0, rdy)
+				if not k.ready_to_fight():
+					_rounded(Rect2(Vector2(x, y), Vector2(s, s)), Color(0, 0, 0, 0.45), 12)
+			x += s + gap
 	# right click: the weapon's utility, or the hero's secondary if the weapon has none
-	var s_id := Abil.s_id(p)
-	var util: AbilityDef = p.runner.def_of("utility") if p.runner else null
 	if util:
 		var sr := Rect2(Vector2(x, y), Vector2(s, s))
 		_ab_slot("sec", sr, util.icon, Settings.key_cap("secondary"), util.color, p.runner.cd_frac("utility"), p.runner.cd_left("utility") if not p.runner.is_ready("utility") else 0.0, p.runner.is_ready("utility"), p.runner.charges("utility") if util.charges > 1 else -1, util.charges if util.charges > 1 else 0)
@@ -638,21 +647,25 @@ func _draw_abilities(sz: Vector2, p: Hunter) -> void:
 		else:
 			_ab_slot("sec", sr, s_id, Settings.key_cap("secondary"), hc, p.sec_cd / float(s_ab["cd"]) if p.sec_cd > 0.0 else 0.0, p.sec_cd, p.sec_cd <= 0.0)
 		x += s + gap
-	var e_id := Abil.e_id(p)
-	var e_ab: Dictionary = Data.ABIL[e_id]
-	_ab_slot("e", Rect2(Vector2(x, y), Vector2(s, s)), e_id, Settings.key_cap("signature"), hc, p.sig_cd / float(e_ab["cd"]) if p.sig_cd > 0.0 else 0.0, p.sig_cd, p.sig_cd <= 0.0)
-	x += s + gap
-	# the ultimate: a ring that fills as it charges
-	var r_id := Abil.r_id(p)
+	# the bond ultimate: a heart-ring that fills as you and your kin fight together
+	var ud := Ultimate.def_for(k) if k else null
 	var ur := Rect2(Vector2(x, y - (us - s)), Vector2(us, us))
-	var ready_r := p.ult >= 1.0
-	_ab_slot("r", ur, r_id, Settings.key_cap("ultimate"), GOLD, 0.0, 0.0, ready_r)
-	if not ready_r:
-		c.draw_arc(ur.get_center(), us * 0.5 + 4.0, -PI / 2, -PI / 2 + TAU * p.ult, 48, GOLD, 3.0, true)
-		_ctext(ur.get_center() + Vector2(0, us * 0.5 - 12), "%d%%" % int(p.ult * 100.0), 12, Color(GOLD, 0.9), big)
+	var ready_r := Ultimate.can_cast(p)
+	var ucol: Color = ud.color if ud else GOLD
+	_ab_slot("r", ur, ud.id if ud else "bond", Settings.key_cap("ultimate"), ucol, 0.0, 0.0, ready_r)
+	if p.ult < 1.0:
+		c.draw_arc(ur.get_center(), us * 0.5 + 4.0, -PI / 2, -PI / 2 + TAU * p.ult, 48, ucol, 3.0, true)
+		_ctext(ur.get_center() + Vector2(0, us * 0.5 - 12), "%d%%" % int(p.ult * 100.0), 12, Color(ucol, 0.9), big)
 	else:
 		var pulse := 0.5 + 0.5 * sin(m.time * 6.0)
-		_rounded(ur.grow(3.0 + pulse * 3.0), Color(0, 0, 0, 0), 15, Color(1.0, 0.82, 0.3, 0.35 + pulse * 0.4), 2)
+		_rounded(ur.grow(3.0 + pulse * 3.0), Color(0, 0, 0, 0), 15, Color(ucol, 0.35 + pulse * 0.4), 2)
+	_ctext(Vector2(ur.get_center().x, ur.position.y - 8), "BOND", 11, Color(ucol, 0.85), big)
+	if not p.fuse.is_empty():
+		var fd: UltimateDef = p.fuse["def"]
+		_bar(Rect2(Vector2(ur.position.x, ur.end.y + 12), Vector2(us, 4)), clampf(float(p.fuse["t"]) / fd.time, 0.0, 1.0), fd.color)
+	elif k and not k.giant.is_empty():
+		var gd: UltimateDef = k.giant["def"]
+		_bar(Rect2(Vector2(ur.position.x, ur.end.y + 12), Vector2(us, 4)), clampf(float(k.giant["t"]) / gd.time, 0.0, 1.0), gd.color)
 	x += us + gap
 	var dmax := p.max_dashes()
 	var dcd := (1.0 - fposmod(p.dashes, 1.0)) if p.dashes < dmax else 0.0
@@ -660,6 +673,65 @@ func _draw_abilities(sz: Vector2, p: Hunter) -> void:
 	x += s + gap
 	_ab_slot("tonic", Rect2(Vector2(x, y), Vector2(s, s)), "tonic", Settings.key_cap("tonic"), GOOD, 0.0, 0.0, p.tonics > 0, -1, 0)
 	_ctext(Vector2(x + s - 10, y + 18), "×%d" % p.tonics, 13, INK, big)
+	x += s + gap + 8.0
+	# gear actives on F and G
+	for gi in 2:
+		var g: Dictionary = p.gear[gi]
+		if g.is_empty() or not Gear.active(String(g["id"])):
+			continue
+		var gd: Dictionary = Gear.ALL[String(g["id"])]
+		var gs := 48.0
+		var gcd := float(p.gear_cd[gi])
+		_ab_slot("gear%d" % gi, Rect2(Vector2(x, y + (s - gs)), Vector2(gs, gs)), String(g["id"]), Settings.key_cap("gear%d" % (gi + 1)), gd["col"], gcd / float(gd["cd"]) if gcd > 0.0 else 0.0, gcd, gcd <= 0.0)
+		x += gs + 8.0
+
+## Your two kin: the active one big, the benched one small under it.
+func _draw_kin_card(sz: Vector2, p: Hunter) -> void:
+	var k: Kin = p.kin
+	if k == null:
+		return
+	var w := 250.0
+	var r := Rect2(Vector2(16, sz.y - 110), Vector2(w, 94))
+	if _narrow(sz):
+		r.position.y -= 110.0
+	var kc: Color = Data.KIN[k.species]["color"]
+	_rounded(r, Color(0.05, 0.06, 0.09, 0.85), 12, Color(Data.KIN[k.species].get("glow", kc), 0.35), 1)
+	hover_spots.append([r, "kin"])
+	var pc := r.position + Vector2(36, 40)
+	c.draw_circle(pc, 25, Color(Data.KIN[k.species].get("glow", kc), 0.25))
+	c.draw_circle(pc, 22, kc)
+	c.draw_circle(pc + Vector2(-7, -3), 3.2, Color.BLACK)
+	c.draw_circle(pc + Vector2(7, -3), 3.2, Color.BLACK)
+	if k.state == "fainted":
+		c.draw_circle(pc, 22, Color(0, 0, 0, 0.5))
+	var kname: String = k.rec.get("name", "Kin")
+	_text(r.position + Vector2(68, 26), kname, 16, INK, big)
+	var st := ""
+	match k.state:
+		"shoulder": st = ("On your shoulder · " + Data.SHOULDER[Data.KIN[k.species]["shoulder"]]["name"]) if k.settle >= 1.0 else "Settling in..."
+		"flying", "flying_home": st = "In the air"
+		"active": st = ("GIANT · " if not k.giant.is_empty() else "") + ("Fighting" if k.target else "Out with you")
+		"returning": st = "Coming back"
+		"fainted": st = "Resting %ds" % int(ceil(k.faint_t))
+		"reviving": st = "Reviving you!"
+		"fused": st = "Fused onto you"
+	_text(r.position + Vector2(68, 44), st, 12, MUTED)
+	_seg_bar(Rect2(r.position + Vector2(68, 54), Vector2(w - 84, 8)), k.hp, k.max_hp, k.hp / k.max_hp, kc, 25.0)
+	c.draw_circle(r.position + Vector2(74, 78), 4.0, Color("ffb3c6"))
+	_text(r.position + Vector2(84, 83), "Trust %d · %s" % [int(k.trust), Care.bond(k.rec)[1] if k.rec.size() > 0 else ""], 12, Color("ffb3c6"))
+	var b: Kin = p.kin2
+	if b:
+		var br := Rect2(Vector2(r.position.x, r.position.y - 34), Vector2(w, 28))
+		var ready_swap := p.swap_cd <= 0.0 and b.hp > 0.0 and k.state != "fused"
+		_rounded(br, Color(0.05, 0.06, 0.09, 0.78), 10, Color(Data.KIN[b.species]["color"], 0.6) if ready_swap else Color(1, 1, 1, 0.08), 1)
+		hover_spots.append([br, "swap"])
+		var bcol: Color = Data.KIN[b.species]["color"]
+		c.draw_circle(br.position + Vector2(16, 14), 9, bcol if b.hp > 0.0 else bcol.darkened(0.6))
+		_text(br.position + Vector2(32, 19), "%s  ·  benched" % b.rec.get("name", "Kin"), 12, INK)
+		_bar(Rect2(br.position + Vector2(w - 82, 12), Vector2(56, 4)), b.hp / b.max_hp, bcol)
+		_keycap(br.position + Vector2(w - 14, 14), Settings.key_cap("swap_kin"), Data.KIN[b.species]["color"] if ready_swap else MUTED)
+		if p.swap_cd > 0.0:
+			_bar(Rect2(br.position + Vector2(32, 24), Vector2(w - 120, 2)), 1.0 - p.swap_cd / maxf(0.1, float(Content.rules("kin_ai").get("swap_cooldown", 3.0))), MUTED)
 
 ## Your weapon: rarity, ammo, reload. Under it, what you're carrying home.
 func _draw_weapon(sz: Vector2, p: Hunter) -> void:
@@ -685,38 +757,6 @@ func _draw_weapon(sz: Vector2, p: Hunter) -> void:
 	var seeds := 0
 	for sd in p.seeds: seeds += int(p.seeds[sd])
 	_text(r.position + Vector2(16, r.size.y - 8), "%d gems · %d seeds · %d kin" % [p.gems, seeds, p.caught.size()], 12, GOLD if p.gems > 0 else MUTED)
-
-## Your partner: how it's doing and what it's up to.
-func _draw_kin_card(sz: Vector2, p: Hunter) -> void:
-	var k: Kin = p.kin
-	if k == null:
-		return
-	var w := 250.0
-	var r := Rect2(Vector2(16, sz.y - 110), Vector2(w, 94))
-	if _narrow(sz):
-		r.position.y -= 110.0
-	var kc: Color = Data.KIN[k.species]["color"]
-	_rounded(r, Color(0.05, 0.06, 0.09, 0.85), 12)
-	var pc := r.position + Vector2(36, 40)
-	c.draw_circle(pc, 22, kc)
-	c.draw_circle(pc + Vector2(-7, -3), 3.2, Color.BLACK)
-	c.draw_circle(pc + Vector2(7, -3), 3.2, Color.BLACK)
-	if k.state == "fainted":
-		c.draw_circle(pc, 22, Color(0, 0, 0, 0.5))
-	var kname: String = k.rec.get("name", "Kin")
-	_text(r.position + Vector2(68, 26), kname, 16, INK, big)
-	var st := ""
-	match k.state:
-		"shoulder": st = ("On your shoulder · " + Data.SHOULDER[Data.KIN[k.species]["shoulder"]]["name"]) if k.settle >= 1.0 else "Settling in..."
-		"flying", "flying_home": st = "In the air"
-		"active": st = "Fighting" if k.target else "Out with you"
-		"returning": st = "Coming back"
-		"fainted": st = "Resting %ds" % int(ceil(k.faint_t))
-		"reviving": st = "Reviving you!"
-	_text(r.position + Vector2(68, 44), st, 12, MUTED)
-	_seg_bar(Rect2(r.position + Vector2(68, 54), Vector2(w - 84, 8)), k.hp, k.max_hp, k.hp / k.max_hp, kc, 25.0)
-	c.draw_circle(r.position + Vector2(74, 78), 4.0, Color("ffb3c6"))
-	_text(r.position + Vector2(84, 83), "Trust %d · %s" % [int(k.trust), Care.bond(k.rec)[1] if k.rec.size() > 0 else ""], 12, Color("ffb3c6"))
 
 ## Your squadmates down the left side.
 func _draw_squad(sz: Vector2, p: Hunter) -> void:
@@ -791,20 +831,23 @@ func _draw_kit(sz: Vector2, p: Hunter) -> void:
 		return
 	var a := clampf(show_t - t, 0.0, 1.0)
 	var lines: Array = []
-	var e_ab: Dictionary = Data.ABIL[Abil.e_id(p)]
-	var r_ab: Dictionary = Data.ABIL[Abil.r_id(p)]
-	lines.append([Settings.key_cap("signature"), e_ab["name"], e_ab["desc"], Data.HEROES[p.hero]["color"]])
 	var util: AbilityDef = p.runner.def_of("utility") if p.runner else null
 	if util:
 		lines.append([Settings.key_cap("secondary"), util.display_name, util.desc, util.color])
 	elif Abil.s_id(p) != "":
 		var s_ab: Dictionary = Data.ABIL[Abil.s_id(p)]
 		lines.append([Settings.key_cap("secondary"), s_ab["name"], s_ab["desc"], Data.HEROES[p.hero]["color"].lightened(0.25)])
-	lines.append([Settings.key_cap("ultimate"), r_ab["name"] + " (ultimate)", r_ab["desc"], Color("f2c84a")])
 	if p.kin:
-		var sk: Dictionary = Data.KIN_SKILLS[Data.KIN[p.kin.species]["skill"]]
-		lines.append([Settings.key_cap("throw"), "Throw " + String(p.kin.rec.get("name", "your kin")), "Stuns what it hits. Click again to call it back.", Data.KIN[p.kin.species]["color"]])
-		lines.append([Settings.key_cap("kin_skill"), sk["name"], sk["desc"], Data.KIN[p.kin.species]["color"]])
+		var k: Kin = p.kin
+		var kcol: Color = Data.KIN[k.species]["color"]
+		for slot in ["k1", "k2"]:
+			var kd: AbilityDef = k.runner.def_of(slot)
+			if kd: lines.append([Settings.key_cap("signature" if slot == "k1" else "kin_skill"), kd.display_name, kd.desc, kd.color])
+		var ud := Ultimate.def_for(k)
+		if ud: lines.append([Settings.key_cap("ultimate"), ud.display_name + " (bond ultimate)", ud.desc + " Fill the bond meter by fighting together.", ud.color])
+		lines.append([Settings.key_cap("throw"), "Throw / recall " + String(k.rec.get("name", "your kin")), "Stuns what it hits; then your shots deal a combo. Press again to call it back.", kcol])
+		if p.kin2:
+			lines.append([Settings.key_cap("swap_kin"), "Swap to " + String((p.kin2 as Kin).rec.get("name", "your other kin")), "Your other kin, with its own abilities and ultimate.", Data.KIN[(p.kin2 as Kin).species]["color"]])
 	var w := 420.0
 	var box := Rect2(Vector2(sz.x - w - 16, sz.y - 186 - lines.size() * 44 - 30), Vector2(w, 30 + lines.size() * 44))
 	if m.opts.get("training", false):
@@ -992,8 +1035,58 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 			out.append(["Weapon utility (%s)  ·  %s" % [String(p.wpn.get("name", "")), Settings.key_cap("secondary")], MUTED, 12])
 			out.append([u.desc, INK, 14])
 			out.append(["Cooldown %s%s" % [_secs(u.cooldown), ("  ·  ready in %s" % _secs(p.runner.cd_left("utility"))) if not p.runner.is_ready("utility") else "  ·  ready"], MUTED, 13])
-		"e", "r", "sec":
-			var aid: String = Abil.e_id(p) if id == "e" else (Abil.r_id(p) if id == "r" else Abil.s_id(p))
+		"k1", "k2":
+			var k: Kin = p.kin
+			if k == null: return []
+			var kd: AbilityDef = k.runner.def_of(id)
+			if kd == null: return []
+			out.append([kd.display_name, kd.color])
+			out.append(["%s's ability  ·  %s" % [k.rec.get("name", "Kin"), Settings.key_cap("signature" if id == "k1" else "kin_skill")], MUTED, 12])
+			out.append([kd.desc, INK, 14])
+			var where := "Your kin casts it; from your shoulder it's thrown out first." if kd.from == "kin" else "Works on you wherever your kin is."
+			out.append(["Cooldown %s%s. %s" % [_secs(kd.cooldown / maxf(0.1, k.runner.rate)), ("  ·  ready in %s" % _secs(k.runner.cd_left(id))) if not k.runner.is_ready(id) else "  ·  ready", where], MUTED, 13])
+			if not kd.auto.is_empty():
+				out.append(["Your kin also uses it on its own when it sees the chance (turn this off in Settings).", Color(kd.color, 0.85), 12])
+		"r":
+			var ud := Ultimate.def_for(p.kin) if p.kin else null
+			if ud == null: return []
+			out.append([ud.display_name, ud.color])
+			out.append(["Bond ultimate  ·  %s  ·  %s" % [Settings.key_cap("ultimate"), "fuses onto you" if ud.form == "armor" else "giant form"], MUTED, 12])
+			out.append([ud.desc, INK, 14])
+			out.append(["Bond %d%%. Fills as you and your kin land hits together, faster with combos." % int(p.ult * 100.0), GOLD, 13])
+		"swap":
+			var b: Kin = p.kin2
+			if b == null: return []
+			out.append(["Swap to %s" % b.rec.get("name", "your other kin"), Data.KIN[b.species]["color"]])
+			out.append(["Second kin  ·  %s" % Settings.key_cap("swap_kin"), MUTED, 12])
+			var names := []
+			for sl in ["k1", "k2"]:
+				var bd: AbilityDef = b.runner.def_of(sl)
+				if bd: names.append(bd.display_name)
+			var bu := Ultimate.def_for(b)
+			out.append(["Brings out %s: %s, and %s as its bond ultimate. The kin you swap out rests and heals." % [Data.KIN[b.species]["name"], " and ".join(names), bu.display_name if bu else "its ultimate"], INK, 14])
+		"kin":
+			var k: Kin = p.kin
+			if k == null: return []
+			var ai := k.brain
+			out.append(["%s the %s" % [k.rec.get("name", "Kin"), Data.KIN[k.species]["name"]], Data.KIN[k.species]["color"]])
+			out.append(["Level %d  ·  %d / %d health  ·  trust %d" % [int(k.rec.get("level", 1)), int(ceil(k.hp)), int(k.max_hp), int(k.trust)], MUTED, 12])
+			var traits := []
+			if ai.aggression > 0.6: traits.append("aggressive: chases foes far")
+			if ai.loyalty > 0.65: traits.append("loyal: stays by you and goes after whoever hurts you")
+			if ai.caution > 0.55: traits.append("cautious: backs off when hurt")
+			if traits.is_empty(): traits.append("steady: a bit of everything")
+			out.append(["In a fight it's " + "; ".join(traits) + ".", INK, 14])
+		"gear0", "gear1":
+			var g: Dictionary = p.gear[int(id.substr(4))]
+			if g.is_empty(): return []
+			var gd: Dictionary = Gear.ALL[String(g["id"])]
+			out.append([gd["name"], gd["col"]])
+			out.append(["Gear active  ·  %s" % Settings.key_cap("gear%d" % (int(id.substr(4)) + 1)), MUTED, 12])
+			out.append([gd["desc"], INK, 14])
+			out.append([Gear.stat_text(String(g["id"]), int(g.get("rar", 1))), MUTED, 13])
+		"e", "sec":
+			var aid: String = Abil.e_id(p) if id == "e" else Abil.s_id(p)
 			var ab: Dictionary = Data.ABIL[aid]
 			var kind: String = {"e": "Hero ability", "r": "Ultimate", "sec": "Secondary"}[id]
 			var act: String = {"e": "signature", "r": "ultimate", "sec": "secondary"}[id]
@@ -1018,15 +1111,6 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 			out.append(["Kin  ·  %s" % Settings.key_cap("throw"), MUTED, 12])
 			out.append(["Throws your kin at the cursor. Whatever it hits is stunned, and your shots crit stunned foes. Press again to call it back.", INK, 14])
 			out.append(["On your shoulder: %s. %s" % [sh["name"], sh["desc"]], Color(sp["color"], 0.95), 13])
-		"kskill":
-			var k: Kin = p.kin
-			if k == null: return []
-			var sp: Dictionary = Data.KIN[k.species]
-			var sk: Dictionary = Data.KIN_SKILLS[sp["skill"]]
-			out.append([sk["name"], sp["color"]])
-			out.append(["%s's skill  ·  %s" % [k.rec.get("name", "Kin"), Settings.key_cap("kin_skill")], MUTED, 12])
-			out.append([sk["desc"], INK, 14])
-			out.append(["Cooldown %s%s. Thrown out first if it's on your shoulder." % [_secs(float(sk["cd"])), ("  ·  ready in %s" % _secs(k.skill_cd)) if k.skill_cd > 0.05 else ""], MUTED, 13])
 		"dash":
 			var dd: AbilityDef = p.dodge_def
 			out.append([dd.display_name if dd else "Dash", dd.color if dd else Color("bfe6ff")])
@@ -1092,7 +1176,7 @@ func _draw_world_hover(sz: Vector2, p: Hunter) -> void:
 		var k: Kin = best
 		var sp: Dictionary = Data.KIN[k.species]
 		var nm := String(k.rec.get("name", sp["name"]))
-		lines.append(["Wild %s" % sp["name"] if k.is_wild() else nm, sp["color"]])
+		lines.append([("%s (lost)" % nm if k.lost_from != "" else "Wild %s" % sp["name"]) if k.is_wild() else nm, sp["color"]])
 		lines.append(["%s type  ·  level %d  ·  %d / %d health" % [String(sp["type"]).capitalize(), int(k.rec.get("level", 1)), int(ceil(k.hp)), int(k.max_hp)], MUTED])
 		if k.is_wild():
 			if k.state == "dazed":
@@ -1101,8 +1185,13 @@ func _draw_world_hover(sz: Vector2, p: Hunter) -> void:
 				lines.append(["Knock its health down to daze it, then hold %s to catch it." % Settings.key_cap("interact"), INK])
 			if k.rec.get("shimmer", false):
 				lines.append(["A shimmering one. Rare.", Color("ffd6ff")])
+			if k.lost_from != "":
+				lines.append(["Left behind by %s. Whoever collects it keeps it." % ("you" if k.lost_from == "you" else k.lost_from), GOLD if k.lost_from == "you" else MUTED])
 		elif k.owner_h == p:
-			lines.append(["Yours. %s throws it, %s uses %s." % [Settings.key_cap("throw"), Settings.key_cap("kin_skill"), Data.KIN_SKILLS[sp["skill"]]["name"]], INK])
+			var a1: AbilityDef = k.runner.def_of("k1")
+			lines.append(["Yours. %s throws it, %s uses %s." % [Settings.key_cap("throw"), Settings.key_cap("signature"), a1.display_name if a1 else "its ability"], INK])
+		elif k.lost_from == "you" and k.lost_uid != "":
+			lines.append(["Your lost kin! Held by %s. Take it back." % (k.owner_h.pname if k.owner_h else "a rival"), GOLD])
 		else:
 			lines.append(["A rival hunter's kin.", BAD])
 	elif best is Hunter:

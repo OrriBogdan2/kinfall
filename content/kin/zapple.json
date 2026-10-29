@@ -1,0 +1,43 @@
+{
+	"id": "zapple",
+	"name": "Zapple",
+	"type": "volt",
+	"color": "#f5d03a",
+	"belly": "#fff4c2",
+	"glow": "#fff27a",
+	"stats": {
+		"hp": 70,
+		"dmg": 8,
+		"speed": 7.6,
+		"range": 1.3
+	},
+	"look": {
+		"ears": "bolt",
+		"body": "pear",
+		"tail": "zig",
+		"feet": "paws",
+		"aura": "sparks"
+	},
+	"traits": {
+		"bravery": 0.65,
+		"loyalty": 0.4,
+		"temper": 0.6,
+		"curiosity": 0.9
+	},
+	"voice": "hyper, easily distracted, loves winning",
+	"shoulder": "charge",
+	"abilities": [
+		"chain_spark",
+		"overcharge"
+	],
+	"ultimate": "stormcoat",
+	"ai": {
+		"aggression": 0.65,
+		"loyalty": 0.35,
+		"caution": 0.35,
+		"style": "skirmisher"
+	},
+	"throw_hit": {
+		"stun": 0.9
+	}
+}

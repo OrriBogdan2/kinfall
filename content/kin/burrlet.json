@@ -1,0 +1,43 @@
+{
+	"id": "burrlet",
+	"name": "Burrlet",
+	"type": "thorn",
+	"color": "#6fbf5a",
+	"belly": "#e2f2b0",
+	"glow": "#b8f07a",
+	"stats": {
+		"hp": 90,
+		"dmg": 8,
+		"speed": 6.2,
+		"range": 1.3
+	},
+	"look": {
+		"ears": "leaf",
+		"body": "burr",
+		"tail": "sprout",
+		"feet": "paws",
+		"aura": "leaves"
+	},
+	"traits": {
+		"bravery": 0.55,
+		"loyalty": 0.6,
+		"temper": 0.4,
+		"curiosity": 0.8
+	},
+	"voice": "curious and odd, notices small things",
+	"shoulder": "briar",
+	"abilities": [
+		"snare",
+		"thorn_patch"
+	],
+	"ultimate": "thornwake",
+	"ai": {
+		"aggression": 0.5,
+		"loyalty": 0.6,
+		"caution": 0.45,
+		"style": "trapper"
+	},
+	"throw_hit": {
+		"root": 0.9
+	}
+}

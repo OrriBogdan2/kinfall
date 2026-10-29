@@ -1,0 +1,37 @@
+{
+	"id": "titan",
+	"name": "Titan",
+	"form": "giant",
+	"time": 8,
+	"color": "#d8c9b0",
+	"desc": "Pebbit becomes a towering titan for 8s. Huge health, and every stomp launches foes away.",
+	"giant": {
+		"scale": 2.6,
+		"hp": 250,
+		"dmg": 2.5,
+		"range": 2.8,
+		"speed": 1.0,
+		"stomp": [
+			{
+				"type": "area",
+				"at": "self",
+				"radius": 2.6,
+				"dmg": 14,
+				"kb": 12,
+				"lift": 7,
+				"color": "#d8c9b0"
+			}
+		]
+	},
+	"on_start": [
+		{
+			"type": "area",
+			"at": "self",
+			"radius": 4.5,
+			"dmg": 22,
+			"kb": 14,
+			"lift": 8,
+			"color": "#d8c9b0"
+		}
+	]
+}

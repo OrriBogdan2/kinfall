@@ -83,6 +83,9 @@ func _ready() -> void:
 	# the Challenge House comes with the farm
 	if visit.is_empty() and not Save.d.get("buildings", []).has("board"):
 		Save.d["buildings"].append("board")
+	# so does Old Pell's Ransom House
+	if visit.is_empty() and not Save.d.get("buildings", []).has("ransom"):
+		Save.d["buildings"].append("ransom")
 	if "--home-all" in dbg:
 		Save.d["bridges"] = Data.ISLES.keys()
 		Save.d["buildings"] = Data.BUILDINGS.keys()
@@ -240,6 +243,22 @@ func _ready() -> void:
 				Save.d["plots"][i] = {"crop": ks[i % ks.size()], "stage": i % 3, "care": 0, "wt": (Time.get_unix_time_from_system() - 85.0) if i % 2 == 0 else 0.0}
 				_refresh_plot("plots", i)
 			Save.active_kin()["farmhand"] = true
+		if a == "--ransom-test":
+			# test: go down on an expedition with two kin; one is left unclaimed, a rival takes the other,
+			# and a rival wants back a kin you took from them
+			while Save.d["roster"].size() < 4:
+				Save.d["roster"].append(Save.new_kin(Data.KIN.keys()[Save.d["roster"].size() % Data.KIN.size()]))
+			var ka: Dictionary = Save.d["roster"][1]
+			var kb: Dictionary = Save.d["roster"][2]
+			var kc: Dictionary = Save.d["roster"][3]
+			kc["lost_from"] = "Moss"
+			Save.d["gems"] = maxi(int(Save.d["gems"]), 400)
+			var res := Game.apply_result({"extracted": false, "why": "knocked out", "tier": 1, "rivals": ["Vexa", "Moss", "Tarn"],
+				"kin_runs": [{"uid": ka["uid"], "events": [], "trust": ka["trust"], "stats": {}}, {"uid": kb["uid"], "events": [], "trust": kb["trust"], "stats": {}}],
+				"lost_kin": [{"uid": ka["uid"], "fate": "ransom", "holder": ""}, {"uid": kb["uid"], "fate": "rival", "holder": "Vexa"}]})
+			print("RANSOM lost_news=%d news=%s lost=%d offers=%d" % [res["lost_news"].size(), str(res["ransom_news"]), Save.d["lost_kin"].size(), Save.d["offers"].size()])
+			if Save.d["offers"].is_empty():
+				Save.d["offers"].append({"uid": kc["uid"], "from": "Moss", "gems": 90, "m": 0})
 		if a.begins_with("--open="):
 			var which := a.substr(7)
 			get_tree().create_timer(0.2).timeout.connect(func():
@@ -248,6 +267,9 @@ func _ready() -> void:
 				elif which == "kin": _open_kin(Save.active_kin())
 				elif which == "shop": _open_shop()
 				elif which == "challenges": _open_challenges()
+				elif which.begins_with("ransom"):
+					if ":" in which: ransom_tab = which.split(":")[1]
+					_open_ransom()
 				elif which == "kitchen": _open_kitchen()
 				elif which == "plot": _open_plot("plots", 0)
 				elif which == "chat":
@@ -1688,10 +1710,16 @@ func _open_kin(rec: Dictionary) -> void:
 	c2.add_child(UI.section("Training  (cap %d)" % Care.stat_cap(rec)))
 	for s in Care.STATS:
 		row.call(c2, Care.STATS[s]["name"], float(rec["stats"][s]) / float(Care.stat_cap(rec)), Care.STATS[s]["col"], str(int(rec["stats"][s])))
-	var sk: Dictionary = Data.KIN_SKILLS[sp["skill"]]
 	var sh: Dictionary = Data.SHOULDER[sp["shoulder"]]
 	c2.add_child(UI.section("In a match"))
-	var skl := UI.label("%s (%s): %s" % [sk["name"], Settings.key_cap("kin_skill"), sk["desc"]], 12); skl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c2.add_child(skl)
+	var abl: Array = sp.get("abilities", [])
+	for ai in abl.size():
+		var ad := Content.ability(String(abl[ai]))
+		if ad == null: continue
+		var skl := UI.label("%s (%s): %s" % [ad.display_name, Settings.key_cap("signature" if ai == 0 else "kin_skill"), ad.desc], 12, ad.color.lerp(UI.INK, 0.5)); skl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c2.add_child(skl)
+	var ud := Content.ultimate(String(sp.get("ultimate", "")))
+	if ud:
+		var ul := UI.label("Bond ultimate, %s (%s): %s" % [ud.display_name, Settings.key_cap("ultimate"), ud.desc], 12, ud.color.lerp(UI.INK, 0.4)); ul.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c2.add_child(ul)
 	var shl := UI.label("On your shoulder, %s: %s" % [sh["name"], sh["desc"]], 12, UI.MUTED); shl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c2.add_child(shl)
 	cols.add_child(c2)
 	# how it's growing, and what you know about it
@@ -1737,9 +1765,16 @@ func _open_kin(rec: Dictionary) -> void:
 	btns.add_child(pb)
 	if rec["uid"] != Save.d.get("active", ""):
 		btns.add_child(UI.button("Make partner", func():
+			if Save.d.get("active2", "") == rec["uid"]: Save.d["active2"] = Save.d.get("active", "")
 			Save.d["active"] = rec["uid"]
 			Save.save_game()
 			_open_kin(rec), 130))
+		if rec["uid"] != Save.d.get("active2", ""):
+			btns.add_child(UI.button("Bring as second", func():
+				Save.d["active2"] = rec["uid"]
+				Save.save_game()
+				_toast("%s will come along on your next expedition (%s swaps it in)" % [rec["name"], Settings.key_cap("swap_kin")])
+				_open_kin(rec), 150))
 	if rec.get("farmhand", false):
 		btns.add_child(UI.button("Stop farming", func():
 			rec.erase("farmhand")
@@ -1928,18 +1963,23 @@ func _open_expedition() -> void:
 	var hrow := UI.hbox(12); hc.add_child(hrow)
 	var hv := UI.vbox(4); hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hv.add_child(UI.title("%s  ·  %s" % [hd["name"], Data.CLASSES[hd["cls"]]["name"]], 24, hd["color"]))
-	hv.add_child(UI.label("%s  ·  E %s  ·  R %s  ·  %s" % [Data.weapon_stats(w)["name"], Data.ABIL[hd["e"]]["name"], Data.ABIL[hd["r"]]["name"],
+	hv.add_child(UI.label("%s  ·  right click %s  ·  %s" % [Data.weapon_stats(w)["name"], Data.ABIL[hd["s"]]["name"] if Data.ABIL.has(hd.get("s", "")) else "weapon utility",
 		Data.PERKS[pk]["name"] if Data.PERKS.has(pk) else "no perk"], 14, UI.MUTED))
 	hrow.add_child(hv)
 	hrow.add_child(UI.button("Hero and loadout", _open_loadout, 200))
 	v.add_child(hc)
 	var ak := Save.active_kin()
 	if not ak.is_empty():
-		var sp: Dictionary = Data.KIN[ak["species"]]
-		var kl := "Partner: %s the %s, trust %d. C throws it into fights; Q fires its %s." % [ak["name"], sp["name"], int(ak["trust"]), Data.KIN_SKILLS[sp["skill"]]["name"]]
-		v.add_child(UI.label(kl, 15, sp["color"]))
+		v.add_child(UI.section("Kin you bring"))
+		v.add_child(_kin_pick_row("Partner", ak, "active"))
+		var k2 := Save.second_kin()
+		if Save.d["roster"].size() > 1:
+			v.add_child(_kin_pick_row("Second", k2, "active2"))
 		if float(ak["trust"]) < 30.0:
 			v.add_child(UI.label("%s doesn't trust you much yet and may refuse risky throws. Spend time with it, or feed it a Mindmint treat." % ak["name"], 13, UI.BAD))
+		var risk := UI.label("If you go down for good, the kin you bring are left behind. Unclaimed ones end up at the Ransom House; rivals may take the rest. Very trusting kin sometimes find their own way home.", 13, UI.MUTED)
+		risk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(risk)
 	if Save.d.get("treat", "") != "":
 		v.add_child(UI.label("Treat: " + _treat_name(Save.d["treat"]), 14, UI.GOLD))
 	v.add_child(UI.section("Where"))
@@ -1958,9 +1998,6 @@ func _open_expedition() -> void:
 	v.add_child(tiers)
 	var tsel: Dictionary = Data.TIERS[exp_tier]
 	v.add_child(UI.label(tsel["desc"], 14, UI.BAD if tsel["risk_kin"] else UI.MUTED))
-	if tsel["risk_kin"] and not ak.is_empty():
-		var safe := float(ak["trust"]) >= 80.0
-		v.add_child(UI.label(("%s trusts you enough to find its way home if you fall." if safe else "%s's trust is %d. Below 80, it won't come home if you fall here.") % ([ak["name"]] if safe else [ak["name"], int(ak["trust"])]), 14, UI.GOOD if safe else UI.BAD))
 	v.add_child(UI.section("Match"))
 	var modes := UI.hbox(8)
 	for m in [["solo", "Solo · 20 hunters"], ["duo", "Duos · 10 squads"], ["trio", "Trios · 7 squads"]]:
@@ -1974,6 +2011,162 @@ func _open_expedition() -> void:
 	if Bridge.net_available():
 		go.add_child(UI.button("Play online with friends", func(): Game.goto("lobby", {"cls": Data.HEROES[_hero()]["cls"], "tier": exp_tier}), 240))
 	v.add_child(go)
+
+## One row of the expedition loadout: which kin, with ‹ › to change it.
+func _kin_pick_row(label_t: String, rec: Dictionary, key: String) -> Control:
+	var card := UI.card(UI.CARD, 10, 10)
+	var row := UI.hbox(10); card.add_child(row)
+	var roster: Array = Save.d["roster"]
+	var other := str(Save.d.get("active2" if key == "active" else "active", ""))
+	var choices: Array = roster.filter(func(r): return r["uid"] != other)
+	var cur := str(Save.d.get(key, ""))
+	var cycle := func(dir: int) -> void:
+		var ids: Array = choices.map(func(r): return r["uid"])
+		if key == "active2": ids.append("none")
+		var i := ids.find(cur)
+		Save.d[key] = ids[(i + dir + ids.size()) % ids.size()] if ids.size() > 0 else cur
+		Save.save_game()
+		_open_expedition()
+	row.add_child(UI.button("‹", func(): cycle.call(-1), 40))
+	var info := UI.vbox(2); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if rec.is_empty():
+		info.add_child(UI.label("%s: none" % label_t, 16, UI.MUTED, UI.big))
+		info.add_child(UI.label("Bring only your partner. Nothing else at risk.", 12, UI.MUTED))
+	else:
+		var sp: Dictionary = Data.KIN[rec["species"]]
+		info.add_child(UI.label("%s: %s the %s  ·  level %d  ·  trust %d" % [label_t, rec["name"], sp["name"], int(rec.get("level", 1)), int(rec["trust"])], 16, sp["color"], UI.big))
+		var names: Array = []
+		for aid in sp.get("abilities", []):
+			var ad := Content.ability(String(aid))
+			if ad: names.append(ad.display_name)
+		var ud := Content.ultimate(String(sp.get("ultimate", "")))
+		var keys := ("%s / %s / %s" % [Settings.key_cap("signature"), Settings.key_cap("kin_skill"), Settings.key_cap("ultimate")]) if key == "active" else ("swap in with %s" % Settings.key_cap("swap_kin"))
+		info.add_child(UI.label("%s  ·  %s  ·  bond: %s" % [keys, ", ".join(names), ud.display_name if ud else "-"], 12, UI.MUTED))
+	row.add_child(info)
+	row.add_child(UI.button("›", func(): cycle.call(1), 40))
+	return card
+
+# ---- the Ransom House
+var ransom_tab := "house"
+var ransom_say := {}      # uid -> the last thing the seller said
+var ransom_bid := {}      # uid -> the offer you're typing
+
+func _open_ransom() -> void:
+	var v := _new_panel("Ransom House", 820)
+	var lost: Array = Save.d.get("lost_kin", [])
+	var at_house: Array = lost.filter(func(L): return String(L["where"]) == "ransom")
+	var held: Array = lost.filter(func(L): return String(L["where"]) == "rival")
+	var offers: Array = Save.d.get("offers", [])
+	var intro := UI.label("%s keeps the kin nobody came back for. Lost kin wait here for %d expeditions before they're sold on. Rivals who collected yours will listen to an offer, or you can find them out there and take it back." % [Ransom.BROKER, Ransom.SELL_AFTER], 14, UI.MUTED)
+	intro.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(intro)
+	var tabs := UI.hbox(8)
+	for tb in [["house", "At the house (%d)" % at_house.size()], ["rivals", "Held by rivals (%d)" % held.size()], ["offers", "Offers for you (%d)" % offers.size()], ["log", "What happened"]]:
+		var tid: String = tb[0]
+		tabs.add_child(UI.choice(tb[1], ransom_tab == tid, func(): ransom_tab = tid; _open_ransom()))
+	v.add_child(tabs)
+	v.add_child(UI.label("You have %d gems." % int(Save.d["gems"]), 15, UI.GOLD))
+	match ransom_tab:
+		"house", "rivals":
+			var list: Array = at_house if ransom_tab == "house" else held
+			if list.is_empty():
+				v.add_child(UI.label("Nobody here. Every kin you've lost is home or with a rival." if ransom_tab == "house" else "No rival is holding any of your kin.", 15, UI.MUTED))
+			for L in list:
+				v.add_child(_ransom_card(L))
+		"offers":
+			if offers.is_empty():
+				v.add_child(UI.label("When you take home a kin a rival left behind, they may ask to buy it back. Their offers show up here.", 15, UI.MUTED))
+			for o in offers.duplicate():
+				var k := Save.kin(String(o["uid"]))
+				if k.is_empty():
+					(Save.d["offers"] as Array).erase(o)
+					continue
+				var card := UI.card(UI.CARD, 12, 12)
+				var row := UI.hbox(10); card.add_child(row)
+				var info := UI.vbox(3); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+				info.add_child(UI.label("%s wants %s back" % [o["from"], k["name"]], 17, Data.KIN[k["species"]]["color"], UI.big))
+				info.add_child(UI.label("They're offering %d gems. It's level %d and its trust in you is %d." % [int(o["gems"]), int(k.get("level", 1)), int(k["trust"])], 13, UI.MUTED))
+				row.add_child(info)
+				var oo: Dictionary = o
+				row.add_child(UI.primary("Sell for %d" % int(o["gems"]), func():
+					Ransom.sell_back(oo)
+					Sfx.play("pickup")
+					_toast("%s goes back to %s. +%d gems" % [k["name"], oo["from"], int(oo["gems"])])
+					_refresh_top()
+					_open_ransom(), 150))
+				row.add_child(UI.button("Keep it", func():
+					Ransom.decline(oo)
+					_open_ransom(), 100))
+				v.add_child(card)
+		"log":
+			var lg: Array = Save.d.get("ransom_log", [])
+			if lg.is_empty():
+				v.add_child(UI.label("Nothing yet.", 15, UI.MUTED))
+			for i in range(lg.size() - 1, maxi(-1, lg.size() - 13), -1):
+				v.add_child(UI.label("Expedition %d: %s" % [int(lg[i]["m"]), lg[i]["text"]], 13, UI.INK))
+
+func _ransom_card(L: Dictionary) -> Control:
+	var rec: Dictionary = L["rec"]
+	var uid := String(rec["uid"])
+	var sp: Dictionary = Data.KIN[rec["species"]]
+	var rival_side := String(L["where"]) == "rival"
+	var card := UI.card(UI.CARD, 12, 12)
+	UI.set_card_border(card, sp["color"])
+	var v := UI.vbox(6); card.add_child(v)
+	var top := UI.hbox(10)
+	var nm := UI.label("%s the %s  ·  level %d" % [rec["name"], sp["name"], int(rec.get("level", 1))], 18, sp["color"], UI.big)
+	nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(nm)
+	top.add_child(UI.label("Asking %d" % int(L["ask"]), 16, UI.GOLD, UI.big))
+	v.add_child(top)
+	var waited := int(L.get("waited", 0))
+	var where := ("Held by %s for %d expedition%s. You may meet them out there: your bond lets you sense it nearby." % [L["holder"], waited, "" if waited == 1 else "s"]) if rival_side else ("Waiting here for %d expedition%s. %s" % [waited, "" if waited == 1 else "s", ("Sold on after %d more." % (Ransom.SELL_AFTER - waited)) if waited < Ransom.SELL_AFTER else "Sold on after your next expedition!"])
+	var wl := UI.label(where, 13, UI.BAD if not rival_side and waited >= Ransom.SELL_AFTER - 1 else UI.MUTED)
+	wl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	v.add_child(wl)
+	if ransom_say.has(uid):
+		var said := UI.label("%s: \"%s\"" % [L["holder"] if rival_side else Ransom.BROKER, ransom_say[uid]], 14, UI.INK)
+		said.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(said)
+	var row := UI.hbox(10)
+	var bid := int(ransom_bid.get(uid, int(round(float(L["ask"]) * 0.75))))
+	var sl := HSlider.new()
+	sl.min_value = 0; sl.max_value = maxi(int(L["ask"]), 1); sl.step = 5; sl.value = clampi(bid, 0, int(L["ask"]))
+	sl.custom_minimum_size = Vector2(240, 24)
+	sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var bl := UI.label("Offer %d" % int(sl.value), 15, UI.INK)
+	bl.custom_minimum_size.x = 96
+	sl.value_changed.connect(func(val): ransom_bid[uid] = int(val); bl.text = "Offer %d" % int(val))
+	row.add_child(sl)
+	row.add_child(bl)
+	var patience := int(L.get("patience", 0))
+	var ob := UI.button("Make offer", func():
+		var res := Ransom.offer(L, int(ransom_bid.get(uid, int(sl.value))))
+		ransom_say[uid] = String(res["line"])
+		if res["result"] == "accept":
+			Sfx.play("unlock")
+			_toast("%s is coming home!" % rec["name"])
+			ransom_say.erase(uid)
+		elif res["result"] == "counter":
+			ransom_bid[uid] = int(res["ask"])
+		_refresh_top()
+		_open_ransom(), 130)
+	ob.disabled = patience <= 0
+	ob.tooltip_text = "They've stopped haggling until after your next expedition." if patience <= 0 else "%d more tries before they stop haggling" % patience
+	row.add_child(ob)
+	var pay := UI.primary("Pay %d" % int(L["ask"]), func():
+		if Ransom.pay(L):
+			Sfx.play("unlock")
+			_toast("%s is coming home!" % rec["name"])
+			ransom_say.erase(uid)
+			_refresh_top()
+			_open_ransom()
+		else:
+			_toast("You need %d gems" % int(L["ask"])), 130)
+	pay.disabled = int(Save.d["gems"]) < int(L["ask"])
+	row.add_child(pay)
+	v.add_child(row)
+	return card
 
 ## A safe island to learn every button: nothing can hurt you and nothing you do there counts.
 func _start_training() -> void:
@@ -2077,6 +2270,9 @@ func _open_lot(b: String) -> void:
 			return
 		if b == "board":
 			_open_challenges()
+			return
+		if b == "ransom":
+			_open_ransom()
 			return
 		var v := _new_panel(bd["name"], 480)
 		v.add_child(UI.label(bd["desc"], 16))

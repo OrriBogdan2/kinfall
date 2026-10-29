@@ -111,7 +111,14 @@ func _ready() -> void:
 		show_screen(String(st["screen"]), st.get("opts", {}))
 		return
 	if "--sandbox" in args:
-		show_screen("match", {"training": true, "sandbox": true, "sandbox_demo": "--sandbox-demo" in args, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242, "no_drop": true, "weapon": "pulse"})
+		var so := {"training": true, "sandbox": true, "sandbox_demo": "--sandbox-demo" in args, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242, "no_drop": true, "weapon": "pulse"}
+		for a in args:
+			if a.begins_with("--kin-demo="):
+				# test: bring this species (and the next one) and run its whole kit on the dummies
+				so["demo_kin"] = a.substr(11)
+				so["sandbox_demo"] = false
+				so["kin_demo"] = true
+		show_screen("match", so)
 		return
 	if "--results-test" in args:
 		show_screen("results", {"extracted": true, "gems": 42, "seeds": {"sunroot": 1}, "caught": [Save.new_kin("zapple")], "knocks": 3, "damage": 512, "time": 201.0, "kin_events": [{"kind": "refused", "text": "refused to jump into a fight that looked too dangerous", "trust": -1.0}], "kin_trust": 57.0, "tonics": 1})
@@ -247,8 +254,19 @@ func _simtest(opts: Dictionary) -> void:
 	m.set_process(false)
 	var t0 := Time.get_ticks_msec()
 	var log_t := 0.0
+	var kill_at := -1.0
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--kill-at="): kill_at = float(a.substr(10))
 	while not m.over and m.time < m.length + 5.0:
 		m.step(Match.DT)
+		if kill_at > 0.0 and m.time >= kill_at and m.player and not m.player.out:
+			# test: the player goes down for good here, to check what happens to the kin they brought
+			var near: Hunter = null
+			for o in m.hunters:
+				if o != m.player and not o.out and (near == null or o.flat_dist(m.player) < near.flat_dist(m.player)): near = o
+			m.player.lives = 1
+			m.eliminate(m.player, near, "knocked out", true)
+			kill_at = -1.0
 		if m.result.get("ending", false) and m.time > 0.0:
 			m._finish_now = true
 		log_t += Match.DT
@@ -275,6 +293,7 @@ func _simtest(opts: Dictionary) -> void:
 	for h in m.hunters: wr.append(h.wrar)
 	print("SIMSTAT breaks %d/%d weapons left %d rarities %s staggers %d rings %d pads %d" % [nb, m.breaks.size(), m.wpicks.size(), str(wr), m.stag_n, m.ring_n, m.world.pads.size()])
 	print("SIMTEST done in %dms, sim time %d, result %s" % [Time.get_ticks_msec() - t0, m.time, str(m.result)])
+	print("SIMKIN %s lost=%s" % [str(m.kstat), str(m._resolve_lost().map(func(L): return [L["fate"], L["holder"]]))])
 	for h in m.hunters:
 		print("  %s team %d %s knocks %d kills %d dmg %d gems %d %s" % [h.pname, h.team, h.cls, h.knocks, h.kills, h.dmg_done, h.gems, "OUT" if h.out else ("EXTRACTED" if h.extracted else "alive")])
 	get_tree().quit()

@@ -63,18 +63,20 @@ func _setup_input() -> void:
 	_key("fire", [], MOUSE_BUTTON_LEFT)
 	_key("secondary", [], MOUSE_BUTTON_RIGHT) # your hero's right-click ability
 	# match keys follow Supervive's defaults: Q ability, RMB secondary, R ultimate, Shift dash,
-	# Space jump and glide, Ctrl sneak, E interact, F and G for gear actives
-	_key("signature", [KEY_Q])                # hero ability
+	# Space jump and glide, Ctrl sneak, E interact, F and G for gear actives. Your kin add V
+	# (second ability), C (throw / recall) and X (swap kin).
+	_key("signature", [KEY_Q])                # your active kin's first ability
 	_key("interact", [KEY_E])                 # catch, revive, open, pick up
 	_key("gear1", [KEY_F])                    # active on your first piece of gear
 	_key("gear2", [KEY_G])                    # active on your second piece of gear
 	_key("crouch", [KEY_CTRL])                # sneak
 	_key("throw", [KEY_C])                    # throw your kin, or call it back
-	_key("kin_skill", [KEY_V])                # your kin's skill at the cursor
+	_key("kin_skill", [KEY_V])                # your active kin's second ability
+	_key("swap_kin", [KEY_X])                 # swap which of your two kin is active
 	_key("dash", [KEY_SHIFT])
 	_key("jump", [KEY_SPACE])
 	_key("reload", [])                        # reloading is automatic
-	_key("ultimate", [KEY_R])                 # hero ultimate
+	_key("ultimate", [KEY_R])                 # bond ultimate, when the bond meter is full
 	_key("tonic", [KEY_1])
 	_key("scores", [KEY_TAB])
 	_key("menu", [KEY_ESCAPE])
@@ -123,11 +125,21 @@ func apply_result(r: Dictionary) -> Dictionary:
 			Save.add_seed(s, int(r["seeds"][s]))
 			out["seeds"][s] = int(r["seeds"][s])
 		for rec in r.get("caught", []):
+			if not Ransom.find(String(rec.get("uid", ""))).is_empty():
+				continue     # one of yours, back from a rival: handled below
 			var nk: Dictionary = rec.duplicate(true)
+			var from := String(rec.get("lost_from", ""))
 			nk["uid"] = "k%d%d" % [Time.get_ticks_usec() % 1000000, randi() % 1000]
-			nk["name"] = Data.KIN_NAMES.pick_random()
-			nk["memory"] = []
-			Save.remember(nk, "caught", "was caught by you in the islands and brought home")
+			if from == "" or from == "you":
+				nk["name"] = Data.KIN_NAMES.pick_random()
+				nk["memory"] = []
+				nk.erase("lost_from")
+				Save.remember(nk, "caught", "was caught by you in the islands and brought home")
+			else:
+				# a rival's kin, left behind when they went down: it still misses them
+				nk["memory"] = []
+				nk["trust"] = 15.0
+				Save.remember(nk, "taken", "belonged to %s until you took it home" % from)
 			Care.ensure(nk)
 			nk["needs"] = {"food": 45.0, "energy": 40.0, "joy": 45.0, "clean": 30.0}
 			d["roster"].append(nk)
@@ -137,58 +149,62 @@ func apply_result(r: Dictionary) -> Dictionary:
 	d["items"]["tonic"] = int(r.get("tonics", d["items"].get("tonic", 0)))
 	var treat: String = d.get("treat", "")
 	d["treat"] = ""
-	# the partner kin remembers the match
+	# every kin you brought remembers the match
+	var runs: Array = r.get("kin_runs", [])
+	if runs.is_empty() and not Save.active_kin().is_empty():
+		runs = [{"uid": Save.active_kin()["uid"], "events": r.get("kin_events", []), "trust": r.get("kin_trust", Save.active_kin()["trust"]), "stats": r.get("kin_stats", {})}]
 	var k := Save.active_kin()
-	if not k.is_empty():
-		k["matches"] = int(k.get("matches", 0)) + 1
-		var before := float(k["trust"])
-		var counts := {}
-		for e in r.get("kin_events", []):
-			counts[e["kind"]] = int(counts.get(e["kind"], 0)) + 1
-		k["trust"] = clampf(float(r.get("kin_trust", before)) + (1.0 if d.get("guild_perks", []).has("shrine") else 0.0), 0.0, 100.0)
-		for kind in counts:
-			var ev: Dictionary = {}
-			for e in r["kin_events"]:
-				if e["kind"] == kind: ev = e; break
-			var txt: String = ev["text"]
-			if counts[kind] > 1:
-				txt += " (%d times)" % counts[kind]
-			Save.remember(k, kind, txt)
-		if won:
-			k["wins"] = int(k.get("wins", 0)) + 1
-			Save.remember(k, "extracted", "made it out of the islands with you", 3.0)
-			k["traits"]["bravery"] = clampf(float(k["traits"]["bravery"]) + 0.015, 0.05, 0.95)
-		else:
-			Save.remember(k, "lost", "lost a match with you (%s)" % _why(r.get("why", "")), -1.0)
-		Evo.learn(k, r.get("kin_stats", {}))
-		# an expedition is hungry, tiring, muddy work
-		Care.catch_up(k)
-		for nd in Care.MATCH_COST:
-			Care.change(k, nd, Care.MATCH_COST[nd])
-		Care.change(k, "joy", 8.0 if won else -8.0)
-		var xp := 40 + (40 if won else 0) + int(r.get("knocks", 0)) * 10
-		if treat == "treat_xp": xp = int(xp * 1.5)
-		k["xp"] = int(k.get("xp", 0)) + xp
-		while int(k["xp"]) >= 100 * int(k["level"]):
-			k["xp"] = int(k["xp"]) - 100 * int(k["level"])
-			k["level"] = int(k["level"]) + 1
-			out["levelup"] = true
-			_evolve(k, out)
-		out["trust_delta"] = float(k["trust"]) - before
-		out["kin"] = k
-		# in the Hollow, a partner that doesn't trust you enough stays behind when you fall
-		var td: Dictionary = Data.TIERS[clampi(int(r.get("tier", last_tier)), 0, Data.TIERS.size() - 1)]
-		if td["risk_kin"] and not won and r.get("why", "") != "left":
-			if float(k["trust"]) >= 80.0:
-				Save.remember(k, "found_home", "found its own way home from the Hollow after you fell", 2.0)
-				out["kin_home"] = true
-			elif d["roster"].size() > 1:
-				d["roster"].erase(k)
-				d["active"] = d["roster"][0]["uid"]
-				out["kin_lost"] = k
-			else:
-				Save.remember(k, "stranded", "was stranded in the Hollow for a long time before limping home", -15.0)
-				out["kin_stranded"] = true
+	var brought: Array = []
+	for ri in runs.size():
+		var run: Dictionary = runs[ri]
+		var kk := Save.kin(String(run.get("uid", "")))
+		if kk.is_empty():
+			continue
+		brought.append(kk)
+		_kin_after(kk, run, won, r, treat, out, ri == 0)
+	# kin you got back from a rival come home as themselves
+	for rec in r.get("caught", []).duplicate():
+		if not won:
+			break
+		var L := Ransom.find(String(rec.get("uid", "")))
+		if not L.is_empty():
+			var back := Ransom.restore(L, "took it back on an expedition")
+			out["rescued"] = out.get("rescued", []) + [back]
+			out["caught"].erase(back)
+	# time passes for kin already lost: prices drift, unclaimed ones get sold, rivals ask for theirs back
+	out["ransom_news"] = Ransom.tick(r.get("rivals", []))
+	# going down leaves your kin behind; where they end up was settled in the match
+	var lost_news: Array = []
+	if not won and r.get("why", "") != "left":
+		for lk in r.get("lost_kin", []):
+			var kk := Save.kin(String(lk.get("uid", "")))
+			if kk.is_empty():
+				continue
+			var fate := String(lk.get("fate", "ransom"))
+			if fate == "squad":
+				Save.remember(kk, "carried_home", "was carried home by %s after you fell" % lk.get("holder", "your squad"), 1.0)
+				lost_news.append({"kin": kk, "fate": "squad", "holder": lk.get("holder", "")})
+				continue
+			if float(kk["trust"]) >= 90.0 and randf() < 0.5:
+				# soulbound kin sometimes find their own way back to you
+				Save.remember(kk, "found_home", "found its own way home after you fell", 2.0)
+				lost_news.append({"kin": kk, "fate": "home", "holder": ""})
+				continue
+			Ransom.lose(kk, fate, String(lk.get("holder", "")), int(r.get("tier", last_tier)))
+			lost_news.append({"kin": kk, "fate": fate, "holder": lk.get("holder", "")})
+		if d["roster"].is_empty() and not d["lost_kin"].is_empty():
+			# with no kin left at all, Old Pell lets the first one go on credit
+			var L: Dictionary = d["lost_kin"][0]
+			var back := Ransom.restore(L, "were given it on credit by %s" % Ransom.BROKER)
+			Save.remember(back, "stranded", "waited a long time before it was let go", -10.0)
+			out["kin_stranded"] = true
+		if Save.kin(str(d.get("active", ""))).is_empty() and d["roster"].size() > 0:
+			d["active"] = d["roster"][0]["uid"]
+		if Save.kin(str(d.get("active2", ""))).is_empty() and str(d.get("active2", "")) != "none":
+			d["active2"] = ""
+	out["lost_news"] = lost_news
+	if not brought.is_empty():
+		out["kin"] = brought[0]
 	# the vault keeps a third of what you were carrying when you go down
 	if not won and Save.has_building("vault") and int(r.get("lost_gems", 0)) > 0:
 		out["vault_gems"] = int(r["lost_gems"]) / 3
@@ -196,7 +212,7 @@ func apply_result(r: Dictionary) -> Dictionary:
 	# kin who stayed home rest in the cottages and train in the yard
 	var rest := (2.0 if Save.has_building("cottage") else 0.0) + (2.0 if Save.has_building("cottage2") else 0.0)
 	for hk in d["roster"]:
-		if hk == k or out["caught"].has(hk):
+		if hk == k or brought.has(hk) or out["caught"].has(hk):
 			continue
 		if rest > 0.0:
 			hk["trust"] = clampf(float(hk["trust"]) + rest, 0.0, 100.0)
@@ -231,6 +247,48 @@ func apply_result(r: Dictionary) -> Dictionary:
 				out["crops_ready"] += 1
 	Save.save_game()
 	return out
+
+## What one kin you brought takes from a match: memories, trust, growth, hunger and XP.
+func _kin_after(k: Dictionary, run: Dictionary, won: bool, r: Dictionary, treat: String, out: Dictionary, lead: bool) -> void:
+	var d := Save.d
+	k["matches"] = int(k.get("matches", 0)) + 1
+	var before := float(k["trust"])
+	var evs: Array = run.get("events", [])
+	var counts := {}
+	for e in evs:
+		counts[e["kind"]] = int(counts.get(e["kind"], 0)) + 1
+	k["trust"] = clampf(float(run.get("trust", before)) + (1.0 if d.get("guild_perks", []).has("shrine") else 0.0), 0.0, 100.0)
+	for kind in counts:
+		var ev: Dictionary = {}
+		for e in evs:
+			if e["kind"] == kind: ev = e; break
+		var txt: String = ev["text"]
+		if counts[kind] > 1:
+			txt += " (%d times)" % counts[kind]
+		Save.remember(k, kind, txt)
+	if won:
+		k["wins"] = int(k.get("wins", 0)) + 1
+		Save.remember(k, "extracted", "made it out of the islands with you", 3.0)
+		k["traits"]["bravery"] = clampf(float(k["traits"]["bravery"]) + 0.015, 0.05, 0.95)
+	else:
+		Save.remember(k, "lost", "lost a match with you (%s)" % _why(r.get("why", "")), -1.0)
+	Evo.learn(k, run.get("stats", {}))
+	# an expedition is hungry, tiring, muddy work
+	Care.catch_up(k)
+	for nd in Care.MATCH_COST:
+		Care.change(k, nd, Care.MATCH_COST[nd] * (1.0 if lead else 0.7))
+	Care.change(k, "joy", 8.0 if won else -8.0)
+	var xp := 40 + (40 if won else 0) + int(r.get("knocks", 0)) * 10
+	if not lead: xp = int(xp * 0.7)
+	if treat == "treat_xp": xp = int(xp * 1.5)
+	k["xp"] = int(k.get("xp", 0)) + xp
+	while int(k["xp"]) >= 100 * int(k["level"]):
+		k["xp"] = int(k["xp"]) - 100 * int(k["level"])
+		k["level"] = int(k["level"]) + 1
+		out["levelup"] = true
+		_evolve(k, out)
+	if lead:
+		out["trust_delta"] = float(k["trust"]) - before
 
 ## A level up can bring a new form or a mutation. The home island plays it when you get back.
 func _evolve(k: Dictionary, out: Dictionary) -> void:

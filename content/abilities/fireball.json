@@ -1,0 +1,38 @@
+{
+	"id": "fireball",
+	"name": "Fireball",
+	"icon": "fireball",
+	"color": "#ff7a3d",
+	"cooldown": 6,
+	"range": 9,
+	"desc": "Your kin spits a fireball that explodes and sets everything nearby burning.",
+	"auto": {
+		"when": "foe_in_range",
+		"range": 9
+	},
+	"effects": [
+		{
+			"type": "projectile",
+			"dmg": 18,
+			"speed": 13,
+			"range": 9,
+			"size": 0.32,
+			"color": "#ff7a3d",
+			"burn": 5,
+			"sfx": "throw",
+			"on_end": [
+				{
+					"type": "area",
+					"at": "here",
+					"radius": 1.9,
+					"dmg": 8,
+					"kb": 6,
+					"burn": 5,
+					"color": "#ffb070"
+				}
+			]
+		}
+	],
+	"from": "kin",
+	"charges": 1
+}

@@ -1,0 +1,27 @@
+{
+	"id": "bubble_guard",
+	"name": "Bubble Guard",
+	"icon": "fortify",
+	"color": "#8fdcff",
+	"cooldown": 12,
+	"desc": "Wraps you and your kin in a 45 point bubble and washes off slows, roots and burns.",
+	"auto": {
+		"when": "owner_hurt",
+		"below": 0.55
+	},
+	"effects": [
+		{
+			"type": "shield",
+			"amount": 45,
+			"time": 5,
+			"target": "both",
+			"color": "#8fdcff"
+		},
+		{
+			"type": "cleanse",
+			"target": "both"
+		}
+	],
+	"from": "owner",
+	"charges": 1
+}

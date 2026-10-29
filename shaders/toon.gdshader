@@ -5,6 +5,7 @@ uniform bool use_vertex_color = false;
 uniform float flash : hint_range(0.0, 1.0) = 0.0;
 uniform vec4 flash_color : source_color = vec4(1.0, 1.0, 1.0, 1.0);
 uniform float rim_amount = 0.35;
+uniform vec4 rim_color : source_color = vec4(1.0, 0.96, 0.88, 1.0);
 uniform float glow = 0.0;
 uniform float shade = 0.42;
 uniform bool no_fog = false;
@@ -17,7 +18,7 @@ void fragment() {
 	c = vis_apply(c, fog);
 	ALBEDO = mix(c, flash_color.rgb, flash);
 	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-	EMISSION = flash_color.rgb * flash * 0.9 + c * glow + vec3(1.0, 0.96, 0.88) * rim * rim_amount * 0.35 * (1.0 - fog);
+	EMISSION = flash_color.rgb * flash * 0.9 + c * glow + rim_color.rgb * rim * rim_amount * 0.35 * (1.0 - fog);
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }

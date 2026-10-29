@@ -1,0 +1,26 @@
+{
+	"id": "updraft",
+	"name": "Updraft",
+	"icon": "updraft",
+	"color": "#e2d8ff",
+	"cooldown": 14,
+	"desc": "A column of wind lifts you high and cools your glider. Your kin uses it on its own to save you from the abyss.",
+	"auto": {
+		"when": "owner_falling"
+	},
+	"effects": [
+		{
+			"type": "launch",
+			"up": 14,
+			"forward": 3,
+			"target": "owner",
+			"color": "#e2d8ff"
+		},
+		{
+			"type": "cool_glider",
+			"target": "owner"
+		}
+	],
+	"from": "owner",
+	"charges": 1
+}

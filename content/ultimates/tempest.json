@@ -1,0 +1,48 @@
+{
+	"id": "tempest",
+	"name": "Tempest",
+	"form": "giant",
+	"time": 7,
+	"color": "#d8ccff",
+	"desc": "Wisplet swells into a living storm for 7s that drags foes in and flings them skyward.",
+	"giant": {
+		"scale": 2.2,
+		"hp": 120,
+		"dmg": 1.8,
+		"range": 2.4,
+		"speed": 1.3,
+		"stomp": [
+			{
+				"type": "area",
+				"at": "self",
+				"radius": 2.4,
+				"dmg": 8,
+				"kb": 6,
+				"lift": 8,
+				"color": "#d8ccff"
+			}
+		]
+	},
+	"aura": {
+		"every": 0.6,
+		"effects": [
+			{
+				"type": "pull",
+				"at": "self",
+				"radius": 5.5,
+				"strength": 7,
+				"color": "#d8ccff"
+			}
+		]
+	},
+	"on_start": [
+		{
+			"type": "area",
+			"at": "self",
+			"radius": 4,
+			"dmg": 12,
+			"lift": 9,
+			"color": "#d8ccff"
+		}
+	]
+}

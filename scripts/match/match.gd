@@ -60,8 +60,15 @@ var aim_ring: MeshInstance3D
 var muzzle_light: OmniLight3D
 var collapse_warned := false
 var rng := RandomNumberGenerator.new()
-var pending_input := {"dash": false, "jump": false, "sig": false, "reload": false, "tonic": false, "throw": false, "skill": false, "ult": false, "sec": false, "gear1": false, "gear2": false}
+var pending_input := {"dash": false, "jump": false, "sig": false, "reload": false, "tonic": false, "throw": false, "skill": false, "ult": false, "sec": false, "gear1": false, "gear2": false, "swap": false}
 var zones: Array = []      # hero areas: dome, sanctuary, well
+var fields: Fields = null  # patches made by kin abilities (Thorn Patch)
+var _bond_cb: Callable
+var _combo_cb: Callable
+var player_lost: Array = []  # your kin left behind when you went down: {uid, kin, holder}
+var tracked: Array = []      # your kin a rival in this match is holding: {kin, holder}
+var track_t := 8.0
+var kstat := {"kin_ab": 0, "auto": 0, "combo": 0, "ult": 0, "swap": 0, "left": 0}   # counts for tests
 var bot_brain := Bot.new()
 var seed_val := 0
 var length := 360.0
@@ -100,6 +107,12 @@ func start(o: Dictionary) -> void:
 	world.generate(seed_val, World.BIG_SIZE if big else 64, World.BIG_ISLANDS if big else 7)
 	world.build_meshes()
 	fx = Fx.new(); fx.name = "Fx"; add_child(fx)
+	fields = Fields.new(self)
+	# the combat systems listen to hits and statuses: bond meter and combos
+	_bond_cb = func(a, t, amt, tags): Bond.on_hit(a, t, amt, tags)
+	_combo_cb = func(t, st, by, dur): Combos.record(t, st, by, dur)
+	CombatBus.hit_landed.connect(_bond_cb)
+	CombatBus.status_applied.connect(_combo_cb)
 	cam = CamRig.new(); cam.name = "Cam"; add_child(cam)
 	cam.lead = float(Settings.get_v("cam_lead"))
 	_build_shot_pool()
@@ -231,7 +244,7 @@ func _spawn_pads_and_portals() -> void:
 		add_child(n)
 		portals.append({"pos": world.portal_spots[i], "open_at": (1e9 if opts.get("tutorial", false) or opts.get("training", false) else open_at + i * 35.0), "open": false, "node": n})
 
-func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String, kin_rec: Dictionary, at: Vector3, kit := {}) -> Hunter:
+func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String, kin_rec: Dictionary, at: Vector3, kit := {}, kin_rec2 := {}) -> Hunter:
 	var h := Hunter.new()
 	h.init_hunter(self, id, team, cls, pname, ctrl, kit)
 	h.lives = 99 if (opts.get("tutorial", false) or opts.get("training", false)) else int(T.get("lives", 2))
@@ -247,6 +260,16 @@ func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String
 		kins.append(k)
 		ents_by_id[k.nid] = k
 		h.kin = k
+	if not kin_rec2.is_empty() and not kin_rec.is_empty():
+		# everyone brings two kin: the second waits on the bench until you swap (X)
+		var k2 := Kin.new()
+		k2.init_kin(self, id + "k2", kin_rec2["species"], kin_rec2, h)
+		add_child(k2)
+		k2.teleport(at)
+		k2.bench()
+		kins.append(k2)
+		ents_by_id[k2.nid] = k2
+		h.kin2 = k2
 	return h
 
 func my_kit() -> Dictionary:
@@ -326,7 +349,15 @@ func _spawn_hunters() -> void:
 						at = Vector3(q.x, world.ground_at(q.x, q.z), q.z); break
 			if t == 0 and s == 0 and not opts.get("spectate", false):
 				var rec: Dictionary = Save.active_kin()
-				player = make_hunter("p0", 0, Save.d.get("cls", "medium"), Save.d.get("name", "Hunter"), "bot" if opts.get("autoplay", false) else "local", rec, at, my_kit())
+				var rec2: Dictionary = Save.second_kin()
+				if opts.has("demo_kin"):
+					var ids: Array = Data.KIN.keys()
+					var sp0 := String(opts["demo_kin"])
+					rec = Save.new_kin(sp0 if Data.KIN.has(sp0) else "cindle")
+					rec["name"] = Data.KIN[rec["species"]]["name"]
+					rec["trust"] = 95.0
+					rec2 = Save.new_kin(String(ids[(ids.find(rec["species"]) + 1) % ids.size()]))
+				player = make_hunter("p0", 0, Save.d.get("cls", "medium"), Save.d.get("name", "Hunter"), "bot" if opts.get("autoplay", false) else "local", rec, at, my_kit(), rec2)
 				if opts.get("autoplay", false):
 					player.ai = bot_brain.new_mind(rng, 0.7)
 				player.teleport(at)
@@ -337,7 +368,18 @@ func _spawn_hunters() -> void:
 				_start_drop(player, at)
 				continue
 			var bk := bot_kit()
-			var h := make_hunter(next_id("b"), t, "", names.pop_back() if names.size() > 0 else "Bot", "bot", bot_kin_record(), at, bk)
+			var bname: String = names.pop_back() if names.size() > 0 else "Bot"
+			var brec := bot_kin_record()
+			# a rival who's holding one of your lost kin may be out here with it
+			var held := _held_for_match(t)
+			if not held.is_empty():
+				bname = String(held["holder"])
+				brec = (held["rec"] as Dictionary).duplicate(true)
+			var h := make_hunter(next_id("b"), t, "", bname, "bot", brec, at, bk, bot_kin_record())
+			if not held.is_empty() and h.kin:
+				(h.kin as Kin).lost_uid = String(brec.get("uid", ""))
+				(h.kin as Kin).lost_from = "you"
+				tracked.append({"kin": h.kin, "holder": h})
 			h.ai = bot_brain.new_mind(rng, float(opts.get("bot_skill", 0.6)))
 			h.tonics = 1
 			_start_drop(h, at)
@@ -997,7 +1039,7 @@ func foes_of(team: int) -> Array:
 
 func dmg_mult(h: Hunter) -> float:
 	if h == null: return 1.0
-	return (1.25 if h.bless_t > 0.0 else 1.0) * (1.0 + h.gear_stat("dmg"))
+	return (1.25 if h.bless_t > 0.0 else 1.0) * (1.0 + h.gear_stat("dmg")) * h.fuse_mod("dmg")
 
 func sfx(n: String, p = null, vol := 0.0, pitch := 1.0) -> void:
 	Sfx.play(n, p, vol, 0.07, pitch)
@@ -1165,6 +1207,8 @@ func _check_team(team: int) -> void:
 			return
 		if x.kin and not x.kin.dead and x.kin.state not in ["fainted"] and x.kin.hp > 0.0:
 			return
+		if x.kin2 and not x.kin2.dead and x.kin2.hp > 0.0:
+			return
 	for x in members:
 		if not x.remote:
 			eliminate(x, x.last_hit_by, "team wiped")
@@ -1215,16 +1259,8 @@ func eliminate(h: Hunter, by: Ent, why: String, final := false) -> void:
 			spawn_wild(rec, h.pos, true)
 	h.lost_gems = h.gems
 	h.gems = 0; h.seeds = {}; h.caught = []
-	if h.kin:
-		if h.ctrl == "bot" and not world.is_void(h.pos.x, h.pos.z) and h.kin.state != "fainted":
-			# a bot's kin is left behind: weakened and catchable
-			var rec: Dictionary = h.kin.rec.duplicate(true)
-			var at := h.kin.pos if h.kin.state != "shoulder" else h.pos
-			if world.is_void(at.x, at.z):
-				at = h.pos
-			spawn_wild(rec, at, true)
-		h.kin.dead = true
-		h.kin.visible = false
+	# the kin they brought are left behind, dazed, for anyone to collect
+	_leave_kin(h)
 	if h == player:
 		result = {"extracted": false, "why": why}
 		_end_soon(2.2)
@@ -1366,7 +1402,162 @@ func on_mob_dead(mb: Mob, by: Ent, _o: Dictionary) -> void:
 func on_kin_faint(k: Kin) -> void:
 	if k.owner_h == player:
 		add_feed("%s fainted" % k.rec.get("name", "Your kin"))
+		if player.kin2 and (player.kin2 as Kin).hp > 0.0 and hud:
+			hud.toast("%s fainted  ·  %s swaps in %s" % [k.rec.get("name", "Your kin"), Settings.key_cap("swap_kin"), (player.kin2 as Kin).rec.get("name", "your other kin")], Color("ffb0a0"))
+	elif k.owner_h and k.owner_h.ctrl == "bot" and k.owner_h.kin == k and k.owner_h.kin2 and (k.owner_h.kin2 as Kin).hp > 0.0:
+		k.owner_h.get_tree().create_timer(0.6, false).timeout.connect(func(): if is_instance_valid(k.owner_h): k.owner_h.swap_kin())
 	_check_team(k.team)
+
+# ------------------------------------------------------------------ kin combat events
+## A kin used an ability: its name pops up over it so you can read the fight.
+func on_kin_ability(k: Kin, def: AbilityDef, auto: bool) -> void:
+	kstat["kin_ab"] += 1
+	if auto: kstat["auto"] += 1
+	if k.owner_h == null or k.unseen:
+		return
+	if player and k.flat_dist(player) < 20.0:
+		fx.word(k.pos + Vector3(0, 1.3 + k.r, 0), def.display_name, def.color.lerp(Color.WHITE, 0.25), false)
+	if k.owner_h == player:
+		player.add_stat("kin_abilities")
+		if auto and hud and not train.has("_auto_told"):
+			train["_auto_told"] = true
+
+func on_kin_swap(h: Hunter, now_k: Kin, _was: Kin) -> void:
+	kstat["swap"] += 1
+	fx.burst(h.pos + Vector3(0, 1.5, 0), now_k.sp["color"], 18, 3.5, 0.5)
+	fx.ring(h.pos, 1.4, now_k.sp["color"], 0.3)
+	sfx("swap", h.pos, -4.0)
+	if h == player:
+		train["_swapped"] = true
+		if hud: hud.toast("%s is out" % now_k.rec.get("name", Data.KIN[now_k.species]["name"]), now_k.sp["color"])
+
+func on_bond_ready(h: Hunter) -> void:
+	if h != player:
+		return
+	sfx("bond", null, -3.0)
+	fx.word(h.pos + Vector3(0, 2.3, 0), "BOND READY", Color("ffd23f"), true)
+	var ud := Ultimate.def_for(h.kin) if h.kin else null
+	if hud and ud:
+		hud.toast("Bond full!  %s: %s" % [Settings.key_cap("ultimate"), ud.display_name], Color("ffd23f"))
+
+func on_ult(h: Hunter, k: Kin, u: UltimateDef) -> void:
+	kstat["ult"] += 1
+	sfx("ult", h.pos, 0.0)
+	shake(0.55, h.pos)
+	fx.word((k.pos if u.form == "giant" else h.pos) + Vector3(0, 2.4, 0), u.display_name.to_upper(), u.color, true)
+	if h.team != (player.team if player else -1) and player and h.flat_dist(player) < 22.0:
+		add_feed("%s's %s used %s" % [h.pname, k.rec.get("name", "kin"), u.display_name])
+	if h == player:
+		player.add_stat("ults")
+		_slow(0.35, 0.4)
+		cam.punch(0.14)
+		if hud:
+			hud.flash(u.color, 0.25)
+
+func on_combo(target: Ent, own: Node, c: Dictionary) -> void:
+	kstat["combo"] += 1
+	var col := Color(String(c.get("color", "#ffd23f")))
+	fx.word(target.pos + Vector3(0, 1.9, 0), String(c.get("label", "COMBO")), col, true)
+	fx.ring(target.pos, 1.3, col, 0.3)
+	sfx("combo", target.pos, -2.0)
+	if own == player:
+		player.add_stat("combos")
+		if hud and int(player.stats.get("combos", 0)) == 1:
+			hud.toast("%s!  %s" % [String(c.get("name", "Combo")), String(c.get("desc", ""))], col)
+
+# ------------------------------------------------------------------ lost kin
+## A rival holding one of your lost kin turns up in some expeditions (one per match at most).
+func _held_for_match(team_i: int) -> Dictionary:
+	if opts.get("training", false) or opts.get("tutorial", false) or team_i == 0 or not tracked.is_empty() or net_on:
+		return {}
+	for L in Save.d.get("lost_kin", []):
+		if String(L.get("where", "")) == "rival" and not L.has("_seen_" + str(seed_val)) and rng.randf() < 0.5:
+			L["_seen_" + str(seed_val)] = true
+			return {"holder": String(L["holder"]), "rec": L["rec"]}
+	return {}
+
+## Your bond lets you feel where a lost kin is: a ping now and then while a rival here carries it.
+func _update_tracking(dt: float) -> void:
+	if tracked.is_empty() or player == null or player.out:
+		return
+	track_t -= dt
+	if track_t > 0.0:
+		return
+	track_t = 22.0
+	for tr in tracked:
+		var k: Kin = tr["kin"]
+		var h: Hunter = tr["holder"]
+		if k.dead or h.out:
+			continue
+		var at: Vector3 = k.pos if k.state != "bench" else h.pos
+		ping(at, Color("ffd23f"))
+		note_sound(null, at, "kin")
+		add_feed("You sense %s %s. %s has it." % [k.rec.get("name", "your kin"), direction_word(player.pos, at), h.pname])
+
+## Kin left behind where a hunter went down. They wait, dazed, for someone to collect them.
+func _leave_kin(h: Hunter) -> void:
+	for kk in [h.kin, h.kin2]:
+		if kk == null:
+			continue
+		var k: Kin = kk
+		giant_free(k)
+		var at: Vector3 = k.pos if k.state in ["active", "fainted", "returning", "reviving"] else h.pos
+		var leave: bool = not h.remote and not opts.get("training", false) and not opts.get("tutorial", false)
+		if leave:
+			if world.is_void(at.x, at.z):
+				# it flutters to the nearest solid ground
+				at = world.free_spot_near(at, [], 1.0, 0.4, 40.0)
+			if not world.is_void(at.x, at.z):
+				var rec: Dictionary = k.rec.duplicate(true)
+				var w := spawn_wild(rec, at + Vector3(rng.randf_range(-0.6, 0.6), 0, rng.randf_range(-0.6, 0.6)), true)
+				w.lost_from = "you" if h == player else h.pname
+				w.lost_uid = String(rec.get("uid", ""))
+				w.dazed_t = 1e9
+				kstat["left"] += 1
+				if h == player:
+					player_lost.append({"uid": w.lost_uid, "kin": w, "holder": null, "rec": rec})
+					add_feed("%s was left behind" % rec.get("name", "Your kin"))
+		k.dead = true
+		k.visible = false
+
+func giant_free(k: Kin) -> bool:
+	if not k.giant.is_empty(): k._shrink()
+	if k.state == "fused": k._unfuse()
+	return true
+
+## Where each of your lost kin ends up when the match is over.
+func _resolve_lost() -> Array:
+	var out: Array = []
+	for L in player_lost:
+		var w: Kin = L["kin"]
+		var holder = L.get("holder")
+		var fate := "ransom"
+		var who := ""
+		if holder is Hunter:
+			var hh: Hunter = holder
+			if hh == player:
+				fate = "self"
+			elif hh.team == player.team:
+				fate = "squad" if not hh.out else "ransom"
+				who = hh.pname
+			elif not hh.out:
+				fate = "rival"; who = hh.pname
+		elif not w.dead:
+			# nobody grabbed it before the match ended for you: maybe someone close by will
+			var best: Hunter = null; var bd := 26.0
+			for o in hunters:
+				if o.out or o == player: continue
+				var d: float = o.flat_dist(w)
+				if d < bd: bd = d; best = o
+			if best and rng.randf() < 0.75 * (1.0 - bd / 26.0) + 0.15:
+				if best.team == player.team:
+					fate = "squad"
+				else:
+					fate = "rival"
+				who = best.pname
+		out.append({"uid": L["uid"], "fate": fate, "holder": who, "rec": L["rec"]})
+	return out
+
 
 func on_wild_dazed(k: Kin) -> void:
 	if player and k.flat_dist(player) < 10.0:
@@ -1402,10 +1593,10 @@ func _stagger_reward(mb: Mob, hunter: Hunter, ab: String) -> void:
 		return
 	if ab == "e":
 		hunter.sig_cd = 0.0
-	elif ab == "kin" and hunter.kin:
-		hunter.kin.skill_cd = 0.0
+	elif ab in ["kin", "k1", "k2"] and hunter.kin:
+		(hunter.kin as Kin).runner.reset()
 	if hunter == player:
-		var what: String = {"e": Data.ABIL[Abil.e_id(player)]["name"] + " is ready again", "kin": (player.kin.rec.get("name", "Your kin") if player.kin else "Your kin") + "'s skill is ready again"}.get(ab, "")
+		var what: String = {"e": "Cooldown back", "kin": (player.kin.rec.get("name", "Your kin") if player.kin else "Your kin") + "'s abilities are ready again"}.get("kin" if ab in ["k1", "k2"] else ab, "")
 		hud.toast("Staggered %s!%s" % [mb.md["name"], ("  " + what) if what != "" else ""], Color("e0b0ff"))
 		train["_stagger"] = true
 
@@ -1491,6 +1682,10 @@ func _update_vision() -> void:
 
 func _exit_tree() -> void:
 	RenderingServer.global_shader_parameter_set("vis_on", 0.0)
+	if _bond_cb.is_valid() and CombatBus.hit_landed.is_connected(_bond_cb):
+		CombatBus.hit_landed.disconnect(_bond_cb)
+	if _combo_cb.is_valid() and CombatBus.status_applied.is_connected(_combo_cb):
+		CombatBus.status_applied.disconnect(_combo_cb)
 
 func on_perfect_dodge(h: Hunter) -> void:
 	fx.ring(h.pos, 1.3, Color("9af0ff"), 0.3)
@@ -1757,9 +1952,10 @@ func _boom(s: Dictionary, at: Vector3) -> void:
 	var radius: float = x["boom"]
 	fx.ring(at, radius, Color("ffb070"), 0.3)
 	fx.burst(at, Color("ffb070"), 26, 6.0, 0.5, 6.0, 1.3)
+	var small: bool = x.get("boom_small", false)
 	fx.flash(at, Color("ffd9a0"), radius * 0.45, 0.08)
-	sfx("boom", at, 0.0)
-	shake(0.45, at)
+	sfx("boom", at, 0.0 if not small else -9.0, 1.0 if not small else 1.5)
+	shake(0.45 if not small else 0.08, at)
 	var by: Ent = s["by"]
 	if not x.get("mob", false):
 		for b in breaks:
@@ -1770,9 +1966,10 @@ func _boom(s: Dictionary, at: Vector3) -> void:
 		if d < radius + e.r and absf(e.pos.y + 0.5 - at.y) < 2.0:
 			var f := 1.0 - 0.45 * minf(1.0, d / radius)
 			var dir := Vector2(e.pos.x - at.x, e.pos.z - at.z).normalized()
-			var o := {"src": "boom", "kb": dir * float(x.get("boom_kb", 8.0)) * f, "lift": 7.0 * f}
+			var o := {"src": "boom", "kb": dir * float(x.get("boom_kb", 8.0)) * f, "lift": (7.0 if not small else 1.5) * f}
 			if x.has("ab"): o["ab"] = x["ab"]
 			if x.has("burn"): o["burn"] = x["burn"]
+			if x.has("slow"): o["slow"] = x["slow"]
 			e.hurt(float(s["dmg"]) * f, by, o)
 
 # ------------------------------------------------------------------ main loop
@@ -1894,7 +2091,7 @@ func _gather_input() -> void:
 	else:
 		crouch_on = Input.is_action_pressed("crouch") and not paused
 	player.inp["crouch"] = crouch_on
-	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["kin_skill", "skill"], ["ultimate", "ult"], ["secondary", "sec"], ["gear1", "gear1"], ["gear2", "gear2"]]:
+	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["kin_skill", "skill"], ["ultimate", "ult"], ["secondary", "sec"], ["gear1", "gear1"], ["gear2", "gear2"], ["swap_kin", "swap"]]:
 		var aimable: bool = a[0] in ["signature", "ultimate", "kin_skill"] and not quick
 		if aimable:
 			# hold to see where it will land, let go to cast it
@@ -1970,6 +2167,34 @@ func step(dt: float) -> void:
 		if time > 0.8 and time - DT <= 0.8: pending_input["sec"] = true
 		if time > 2.6 and time - DT <= 2.6: pending_input["dash"] = true
 		if time > 1.6: player.inp["fire"] = true
+	if "--kin-lineup" in OS.get_cmdline_user_args() and player and not train.has("_lineup"):
+		# test: every species in a row in front of you, glowing as if out in a fight
+		train["_lineup"] = true
+		var i := 0
+		for spid in Data.KIN.keys():
+			var q := player.pos + Vector3(-3.0 + i * 1.3, 0, -2.2)
+			var w := spawn_wild(Save.new_kin(spid), q)
+			w.home = q
+			w.set_meta("lineup", true)
+			i += 1
+		cam.zoom_to = 0.55
+	if opts.get("kin_demo", false) and player:
+		# test hook: throw the kin at the nearest dummy, use Q, then V, then the bond ultimate, then swap
+		var tgt: Ent = null; var bd := 1e9
+		for mb in mobs:
+			if not mb.dead and player.flat_dist(mb) < bd: bd = player.flat_dist(mb); tgt = mb
+		if tgt: player.inp["aim"] = tgt.pos + Vector3(0, 0.95, 0)
+		var tick := func(at_t: float) -> bool:
+			if time > at_t and not train.has("_demo_%d" % int(at_t * 10.0)):
+				train["_demo_%d" % int(at_t * 10.0)] = true
+				return true
+			return false
+		if tick.call(0.6): pending_input["throw"] = true
+		if tick.call(1.6): pending_input["sig"] = true
+		if tick.call(3.4): pending_input["skill"] = true
+		if tick.call(5.2): player.ult = 1.0; pending_input["ult"] = true
+		if tick.call(11.0): pending_input["swap"] = true
+		if time > 1.0: player.inp["fire"] = true
 	if opts.get("cone_demo", false) and player:
 		player.inp["aim"] = player.pos + Vector3(4.0, 0.95, -5.0)
 		player.inp["crouch"] = opts.get("crouch_demo", false)
@@ -2015,17 +2240,13 @@ func step(dt: float) -> void:
 		player.inp["glide"] = true
 		player.inp["move"] = Vector2(1, 0.3).normalized()
 	if player and not player.out:
-		for k in ["dash", "jump", "sig", "reload", "tonic", "ult", "sec", "gear1", "gear2"]:
+		for k in ["dash", "jump", "sig", "reload", "tonic", "ult", "sec", "gear1", "gear2", "skill", "swap"]:
 			if pending_input[k]:
 				player.inp[k] = true
 				pending_input[k] = false
 		if pending_input["throw"]:
 			pending_input["throw"] = false
 			_player_throw()
-		if pending_input["skill"]:
-			pending_input["skill"] = false
-			if player.kin and not player.downed and not player.dropping and not player.riding:
-				player.kin.command_skill(_ground_aim(player))
 	for h in hunters:
 		if h.ctrl == "bot" and not h.remote and not h.out and not h.extracted:
 			bot_brain.think(self, h, dt)
@@ -2053,6 +2274,8 @@ func step(dt: float) -> void:
 	_update_portals(dt)
 	_update_events()
 	_update_zones(dt)
+	fields.tick(dt)
+	_update_tracking(dt)
 	if opts.get("tutorial", false):
 		if opts.get("tut_test", false):
 			_tut_drive()
@@ -2077,8 +2300,10 @@ func _player_throw() -> void:
 	if k == null or player.downed or player.dropping or player.riding:
 		return
 	if k.state == "shoulder":
+		if k.throw_cd > 0.0:
+			return
 		k.throw_to(_ground_aim(player))
-	elif k.state in ["active", "flying"]:
+	elif k.state in ["active", "flying", "returning"]:
 		k.recall()
 	elif k.state == "fainted" and hud:
 		hud.toast("%s is resting" % k.rec.get("name", "Your kin"), Color("a2a8bb"))
@@ -2236,8 +2461,16 @@ func _catch(h: Hunter, k: Kin) -> void:
 	k.dead = true
 	k.visible = false
 	var rec: Dictionary = k.rec.duplicate(true)
-	rec["trust"] = 20.0
-	rec["memory"] = []
+	if k.lost_from != "":
+		# someone's lost kin: it keeps who it is, and we remember who has it now
+		rec["lost_from"] = k.lost_from
+		for L in player_lost:
+			if L["kin"] == k: L["holder"] = h
+		if k.lost_from == "you" and h == player:
+			add_feed("You got %s back! Extract to bring it home." % rec.get("name", "your kin"))
+	else:
+		rec["trust"] = 20.0
+		rec["memory"] = []
 	h.caught.append(rec)
 	sfx("catch", k.pos, 0.0)
 	fx.burst(k.pos + Vector3(0, 0.5, 0), Data.KIN[k.species]["color"], 26, 4.0, 0.7)
@@ -2312,10 +2545,10 @@ const TUT := ["Steer with WASD to choose where you land", "Walk around with WASD
 # ---- training area
 ## [id, what to do, the action whose key it uses ("" for none)]
 const TRAIN := [["move", "Walk around", "up"], ["dash", "Dash", "dash"], ["glide", "Jump, then hold it in the air to glide", "jump"],
-	["shoot", "Shoot a target dummy", "fire"], ["ability", "Use your hero ability", "signature"], ["ult", "Use your ultimate (it charges fast here)", "ultimate"],
-	["secondary", "Use your hero's secondary", "secondary"],
+	["shoot", "Shoot a target dummy", "fire"], ["ability", "Use your kin's first ability", "signature"], ["ult", "Fill the bond meter and use your bond ultimate", "ultimate"],
+	["secondary", "Use your right-click utility", "secondary"], ["swap", "Swap to your other kin", "swap_kin"],
 	["crouch", "Crouch: slower, steadier aim, harder to spot", "crouch"],
-	["throw", "Throw your kin at a dummy", "throw"], ["kinskill", "Use your kin's skill", "kin_skill"], ["tonic", "Drink a tonic to heal", "tonic"],
+	["throw", "Throw your kin at a dummy", "throw"], ["kinskill", "Use your kin's second ability", "kin_skill"], ["combo", "Land a combo: shoot a foe your kin just stunned or rooted", "fire"], ["tonic", "Drink a tonic to heal", "tonic"],
 	["stagger", "Stagger a big dummy: hit it with an ability while it has a purple ring", "signature"],
 	["smash", "Break a crate or pot", "fire"], ["weapon", "Take a found weapon off the ground", "interact"],
 	["ledge", "Dash off an edge and float back up", ""]]
@@ -2333,7 +2566,8 @@ func _update_training(dt: float) -> void:
 	player.ult = minf(1.0, player.ult + dt / 6.0)
 	player.sig_cd = maxf(0.0, player.sig_cd - dt * 2.0)
 	player.sec_cd = maxf(0.0, player.sec_cd - dt)
-	if player.kin: player.kin.skill_cd = maxf(0.0, player.kin.skill_cd - dt * 2.0)
+	for kk in [player.kin, player.kin2]:
+		if kk: (kk as Kin).runner.tick(dt * 2.0)
 	if player.tonics < 1: player.tonics = 3
 	if not train.has("tonic") and player.hp >= player.max_hp and train_t > 1.0:
 		player.hp = player.max_hp * 0.7     # a scratch, so the tonic has something to heal
@@ -2344,12 +2578,14 @@ func _update_training(dt: float) -> void:
 		"dash": player.roll_t > 0.0,
 		"glide": player.gliding and not player.dropping,
 		"shoot": player.dmg_done > 0.0,
-		"ability": player.sig_cd > 0.0,
+		"ability": player.kin != null and (player.kin as Kin).runner.has_slot("k1") and not (player.kin as Kin).runner.is_ready("k1"),
+		"swap": player.kin2 != null and train.get("_swapped", false),
+		"combo": int(player.stats.get("combos", 0)) > 0,
 		"crouch": player.crouch,
 		"secondary": player.sec_cd > 0.0 or player.sec_ch < 3 or player.bshield_on or not player.satchel.is_empty(),
 		"ult": was_ult and player.ult < 0.5,
 		"throw": player.kin != null and player.kin.st_throws > 0,
-		"kinskill": player.kin != null and player.kin.skill_cd > 0.0,
+		"kinskill": player.kin != null and (player.kin as Kin).runner.has_slot("k2") and not (player.kin as Kin).runner.is_ready("k2"),
 		"tonic": player.tonics < int(train.get("_tonics", player.tonics)),
 		"ledge": player.grap.size() > 0,
 		"smash": train.get("_smash", false),
@@ -2785,13 +3021,22 @@ func _finish() -> void:
 		r["damage"] = int(player.dmg_done)
 		r["tonics"] = maxi(0, player.tonics - player.free_tonics)
 		r["stats"] = player.stats.duplicate()
-		if player.kin:
-			r["kin_events"] = player.kin.events.duplicate(true)
-			r["kin_trust"] = player.kin.trust
-			var k: Kin = player.kin
-			r["kin_stats"] = {"hits": k.st_hits, "kos": k.st_kos, "throws": k.st_throws, "skills": k.st_skills,
+		# what each kin you brought did, for its memories and growth
+		r["kin_runs"] = []
+		for kk in [player.kin, player.kin2]:
+			if kk == null: continue
+			var k: Kin = kk
+			r["kin_runs"].append({"uid": String(k.rec.get("uid", "")), "events": k.events.duplicate(true), "trust": k.trust,
+				"stats": {"hits": k.st_hits, "kos": k.st_kos, "throws": k.st_throws, "skills": k.st_skills,
 				"revives": k.events.filter(func(e): return e["kind"] == "revived").size(), "caught": player.caught.size(),
-				"won": 1 if result.get("extracted", false) else 0}
+				"won": 1 if result.get("extracted", false) else 0}})
+		if player.kin:
+			var k0: Kin = player.kin
+			r["kin_events"] = k0.events.duplicate(true)
+			r["kin_trust"] = k0.trust
+		if not player_lost.is_empty() and not result.get("extracted", false):
+			r["lost_kin"] = _resolve_lost()
+		r["rivals"] = hunters.filter(func(x): return x.ctrl == "bot" and x.team != player.team).map(func(x): return x.pname)
 	var placed := 1
 	for h in hunters:
 		if h.extracted and h != player:
@@ -3250,9 +3495,10 @@ func _tips() -> void:
 		return
 	_tip("move", "WASD to move, aim with the mouse, hold left click to shoot. Shift dashes, Space jumps. Hold Space in the air to glide.")
 	if _tip_t > 14.0:
-		_tip("ability", "E uses %s's ability, %s. R fires your ultimate once it charges, and dealing damage charges it faster." % [Data.HEROES[player.hero]["name"], Data.ABIL[Abil.e_id(player)]["name"]])
-	if player.ult >= 1.0:
-		_tip("ult", "Your ultimate, %s, is ready. Press R." % Data.ABIL[Abil.r_id(player)]["name"])
+		_tip("ability", "%s and %s are your kin's abilities. Fighting together fills the bond meter, and %s calls your kin's bond ultimate." % [Settings.key_cap("signature"), Settings.key_cap("kin_skill"), Settings.key_cap("ultimate")])
+	if player.ult >= 1.0 and player.kin:
+		var ud := Ultimate.def_for(player.kin)
+		if ud: _tip("ult", "Your bond is full. %s calls %s." % [Settings.key_cap("ultimate"), ud.display_name])
 	var k: Kin = player.kin
 	if k == null:
 		return
@@ -3264,7 +3510,9 @@ func _tips() -> void:
 		if near_foe:
 			_tip("throw", (Settings.key_cap("throw") + " throws %s at the cursor. A kin that hits a foe stuns it, and your shots crit stunned foes.") % k.rec.get("name", "your kin"))
 	if k.state == "active":
-		_tip("skill", ("%s makes %%s use %%s. %s again calls it back to your shoulder, where it gives you %%s." % [Settings.key_cap("kin_skill"), Settings.key_cap("throw")]) % [k.rec.get("name", "your kin"), Data.KIN_SKILLS[k.sp["skill"]]["name"], Data.SHOULDER[k.sp["shoulder"]]["name"]])
+		var a1 := k.runner.def_of("k1")
+		var a2 := k.runner.def_of("k2")
+		_tip("skill", "%s uses %s's %s and %s its %s. Stun or root a foe with your kin, then shoot it for a combo. %s calls it back to your shoulder." % [Settings.key_cap("signature"), k.rec.get("name", "your kin"), a1.display_name if a1 else "ability", Settings.key_cap("kin_skill"), a2.display_name if a2 else "other ability", Settings.key_cap("throw")])
 	if not interact.is_empty() and interact["kind"] == "catch":
 		_tip("catch", "Hold " + Settings.key_cap("interact") + " to catch it. Caught kin only come home if you extract.")
 	if portals.any(func(p): return p["open"]):
@@ -3330,16 +3578,25 @@ func _update_indicators(alpha: float) -> void:
 		return
 	var id := ""
 	var col := Color.WHITE
+	var spec: Array = []
+	var from_kin := false
 	match aim_hold:
-		"signature": id = Abil.e_id(p); col = Data.HEROES[p.hero]["color"]
-		"ultimate": id = Abil.r_id(p); col = Color("f2c84a")
-		"kin_skill":
+		"signature", "kin_skill":
 			if p.kin == null: return
-			id = String(Data.KIN[p.kin.species]["skill"]); col = Data.KIN[p.kin.species]["color"]
-	if not AIM.has(id):
+			var kd: AbilityDef = (p.kin as Kin).runner.def_of("k1" if aim_hold == "signature" else "k2")
+			if kd == null: return
+			spec = kd.aim_spec(); col = kd.color
+			from_kin = kd.from == "kin" and (p.kin as Kin).state == "active"
+		"ultimate":
+			var ud := Ultimate.def_for(p.kin) if p.kin else null
+			if ud == null: return
+			col = ud.color
+			spec = ["self", 0.0, 3.5]
+	if spec.is_empty():
 		return
-	var spec: Array = AIM[id]
 	var at := p.prev.lerp(p.pos, alpha)
+	if from_kin:
+		at = (p.kin as Kin).prev.lerp((p.kin as Kin).pos, alpha)
 	var aim: Vector3 = p.inp["aim"]
 	var d := Vector2(aim.x - at.x, aim.z - at.z)
 	var dir := d.normalized() if d.length() > 0.1 else p.aim_dir()

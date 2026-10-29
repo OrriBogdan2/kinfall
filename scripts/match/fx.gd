@@ -120,6 +120,21 @@ func number(at: Vector3, v: float, col: Color, crit: bool, prefix := "") -> void
 	l.scale = Vector3.ONE * (1.6 if crit else 1.25)
 	nums.append({"node": l, "t": 0.0, "vel": Vector3(rng.randf_range(-0.6, 0.6), 3.2, 0)})
 
+## A short word that floats up (COMBO, an ability's name, BOND READY).
+func word(at: Vector3, txt: String, col: Color, big := false) -> void:
+	var l: Label3D = num_pool.pop_front()
+	num_pool.append(l)
+	for n in nums:
+		if n["node"] == l:
+			nums.erase(n); break
+	l.text = txt
+	l.modulate = col
+	l.font_size = 58 if big else 40
+	l.global_position = at
+	l.visible = true
+	l.scale = Vector3.ONE * (1.5 if big else 1.1)
+	nums.append({"node": l, "t": 0.0, "vel": Vector3(0, 2.4, 0)})
+
 func ring(at: Vector3, radius: float, col: Color, dur := 0.35) -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = Models.flat_quad(2.0)

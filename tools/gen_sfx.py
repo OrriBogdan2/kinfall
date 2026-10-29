@@ -125,6 +125,12 @@ def pop(i, big=False):
     return mix(lp(noise(d), .12 if big else .3) * env(int(SR*d), .001, d * .4, 4), sweep((300 if big else 700) + 60 * i, (70 if big else 200), d, 'tri') * env(int(SR*d), .001, d * .4, 4) * .8)
 vary('die_small', lambda i: pop(i))
 vary('die_big', lambda i: pop(i, True))
+# kin combat: lightning, the bond filling, an ultimate going off, a combo, a swap
+d = .3; S['zap'] = mix(hp(noise(d), .5) * env(int(SR*d), .001, .12, 5) * .7, np.sign(np.sin(2 * np.pi * np.cumsum(900 + 600 * np.random.default_rng(3).random(int(SR*d))) / SR)) * env(int(SR*d), .001, .1, 4) * .25)
+S['bond'] = np.concatenate([chirp(784, .1), chirp(988, .1), chirp(1319, .25)])
+d = .9; S['ult'] = mix(sweep(120, 60, d, 'saw') * env(int(SR*d), .01, .5, 2) * .5, sweep(400, 1800, .5, 'sine') * env(int(SR*.5), .01, .3, 2) * .4, lp(noise(d), .08) * env(int(SR*d), .01, .4, 3) * .7)
+d = .35; S['combo'] = mix(sweep(1400, 2400, d, 'tri') * env(int(SR*d), .001, .15, 3) * .5, knock(1800) * .4 if False else sweep(700, 700, d, 'sq') * env(int(SR*d), .001, .05, 6) * .25)
+d = .3; S['swap'] = mix(sweep(500, 1100, d, 'sine') * env(int(SR*d), .01, .15, 3) * .5, hp(noise(d), .25) * env(int(SR*d), .02, .1, 4) * .4)
 for k, v in S.items(): save(k, v)
 for k, v in V.items(): save(k, v, 0.8)
 print(len(S) + len(V), 'sounds')

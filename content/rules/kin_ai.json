@@ -1,0 +1,14 @@
+{
+	"desc": "How personality traits shape a kin's fighting. aggression, loyalty and caution are 0..1.",
+	"chase_base": 4.0,
+	"chase_per_aggression": 8.0,
+	"leash_base": 9.0,
+	"leash_per_aggression": 8.0,
+	"leash_per_loyalty": -4.0,
+	"retreat_hp_per_caution": 0.6,
+	"guard_owner_per_loyalty": 4.0,
+	"auto_rate_base": 0.35,
+	"auto_rate_per_aggression": 0.6,
+	"recall_cooldown": 1.0,
+	"swap_cooldown": 3.0
+}

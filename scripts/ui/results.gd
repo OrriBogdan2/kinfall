@@ -52,12 +52,31 @@ func show_result(r: Dictionary) -> void:
 		for i in range(maxi(0, mem.size() - 3), mem.size()):
 			kv.add_child(UI.label("Remembers: " + String(mem[i]["text"]), 14, UI.MUTED))
 		v.add_child(kc)
-	if s.has("kin_lost"):
-		v.add_child(UI.label("%s stayed behind in the Hollow. It didn't trust you enough to follow you home." % s["kin_lost"]["name"], 16, UI.BAD))
+	for back in s.get("rescued", []):
+		v.add_child(UI.label("You took %s back! It's home again, and it won't forget you came for it." % back["name"], 17, UI.GOOD))
+	# kin left behind when you went down, and where they ended up
+	var lost_news: Array = s.get("lost_news", [])
+	if not lost_news.is_empty():
+		var lc := UI.card(Color(0.16, 0.07, 0.07, 0.9))
+		var lv := UI.vbox(6); lc.add_child(lv)
+		lv.add_child(UI.section("Left behind", Color("ffb0a0")))
+		for ln in lost_news:
+			var kk: Dictionary = ln["kin"]
+			var txt := ""
+			var col := UI.BAD
+			match String(ln["fate"]):
+				"squad": txt = "%s was carried home by your squadmate %s." % [kk["name"], ln["holder"]]; col = UI.GOOD
+				"home": txt = "%s found its own way home. It trusts you that much." % kk["name"]; col = UI.GOOD
+				"rival": txt = "%s was collected by %s. Make them an offer at the Ransom House, or find them out there and take it back." % [kk["name"], ln["holder"]]
+				_: txt = "Nobody collected %s. It's waiting at the Ransom House on your farm." % kk["name"]; col = Color("ffd58a")
+			var l := UI.label(txt, 15, col); l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			lv.add_child(l)
+		v.add_child(lc)
+	for nw in s.get("ransom_news", []):
+		var l := UI.label(String(nw), 14, Color("ffd58a")); l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(l)
 	if s.get("kin_stranded", false):
-		v.add_child(UI.label("%s was stranded in the Hollow and only just made it home. It trusts you a lot less now." % s["kin"]["name"], 16, UI.BAD))
-	if s.get("kin_home", false):
-		v.add_child(UI.label("%s found its own way home. It trusts you that much." % s["kin"]["name"], 16, UI.GOOD))
+		v.add_child(UI.label("With no kin left at home, %s let one of yours go on credit. It waited a long time and trusts you less now." % Ransom.BROKER, 16, UI.BAD))
 	if int(s.get("vault_gems", 0)) > 0:
 		v.add_child(UI.label("Your vault kept %d of the gems you dropped." % int(s["vault_gems"]), 15, UI.GOLD))
 	if s["crops_ready"] > 0:

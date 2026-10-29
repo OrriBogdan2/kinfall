@@ -1,0 +1,43 @@
+{
+	"id": "puddlet",
+	"name": "Puddlet",
+	"type": "tide",
+	"color": "#4aa8e8",
+	"belly": "#c9ecff",
+	"glow": "#8fdcff",
+	"stats": {
+		"hp": 95,
+		"dmg": 7,
+		"speed": 6.0,
+		"range": 1.3
+	},
+	"look": {
+		"ears": "fin",
+		"body": "drop",
+		"tail": "fish",
+		"feet": "paws",
+		"aura": "bubbles"
+	},
+	"traits": {
+		"bravery": 0.45,
+		"loyalty": 0.85,
+		"temper": 0.2,
+		"curiosity": 0.6
+	},
+	"voice": "gentle, worried about you, a little formal",
+	"shoulder": "spring",
+	"abilities": [
+		"wave",
+		"bubble_guard"
+	],
+	"ultimate": "tidal_shell",
+	"ai": {
+		"aggression": 0.3,
+		"loyalty": 0.9,
+		"caution": 0.6,
+		"style": "guardian"
+	},
+	"throw_hit": {
+		"slow": 1.5
+	}
+}
