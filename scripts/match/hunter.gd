@@ -243,14 +243,15 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 			m.sfx("shield", pos, -10.0, 1.6)
 			return 0.0
 	# getting hit while gliding heats the glider up; an overheated glider gets shot right down
-	if gliding and not dropping and opts.get("src", "") not in ["fall", "burn", "heat"]:
-		if glide_fuel <= 0.001 or below_lip:
-			_shot_down()
-			if by is Hunter: (by as Hunter).add_stat("spikes")
-			elif by is Kin and (by as Kin).owner_h: (by as Kin).owner_h.add_stat("spikes")
-		else:
-			glide_fuel = maxf(0.0, glide_fuel - (0.12 + dmg * 0.008))
-	var d := dmg
+	# Gliders are vulnerable, as in Supervive: any real hit while gliding does double damage,
+	# knocks the glider out and stuns you, and you drop. Over the abyss that's usually the end.
+	var spiked := false
+	if gliding and not dropping and dmg > 0.0 and opts.get("src", "") not in ["fall", "burn", "heat"]:
+		spiked = true
+		_shot_down()
+		if by is Hunter: (by as Hunter).add_stat("spikes")
+		elif by is Kin and (by as Kin).owner_h: (by as Kin).owner_h.add_stat("spikes")
+	var d := dmg * (2.0 if spiked else 1.0)
 	if ctrl == "local" and m.opts.get("tutorial", false):
 		d *= 0.35
 	if hero == "bastion" and hp > max_hp * 0.5:
@@ -352,6 +353,7 @@ func _shot_down() -> void:
 	gliding = false
 	glide_cd = 2.5
 	shot_down = true
+	stun_t = maxf(stun_t, 0.35)
 	vel = Vector3(vel.x * 0.3, minf(vel.y, -6.0), vel.z * 0.3)
 	m.fx.burst(pos + Vector3(0, 1.8, 0), Color("ff9a5a"), 14, 3.0, 0.45, 6.0, 0.8)
 	m.sfx("knock", pos, -2.0, 1.3)
@@ -1014,7 +1016,7 @@ func _update_glide(dt: float) -> void:
 		if below_lip:
 			# feathering: snapping the glider open below the lip catches an updraft back up to it
 			vel.y = clampf(sqrt(2.0 * H_GRAV * maxf(0.2, lip_y - pos.y + 0.9)), 4.0, 16.0)
-			glide_fuel = maxf(0.0, glide_fuel - 0.2)
+			glide_fuel = maxf(0.0, glide_fuel - 0.06)   # feathering is the fuel-cheap way back up
 			m.fx.burst(pos + Vector3(0, 1.2, 0), Color("cfeaff"), 12, 3.5, 0.4, -2.0, 0.8)
 			m.sfx("glide", pos, -2.0, 1.4)
 			add_stat("feathers")
