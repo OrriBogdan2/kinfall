@@ -183,7 +183,7 @@ func _draw_world_labels() -> void:
 	for h in m.hunters:
 		if h == m.player or h.out or h.extracted or not h.model or not h.model.visible or h.unseen:
 			continue
-		var sp := cam.unproject_position(h.position + Vector3(0, 2.15, 0))
+		var sp := cam.unproject_position(h.position + Vector3(0, 2.35, 0))
 		if cam.is_position_behind(h.position):
 			continue
 		var tc: Color = Data.TEAM_COLORS[h.team % Data.TEAM_COLORS.size()]

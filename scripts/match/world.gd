@@ -989,9 +989,9 @@ func _band(st: SurfaceTool, p0: Vector3, p1: Vector3, y0: float, y1: float, n: V
 ## blossom groves. Each keeps a little of the tier's palette so the mood carries over.
 const REGIONS := [
 	{},
-	{"top": Color("c99a4c"), "top2": Color("a97a3c"), "side": Color("8b5a3a"), "leaf": Color("e0743a")},
+	{"top": Color("b08a50"), "top2": Color("94723f"), "side": Color("8b5a3a"), "leaf": Color("e0743a")},
 	{"top": Color("d2e2ea"), "top2": Color("aac6d6"), "side": Color("7a8aa0"), "deep": Color("2c3448"), "leaf": Color("8ac8d8")},
-	{"top": Color("d8a86a"), "top2": Color("c08a50"), "side": Color("a4583a"), "deep": Color("3a2228"), "leaf": Color("9aa04a")},
+	{"top": Color("c49a66"), "top2": Color("a8804e"), "side": Color("a4583a"), "deep": Color("3a2228"), "leaf": Color("9aa04a")},
 	{"top": Color("7cbc6c"), "top2": Color("5c9c5c"), "side": Color("8b6d52"), "leaf": Color("ff9ac8")},
 ]
 var cur_bio: Dictionary = {}
