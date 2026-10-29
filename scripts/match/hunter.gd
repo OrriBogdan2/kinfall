@@ -26,12 +26,14 @@ const DIVE_SPEED := 10.0
 const DROP_FALL := 4.2
 const DROP_SPEED := 7.0
 const DEPLOY_H := 8.0         # the glider opens by itself this high above the ground
-const REGEN := 7.0            # health per second once you've gone a while without getting hit
-## Armor: a layer over health that soaks hits first and comes back on its own, fast, once you've
-## been out of the fight for a few seconds. Health only regenerates once armor is full.
-const ARMOR := {"light": 40.0, "medium": 50.0, "heavy": 65.0}
+## Armor, as in Supervive: it takes a flat share off every hit (ARMOR_DR) for as long as it has
+## durability left; what gets through hurts your health and wears the durability down by the same
+## amount. Neither comes back on its own: tonics (1) heal, armor kits (2) repair.
+const ARMOR_DR := 0.2
+const ARMOR_DUR := 2.2        # durability as a multiple of max health
 const ARMOR_WAIT := 4.0
-const ARMOR_REGEN := 22.0
+const KIT_TIME := 1.6
+const CONSUME_VULN := 1.2     # you take this much more damage while drinking or repairing
 
 var pname := "Hunter"
 var cls := "medium"
@@ -40,7 +42,7 @@ var wid := "repeater"
 var wpn: Dictionary = {}
 var ctrl := "bot"             # local | bot | remote
 var inp := {"move": Vector2.ZERO, "aim": Vector3.ZERO, "fire": false, "dash": false, "jump": false,
-	"throw": false, "skill": false, "sig": false, "interact": false, "reload": false, "tonic": false, "glide": false, "ult": false,
+	"throw": false, "skill": false, "sig": false, "interact": false, "reload": false, "tonic": false, "kit": false, "glide": false, "ult": false,
 	"sec": false, "sec_hold": false, "crouch": false, "gear1": false, "gear2": false, "swap": false}
 var base_speed := 5.4
 var ammo := 12
@@ -164,7 +166,7 @@ func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, n
 		bot_look = {"gender": randi() % 2, "body": randi() % 3, "detail": randi() % Models.LOOK_DETAILS.size(), "face": randi() % Models.LOOK_FACES.size(), "skin": randi() % Models.LOOK_SKIN.size(),
 			"hair": randi() % Models.LOOK_HAIRS.size(), "hair_col": randi() % 6}
 	max_hp = cdat["hp"] + (15 if perk == "toughskin" else 0); hp = max_hp
-	max_armor = float(ARMOR.get(cls, 50.0)); armor = max_armor; base_armor = max_armor
+	max_armor = round(max_hp * ARMOR_DUR); armor = max_armor; base_armor = max_armor
 	if perk == "featherfall": glide_max = GLIDE_TIME * 1.6
 	base_speed = cdat["speed"]
 	runner = AbilityRunner.new(self)
@@ -265,7 +267,6 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 		d *= 0.85
 	if downed:
 		down_hp -= d
-		self_up = 0.0
 		flash_t = 0.1
 		if down_hp <= 0.0 and not remote:
 			m.eliminate(self, by, "finished")
@@ -279,17 +280,13 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 			return 0.0
 	regen_wait = 5.0
 	armor_wait = ARMOR_WAIT
-	if armor > 0.0 and opts.get("src", "") not in ["fall", "burn"]:
-		var a := minf(armor, d)
-		armor -= a; d -= a
-		var ao := opts.duplicate(); ao["armor"] = true
-		m.on_damage(self, by, a, ao)
+	if drink_t > 0.0 or kit_t > 0.0:
+		d *= CONSUME_VULN
+	if armor > 0.0 and opts.get("src", "") not in ["fall", "burn", "heat"]:
+		d *= 1.0 - ARMOR_DR
+		armor = maxf(0.0, armor - d)
 		if armor <= 0.0:
 			m.on_armor_break(self, by)
-		if d <= 0.0:
-			flash_t = 0.05
-			if opts.has("kb"): impulse(opts["kb"] * 0.7, opts.get("lift", -1.0))
-			return 0.0
 	if gliding and d > 0.0:
 		gliding = false
 		glide_cd = 0.8
@@ -492,33 +489,15 @@ func _shove_along() -> void:
 func can_fire() -> bool:
 	return not (drink_t > 0.0 or reload_t > 0.0 or roll_t > 0.0 or downed or out or stun_t > 0.0 or grap.size() > 0 or gliding or charge.size() > 0)
 
-## Getting yourself back up when you're down and alone (see the downed branch of sim).
-const SELF_UP_TIME := 6.0
-var self_up := 0.0
-var self_up_used := false
-
-func can_self_up() -> bool:
-	if not downed or self_up_used:
-		return false
-	if kin and (kin as Kin).state != "fainted" and (kin as Kin).hp > 0.0:
-		return false       # your kin is on its way to pick you up
-	for o in m.hunters:
-		if o != self and o.team == team and not o.out and not o.extracted and not o.downed:
-			return false   # a teammate can still come for you
-	return true
-
-func _quiet_here() -> bool:
-	for o in m.hunters:
-		if o.team != team and not o.out and not o.downed and flat_dist(o) < 10.0:
-			return false
-	return true
-
 const SWAY := [0.0, 0.6, -0.4, 1.0, -0.8, 0.3, -1.0, 0.5]
 var shot_n := 0
 var safe_pos := Vector3.INF    # the last solid ground you stood on, well away from any edge
 
 func fire() -> void:
 	if not can_fire() or fire_cd > 0.0:
+		return
+	if wpn.get("melee", false):
+		_swing()
 		return
 	if ammo <= 0:
 		start_reload()
@@ -533,6 +512,77 @@ func fire() -> void:
 	ammo -= 1
 	recoil = 1.0
 	muzzle_t = 0.05
+	burst_left = int(wpn.get("burst", 1)) - 1
+	burst_t = float(wpn.get("burst_gap", 0.07))
+	_emit_shot()
+	if ammo <= 0 and burst_left <= 0:
+		start_reload()
+
+## Burst weapons fire the rest of their burst on a short timer (see sim).
+var burst_left := 0
+var burst_t := 0.0
+func _tick_burst(dt: float) -> void:
+	if burst_left <= 0:
+		return
+	burst_t -= dt
+	if burst_t > 0.0:
+		return
+	if ammo <= 0 or not can_fire():
+		burst_left = 0
+		return
+	burst_left -= 1
+	burst_t = float(wpn.get("burst_gap", 0.07))
+	ammo -= 1
+	recoil = 1.0
+	muzzle_t = 0.05
+	_emit_shot()
+	if ammo <= 0 and burst_left <= 0:
+		start_reload()
+
+## Melee: a swing in a cone in front of you, a short step into it, and a combo whose last hit
+## lands hardest. Swing again within a moment to keep the combo going.
+var combo_i := 0
+var swing_at := -9.0
+var swing_t := 0.0             # for the swing animation, counts down
+var swing_n := 0
+func _swing() -> void:
+	var combo: Array = wpn.get("combo", [1.0])
+	if m.time - swing_at > float(wpn["rate"]) + 0.6:
+		combo_i = 0
+	var mult: float = float(combo[combo_i % combo.size()])
+	var last: bool = combo_i % combo.size() == combo.size() - 1
+	combo_i += 1
+	swing_at = m.time
+	fire_cd = float(wpn["rate"]) * (1.35 if last else 1.0)
+	idle_fire = 0.0
+	reveal_t = maxf(reveal_t, 1.2)
+	if cloak_t > 0.0:
+		cloak_t = 0.0
+	swing_t = 0.18
+	swing_n += 1
+	var dir := aim_dir()
+	if grounded:
+		var lv := dir * float(wpn.get("lunge", 0.0)) * (1.3 if last else 1.0)
+		vel.x += lv.x; vel.z += lv.y
+	var reach: float = float(wpn["range"])
+	var arc := deg_to_rad(float(wpn.get("arc", 100.0)))
+	var a0 := atan2(dir.y, dir.x)
+	var y := pos.y + 0.95 * float(cdat["scale"])
+	var extra := {"kb": float(wpn["kb"]) * (1.8 if last else 1.0), "swing": "%s_%d" % [nid, swing_n], "melee": true}
+	if crit_t > 0.0: extra["crit"] = true
+	var sp := shoulder()
+	if sp == "kindle": extra["burn"] = 4.0
+	if sp == "briar": extra["slow"] = 0.7
+	# the swing is a fan of very short, invisible strikes, so walls and terraces block it like shots
+	var rays := 7
+	for i in rays:
+		var aa := a0 - arc * 0.5 + arc * float(i) / float(rays - 1)
+		var st := Vector3(pos.x + cos(aa) * 0.25, y, pos.z + sin(aa) * 0.25)
+		m.spawn_shot(self, st, Vector2(cos(aa), sin(aa)) * 40.0, float(wpn["dmg"]) * mult * m.dmg_mult(self), maxf(0.02, (reach - 0.25) / 40.0), 0.22, wpn["color"], extra)
+	m.fx.slash(Vector3(pos.x, y - 0.15, pos.z), a0, arc, reach, wpn["color"], last)
+	m.sfx(wpn["sfx"], pos, -4.0, (0.8 if last else 1.15) + randf() * 0.1)
+
+func _emit_shot() -> void:
 	var dir := aim_dir()
 	# no dice rolls: every shot goes where you aim. Fast guns sway in a fixed, learnable pattern
 	shot_n += 1
@@ -566,13 +616,19 @@ func fire() -> void:
 		if int(fs.get("chain", 0)) > 0:
 			extra["fx_hit"] = [{"type": "chain", "count": int(fs["chain"]), "first": 5.0, "dmg": float(wpn["dmg"]) * 0.5, "color": "#fff27a", "skip_here": true}]
 			extra["fx_ctx"] = {"slot": "ult", "ability": "fuse"}
-	m.spawn_shot(self, start, Vector2(cos(a), sin(a)) * spd, wpn["dmg"] * m.dmg_mult(self), life, wpn["size"], wpn["color"], extra)
+	var pel := int(wpn.get("pellets", 1))
+	if pel > 1:
+		# a scattergun throws the same fixed fan every time
+		var fan: float = float(wpn.get("fan", 0.4))
+		for i in pel:
+			var pa := a - fan * 0.5 + fan * float(i) / float(pel - 1)
+			m.spawn_shot(self, Vector3(pos.x + cos(pa) * 0.6, shot_y, pos.z + sin(pa) * 0.6), Vector2(cos(pa), sin(pa)) * spd, wpn["dmg"] * m.dmg_mult(self), life, wpn["size"], wpn["color"], extra)
+	else:
+		m.spawn_shot(self, start, Vector2(cos(a), sin(a)) * spd, wpn["dmg"] * m.dmg_mult(self), life, wpn["size"], wpn["color"], extra)
 	m.sfx(wpn["sfx"], pos, -2.0 if is_local() else -6.0)
-	if ammo <= 0:
-		start_reload()
 
 func start_reload() -> void:
-	if reload_t > 0.0 or ammo >= int(wpn["mag"]) or downed:
+	if reload_t > 0.0 or ammo >= int(wpn["mag"]) or downed or wpn.get("melee", false):
 		return
 	reload_t = float(wpn["reload"]) * (0.8 if shoulder() == "charge" else 1.0) * (0.7 if perk == "quickhands" else 1.0)
 	m.sfx("reload", pos, -8.0)
@@ -669,6 +725,30 @@ func use_tonic() -> void:
 	drink_t = DRINK_TIME
 	m.sfx("pickup", pos, -6.0, 0.7)
 
+## Repairing armor with a kit (2): the same kind of short channel as a tonic.
+var armor_kits := 1
+var finish_t := 0.0             # holding interact over a downed enemy
+var kit_t := 0.0
+func use_kit() -> void:
+	if armor_kits <= 0 or downed or armor >= max_armor - 0.5 or kit_t > 0.0 or drink_t > 0.0 or gliding or not grounded:
+		return
+	kit_t = KIT_TIME
+	m.sfx("build", pos, -6.0, 1.3)
+
+func _tick_kit(dt: float) -> void:
+	if kit_t <= 0.0:
+		return
+	if downed or stun_t > 0.0 or roll_t > 0.0 or gliding or out:
+		kit_t = 0.0
+		return
+	kit_t -= dt
+	if kit_t <= 0.0:
+		kit_t = 0.0
+		armor_kits -= 1
+		armor = max_armor
+		m.sfx("shield", pos, -2.0, 1.2)
+		m.fx.burst(pos + Vector3(0, 1.2, 0), Color("dfe9f7"), 16, 2.5, 0.5, -3.0)
+
 func _tick_drink(dt: float) -> void:
 	if drink_t <= 0.0:
 		return
@@ -681,7 +761,7 @@ func _tick_drink(dt: float) -> void:
 		if tonics > 0:
 			tonics -= 1
 			free_tonics = maxi(0, free_tonics - 1)
-			heal(45.0)
+			heal(max_hp * 0.4)
 			m.sfx("heal", pos, -2.0)
 			m.fx.burst(pos + Vector3(0, 1.2, 0), Color("8ff0a0"), 14, 2.5, 0.5, -3.0)
 
@@ -725,12 +805,7 @@ func sim(dt: float) -> void:
 		dashes = minf(max_dashes(), dashes + dt / dash_regen())
 	if shoulder() == "spring" and not downed:
 		hp = minf(max_hp, hp + 3.0 * dt)
-	# out of the fight for a few seconds, armor snaps back, then you patch yourself up
 	armor_wait = maxf(0.0, armor_wait - dt)
-	if not downed and not remote and armor_wait <= 0.0 and armor < max_armor:
-		armor = minf(max_armor, armor + ARMOR_REGEN * dt)
-	elif not downed and regen_wait <= 0.0 and hp < max_hp and not remote:
-		hp = minf(max_hp, hp + REGEN * dt)
 	# shots spread more while you move, jump or have just dashed, and settle when you stand still
 	if not remote:
 		crouch = bool(inp.get("crouch", false)) and grounded and not downed and roll_t <= 0.0 and not gliding and not dropping and not riding and charge.is_empty()
@@ -757,20 +832,9 @@ func sim(dt: float) -> void:
 		# your other kin comes out of the satchel to pick you up if the active one can't
 		if kin and (kin as Kin).state == "fainted" and kin2 and (kin2 as Kin).hp > 0.0:
 			swap_kin(true)
-		# nobody left to help? Once per expedition you can drag yourself back up: hold interact
-		# for a few seconds without getting hit (bots do it when no one is near)
-		if can_self_up() and not remote:
-			var want: bool = bool(inp.get("interact", false)) if ctrl == "local" else _quiet_here()
-			if want:
-				self_up += dt / SELF_UP_TIME
-				if self_up >= 1.0:
-					self_up_used = true
-					self_up = 0.0
-					m.revive_hunter(self, self)
-					return
-		down_hp -= Data.MATCH["bleed"] * dt
+		# a wisp doesn't bleed out: it's lost to enemy stomps, a finish, or more damage
 		if down_hp <= 0.0:
-			m.eliminate(self, last_hit_by, "bled out")
+			m.eliminate(self, last_hit_by, "finished")
 			return
 	# inputs
 	if inp["dash"]: do_dash()
@@ -795,10 +859,14 @@ func sim(dt: float) -> void:
 	Abil.tick_s(self, dt)
 	if inp["reload"]: start_reload()
 	if inp["tonic"]: use_tonic()
+	if inp.get("kit", false): use_kit()
 	_tick_drink(dt)
+	_tick_kit(dt)
+	_tick_burst(dt)
+	swing_t = maxf(0.0, swing_t - dt)
 	if inp["ult"]: use_ultimate()
 	if inp["fire"]: fire()
-	inp["dash"] = false; inp["jump"] = false; inp["sig"] = false; inp["reload"] = false; inp["tonic"] = false; inp["ult"] = false; inp["sec"] = false; inp["gear1"] = false; inp["gear2"] = false
+	inp["dash"] = false; inp["jump"] = false; inp["sig"] = false; inp["reload"] = false; inp["tonic"] = false; inp["kit"] = false; inp["ult"] = false; inp["sec"] = false; inp["gear1"] = false; inp["gear2"] = false
 	inp["skill"] = false; inp["swap"] = false
 	_physics(dt)
 	var ad := aim_dir()
@@ -844,7 +912,7 @@ func _physics(dt: float) -> void:
 		_grapple(dt)
 		return
 	var mv: Vector2 = inp["move"] if stun_t <= 0.0 and root_t <= 0.0 else Vector2.ZERO
-	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * (0.8 if fire_cd > 0.0 else 1.0) * (0.45 if drink_t > 0.0 else 1.0) * (0.6 if bshield_on else 1.0) * (0.55 if crouch else 1.0) * (1.0 + gear_stat("speed")) * fuse_mod("speed")
+	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * (0.8 if fire_cd > 0.0 else 1.0) * (0.45 if drink_t > 0.0 or kit_t > 0.0 else 1.0) * (0.6 if bshield_on else 1.0) * (0.55 if crouch else 1.0) * (1.0 + gear_stat("speed")) * fuse_mod("speed")
 	var hv := Vector2(vel.x, vel.z)
 	var cur := hv.length()
 	if charge.size() > 0:
@@ -1112,14 +1180,14 @@ func _try_ledge_grab(dt: float) -> void:
 			return
 		var probe := Vector2(pos.x, pos.z) + mv.normalized() * (r + 0.35)
 		var g2 := w.ground_at(probe.x, probe.y)
-		if w.is_block(probe.x, probe.y) or g2 <= pos.y + World.STEP or g2 - pos.y > World.LEVEL * 4.0 + 0.05:
+		if w.is_block(probe.x, probe.y) or g2 <= pos.y + World.STEP or g2 - pos.y > World.LEVEL * 2.0 + 0.05:
 			push_t = 0.0
 			return
 		push_t += dt
 		if push_t < 0.08:
 			return
 		reach = r + 0.6
-		max_rise = World.LEVEL * 4.0 + 0.1
+		max_rise = World.LEVEL * 2.0 + 0.1
 	else:
 		push_t = 0.0
 		# a hard launch carries you a moment before you can catch anything
@@ -1309,6 +1377,12 @@ func render(delta: float, alpha: float) -> void:
 		halo.position.y = 1.26 + sin(m.time * 3.0) * 0.03
 	var gun: Node3D = torso.get_node("Aim/Gun")
 	gun.position.z = -0.18 + recoil * 0.08
+	if wpn.get("melee", false):
+		# a swing sweeps the weapon across in front of you, alternating sides each hit
+		var sk := swing_t / 0.18
+		var side := 1.0 if swing_n % 2 == 0 else -1.0
+		gun.rotation.y = side * lerpf(-1.3, 1.3, sk) if swing_t > 0.0 else lerpf(gun.rotation.y, 0.0, minf(1.0, delta * 10.0))
+		gun.position.z = -0.18
 	gun.visible = not downed
 	# cloaked: allies see a shimmer, enemies see nothing unless very close
 	var lp: Ent = m.local_player()

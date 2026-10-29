@@ -145,6 +145,40 @@ func ring(at: Vector3, radius: float, col: Color, dur := 0.35) -> void:
 	mi.scale = Vector3.ONE * 0.1
 	rings.append({"node": mi, "t": 0.0, "dur": dur, "r": radius, "col": col})
 
+## A melee swing: a bright crescent sweeping the arc in front of you, gone in a blink.
+func slash(at: Vector3, a0: float, arc: float, reach: float, col: Color, heavy := false) -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var n := 14
+	var r0 := reach * 0.45
+	for i in n:
+		var u0 := a0 - arc * 0.5 + arc * float(i) / n
+		var u1 := a0 - arc * 0.5 + arc * float(i + 1) / n
+		# thickest in the middle of the sweep, thin at the ends
+		var w0 := sin(PI * float(i) / n); var w1 := sin(PI * float(i + 1) / n)
+		var o0 := Vector3(cos(u0), 0, sin(u0)); var o1 := Vector3(cos(u1), 0, sin(u1))
+		var a := o0 * reach; var b := o1 * reach
+		var c := o1 * lerpf(reach, r0, w1); var d := o0 * lerpf(reach, r0, w0)
+		st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
+		st.add_vertex(a); st.add_vertex(c); st.add_vertex(d)
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+	m.cull_mode = BaseMaterial3D.CULL_DISABLED
+	m.albedo_color = Color(col.lightened(0.3), 0.9)
+	mi.material_override = m
+	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(mi)
+	mi.global_position = at
+	mi.scale = Vector3.ONE * (0.75 if not heavy else 0.85)
+	var tw := mi.create_tween().set_parallel()
+	tw.tween_property(mi, "scale", Vector3.ONE * (1.05 if not heavy else 1.15), 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	tw.tween_property(m, "albedo_color:a", 0.0, 0.16)
+	tw.chain().tween_callback(mi.queue_free)
+
 func flash(at: Vector3, col: Color, size := 0.35, dur := 0.06) -> void:
 	var mi := MeshInstance3D.new()
 	mi.mesh = Models.sphere(size, 8)

@@ -11,17 +11,17 @@ const MATCH_PLAYERS := 20
 const CLASSES := {
 	"light": {
 		"name": "Light", "hp": 115, "speed": 6.3, "dashes": 3, "mass": 0.9, "scale": 0.9,
-		"sig": "cloak", "weapon": "stinger", "weapons": ["stinger", "pulse", "rail"],
+		"sig": "cloak", "weapon": "stinger", "weapons": ["stinger", "pulse", "rail", "needler", "fangs"],
 		"desc": "Fast and fragile. Three dashes and a cloak to slip out of fights.",
 	},
 	"medium": {
 		"name": "Medium", "hp": 145, "speed": 5.4, "dashes": 2, "mass": 1.0, "scale": 1.0,
-		"sig": "mend", "weapon": "repeater", "weapons": ["repeater", "pulse", "rocket", "rail"],
+		"sig": "mend", "weapon": "repeater", "weapons": ["repeater", "pulse", "rocket", "rail", "scatter", "blade"],
 		"desc": "The all-rounder. Heals the team and its kin, and speeds up revives.",
 	},
 	"heavy": {
 		"name": "Heavy", "hp": 190, "speed": 4.7, "dashes": 1, "mass": 1.45, "scale": 1.14,
-		"sig": "fortify", "weapon": "thumper", "weapons": ["thumper", "pulse", "rocket"],
+		"sig": "fortify", "weapon": "thumper", "weapons": ["thumper", "pulse", "rocket", "slugger", "maul"],
 		"desc": "Slow and tough. Grenades that blast people off edges, and a shield nothing can push.",
 	},
 }
@@ -337,7 +337,7 @@ const BOT_NAMES := ["Vexa", "Moss", "Tarn", "Juno", "Rook", "Kestrel", "Nim", "S
 
 ## Expedition tiers: deeper islands are harder and richer, and in the Hollow your partner can be lost.
 const TIERS := [
-	{"name": "The Meadow", "desc": "Gentle islands. One life, and a gust carries you back up if you fall. Go down for good and the kin you brought are left behind (the Ransom House sells them back cheap here).",
+	{"name": "The Meadow", "desc": "Gentle islands. One life, and the abyss is death. Go down for good and the kin you brought are left behind (the Ransom House sells them back cheap here).",
 		"mob": 1.0, "loot": 1.0, "kin_lvl": [1, 3], "unlock": 0, "risk_kin": false, "lives": 1,
 		"biome": {"top": Color("5f8d45"), "top2": Color("4a7538"), "side": Color("8b6d52"), "deep": Color("3a3140"), "leaf": Color("5a9a4f")},
 		"sky": Color("10131f"), "ambient": Color("b9c4e6"), "sun": Color("fff1dc"), "clouds": [Color(0.06, 0.07, 0.13), Color(0.22, 0.24, 0.38)]},

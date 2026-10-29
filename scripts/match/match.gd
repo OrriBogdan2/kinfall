@@ -55,13 +55,14 @@ var slowmo := 0.0
 var slow_k := 0.35
 var killcam_text := ""
 var cam_style := ""
+var swing_hits := {}
 var hitstop := 0.0
 var aim_line: MeshInstance3D
 var aim_ring: MeshInstance3D
 var muzzle_light: OmniLight3D
 var collapse_warned := false
 var rng := RandomNumberGenerator.new()
-var pending_input := {"dash": false, "jump": false, "sig": false, "reload": false, "tonic": false, "throw": false, "skill": false, "ult": false, "sec": false, "gear1": false, "gear2": false, "swap": false}
+var pending_input := {"dash": false, "jump": false, "sig": false, "reload": false, "tonic": false, "kit": false, "throw": false, "skill": false, "ult": false, "sec": false, "gear1": false, "gear2": false, "swap": false}
 var zones: Array = []      # hero areas: dome, sanctuary, well
 var fields: Fields = null  # patches made by kin abilities (Thorn Patch)
 var _bond_cb: Callable
@@ -348,7 +349,7 @@ func _spawn_hunters() -> void:
 					at = Vector3(si % world.w + 0.5 - sd.x * 1.5, 0, si / world.w + 0.5 - sd.y * 1.5)
 					at.y = world.ground_at(at.x, at.z)
 				player.teleport(at)
-				player.tonics = int(Save.d["items"].get("tonic", 0))
+				player.tonics = int(Save.d["items"].get("tonic", 0)) + 2; player.free_tonics = 2     # everyone sets out with a couple
 				_apply_home_perks(player)
 				if player.kin:
 					_apply_treat(player.kin)
@@ -368,7 +369,7 @@ func _spawn_hunters() -> void:
 				(h.kin as Kin).lost_from = "you"
 				tracked.append({"kin": h.kin, "holder": h})
 			h.ai = bot_brain.new_mind(rng, float(opts.get("bot_skill", 0.6)))
-			h.tonics = 1
+			h.tonics = 3
 			_start_drop(h, at)
 
 ## Every match starts in the sky. Hunters glide down from above their squad's side of the map
@@ -492,7 +493,7 @@ func _apply_home_perks(h: Hunter) -> void:
 		h.glide_max *= 1.25
 	if gp.has("forge"):
 		h.tonics += 1
-		h.free_tonics = 1
+		h.free_tonics += 1
 
 func _apply_treat(k: Kin) -> void:
 	match String(Save.d.get("treat", "")):
@@ -1115,7 +1116,7 @@ func on_damage(target: Ent, by: Ent, d: float, o: Dictionary) -> void:
 		if not credit.remote and target.team != credit.team and src != "burn":
 			credit.ult = minf(1.0, credit.ult + d / 320.0 * (1.3 if credit.perk == "overcharge" else 1.0))
 	var mine := credit == player or (target == player)
-	var armor_hit: bool = o.get("armor", false) or (target is Hunter and (target as Hunter).remote and (target as Hunter).armor > 0.5)
+	var armor_hit: bool = o.get("armor", false) or (target is Hunter and (target as Hunter).armor > 0.5)
 	var col := Color("fff4d6")
 	if armor_hit: col = Color("7ac8ff")
 	if crit: col = Color("ffd23f") if not armor_hit else Color("b0e4ff")
@@ -1224,8 +1225,6 @@ func _check_team(team: int) -> void:
 	for x in members:
 		if not x.downed:
 			return
-		if not x.self_up_used and not x.remote:
-			return       # can still get themselves back up (Hunter.can_self_up)
 		if x.kin and not x.kin.dead and x.kin.state not in ["fainted"] and x.kin.hp > 0.0:
 			return
 		if x.kin2 and not x.kin2.dead and x.kin2.hp > 0.0:
@@ -1380,9 +1379,6 @@ func on_fell(e: Ent) -> void:
 			e.vel = Vector3.ZERO
 			return
 		var by: Ent = e.last_hit_by if time - e.kb_t < 4.0 else null
-		if not e.remote and time < length - 1.0 and (not e.downed or e.down_hp > Data.MATCH["down_hp"] * 0.35):
-			_abyss_rescue(e, by)
-			return
 		eliminate(e, by, "abyss")
 	elif e is Mob:
 		e.dead = true
@@ -1391,37 +1387,8 @@ func on_fell(e: Ent) -> void:
 	elif e is Kin:
 		e.dead = true
 
-## One life, but harder to lose it: fall into the abyss and a gust of wind from below carries you
-## back up in one arc onto the last solid ground you stood on. It costs a third of your health.
-## Blown off by another hunter, or with too little health left, you come back knocked down (they get
-## the knock) and your squad or kin can still get you up.
-func _abyss_rescue(h: Hunter, by: Ent) -> void:
-	var back: Vector3 = h.safe_pos
-	if back == Vector3.INF or world.is_void(back.x, back.z):
-		back = h.ai.get("land", world.spawns[0] if world.spawns.size() > 0 else world.random_ground())
-	h.gliding = false; h.grap = {}; h.charge = {}; h.roll_t = 0.0; h.shot_down = false
-	h.grounded = false
-	var rise := back.y - h.pos.y
-	h.pad = {"from": h.pos, "to": back, "t": 0.0, "dur": 1.15, "h": 3.0 + rise * 0.15, "ledge": true, "carry": 0.0}
-	fx.burst(h.pos + Vector3(0, 1.0, 0), Color("dff3ff"), 26, 9.0, 0.7, -4.0, 1.2, Vector3.UP, 30.0)
-	sfx("whoosh", h.pos, 0.0, 0.7)
-	var credit: Ent = by.owner_h if by is Kin and by.owner_h else by
-	var pushed: bool = credit is Hunter and credit != h and (credit as Hunter).team != h.team
-	var cost := h.max_hp * 0.34
-	if h.downed:
-		h.down_hp -= Data.MATCH["down_hp"] * 0.35
-		h.self_up = 0.0
-		return
-	if pushed or h.hp <= cost + 1.0:
-		h.armor = 0.0
-		knock(h, by, {"src": "abyss"})
-	else:
-		h.hp -= cost
-		h.armor = 0.0
-		h.regen_wait = maxf(h.regen_wait, 4.0)
-		h.inv_t = maxf(h.inv_t, 1.4)
-		if h == player:
-			cam.add_trauma(0.3)
+const STOMP := 14.0         # downed health a stomping enemy drains per second
+const FINISH_TIME := 1.4
 
 func S_dev_god() -> bool:
 	return bool(opts.get("god", false)) or bool(opts.get("tutorial", false)) or bool(opts.get("training", false)) or Game.god
@@ -1827,11 +1794,11 @@ func _collect(h: Hunter, p: Dictionary) -> void:
 		"gem": h.gems += int(round(float(p["v"]) * (1.25 if h.perk == "scavenger" else 1.0)))
 		"seed": h.seeds[p["key"]] = int(h.seeds.get(p["key"], 0)) + int(p["v"])
 		"tonic":
-			h.tonics = mini(3, h.tonics + 1)
+			h.tonics = mini(5, h.tonics + 1)
 			if h == player: hud.toast("+1 tonic", Color("8ff0a0"))
 		"armor":
-			h.armor = minf(h.max_armor, h.armor + float(p["v"]))
-			if h == player: hud.toast_small("+%d armor" % int(p["v"]), Color("7ac8ff"))
+			h.armor_kits = mini(3, h.armor_kits + 1)
+			if h == player: hud.toast_small("+1 armor kit", Color("dfe9f7"))
 	if h == player:
 		sfx("pickup", null, -8.0, 1.0 + minf(0.4, h.gems * 0.004))
 		if p["kind"] == "seed":
@@ -1843,6 +1810,8 @@ func spawn_shot(by: Ent, at: Vector3, v2: Vector2, dmg: float, life: float, size
 	for s in shot_pool:
 		if not s.visible:
 			mi = s; break
+	if mi and extra.get("melee", false):
+		mi = null          # a melee strike is invisible; the swing has its own effect
 	if mi:
 		mi.visible = true
 		mi.material_override.set_shader_parameter("color", col)
@@ -1850,9 +1819,9 @@ func spawn_shot(by: Ent, at: Vector3, v2: Vector2, dmg: float, life: float, size
 		mi.global_position = at
 	var team := by.team
 	shots.append({"pos": at, "vel": v2, "dmg": dmg, "team": team, "by": by, "life": life, "r": size, "col": col, "x": extra, "node": mi, "prev": at, "start": at})
-	if net_on and not extra.get("cos", false) and not by.remote:
+	if net_on and not extra.get("cos", false) and not extra.get("melee", false) and not by.remote:
 		net_event(["s", _r(at.x), _r(at.y), _r(at.z), _r(v2.x), _r(v2.y), snappedf(life, 0.01), snappedf(size, 0.01), col.to_html(false), float(extra.get("boom", 0.0)), team, 1 if extra.get("mob", false) else 0])
-	if by is Hunter:
+	if by is Hunter and not extra.get("melee", false):
 		fx.flash(at, col.lightened(0.4), 0.22, 0.05)
 		note_sound(by, at, "shot")
 
@@ -1965,6 +1934,16 @@ func _shot_end(s: Dictionary, at: Vector3, e: Ent) -> void:
 		return
 	var by: Ent = s["by"]
 	var dmg: float = s["dmg"]
+	if x.has("swing"):
+		# one swing hits each thing once, however many of its strikes reach it
+		var key := "%s|%s" % [x["swing"], e.nid if e.nid != "" else str(e.get_instance_id())]
+		if swing_hits.has(key):
+			return
+		swing_hits[key] = time
+		if swing_hits.size() > 200:
+			swing_hits.clear()
+		fx.burst(at + Vector3(0, 0.3, 0), s["col"], 8, 3.5, 0.25, 4.0)
+		sfx("hit", at, -4.0, 0.8)
 	var crit := false
 	if e.stun_t > 0.0 and not x.get("mob", false):
 		dmg *= 1.5
@@ -2175,7 +2154,7 @@ func _gather_input() -> void:
 	else:
 		crouch_on = Input.is_action_pressed("crouch") and not paused
 	player.inp["crouch"] = crouch_on
-	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["kin_skill", "skill"], ["ultimate", "ult"], ["secondary", "sec"], ["gear1", "gear1"], ["gear2", "gear2"], ["swap_kin", "swap"]]:
+	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["armor_kit", "kit"], ["throw", "throw"], ["kin_skill", "skill"], ["ultimate", "ult"], ["secondary", "sec"], ["gear1", "gear1"], ["gear2", "gear2"], ["swap_kin", "swap"]]:
 		var aimable: bool = a[0] in ["signature", "ultimate", "kin_skill"] and not quick
 		if aimable:
 			# hold to see where it will land, let go to cast it
@@ -2324,7 +2303,7 @@ func step(dt: float) -> void:
 		player.inp["glide"] = true
 		player.inp["move"] = Vector2(1, 0.3).normalized()
 	if player and not player.out:
-		for k in ["dash", "jump", "sig", "reload", "tonic", "ult", "sec", "gear1", "gear2", "skill", "swap"]:
+		for k in ["dash", "jump", "sig", "reload", "tonic", "kit", "ult", "sec", "gear1", "gear2", "skill", "swap"]:
 			if pending_input[k]:
 				player.inp[k] = true
 				pending_input[k] = false
@@ -2461,11 +2440,29 @@ func _update_interact(dt: float) -> void:
 		if not want:
 			h.swap_hold = false
 		var best := {}
-		# 1. revive a downed teammate
+		# 1. wisps, as in Supervive: standing on a downed teammate revives them (no key), standing
+		# on a downed enemy stomps them, and holding interact finishes them off
 		for o in hunters:
-			if o != h and o.team == h.team and o.downed and not o.out and h.flat_dist(o) < 1.8:
-				best = {"kind": "revive", "ent": o, "label": "Hold " + Settings.key_cap("interact") + " to revive %s" % o.pname}
-				break
+			if o == h or not o.downed or o.out or h.flat_dist(o) > 1.6:
+				continue
+			if o.team == h.team:
+				var rate: float = dt / Data.MATCH["revive_time"] * (1.3 if h.hero == "sage" else 1.0)
+				if o.remote:
+					_rev_out[o.nid] = float(_rev_out.get(o.nid, 0.0)) + rate
+					o.revive += rate
+				else:
+					o.revive += rate
+					if o.revive >= 1.0:
+						revive_hunter(o, h)
+			elif not o.remote:
+				o.down_hp -= STOMP * dt
+				o.revive = maxf(0.0, o.revive - dt * 0.5)
+				if o.down_hp <= 0.0:
+					eliminate(o, h, "finished")
+					continue
+				best = {"kind": "finish", "ent": o, "label": "Hold " + Settings.key_cap("interact") + " to finish %s" % o.pname}
+		if not want or best.get("kind", "") != "finish":
+			h.finish_t = 0.0
 		# 2. catch a dazed wild kin (not in training: practice kin go home with nobody)
 		if best.is_empty() and not opts.get("training", false):
 			for k in kins:
@@ -2509,15 +2506,16 @@ func _update_interact(dt: float) -> void:
 				if not h.swap_hold:
 					h.swap_hold = true
 					_take_weapon(h, best["wp"])
-			"revive":
+			"finish":
 				var o: Hunter = best["ent"]
-				if o.remote:
-					_rev_out[o.nid] = float(_rev_out.get(o.nid, 0.0)) + dt / Data.MATCH["revive_time"] * (1.3 if h.hero == "sage" else 1.0)
-					o.revive += dt / Data.MATCH["revive_time"] * (1.3 if h.hero == "sage" else 1.0)
-				else:
-					o.revive += dt / Data.MATCH["revive_time"] * (1.3 if h.hero == "sage" else 1.0)
-					if o.revive >= 1.0:
-						revive_hunter(o, h)
+				h.finish_t += dt
+				if h.finish_t >= FINISH_TIME:
+					h.finish_t = 0.0
+					eliminate(o, h, "finished")
+					# a finish restores you, as in Supervive
+					h.hp = h.max_hp
+					fx.burst(h.pos + Vector3(0, 1.0, 0), Color("ffd36a"), 20, 4.0, 0.5, -3.0)
+					sfx("heal", h.pos, -2.0, 0.9)
 			"catch":
 				var k: Kin = best["ent"]
 				k.catch_prog += dt / 1.3
@@ -2603,7 +2601,7 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 	if not from_net and randf() < [0.35, 0.65, 1.0][t]:
 		var a2 := randf() * TAU
 		spawn_gear(Gear.roll(rng), Data.roll_rarity(rng, t), c["pos"] + Vector3(cos(a2) * 1.2, 0, sin(a2) * 1.2))
-	if h and not h.remote and h.tonics < 3 and randf() < [0.35, 0.7, 1.0][t]:
+	if h and not h.remote and h.tonics < 5 and randf() < [0.35, 0.7, 1.0][t]:
 		h.tonics += 1
 		if h == player: hud.toast("+1 tonic", Color("8ff0a0"))
 
@@ -3195,7 +3193,7 @@ func _spawn_net_hunters(spots: Array, names: Array) -> void:
 		if peer == Net.me:
 			var rec: Dictionary = Save.active_kin()
 			player = make_hunter("P" + peer, t, String(r["cls"]), String(r["name"]), "local", rec, at, my_kit())
-			player.tonics = int(Save.d["items"].get("tonic", 0))
+			player.tonics = int(Save.d["items"].get("tonic", 0)) + 2; player.free_tonics = 2     # everyone sets out with a couple
 			_apply_home_perks(player)
 			if player.kin:
 				_apply_treat(player.kin)
@@ -3219,7 +3217,7 @@ func _spawn_net_hunters(spots: Array, names: Array) -> void:
 			at.y = world.ground_at(at.x, at.z)
 			var h := make_hunter(next_id("b"), t, "", names.pop_back() if names.size() > 0 else "Bot", "bot", bot_kin_record(), at, bot_kit())
 			h.ai = bot_brain.new_mind(rng, float(opts.get("bot_skill", 0.6)))
-			h.tonics = 1
+			h.tonics = 3
 			_start_drop(h, at)
 
 ## A hit on something another game owns goes to its owner.

@@ -39,6 +39,7 @@ func _ready() -> void:
 		if a == "--break-demo": opts["break_demo"] = true; opts["no_drop"] = true
 		if a == "--watch-heart": opts["watch_heart"] = true
 		if a.begins_with("--hero="): Save.d["hero"] = a.substr(7); Save.d["weapon"] = ""
+		if a.begins_with("--weapon="): Save.d["weapon"] = a.substr(9)
 		if a == "--ability-demo": opts["ability_demo"] = true
 		if a == "--fresh": Save.d = Save.fresh()
 		if a.begins_with("--test-kin="):

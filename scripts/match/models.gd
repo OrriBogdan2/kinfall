@@ -604,6 +604,34 @@ static func gun_parts(gun: Node3D, weapon: String, m_gun: Material, m_dark: Mate
 			part(gun, cyl(0.1, 0.1, 0.72), toon(Color("5a6a4a")), Vector3(0, 0.04, -0.22), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			part(gun, cyl(0.06, 0.12, 0.12), toon(Color("ff7a5a")), Vector3(0, 0.04, -0.6), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			part(gun, box(0.06, 0.16, 0.08), m_dark, Vector3(0, -0.12, -0.05))
+		"needler":
+			part(gun, box(0.08, 0.11, 0.34), m_gun, Vector3(0, 0, -0.1))
+			part(gun, cyl(0.02, 0.02, 0.22, 6), toon(Color("d6a8ff"), false, 0.8), Vector3(0, 0.02, -0.36), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(gun, box(0.05, 0.15, 0.07), m_dark, Vector3(0, -0.11, -0.02))
+		"scatter":
+			part(gun, box(0.12, 0.13, 0.62), m_gun, Vector3(0, 0, -0.2))
+			for sx in [-0.035, 0.035]:
+				part(gun, cyl(0.04, 0.04, 0.3, 8), m_dark, Vector3(sx, 0.03, -0.62), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(gun, box(0.07, 0.07, 0.16), m_acc, Vector3(0, -0.08, -0.36))
+		"slugger":
+			part(gun, cyl(0.1, 0.12, 0.78, 10), m_gun, Vector3(0, 0, -0.26), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(gun, cyl(0.15, 0.15, 0.1, 10), m_acc, Vector3(0, 0, -0.64), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(gun, box(0.08, 0.2, 0.12), m_dark, Vector3(0, -0.15, -0.02))
+		"fangs":
+			# two curved daggers, one held forward and one reversed
+			var bl := toon(Color("c8f0ff"), true, 0.35)
+			part(gun, box(0.04, 0.03, 0.42), bl, Vector3(0.06, 0, -0.26), Vector3.ONE, Vector3(0, 0.12, 0))
+			part(gun, box(0.05, 0.06, 0.12), m_dark, Vector3(0.06, 0, -0.02))
+			part(gun, box(0.04, 0.03, 0.34), bl, Vector3(-0.12, -0.06, 0.06), Vector3.ONE, Vector3(0, -0.3, 0))
+			part(gun, box(0.05, 0.06, 0.1), m_dark, Vector3(-0.1, -0.06, -0.08))
+		"blade":
+			part(gun, box(0.05, 0.12, 0.95), toon(Color("e9e4d4"), true, 0.2), Vector3(0, 0.02, -0.55))
+			part(gun, box(0.26, 0.05, 0.06), m_acc, Vector3(0, 0, -0.06))
+			part(gun, box(0.05, 0.06, 0.2), m_dark, Vector3(0, 0, 0.06))
+		"maul":
+			part(gun, cyl(0.035, 0.035, 0.9, 8), m_dark, Vector3(0, 0, -0.3), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(gun, box(0.42, 0.26, 0.26), m_gun, Vector3(0, 0.02, -0.78))
+			part(gun, box(0.44, 0.08, 0.28), toon(Color("ffb070"), true, 0.5), Vector3(0, 0.02, -0.78))
 		"thumper":
 			part(gun, cyl(0.12, 0.12, 0.62), m_gun, Vector3(0, 0, -0.2), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			part(gun, cyl(0.14, 0.14, 0.08), m_acc, Vector3(0, 0, -0.52), Vector3.ONE, Vector3(PI / 2, 0, 0))

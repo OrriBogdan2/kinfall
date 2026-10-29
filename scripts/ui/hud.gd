@@ -488,7 +488,7 @@ func _vitals(sp: Vector2, w: float, h: Hunter, hp_col: Color, trail: float, numb
 	var x0 := sp.x - w * 0.5
 	if h.max_armor > 0.5:
 		var ar := Rect2(Vector2(x0, sp.y - 9), Vector2(w, 4))
-		_seg_bar(ar, h.armor, h.max_armor, 0.0, ARMOR_COL, 25.0)
+		_seg_bar(ar, h.armor, h.max_armor, 0.0, ARMOR_COL, 100.0)
 		var sc := Vector2(x0 - 9, sp.y - 7)
 		var shp := PackedVector2Array([sc + Vector2(-4, -4), sc + Vector2(4, -4), sc + Vector2(4, 0), sc + Vector2(0, 4.5), sc + Vector2(-4, 0)])
 		c.draw_colored_polygon(shp, Color(0.03, 0.03, 0.05, 0.85))
@@ -584,7 +584,7 @@ func _draw_vitals(sz: Vector2, p: Hunter) -> void:
 	var af := clampf(p.armor / maxf(1.0, p.max_armor), 0.0, 1.0)
 	armor_lerp = move_toward(armor_lerp, af, get_process_delta_time() * (0.5 if armor_lerp > af else 4.0))
 	hover_spots.append([Rect2(Vector2(x0 - 56, y0 - 10), Vector2(w + 110, 48)), "vitals"])
-	_seg_bar(Rect2(Vector2(x0, y0), Vector2(w, 8)), p.armor, p.max_armor, armor_lerp, ARMOR_COL, 25.0)
+	_seg_bar(Rect2(Vector2(x0, y0), Vector2(w, 8)), p.armor, p.max_armor, armor_lerp, ARMOR_COL, 100.0)
 	var low := frac < 0.35
 	var hcol := HP_LOW.lerp(Color.WHITE, 0.25 * (0.5 + 0.5 * sin(m.time * 9.0))) if low else HP_COL
 	_seg_bar(Rect2(Vector2(x0, y0 + 14), Vector2(w, 16)), p.hp, p.max_hp, bar_lerp, hcol, 25.0)
@@ -693,8 +693,11 @@ func _draw_abilities(sz: Vector2, p: Hunter) -> void:
 	x += s + gap
 	_ab_slot("tonic", Rect2(Vector2(x, y), Vector2(s, s)), "tonic", Settings.key_cap("tonic"), GOOD, 0.0, 0.0, p.tonics > 0, -1, 0)
 	_ctext(Vector2(x + s - 10, y + 18), "×%d" % p.tonics, 13, INK, big)
+	x += s + gap
+	_ab_slot("kit", Rect2(Vector2(x, y), Vector2(s, s)), "fortify", Settings.key_cap("armor_kit"), ARMOR_COL, 0.0, 0.0, p.armor_kits > 0, -1, 0)
+	_ctext(Vector2(x + s - 10, y + 18), "×%d" % p.armor_kits, 13, INK, big)
 	x += s + gap + 8.0
-	# gear actives on F and G
+	# gear actives
 	for gi in 2:
 		var g: Dictionary = p.gear[gi]
 		if g.is_empty() or not Gear.active(String(g["id"])):
@@ -767,7 +770,16 @@ func _draw_weapon(sz: Vector2, p: Hunter) -> void:
 	Icons.draw(c, p.wid, r.position + Vector2(52, 56), 30.0, Color(rc, 0.85))
 	var mag := int(p.wpn["mag"])
 	var ammo_col := INK if p.ammo > mag * 0.25 else HP_LOW
-	if p.reload_t > 0.0:
+	if p.wpn.get("melee", false):
+		# melee: no ammo; the combo's pips instead, the last one bigger
+		_text(r.position + Vector2(112, 62), "MELEE", 16, rc, big)
+		var cn: int = (p.wpn.get("combo", [1.0]) as Array).size()
+		var live := m.time - p.swing_at <= float(p.wpn["rate"]) + 0.6
+		for ci in cn:
+			var on := live and (p.combo_i % cn) > ci
+			var rad := 5.0 if ci == cn - 1 else 3.5
+			c.draw_circle(r.position + Vector2(118 + ci * 16, 74), rad, rc if on else Color(1, 1, 1, 0.2))
+	elif p.reload_t > 0.0:
 		_text(r.position + Vector2(112, 66), "RELOADING", 16, Color("ffe7a8"), big)
 		_bar(Rect2(r.position + Vector2(112, 72), Vector2(120, 4)), 1.0 - p.reload_t / float(p.wpn["reload"]), Color("ffe7a8"))
 	else:
@@ -938,16 +950,10 @@ func _draw_crosshair(p: Hunter) -> void:
 func _draw_downed(sz: Vector2, p: Hunter) -> void:
 	c.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.3, 0.02, 0.02, 0.18))
 	_ctext(Vector2(sz.x * 0.5, sz.y * 0.32), "You're down", 34, BAD, big)
-	var who := "Your kin or a teammate can pick you up."
+	var who := "You're a wisp. A teammate or your kin standing on you brings you back. Enemies can stomp or finish you."
 	if p.kin and p.kin.state == "fainted":
-		who = "Your kin is out cold. Only a teammate can help."
-	if not p.can_self_up():
-		_ctext(Vector2(sz.x * 0.5, sz.y * 0.32 + 28), who, 16, INK)
-	else:
-		who = "No one's coming. Hold %s to drag yourself back up (once per expedition)." % Settings.key_cap("interact")
-		_ctext(Vector2(sz.x * 0.5, sz.y * 0.32 + 28), who, 16, GOLD)
-		if p.self_up > 0.0:
-			_bar(Rect2(Vector2(sz.x * 0.5 - 140, sz.y * 0.32 + 58), Vector2(280, 8)), p.self_up, GOOD)
+		who = "You're a wisp, and your kin is out cold. Only a teammate standing on you can bring you back."
+	_ctext(Vector2(sz.x * 0.5, sz.y * 0.32 + 28), who, 16, INK)
 	_bar(Rect2(Vector2(sz.x * 0.5 - 140, sz.y * 0.32 + 44), Vector2(280, 8)), p.down_hp / Data.MATCH["down_hp"], BAD)
 	if p.revive > 0.0:
 		_bar(Rect2(Vector2(sz.x * 0.5 - 140, sz.y * 0.32 + 58), Vector2(280, 8)), p.revive, GOOD)
@@ -1019,6 +1025,12 @@ func _draw_overhead(p: Hunter) -> void:
 		c.draw_circle(dc, 11.0, Color(0.04, 0.04, 0.06, 0.75))
 		_arc(dc, 8.0, df, Color("8ff0a0"), 3.0)
 		_ctext(sp + Vector2(0, 33 if p.reload_t <= 0.0 else 46), "DRINKING", 11, Color("8ff0a0"), big)
+	if p.kit_t > 0.0:
+		var kf := 1.0 - p.kit_t / Hunter.KIT_TIME
+		var kc := sp + Vector2(-w * 0.5 - 16, 4)
+		c.draw_circle(kc, 11.0, Color(0.04, 0.04, 0.06, 0.75))
+		_arc(kc, 8.0, kf, ARMOR_COL, 3.0)
+		_ctext(sp + Vector2(0, 33 if p.reload_t <= 0.0 else 46), "REPAIRING", 11, ARMOR_COL, big)
 
 # ------------------------------------------------------------------ hover tips
 ## Point at anything on the bottom bar (abilities, health, weapon, kin) to see what it is.
@@ -1162,10 +1174,14 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 			out.append(["%s class dodge  ·  %s" % [String(p.cls).capitalize(), Settings.key_cap("dash")], MUTED, 12])
 			out.append([dd.desc if dd else "A quick burst the way you're moving.", INK, 14])
 			out.append(["%d of %d charges. One comes back every %s." % [int(floor(p.dashes)), int(p.max_dashes()), _secs(p.dash_regen())], MUTED, 13])
+		"kit":
+			out.append(["Armor kit", ARMOR_COL])
+			out.append(["Item  ·  %s" % Settings.key_cap("armor_kit"), MUTED, 12])
+			out.append(["Repairs your armor to full. Armor takes 20%% off every hit while it lasts, and doesn't come back on its own. You're carrying %d." % p.armor_kits, INK, 14])
 		"tonic":
 			out.append(["Tonic", GOOD])
 			out.append(["Item  ·  %s" % Settings.key_cap("tonic"), MUTED, 12])
-			out.append(["Heals 45 health. You're carrying %d. Find more in chests, or cook them at home." % p.tonics, INK, 14])
+			out.append(["Heals 40%% of your health. Health doesn't come back on its own. You're carrying %d. Find more in chests, or cook them at home." % p.tonics, INK, 14])
 		"weapon":
 			var wp: Dictionary = p.wpn
 			var rc: Color = Data.RARITY[p.wrar]["color"] if p.wrar > 0 else Color("e6dccb")

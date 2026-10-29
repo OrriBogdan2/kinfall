@@ -71,6 +71,8 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 		var to := h.dir_to(tgt)
 		var pref: float = {"light": 4.5, "medium": 7.0, "heavy": 5.5}[h.cls]
 		if h.wid == "rail": pref = 11.0
+		if h.wpn.get("melee", false): pref = 1.2
+		elif h.wpn.has("pellets"): pref = 3.5
 		if d > pref + 1.5:
 			move = to
 		elif d < pref - 2.0:
@@ -79,6 +81,10 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 			a["strafe_t"] = randf_range(0.6, 1.6)
 			a["strafe"] = -a["strafe"]
 		move += Vector2(-to.y, to.x) * a["strafe"] * 0.8
+		if finishing:
+			# walk onto the wisp to stomp it, and finish it
+			move = to if d > 0.7 else Vector2.ZERO
+			inp["interact"] = d < 1.5
 		# aim with lead and some error that shrinks with skill
 		var lead: Vector2 = Vector2(tgt.vel.x, tgt.vel.z) * (d / float(h.wpn["speed"])) * a["skill"]
 		# the aim drifts smoothly around the target instead of jittering shot to shot
@@ -134,6 +140,8 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 			h.kin.recall()
 		if h.hp < h.max_hp * 0.45 and h.tonics > 0:
 			inp["tonic"] = true
+		elif h.armor < h.max_armor * 0.3 and h.armor_kits > 0:
+			inp["kit"] = true
 		# swap a fainted kin out for the other one
 		if h.kin and (h.kin as Kin).state == "fainted" and h.kin2 and (h.kin2 as Kin).hp > 0.0:
 			inp["swap"] = true

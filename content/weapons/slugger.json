@@ -1,0 +1,8 @@
+{
+	"id": "slugger",
+	"name": "Slug Cannon",
+	"classes": ["heavy"],
+	"primary": {"dmg": 26.0, "rate": 0.95, "speed": 22.0, "mag": 3, "reload": 1.8, "kb": 8.5, "spread": 0.0,
+		"range": 11.0, "size": 0.24, "color": "#ff8a5a", "sfx": "rifle"},
+	"utility": ""
+}
