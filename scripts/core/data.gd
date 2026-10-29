@@ -10,17 +10,17 @@ const MATCH_PLAYERS := 20
 
 const CLASSES := {
 	"light": {
-		"name": "Light", "hp": 90, "speed": 6.3, "dashes": 3, "mass": 0.9, "scale": 0.9,
+		"name": "Light", "hp": 115, "speed": 6.3, "dashes": 3, "mass": 0.9, "scale": 0.9,
 		"sig": "cloak", "weapon": "stinger", "weapons": ["stinger", "pulse", "rail"],
 		"desc": "Fast and fragile. Three dashes and a cloak to slip out of fights.",
 	},
 	"medium": {
-		"name": "Medium", "hp": 115, "speed": 5.4, "dashes": 2, "mass": 1.0, "scale": 1.0,
+		"name": "Medium", "hp": 145, "speed": 5.4, "dashes": 2, "mass": 1.0, "scale": 1.0,
 		"sig": "mend", "weapon": "repeater", "weapons": ["repeater", "pulse", "rocket", "rail"],
 		"desc": "The all-rounder. Heals the team and its kin, and speeds up revives.",
 	},
 	"heavy": {
-		"name": "Heavy", "hp": 155, "speed": 4.7, "dashes": 1, "mass": 1.45, "scale": 1.14,
+		"name": "Heavy", "hp": 190, "speed": 4.7, "dashes": 1, "mass": 1.45, "scale": 1.14,
 		"sig": "fortify", "weapon": "thumper", "weapons": ["thumper", "pulse", "rocket"],
 		"desc": "Slow and tough. Grenades that blast people off edges, and a shield nothing can push.",
 	},
@@ -28,14 +28,14 @@ const CLASSES := {
 
 const WEAPONS := {
 	"stinger": {"name": "Stinger SMG", "dmg": 4.6, "rate": 0.085, "speed": 24.0, "mag": 26, "reload": 1.3,
-		"kb": 0.8, "spread": 0.07, "range": 10.0, "sfx": "smg", "color": Color("ffe08a"), "size": 0.09},
+		"kb": 0.8, "spread": 0.07, "range": 10.0, "sfx": "smg", "color": Color("ffe08a"), "size": 0.12},
 	"repeater": {"name": "Repeater", "dmg": 10.0, "rate": 0.21, "speed": 27.0, "mag": 12, "reload": 1.2,
-		"kb": 2.4, "spread": 0.015, "range": 12.0, "sfx": "rifle", "color": Color("bfe6ff"), "size": 0.12},
+		"kb": 2.4, "spread": 0.015, "range": 12.0, "sfx": "rifle", "color": Color("bfe6ff"), "size": 0.15},
 	"thumper": {"name": "Thumper", "dmg": 20.0, "rate": 0.8, "speed": 14.0, "mag": 4, "reload": 1.7,
 		"kb": 0.0, "spread": 0.0, "range": 9.0, "sfx": "thump", "color": Color("ff9a4a"), "size": 0.22,
 		"boom": 2.1, "boom_kb": 9.5},
 	"rail": {"name": "Rail Rifle", "dmg": 24.0, "rate": 0.9, "speed": 46.0, "mag": 4, "reload": 1.8,
-		"kb": 3.5, "spread": 0.0, "range": 18.0, "sfx": "rifle", "color": Color("9af0ff"), "size": 0.1},
+		"kb": 3.5, "spread": 0.0, "range": 18.0, "sfx": "rifle", "color": Color("9af0ff"), "size": 0.14},
 	"rocket": {"name": "Rocket Launcher", "dmg": 15.0, "rate": 0.65, "speed": 17.0, "mag": 3, "reload": 1.7,
 		"kb": 0.0, "spread": 0.0, "range": 11.0, "sfx": "thump", "color": Color("ff7a5a"), "size": 0.2,
 		"boom": 1.8, "boom_kb": 8.0},
@@ -337,15 +337,15 @@ const BOT_NAMES := ["Vexa", "Moss", "Tarn", "Juno", "Rook", "Kestrel", "Nim", "S
 
 ## Expedition tiers: deeper islands are harder and richer, and in the Hollow your partner can be lost.
 const TIERS := [
-	{"name": "The Meadow", "desc": "Gentle islands. 3 lives. Go down for good and the kin you brought are left behind (the Ransom House sells them back cheap here).",
-		"mob": 1.0, "loot": 1.0, "kin_lvl": [1, 3], "unlock": 0, "risk_kin": false, "lives": 3,
+	{"name": "The Meadow", "desc": "Gentle islands. One life, but the abyss throws you back once you fall. Go down for good and the kin you brought are left behind (the Ransom House sells them back cheap here).",
+		"mob": 1.0, "loot": 1.0, "kin_lvl": [1, 3], "unlock": 0, "risk_kin": false, "lives": 1,
 		"biome": {"top": Color("5f8d45"), "top2": Color("4a7538"), "side": Color("8b6d52"), "deep": Color("3a3140"), "leaf": Color("5a9a4f")},
 		"sky": Color("10131f"), "ambient": Color("b9c4e6"), "sun": Color("fff1dc"), "clouds": [Color(0.06, 0.07, 0.13), Color(0.22, 0.24, 0.38)]},
-	{"name": "Dusk Isles", "desc": "Tougher monsters, about twice the loot, and rarer kin. 2 lives. Kin you bring are at risk if you go down.",
-		"mob": 1.45, "loot": 1.9, "kin_lvl": [2, 5], "unlock": 2, "risk_kin": false, "lives": 2,
+	{"name": "Dusk Isles", "desc": "Tougher monsters, about twice the loot, and rarer kin. One life. Kin you bring are at risk if you go down.",
+		"mob": 1.45, "loot": 1.9, "kin_lvl": [2, 5], "unlock": 2, "risk_kin": false, "lives": 1,
 		"biome": {"top": Color("56688a"), "top2": Color("465576"), "side": Color("6d5a74"), "deep": Color("2a2440"), "leaf": Color("8a6fb8")},
 		"sky": Color("150f22"), "ambient": Color("c9b4e6"), "sun": Color("ffc9a8"), "clouds": [Color(0.09, 0.05, 0.14), Color(0.32, 0.2, 0.4)]},
-	{"name": "The Hollow", "desc": "Brutal and rich, and only 1 life. Rival hunters here love to collect kin left behind.",
+	{"name": "The Hollow", "desc": "Brutal and rich, and the stakes are highest. Rival hunters here love to collect kin left behind.",
 		"mob": 2.0, "loot": 3.2, "kin_lvl": [4, 8], "unlock": 5, "risk_kin": true, "lives": 1,
 		"biome": {"top": Color("4f6b5e"), "top2": Color("3d5650"), "side": Color("5a4a44"), "deep": Color("1e1a22"), "leaf": Color("c25a4a")},
 		"sky": Color("0d0b10"), "ambient": Color("d0a0a0"), "sun": Color("ffb090"), "clouds": [Color(0.07, 0.03, 0.04), Color(0.3, 0.12, 0.12)]},
@@ -389,6 +389,6 @@ const MATCH := {
 	"extract_time": 4.0,   # seconds standing in an exit's circle to leave; a hit from another hunter resets it
 	"revive_time": 3.0,
 	"kin_revive_time": 5.0,
-	"bleed": 3.0,          # downed health lost per second
-	"down_hp": 60.0,
+	"bleed": 2.5,          # downed health lost per second
+	"down_hp": 100.0,      # so about 40 seconds downed before you bleed out
 }

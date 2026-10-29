@@ -5,8 +5,8 @@ extends Ent
 # Weightier vertical movement: stronger gravity, a quicker jump to the same height (about two and a
 # half terraces), falls that speed up and carry the speed you ran off the edge with.
 const H_GRAV := 36.0
-const FALL_MULT := 1.55
-const TERMINAL := 26.0
+const FALL_MULT := 1.3        # falling pulls a little harder than rising, the same every time
+const TERMINAL := 22.0
 const JUMP_V := 11.8
 const DASH_SPEED := 19.0
 const DASH_TIME := 0.17
@@ -19,9 +19,13 @@ const GLIDE_SPEED := 8.4
 const GLIDE_TIME := 6.0
 const GLIDE_DRAG := 1.6         # speed lost per second while gliding (more when going fast)
 const GLIDE_MAX := 15.0
-const DROP_FALL := 7.5
-const DROP_SPEED := 5.0
-const DROP_ZONE := 7.0       # how far from where you jumped you can steer on the way down, like Supervive
+# The opening drop, battle-royale style: a fast skydive you steer freely, then the glider opens by
+# itself near the ground (or earlier on jump) for a slower, floatier last stretch.
+const DIVE_FALL := 11.0
+const DIVE_SPEED := 10.0
+const DROP_FALL := 4.2
+const DROP_SPEED := 7.0
+const DEPLOY_H := 8.0         # the glider opens by itself this high above the ground
 const REGEN := 7.0            # health per second once you've gone a while without getting hit
 ## Armor: a layer over health that soaks hits first and comes back on its own, fast, once you've
 ## been out of the fight for a few seconds. Health only regenerates once armor is full.
@@ -128,7 +132,8 @@ var acts: Array = []          # queued ability pieces, see Abil.tick
 var acts_tele: Node3D = null
 var idle_fire := 0.0
 var dropping := false         # gliding down from the sky at the start of a match
-var drop_from := Vector2.INF  # where the drop started; you can only steer within DROP_ZONE of it
+var drop_from := Vector2.INF  # where the drop started
+var diving := false           # the skydive part of the drop, before the glider opens
 var riding := false           # aboard the skyship, waiting to jump
 var bless_t := 0.0
 var wrar := 0                 # rarity of the weapon in hand, 0 for the one you brought
@@ -260,6 +265,7 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 		d *= 0.85
 	if downed:
 		down_hp -= d
+		self_up = 0.0
 		flash_t = 0.1
 		if down_hp <= 0.0 and not remote:
 			m.eliminate(self, by, "finished")
@@ -377,6 +383,9 @@ func _on_zero(by: Ent, opts: Dictionary) -> void:
 func do_jump() -> void:
 	if downed or stun_t > 0.0 or grap.size() > 0 or out:
 		return
+	if dropping and diving:
+		_deploy()
+		return
 	if pad.size() > 0:
 		# press jump mid-flight off a jump pad and the glider opens, keeping the launch's speed
 		if not pad.get("ledge", false) and float(pad["t"]) > 0.12 and can_glide():
@@ -409,9 +418,10 @@ func do_jump() -> void:
 		return
 	jump_buf = 0.12
 
-## Fast gliders barely sink; a slow one drifts steadily down.
-static func glide_fall(speed: float) -> float:
-	return lerpf(2.2, 0.35, clampf((speed - 4.0) / 9.0, 0.0, 1.0))
+## A glider sinks at one steady rate, whatever your speed, so every glide reads the same.
+const GLIDE_SINK := 1.5
+static func glide_fall(_speed: float) -> float:
+	return GLIDE_SINK
 
 func can_glide() -> bool:
 	return not grounded and roll_t <= 0.0 and fly_t <= 0.0 and glide_cd <= 0.0 and not downed and stun_t <= 0.0 \
@@ -482,6 +492,31 @@ func _shove_along() -> void:
 func can_fire() -> bool:
 	return not (drink_t > 0.0 or reload_t > 0.0 or roll_t > 0.0 or downed or out or stun_t > 0.0 or grap.size() > 0 or gliding or charge.size() > 0)
 
+## Getting yourself back up when you're down and alone (see the downed branch of sim).
+const SELF_UP_TIME := 6.0
+var self_up := 0.0
+var self_up_used := false
+
+func can_self_up() -> bool:
+	if not downed or self_up_used:
+		return false
+	if kin and (kin as Kin).state != "fainted" and (kin as Kin).hp > 0.0:
+		return false       # your kin is on its way to pick you up
+	for o in m.hunters:
+		if o != self and o.team == team and not o.out and not o.extracted and not o.downed:
+			return false   # a teammate can still come for you
+	return true
+
+func _quiet_here() -> bool:
+	for o in m.hunters:
+		if o.team != team and not o.out and not o.downed and flat_dist(o) < 10.0:
+			return false
+	return true
+
+const SWAY := [0.0, 0.6, -0.4, 1.0, -0.8, 0.3, -1.0, 0.5]
+var shot_n := 0
+var safe_pos := Vector3.INF    # the last solid ground you stood on, well away from any edge
+
 func fire() -> void:
 	if not can_fire() or fire_cd > 0.0:
 		return
@@ -499,7 +534,9 @@ func fire() -> void:
 	recoil = 1.0
 	muzzle_t = 0.05
 	var dir := aim_dir()
-	var a := atan2(dir.y, dir.x) + randf_range(-1.0, 1.0) * (float(wpn["spread"]) * (1.0 + bloom * 1.6) + bloom * 0.025)
+	# no dice rolls: every shot goes where you aim. Fast guns sway in a fixed, learnable pattern
+	shot_n += 1
+	var a: float = atan2(dir.y, dir.x) + float(wpn["spread"]) * 0.45 * float(SWAY[shot_n % SWAY.size()])
 	var shot_y := pos.y + 0.95 * float(cdat["scale"])
 	var start := Vector3(pos.x + cos(a) * 0.6, shot_y, pos.z + sin(a) * 0.6)
 	var spd: float = wpn["speed"]
@@ -720,6 +757,17 @@ func sim(dt: float) -> void:
 		# your other kin comes out of the satchel to pick you up if the active one can't
 		if kin and (kin as Kin).state == "fainted" and kin2 and (kin2 as Kin).hp > 0.0:
 			swap_kin(true)
+		# nobody left to help? Once per expedition you can drag yourself back up: hold interact
+		# for a few seconds without getting hit (bots do it when no one is near)
+		if can_self_up() and not remote:
+			var want: bool = bool(inp.get("interact", false)) if ctrl == "local" else _quiet_here()
+			if want:
+				self_up += dt / SELF_UP_TIME
+				if self_up >= 1.0:
+					self_up_used = true
+					self_up = 0.0
+					m.revive_hunter(self, self)
+					return
 		down_hp -= Data.MATCH["bleed"] * dt
 		if down_hp <= 0.0:
 			m.eliminate(self, last_hit_by, "bled out")
@@ -791,7 +839,7 @@ func _physics(dt: float) -> void:
 		_grapple(dt)
 		return
 	var mv: Vector2 = inp["move"] if stun_t <= 0.0 and root_t <= 0.0 else Vector2.ZERO
-	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * (0.45 if drink_t > 0.0 else 1.0) * (0.6 if bshield_on else 1.0) * (0.55 if crouch else 1.0) * (1.0 + gear_stat("speed")) * fuse_mod("speed")
+	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * (0.8 if fire_cd > 0.0 else 1.0) * (0.45 if drink_t > 0.0 else 1.0) * (0.6 if bshield_on else 1.0) * (0.55 if crouch else 1.0) * (1.0 + gear_stat("speed")) * fuse_mod("speed")
 	var hv := Vector2(vel.x, vel.z)
 	var cur := hv.length()
 	if charge.size() > 0:
@@ -815,19 +863,23 @@ func _physics(dt: float) -> void:
 	elif gliding:
 		# the glider keeps the speed you bring into it and bleeds it off slowly; steering turns
 		# you without slowing you down. Speed is what keeps you up (see the fall below).
-		var gs := DROP_SPEED if dropping else (GLIDE_SPEED * 0.6 if glide_fuel <= 0.001 else GLIDE_SPEED) * (1.0 + gear_stat("glide_speed"))
+		var gs := (DIVE_SPEED if diving else DROP_SPEED) if dropping else (GLIDE_SPEED * 0.6 if glide_fuel <= 0.001 else GLIDE_SPEED) * (1.0 + gear_stat("glide_speed"))
 		var head := hv.normalized() if cur > 0.3 else mv
 		# steering hard against your heading works as an air brake
 		var brake := 0.0
 		if mv.length() > 0.1 and head.length() > 0.1:
 			brake = clampf(-head.dot(mv.normalized()) + 0.3, 0.0, 1.3) * 7.0
-		var drag := GLIDE_DRAG + maxf(0.0, cur - gs) * 0.25
-		var keep := maxf(gs * 0.6, cur - (drag + brake) * dt) if cur > gs * 0.6 else gs * 0.6
-		if dropping: keep = gs
+		# a steady cruise: extra speed (from a pad or a dash) bleeds back to it, a slow start
+		# picks up to it, and steering against your heading brakes
+		var drag := GLIDE_DRAG + maxf(0.0, cur - gs) * 0.25 if cur > gs else 8.0
+		var keep := maxf(gs * 0.5, move_toward(cur, gs, drag * dt) - brake * dt)
 		keep = minf(keep, GLIDE_MAX)
 		if mv.length() > 0.1:
 			head = head.slerp(mv.normalized(), 1.0 - exp(-3.2 * dt)) if head.length() > 0.1 else mv.normalized()
 		hv = head * keep
+		if dropping:
+			# the drop goes where you point and stops when you let go: no fixed heading to circle on
+			hv = Vector2(vel.x, vel.z).lerp(mv * gs, 1.0 - exp(-(3.0 if diving else 4.0) * dt))
 		# wind roads carry you along (either way), updrafts lift you
 		in_current = false
 		if not dropping:
@@ -849,20 +901,13 @@ func _physics(dt: float) -> void:
 		# in the air you keep most of the speed you left the ground with: steering bends it, slowly
 		var k := (2.6 if over else 16.0) if grounded else (0.7 if over else 2.2)
 		hv += (wish - hv) * (1.0 - exp(-k * dt))
-	if dropping and drop_from != Vector2.INF:
-		# the drop only lets you pick a spot near where you jumped: steering pushes against the edge of a small circle
-		var rel := Vector2(pos.x, pos.z) - drop_from
-		var nxt := rel + hv * dt
-		if nxt.length() > DROP_ZONE:
-			var nrm := nxt.normalized()
-			hv -= nrm * maxf(0.0, hv.dot(nrm))
 	vel.x = hv.x; vel.z = hv.y
 	update_lip()
 	_update_glide(dt)
 	if gliding and in_current:
 		pass   # the current sets the height
 	elif gliding:
-		var sink := DROP_FALL if dropping else (3.0 if glide_fuel <= 0.001 else glide_fall(Vector2(vel.x, vel.z).length()))
+		var sink := (DIVE_FALL if diving else DROP_FALL) if dropping else (3.0 if glide_fuel <= 0.001 else glide_fall(Vector2(vel.x, vel.z).length()))
 		vel.y = lerpf(vel.y, -sink, 1.0 - exp(-4.0 * dt))
 	elif not grounded:
 		vel.y -= H_GRAV * (FALL_MULT if vel.y < 0.0 and fly_t <= 0.0 else 1.0) * dt
@@ -950,6 +995,7 @@ func _physics(dt: float) -> void:
 				m.fx.dust(pos, 5)
 			if dropping:
 				dropping = false
+				diving = false
 				m.on_drop_landed(self)
 			if shot_down:
 				shot_down = false
@@ -975,17 +1021,37 @@ func _physics(dt: float) -> void:
 		pos.y = g
 	if grounded:
 		last_gy = pos.y
+		if int(m.time * 10.0) != int((m.time - dt) * 10.0) and not dropping:
+			var w: World = m.world
+			if not (w.is_void(pos.x + 1.4, pos.z) or w.is_void(pos.x - 1.4, pos.z) or w.is_void(pos.x, pos.z + 1.4) or w.is_void(pos.x, pos.z - 1.4)):
+				safe_pos = pos
 	_try_ledge_grab(dt)
 	if pos.y < -14.0:
 		fall_out()
+
+## The skydive ends: the glider snaps open and the fall slows right down.
+func _deploy() -> void:
+	if not diving:
+		return
+	diving = false
+	glide_k = 0.0
+	vel.y = maxf(vel.y, -3.0)
+	m.sfx("glide", pos, -2.0)
+	m.fx.burst(pos + Vector3(0, 1.7, 0), Color("f3eee2"), 12, 3.0, 0.4, 0.0)
 
 ## Hold jump while falling to open the glider. It folds when you land, run out, dash, or get hit.
 func _update_glide(dt: float) -> void:
 	if dropping:
 		# the opening drop: the glider stays open until you land, or until you sink below the islands
 		gliding = not grounded
+		if diving:
+			var void_below: bool = m.world.is_void(pos.x, pos.z)
+			var above: float = pos.y - (World.VOID if void_below else m.world.ground_at(pos.x, pos.z))
+			if (not void_below and above < DEPLOY_H) or (void_below and pos.y < 7.0):
+				_deploy()
 		if pos.y < -1.5:
 			dropping = false
+			diving = false
 			glide_fuel = 1.0
 		return
 	if grounded:
@@ -1172,7 +1238,7 @@ func render(delta: float, alpha: float) -> void:
 	var hv := Vector2(vel.x, vel.z)
 	var spd := hv.length()
 	crouch_k = move_toward(crouch_k, 1.0 if crouch else 0.0, delta * 8.0)
-	anim.update(delta, {"vel": vel, "face": face, "grounded": grounded and pad.is_empty(), "gliding": gliding, "rolling": roll_t > 0.0,
+	anim.update(delta, {"vel": vel, "face": face, "grounded": grounded and pad.is_empty(), "gliding": gliding and not diving, "rolling": roll_t > 0.0,
 		"crouch": crouch_k, "downed": downed, "ledge": grap.size() > 0, "reload": (1.0 - reload_t / maxf(0.1, float(wpn["reload"]))) if reload_t > 0.0 else -1.0, "drink": (1.0 - drink_t / DRINK_TIME) if drink_t > 0.0 else -1.0,
 		"recoil": recoil, "flash": clampf(flash_t / 0.12, 0.0, 1.0), "fired": idle_fire})
 	if anim.stepped and not downed and not crouch:
@@ -1195,10 +1261,6 @@ func render(delta: float, alpha: float) -> void:
 				var gy: float = m.world.ground_at(pos.x, pos.z)
 				if gy > World.VOID + 1.0:
 					m.fx.ring(Vector3(pos.x, gy, pos.z), 1.1, Color(1, 1, 1, 0.7), 0.25)
-				# and the circle you can still steer within
-				if drop_from != Vector2.INF:
-					var zy: float = m.world.ground_at(drop_from.x, drop_from.y)
-					m.fx.ring(Vector3(drop_from.x, maxf(zy, 0.0) + 0.1, drop_from.y), DROP_ZONE + 0.8, Color(0.75, 0.95, 1.0, 0.35), 0.3)
 		wind_t -= delta
 		if wind_t <= 0.0:
 			wind_t = 0.09
@@ -1216,8 +1278,9 @@ func render(delta: float, alpha: float) -> void:
 		rig.rotation.x = lerpf(rig.rotation.x, -1.35, delta * 8.0)
 		rig.position.y = 0.15
 	else:
-		rig.rotation.x = lerpf(rig.rotation.x, 0.0, delta * 10.0)
-	glide_k = move_toward(glide_k, 1.0 if gliding else 0.0, delta * (7.0 if gliding else 9.0))
+		# skydiving: flat out, belly to the ground, tipped toward where you steer
+		rig.rotation.x = lerpf(rig.rotation.x, -1.15 if diving else 0.0, delta * (5.0 if diving else 10.0))
+	glide_k = move_toward(glide_k, 1.0 if gliding and not diving else 0.0, delta * (7.0 if gliding else 9.0))
 	var gl: Node3D = torso.get_node("Glider")
 	gl.visible = glide_k > 0.02
 	if gl.visible:

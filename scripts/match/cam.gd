@@ -6,6 +6,13 @@ const HEIGHT := 27.0
 const BACK := 17.5
 const LEAD_X := 4.2
 const LEAD_Z := 5.4
+## Expedition camera presets (Settings "cam_style"): pitch in degrees, distance, field of view.
+const STYLES := {
+	"supervive": {"pitch": 62.0, "dist": 25.0, "fov": 38.0, "name": "Supervive (steep, wide)"},
+	"high": {"pitch": 70.0, "dist": 27.0, "fov": 36.0, "name": "Top-down"},
+	"classic": {"pitch": 57.0, "dist": 32.2, "fov": 28.0, "name": "Classic (flat, far)"},
+	"low": {"pitch": 50.0, "dist": 23.0, "fov": 42.0, "name": "Low (more horizon)"},
+}
 
 var focus := Vector3.ZERO
 var target: Node3D = null
@@ -16,6 +23,19 @@ var lead := 1.0
 var kick := 0.0               # a quick zoom-in punch on big moments
 var top := 0.0                # 0 = the usual angle, 1 = looking straight down (the opening drop)
 var top_to := 0.0
+var pitch := deg_to_rad(57.0)  # how steeply the camera looks down
+var dist := 32.2              # how far back it sits
+var yaw := 0.0                # turned around the focus (0 = looking north); only the skyship ride turns it
+var yaw_to := 0.0
+var chase := 0.0              # 0 = the usual angle, 1 = low behind-the-ship view
+var chase_to := 0.0
+
+## Picks one of STYLES (the expedition camera).
+func use_style(id: String) -> void:
+	var st: Dictionary = STYLES.get(id, STYLES["supervive"])
+	pitch = deg_to_rad(float(st["pitch"]))
+	dist = float(st["dist"])
+	fov = float(st["fov"])
 
 func _ready() -> void:
 	fov = 28.0
@@ -44,11 +64,13 @@ func follow(p: Vector3, delta: float, mouse_lead := true) -> void:
 		var l := n.length()
 		var f := clampf((l - 0.12) / 0.8, 0.0, 1.0)
 		if l > 0.0:
-			off = Vector3(n.x / l * f * LEAD_X, 0, n.y / l * f * LEAD_Z) * lead
+			off = Vector3(n.x / l * f * LEAD_X, 0, n.y / l * f * LEAD_Z).rotated(Vector3.UP, yaw) * lead
 	var want := Vector3(p.x, p.y * 0.6, p.z) + off
 	focus = focus.lerp(want, minf(1.0, delta * 6.0))
 	zoom = lerpf(zoom, zoom_to, minf(1.0, delta * 2.5))
 	top = move_toward(top, top_to, delta * (0.9 if top_to < top else 2.0))
+	chase = move_toward(chase, chase_to, delta * 0.7)
+	yaw = lerp_angle(yaw, yaw_to, minf(1.0, delta * 1.6))
 	var shake := Vector3.ZERO
 	if trauma > 0.0:
 		var s := trauma * trauma * 0.6
@@ -60,10 +82,16 @@ func follow(p: Vector3, delta: float, mouse_lead := true) -> void:
 func _apply(shake: Vector3) -> void:
 	kick = maxf(0.0, kick - get_process_delta_time() * 0.5)
 	var z := zoom * (1.0 - kick)
-	far = 120.0 * maxf(1.0, z) + 30.0
+	far = (120.0 * maxf(1.0, z) + 30.0) * (1.0 + 1.5 * chase)
 	var k := top * top * (3.0 - 2.0 * top)
-	position = focus + Vector3(0, HEIGHT * z * (1.0 + 0.15 * k), BACK * z * (1.0 - 0.9 * k)) + shake
-	look_at(focus + shake, Vector3.UP if k < 0.95 else Vector3(0, 0, -1))
+	var c := chase * chase * (3.0 - 2.0 * chase)
+	# pitch: the style's angle, tipped toward straight down for a bird's-eye view, or low behind
+	# the skyship for the ride
+	var p := lerpf(lerpf(pitch, deg_to_rad(88.0), k), deg_to_rad(30.0), c)
+	var d := dist * z * (1.0 + 0.15 * k)
+	var back := Vector3(0, sin(p), cos(p)).rotated(Vector3.UP, yaw)
+	position = focus + back * d + shake
+	look_at(focus + shake, Vector3.UP if p < deg_to_rad(85.0) else Vector3(0, 0, -1).rotated(Vector3.UP, yaw))
 
 ## Where the mouse points on the horizontal plane at height y.
 func mouse_on_plane(y: float) -> Vector3:

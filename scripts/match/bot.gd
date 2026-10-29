@@ -81,12 +81,20 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 		move += Vector2(-to.y, to.x) * a["strafe"] * 0.8
 		# aim with lead and some error that shrinks with skill
 		var lead: Vector2 = Vector2(tgt.vel.x, tgt.vel.z) * (d / float(h.wpn["speed"])) * a["skill"]
-		if randf() < dt * 3.0:
-			a["aim_err"] = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * (1.15 - a["skill"]) * 1.8
+		# the aim drifts smoothly around the target instead of jittering shot to shot
+		a["aim_t"] = float(a.get("aim_t", 0.0)) - dt
+		if a["aim_t"] <= 0.0:
+			a["aim_t"] = randf_range(0.7, 1.3)
+			a["aim_goal"] = Vector2(randf_range(-1, 1), randf_range(-1, 1)) * (1.15 - a["skill"]) * 1.6
+		a["aim_err"] = (a["aim_err"] as Vector2).lerp(a.get("aim_goal", Vector2.ZERO), 1.0 - exp(-3.0 * dt))
 		var aim: Vector2 = Vector2(tgt.pos.x, tgt.pos.z) + lead + a["aim_err"]
 		inp["aim"] = Vector3(aim.x, tgt.pos.y + 0.9, aim.y)
 		var los: bool = m.world.los(h.pos, tgt.pos, h.pos.y + 0.95)
-		if los and d < float(h.wpn["range"]) + 0.5:
+		# fast guns fire in bursts with a beat between them (to reposition); slow ones on cooldown
+		a["burst"] = float(a.get("burst", 0.0)) - dt
+		if a["burst"] < -randf_range(0.35, 0.6):
+			a["burst"] = randf_range(0.7, 1.3)
+		if los and d < float(h.wpn["range"]) + 0.5 and (a["burst"] > 0.0 or float(h.wpn["rate"]) > 0.4):
 			inp["fire"] = true
 		elif not los:
 			move = to
@@ -111,9 +119,6 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 				a["dash_dir"] = side
 				inp["dash"] = true
 		a["hurt_hp"] = h.hp
-		if a["jump_cd"] <= 0.0 and randf() < 0.3:
-			a["jump_cd"] = randf_range(2.5, 6)
-			inp["jump"] = true
 		_use_sig(m, h, tgt)
 		_use_sec(m, h, tgt)
 	else:

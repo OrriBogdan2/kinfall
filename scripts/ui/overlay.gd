@@ -235,6 +235,7 @@ func _show_settings() -> void:
 				Save.save_game())
 			name_row.add_child(ne)
 			v.add_child(name_row)
+			_choice(v, "Expedition camera", "cam_style", CamRig.STYLES.keys().map(func(k): return [k, CamRig.STYLES[k]["name"]]))
 			_slider(v, "Camera lean toward the cursor", "cam_lead", 0.0, 1.5)
 			_toggle(v, "Damage numbers", "damage_numbers")
 			_toggle(v, "Tips during matches", "tips")

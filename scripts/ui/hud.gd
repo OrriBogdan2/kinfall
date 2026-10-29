@@ -188,18 +188,14 @@ func _draw_world_labels() -> void:
 			continue
 		var tc: Color = Data.TEAM_COLORS[h.team % Data.TEAM_COLORS.size()]
 		var ally: bool = m.player and h.team == m.player.team
-		_ctext(sp + Vector2(0, -10), h.pname, 17, tc if not ally else GOOD, big)
+		_ctext(sp + Vector2(0, -12), h.pname, 16, tc if not ally else GOOD, big)
 		if h.downed:
 			_bar(Rect2(sp + Vector2(-26, -2), Vector2(52, 5)), h.down_hp / Data.MATCH["down_hp"], BAD)
 			_ctext(sp + Vector2(0, 14), "DOWN", 12, BAD, big)
 			if h.revive > 0.0:
 				_arc(sp + Vector2(0, 30), 10, h.revive, GOOD, 3.0)
 		else:
-			if h.armor > 0.5:
-				_seg_bar(Rect2(sp + Vector2(-30, -4), Vector2(60, 3)), h.armor, h.max_armor, h.armor / maxf(1.0, h.max_armor), ARMOR_COL, 25.0)
-			_seg_bar(Rect2(sp + Vector2(-30, 2), Vector2(60, 6)), h.hp, h.max_hp, h.hp / h.max_hp, (HP_LOW if not ally else GOOD) if h.hp < h.max_hp * 0.35 else (tc if not ally else GOOD), 25.0)
-			if h.shield > 0.0:
-				c.draw_rect(Rect2(sp + Vector2(-30, 2), Vector2(60 * clampf(h.shield / 120.0, 0.0, 1.0), 6)), Color(0.85, 0.93, 1.0, 0.5))
+			_vitals(sp + Vector2(0, 4), 64.0, h, (HP_LOW if not ally else GOOD) if h.hp < h.max_hp * 0.35 else (tc if not ally else GOOD), 0.0)
 	for mb in m.mobs:
 		if mb.dead or cam.is_position_behind(mb.position):
 			continue
@@ -438,7 +434,8 @@ func _narrow(sz: Vector2) -> bool:
 ## ------------------------------------------------------------------ combat HUD
 ## Bottom centre: armor and health over the ability row. Bottom left: your kin. Bottom right: your
 ## weapon and what you're carrying. Left: your squad. Hits on you show which way they came from.
-const ARMOR_COL := Color("7ac8ff")
+const ARMOR_COL := Color("dfe9f7")      # armor: silver-white, segmented, sits above health
+const STAMINA_COL := Color("ffd66a")    # dash charges: yellow pips under the bars
 const HP_COL := Color("8fe0a0")
 const HP_LOW := Color("ff6a5a")
 var armor_lerp := 1.0
@@ -484,6 +481,29 @@ func _sweep(center: Vector2, radius: float, frac: float, col: Color) -> void:
 	c.draw_colored_polygon(pts, col)
 
 ## A segmented bar: ticks every `step` points, a pale trail where damage was just taken.
+## Armor over health, the same everywhere: a thin silver armor bar (empty outline when broken, so
+## you know it comes back), a thick health bar in 25-point chunks with a pale trail for damage just
+## taken, and little shield and cross marks so it's clear which is which.
+func _vitals(sp: Vector2, w: float, h: Hunter, hp_col: Color, trail: float, numbers := false) -> void:
+	var x0 := sp.x - w * 0.5
+	if h.max_armor > 0.5:
+		var ar := Rect2(Vector2(x0, sp.y - 9), Vector2(w, 4))
+		_seg_bar(ar, h.armor, h.max_armor, 0.0, ARMOR_COL, 25.0)
+		var sc := Vector2(x0 - 9, sp.y - 7)
+		var shp := PackedVector2Array([sc + Vector2(-4, -4), sc + Vector2(4, -4), sc + Vector2(4, 0), sc + Vector2(0, 4.5), sc + Vector2(-4, 0)])
+		c.draw_colored_polygon(shp, Color(0.03, 0.03, 0.05, 0.85))
+		c.draw_polyline(shp + PackedVector2Array([shp[0]]), Color(ARMOR_COL, 1.0 if h.armor > 0.5 else 0.35), 1.5)
+	var hr := Rect2(Vector2(x0, sp.y), Vector2(w, 9))
+	_seg_bar(hr, h.hp, h.max_hp, trail, hp_col, 25.0)
+	if h.shield > 0.0:
+		c.draw_rect(Rect2(hr.position, Vector2(w * clampf(h.shield / 120.0, 0.0, 1.0), 9)), Color(0.85, 0.93, 1.0, 0.5))
+	var pc := Vector2(x0 - 9, sp.y + 4.5)
+	c.draw_circle(pc, 5.5, Color(0.03, 0.03, 0.05, 0.85))
+	c.draw_rect(Rect2(pc - Vector2(3.5, 1), Vector2(7, 2)), hp_col)
+	c.draw_rect(Rect2(pc - Vector2(1, 3.5), Vector2(2, 7)), hp_col)
+	if numbers:
+		_text(Vector2(hr.end.x + 5, sp.y + 9), str(int(ceil(h.hp))), 12, Color(1, 1, 1, 0.9), big)
+
 func _seg_bar(r: Rect2, val: float, maxv: float, trail: float, col: Color, step: float) -> void:
 	_rounded(r.grow(2.0), Color(0.03, 0.03, 0.05, 0.82), 4)
 	var f := clampf(val / maxf(1.0, maxv), 0.0, 1.0)
@@ -554,7 +574,7 @@ func _draw_vitals(sz: Vector2, p: Hunter) -> void:
 	c.draw_circle(bc, 24, Color(0.04, 0.04, 0.06, 0.92))
 	c.draw_arc(bc, 24, 0, TAU, 40, hc, 2.5, true)
 	_ctext(bc + Vector2(0, 9), String(Data.HEROES[p.hero]["name"]).substr(0, 1), 24, hc, big)
-	if p.lives < 50:
+	if p.lives < 50 and p.lives > 1:
 		for i in p.lives:
 			var hp_c := bc + Vector2((i - (p.lives - 1) * 0.5) * 11.0, 32)
 			c.draw_circle(hp_c, 4.0, Color("ff7a8a"))
@@ -896,7 +916,7 @@ func _draw_prompt(sz: Vector2, p: Hunter) -> void:
 func _draw_crosshair(p: Hunter) -> void:
 	var mp := c.get_local_mouse_position()
 	var col := INK
-	var gap := 6.0 + (p.recoil * 6.0) + p.bloom * 9.0
+	var gap := 6.0 + (p.recoil * 4.0)
 	for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
 		c.draw_line(mp + d * gap, mp + d * (gap + 7.0), Color(0, 0, 0, 0.6), 4.0)
 		c.draw_line(mp + d * gap, mp + d * (gap + 7.0), col, 2.0)
@@ -921,7 +941,13 @@ func _draw_downed(sz: Vector2, p: Hunter) -> void:
 	var who := "Your kin or a teammate can pick you up."
 	if p.kin and p.kin.state == "fainted":
 		who = "Your kin is out cold. Only a teammate can help."
-	_ctext(Vector2(sz.x * 0.5, sz.y * 0.32 + 28), who, 16, INK)
+	if not p.can_self_up():
+		_ctext(Vector2(sz.x * 0.5, sz.y * 0.32 + 28), who, 16, INK)
+	else:
+		who = "No one's coming. Hold %s to drag yourself back up (once per expedition)." % Settings.key_cap("interact")
+		_ctext(Vector2(sz.x * 0.5, sz.y * 0.32 + 28), who, 16, GOLD)
+		if p.self_up > 0.0:
+			_bar(Rect2(Vector2(sz.x * 0.5 - 140, sz.y * 0.32 + 58), Vector2(280, 8)), p.self_up, GOOD)
 	_bar(Rect2(Vector2(sz.x * 0.5 - 140, sz.y * 0.32 + 44), Vector2(280, 8)), p.down_hp / Data.MATCH["down_hp"], BAD)
 	if p.revive > 0.0:
 		_bar(Rect2(Vector2(sz.x * 0.5 - 140, sz.y * 0.32 + 58), Vector2(280, 8)), p.revive, GOOD)
@@ -960,27 +986,25 @@ var head_hp := 1.0
 func _draw_overhead(p: Hunter) -> void:
 	var cam := m.cam
 	var at := p.position + Vector3(0, 2.7 * float(p.cdat["scale"]), 0)
-	if cam.is_position_behind(at) or p.downed:
+	if cam.is_position_behind(at) or p.downed or p.riding:
 		return
 	var sp := cam.unproject_position(at)
-	var w := 70.0
+	var w := 84.0
 	var frac := clampf(p.hp / p.max_hp, 0.0, 1.0)
-	head_hp = lerpf(head_hp, frac, 0.08)
-	if p.armor > 0.5:
-		_seg_bar(Rect2(sp + Vector2(-w * 0.5, -5), Vector2(w, 3)), p.armor, p.max_armor, p.armor / maxf(1.0, p.max_armor), ARMOR_COL, 25.0)
-	_seg_bar(Rect2(sp + Vector2(-w * 0.5, 0), Vector2(w, 7)), p.hp, p.max_hp, head_hp, GOOD if frac > 0.35 else BAD, 25.0)
-	if p.shield > 0.0:
-		c.draw_rect(Rect2(sp + Vector2(-w * 0.5, 0), Vector2(w * clampf(p.shield / 120.0, 0.0, 1.0), 7)), Color(0.85, 0.93, 1.0, 0.5))
-	# stamina: one segment per dash, the next one filling as it recharges
+	head_hp = maxf(frac, lerpf(head_hp, frac, 0.06))
+	_vitals(sp, w, p, GOOD if frac > 0.35 else BAD, head_hp, true)
+	# stamina: one yellow pip per dash under the bars, the next one filling as it recharges
 	var n := int(p.max_dashes())
-	var gap := 3.0
-	var segw := (w - gap * (n - 1)) / n
 	for i in n:
-		var r := Rect2(sp + Vector2(-w * 0.5 + i * (segw + gap), 12), Vector2(segw, 5))
-		c.draw_rect(r.grow(1.5), Color(0.04, 0.04, 0.06, 0.75))
+		var cpt := sp + Vector2(-w * 0.5 + 6 + i * 13, 17)
 		var fill := clampf(p.dashes - i, 0.0, 1.0)
-		var col := Color("bfe6ff") if fill >= 1.0 else Color("5f7f99")
-		c.draw_rect(Rect2(r.position, Vector2(segw * fill, 5)), col)
+		var dia := PackedVector2Array([cpt + Vector2(0, -5), cpt + Vector2(5, 0), cpt + Vector2(0, 5), cpt + Vector2(-5, 0)])
+		c.draw_colored_polygon(dia, Color(0.04, 0.04, 0.06, 0.8))
+		if fill >= 1.0:
+			var inner := PackedVector2Array([cpt + Vector2(0, -3.5), cpt + Vector2(3.5, 0), cpt + Vector2(0, 3.5), cpt + Vector2(-3.5, 0)])
+			c.draw_colored_polygon(inner, STAMINA_COL)
+		elif fill > 0.0:
+			c.draw_arc(cpt, 3.0, -PI * 0.5, -PI * 0.5 + TAU * fill, 10, Color(STAMINA_COL, 0.6), 2.0)
 	if p.reload_t > 0.0:
 		# reloading: a filling ring beside your head, and the word under your bars
 		var rf := 1.0 - p.reload_t / float(p.wpn["reload"])

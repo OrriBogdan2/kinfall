@@ -54,6 +54,7 @@ var paused := false
 var slowmo := 0.0
 var slow_k := 0.35
 var killcam_text := ""
+var cam_style := ""
 var hitstop := 0.0
 var aim_line: MeshInstance3D
 var aim_ring: MeshInstance3D
@@ -115,6 +116,8 @@ func start(o: Dictionary) -> void:
 	CombatBus.status_applied.connect(_combo_cb)
 	cam = CamRig.new(); cam.name = "Cam"; add_child(cam)
 	cam.lead = float(Settings.get_v("cam_lead"))
+	cam_style = String(Settings.get_v("cam_style"))
+	cam.use_style(cam_style)
 	_build_shot_pool()
 	if o.has("net"):
 		net_on = true
@@ -390,6 +393,7 @@ func _start_drop(h: Hunter, at: Vector3) -> void:
 		off = Vector3.ZERO
 	h.teleport(at + off + Vector3(0, 26.0, 0))
 	h.dropping = true
+	h.diving = true
 	h.drop_from = Vector2(at.x + off.x, at.z + off.z)
 	h.grounded = false
 	h.gliding = true
@@ -426,14 +430,15 @@ func ship_jump(h: Hunter) -> void:
 	var off := Vector3(rng.randf_range(-0.8, 0.8), 0, rng.randf_range(-0.8, 0.8))
 	h.teleport(ship_pos() + Vector3(0, -1.5, 0) + off)
 	h.dropping = true
-	h.drop_from = Vector2(h.pos.x, h.pos.z) + Vector2(ship["dir"].x, ship["dir"].z) * 3.0
+	h.diving = true
+	h.drop_from = Vector2(h.pos.x, h.pos.z)
 	h.gliding = true
 	h.glide_k = 1.0
 	h.grounded = false
 	h.vel = ship["dir"] * 3.0
 	if h == player:
 		sfx("whoosh", null, -2.0)
-		if hud: hud.toast("Steer with %s%s%s%s to pick where you land" % [Settings.key_cap("up"), Settings.key_cap("left"), Settings.key_cap("down"), Settings.key_cap("right")], Color("cfeaff"))
+		if hud: hud.toast("Steer with %s%s%s%s  ·  %s opens your glider early" % [Settings.key_cap("up"), Settings.key_cap("left"), Settings.key_cap("down"), Settings.key_cap("right"), Settings.key_cap("jump")], Color("cfeaff"))
 
 func _update_ship(dt: float) -> void:
 	if ship.is_empty():
@@ -1219,6 +1224,8 @@ func _check_team(team: int) -> void:
 	for x in members:
 		if not x.downed:
 			return
+		if not x.self_up_used and not x.remote:
+			return       # can still get themselves back up (Hunter.can_self_up)
 		if x.kin and not x.kin.dead and x.kin.state not in ["fainted"] and x.kin.hp > 0.0:
 			return
 		if x.kin2 and not x.kin2.dead and x.kin2.hp > 0.0:
@@ -1373,6 +1380,9 @@ func on_fell(e: Ent) -> void:
 			e.vel = Vector3.ZERO
 			return
 		var by: Ent = e.last_hit_by if time - e.kb_t < 4.0 else null
+		if not e.remote and time < length - 1.0 and (not e.downed or e.down_hp > Data.MATCH["down_hp"] * 0.35):
+			_abyss_rescue(e, by)
+			return
 		eliminate(e, by, "abyss")
 	elif e is Mob:
 		e.dead = true
@@ -1380,6 +1390,46 @@ func on_fell(e: Ent) -> void:
 		on_mob_dead(e, e.last_hit_by, {"src": "fall"})
 	elif e is Kin:
 		e.dead = true
+
+## One life, but harder to lose it: the abyss throws you back up onto the last solid ground you
+## stood on. It costs a third of your health. Blown off by another hunter, or with too little
+## health left, you land knocked down instead (they get the knock) and your squad or kin can still
+## get you up.
+func _abyss_rescue(h: Hunter, by: Ent) -> void:
+	var back: Vector3 = h.safe_pos
+	if back == Vector3.INF or world.is_void(back.x, back.z):
+		back = h.ai.get("land", world.spawns[0] if world.spawns.size() > 0 else world.random_ground())
+	h.teleport(back + Vector3(0, 0.05, 0))
+	h.vel = Vector3.ZERO
+	h.gliding = false; h.grap = {}; h.pad = {}; h.charge = {}; h.roll_t = 0.0; h.shot_down = false
+	h.grounded = true
+	fx.ring(h.pos + Vector3(0, 0.05, 0), 2.2, Color("bfe9ff"), 0.5)
+	fx.burst(h.pos + Vector3(0, 0.6, 0), Color("bfe9ff"), 30, 6.0, 0.6, -2.0)
+	sfx("revive", h.pos, 0.0)
+	var credit: Ent = by.owner_h if by is Kin and by.owner_h else by
+	var pushed: bool = credit is Hunter and credit != h and (credit as Hunter).team != h.team
+	var cost := h.max_hp * 0.34
+	if h.downed:
+		# already down: thrown back still down, a good deal closer to bleeding out
+		h.down_hp -= Data.MATCH["down_hp"] * 0.35
+		h.self_up = 0.0
+		return
+	if pushed or h.hp <= cost + 1.0:
+		h.armor = 0.0
+		knock(h, by, {"src": "abyss"})
+		if h == player and hud:
+			hud.toast("The abyss threw you back, but you're down", Color("ffb0a0"))
+	else:
+		h.hp -= cost
+		h.armor = 0.0
+		h.stun_t = maxf(h.stun_t, 0.5)
+		h.inv_t = maxf(h.inv_t, 1.0)
+		add_feed("%s was thrown back by the abyss" % h.pname)
+		if h == player:
+			if hud:
+				hud.flash(Color("bfe9ff"), 0.3)
+				hud.toast("The abyss threw you back  ·  -%d health" % int(cost), Color("cfeaff"))
+			cam.add_trauma(0.4)
 
 func S_dev_god() -> bool:
 	return bool(opts.get("god", false)) or bool(opts.get("tutorial", false)) or bool(opts.get("training", false)) or Game.god
@@ -2034,24 +2084,36 @@ func _process(delta: float) -> void:
 				mi.look_at(mi.global_position + Vector3(v.x, 0, v.y), Vector3.UP)
 				var r: float = s["r"]
 				mi.scale = Vector3(r * 2.0, r * 2.0, r * 2.0 + v.length() * 0.025)
+	var sty := String(Settings.get_v("cam_style"))
+	if sty != cam_style:
+		cam_style = sty
+		cam.use_style(sty)
 	if player and player.riding:
-		# aboard the skyship: looking straight down at the whole map
-		cam.zoom_to = 2.6
-		cam.top_to = 1.0
-		cam.follow(Vector3(player.pos.x, 16.0 / 0.6, player.pos.z), delta, false)
+		# aboard the skyship: a low view from just behind and above it, looking ahead along its
+		# course over the islands, like riding the bus in a battle royale
+		var sd: Vector3 = ship.get("dir", Vector3.FORWARD)
+		cam.yaw_to = atan2(-sd.x, -sd.z)
+		cam.chase_to = 1.0
+		cam.top_to = 0.0
+		cam.zoom_to = 56.0 / cam.dist
+		if time < 0.5:
+			# boarding: start already behind the ship rather than swinging through it
+			cam.chase = 1.0; cam.yaw = cam.yaw_to; cam.zoom = cam.zoom_to
+		var fp := ship_pos() + sd * 30.0
+		cam.follow(Vector3(fp.x, (SHIP_Y - 8.0) / 0.6, fp.z), delta, false)
 	elif player and not player.out and not player.downed:
+		cam.chase_to = 0.0
+		cam.yaw_to = 0.0
 		if player.dropping:
-			# the drop: a bird's-eye view that closes in as you near the ground
+			# the drop: looking down over your shoulder, pulled back while you're high up
 			var gy: float = world.ground_at(player.pos.x, player.pos.z) if not world.is_void(player.pos.x, player.pos.z) else 0.0
 			var hk := clampf((player.pos.y - gy) / SHIP_Y, 0.0, 1.0)
-			cam.zoom_to = lerpf(1.15, 2.3, hk)
-			cam.top_to = clampf(hk * 1.6, 0.0, 1.0)
+			cam.zoom_to = lerpf(1.05, 1.7, hk)
+			cam.top_to = clampf(hk * 0.7, 0.0, 0.6)
 		else:
 			# high in the air or out over the abyss the camera pulls back so you can see where you'll land
-			var g2: float = world.ground_at(player.pos.x, player.pos.z)
-			var above := (player.pos.y - g2) if g2 > World.VOID + 1.0 else 8.0
-			var air := 0.0 if player.grounded else clampf(above / 10.0, 0.0, 1.0)
-			cam.zoom_to = 1.0 + air * (0.3 if player.gliding else 0.18)
+			# the camera only eases back while gliding, so jumps and falls never change the framing
+			cam.zoom_to = 1.12 if player.gliding else 1.0
 			cam.top_to = 0.0
 		cam.follow(player.prev.lerp(player.pos, alpha), delta, not player.dropping)
 	elif player and (player.downed or player.out):
@@ -2090,9 +2152,13 @@ func _gather_input() -> void:
 	var mv := Vector2(Input.get_axis("left", "right"), Input.get_axis("up", "down"))
 	if mv.length() > 1.0:
 		mv = mv.normalized()
+	# the camera only turns during the skyship ride and the drop after it: keys stay screen-relative
+	if absf(cam.yaw) > 0.001:
+		mv = mv.rotated(-cam.yaw)
 	player.inp["move"] = mv
-	# dropping in without steering: drift toward the nearest good landing spot instead of the abyss
-	if player.dropping and mv.length() < 0.1:
+	# dropping in without steering over the abyss: drift toward the nearest island so letting go
+	# of the keys never drops you into the void
+	if player.dropping and mv.length() < 0.1 and world.is_void(player.pos.x, player.pos.z):
 		var best := Vector3.INF; var bd := 1e9
 		for sp in world.spawns + world.portal_spots:
 			var d := Vector2(sp.x - player.pos.x, sp.z - player.pos.z).length()
@@ -3190,6 +3256,7 @@ func _flags(h: Hunter) -> int:
 	if h.bshield_on: f |= 2048
 	if h.reveal_t > 0.0: f |= 4096
 	if h.crouch: f |= 8192
+	if h.diving: f |= 16384
 	return f
 
 const KIN_STATES := ["shoulder", "flying", "flying_home", "active", "returning", "fainted", "reviving", "wild", "dazed"]
@@ -3314,6 +3381,7 @@ func _net_apply(e: Ent, it: Array) -> void:
 			h.dropping = f & 512 != 0
 			h.riding = f & 1024 != 0
 			h.bshield_on = f & 2048 != 0
+			h.diving = f & 16384 != 0
 			if f & 4096 != 0: h.reveal_t = maxf(h.reveal_t, 0.3)
 			h.crouch = f & 8192 != 0
 			h.down_hp = it[12]; h.revive = maxf(h.revive if h.revive > float(it[13]) and _rev_out.has(h.nid) else 0.0, float(it[13]))
