@@ -272,16 +272,20 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 			m.fx.burst(pos + Vector3(to.normalized().x * 0.6, 1.0, to.normalized().y * 0.6), Color("fff6c0"), 6, 2.5, 0.25)
 			m.sfx("shield", pos, -10.0, 1.6)
 			return 0.0
-	# getting hit while gliding heats the glider up; an overheated glider gets shot right down
-	# Gliders are vulnerable, as in Supervive: any real hit while gliding does double damage,
-	# knocks the glider out and stuns you, and you drop. Over the abyss that's usually the end.
+	# Getting hit while gliding, as in Supervive: no extra damage, but every hit eats glider fuel
+	# (and fuel burns faster for a moment after). A hit that empties it, or any hit on an already
+	# overheated glider, stuns you and sends you plummeting.
 	var spiked := false
 	if gliding and not dropping and dmg > 0.0 and opts.get("src", "") not in ["fall", "burn", "heat"]:
-		spiked = true
-		_shot_down()
-		if by is Hunter: (by as Hunter).add_stat("spikes")
-		elif by is Kin and (by as Kin).owner_h: (by as Kin).owner_h.add_stat("spikes")
-	var d := dmg * (2.0 if spiked else 1.0)
+		var was := glide_fuel
+		glide_fuel = maxf(0.0, glide_fuel - (0.05 + dmg / maxf(1.0, max_hp) * 0.6))
+		hit_heat_t = 1.0
+		if was <= 0.001 or glide_fuel <= 0.001:
+			spiked = true
+			_shot_down()
+			if by is Hunter: (by as Hunter).add_stat("spikes")
+			elif by is Kin and (by as Kin).owner_h: (by as Kin).owner_h.add_stat("spikes")
+	var d := dmg
 	if ctrl == "local" and m.opts.get("tutorial", false):
 		d *= 0.35
 	if hero == "bastion" and hp > max_hp * 0.5:
@@ -311,9 +315,7 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 		if armor <= 0.0:
 			m.on_armor_break(self, by)
 	if gliding and d > 0.0:
-		gliding = false
-		glide_cd = 0.8
-		m.fx.burst(pos + Vector3(0, 1.6, 0), Color("f3eee2"), 10, 3.0, 0.4, 8.0)
+		m.fx.burst(pos + Vector3(0, 1.6, 0), Color("ffb070"), 6, 2.5, 0.3, 6.0)    # the glider takes the heat
 	# only another hunter's damage (or their kin's) knocks you out of extracting, not monsters
 	if extract_prog > 0.0 and d > 0.0 and by != null and not (by is Mob):
 		var src: Ent = by
@@ -346,7 +348,8 @@ func update_lip() -> void:
 	below_lip = pos.y < ref - 0.5
 
 ## Below the lip of an island, a balloon on a string floats at ground level above you: that's
-## what everyone aims at. It glows purple while you glide, when a hit would knock you down.
+## what everyone aims at. It glows purple once your glider is overheated, when the next hit
+## knocks you out of the sky.
 var balloon: Node3D
 func _render_balloon() -> void:
 	var show := below_lip and not out and not extracted and visible
@@ -367,7 +370,7 @@ func _render_balloon() -> void:
 	var top := Vector3(position.x, lip_y + 1.0, position.z)
 	balloon.global_position = top + Vector3(0, sin(m.time * 3.0) * 0.06, 0)
 	var aura: Node3D = balloon.get_node("Aura")
-	aura.visible = gliding
+	aura.visible = gliding and glide_fuel <= 0.001
 	aura.scale = Vector3.ONE * (1.0 + 0.08 * sin(m.time * 9.0))
 	var string: Node3D = balloon.get_node("String")
 	var from_y := position.y + 1.6
@@ -500,6 +503,7 @@ func _open_glider() -> void:
 ## Shift, as in Supervive: a short dash, and a long one (its own, longer cooldown) when you're in
 ## the air or the short one is still recharging.
 var ex_cd := 0.0
+var hit_heat_t := 0.0           # a moment after being hit while gliding, the glider heats twice as fast
 var ex_next := false
 var dash_is_ex := false
 var dash_held := 0.0
@@ -872,7 +876,7 @@ func sim(dt: float) -> void:
 				inp[k] = false
 		return
 	tick_status(dt)
-	for k in ["ex_cd", "reveal_t", "inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t"]:
+	for k in ["hit_heat_t", "ex_cd", "reveal_t", "inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t"]:
 		set(k, maxf(0.0, get(k) - dt))
 	if shield_t > 0.0:
 		shield_t -= dt
@@ -1251,7 +1255,7 @@ func _update_glide(dt: float) -> void:
 				glide_cd = 0.5
 		elif not in_current:
 			# heat builds faster while the glider is lifting you out of the abyss
-			var hk := 4.0 if below_lip and lip_y - pos.y > 0.3 and vel.y > 0.0 else 1.0     # [footage] ~1s of lift burns a quarter
+			var hk := (4.0 if below_lip and lip_y - pos.y > 0.3 and vel.y > 0.0 else 1.0) * (2.0 if hit_heat_t > 0.0 else 1.0)     # [footage] ~1s of lift burns a quarter
 			glide_fuel = maxf(0.0, glide_fuel - dt * hk / (glide_max * (1.0 + gear_stat("heat"))))
 		if not dropping:
 			stats["glide_t"] = float(stats.get("glide_t", 0.0)) + dt
