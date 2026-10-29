@@ -58,7 +58,7 @@ func _ready() -> void:
 	if not Data.HEROES.has(hero): hero = "sage"
 	var w: String = Save.d.get("weapon", "")
 	if not Data.CLASSES[Data.HEROES[hero]["cls"]]["weapons"].has(w): w = Data.HEROES[hero]["weapon"]
-	hunter_node = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], w, hero)
+	hunter_node = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], w, hero, Save.d.get("look", {}))
 	hunter_node.position = Vector3(0.2, 0, 0.3); hunter_node.rotation.y = 2.6
 	add_child(hunter_node)
 	var ak := Save.active_kin()

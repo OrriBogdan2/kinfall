@@ -18,6 +18,32 @@ func _ready() -> void:
 	_setup_input()
 	RenderingServer.set_default_clear_color(Color("10131f"))
 	Settings.apply_all()
+	Settings.changed.connect(func(k: String):
+		if k == "mod_mode": apply_mod())
+	if modding():
+		god = true
+
+## Mod mode (Settings > Gameplay, for the game's owner): everything unlocked, building and
+## bridges are free and need no expeditions, kin can be spawned from the admin tools (F1).
+func modding() -> bool:
+	return bool(Settings.get_v("mod_mode")) and Overlay.admin_allowed()
+
+func apply_mod() -> void:
+	god = modding()
+	if not modding() or Save.d.is_empty():
+		return
+	Save.d["gems"] = maxi(int(Save.d["gems"]), 99999)
+	Save.d["extracts"] = maxi(int(Save.d.get("extracts", 0)), 10)
+	for s in Data.CROPS:
+		if int(Save.d.get("seeds", {}).get(s, 0)) < 10: Save.add_seed(s, 10)
+	if not Save.d.has("accs"): Save.d["accs"] = []
+	for a in Data.ACCS:
+		if not Save.d["accs"].has(a): Save.d["accs"].append(a)
+	Save.add_item("tonic", 10)
+	Save.save_game()
+	var s = main.screen_node() if main else null
+	if s and s.has_method("_refresh_top"):
+		s._refresh_top()
 
 func _key(action: String, keys: Array, mouse := -1) -> void:
 	if not InputMap.has_action(action):
@@ -36,11 +62,15 @@ func _setup_input() -> void:
 	_key("left", [KEY_A, KEY_LEFT]); _key("right", [KEY_D, KEY_RIGHT])
 	_key("fire", [], MOUSE_BUTTON_LEFT)
 	_key("secondary", [], MOUSE_BUTTON_RIGHT) # your hero's right-click ability
-	_key("throw", [KEY_C])
-	_key("crouch", [KEY_CTRL])                    # throw your kin, or call it back
-	_key("kin_skill", [KEY_Q])                # your kin's skill at the cursor
-	_key("signature", [KEY_E])                # class signature
-	_key("interact", [KEY_F])                 # catch, revive, open
+	# match keys follow Supervive's defaults: Q ability, RMB secondary, R ultimate, Shift dash,
+	# Space jump and glide, Ctrl sneak, E interact, F and G for gear actives
+	_key("signature", [KEY_Q])                # hero ability
+	_key("interact", [KEY_E])                 # catch, revive, open, pick up
+	_key("gear1", [KEY_F])                    # active on your first piece of gear
+	_key("gear2", [KEY_G])                    # active on your second piece of gear
+	_key("crouch", [KEY_CTRL])                # sneak
+	_key("throw", [KEY_C])                    # throw your kin, or call it back
+	_key("kin_skill", [KEY_X])                # your kin's skill at the cursor
 	_key("dash", [KEY_SHIFT])
 	_key("jump", [KEY_SPACE])
 	_key("reload", [])                        # reloading is automatic
@@ -48,7 +78,7 @@ func _setup_input() -> void:
 	_key("tonic", [KEY_1])
 	_key("scores", [KEY_TAB])
 	_key("menu", [KEY_ESCAPE])
-	_key("play", [KEY_G])                     # at home: play fetch with a kin
+	_key("play", [KEY_V])                     # at home: play fetch with a kin
 	_key("talk", [KEY_T])                     # at home: talk to a kin
 	_key("details", [KEY_C])                  # at home: a kin's details
 	_key("inventory", [KEY_I])                # your things
@@ -76,6 +106,13 @@ func apply_result(r: Dictionary) -> Dictionary:
 	var out := {"gems": 0, "seeds": {}, "caught": [], "kin_lines": [], "levelup": false, "crops_ready": 0}
 	d["matches"] = int(d["matches"]) + 1
 	var won: bool = r.get("extracted", false)
+	# lifetime counts for challenges
+	var ms: Dictionary = r.get("stats", {})
+	for k in ["mobs", "rings", "feathers", "staggers", "slams", "spikes"]:
+		if ms.has(k): Progress.add(k, int(ms[k]))
+	Progress.add("glide_s", int(float(ms.get("glide_t", 0.0))))
+	Progress.add("knocks", int(r.get("knocks", 0)))
+	if won: Progress.add("caught", r.get("caught", []).size())
 	if won:
 		d["extracts"] = int(d.get("extracts", 0)) + 1
 		out["gems"] = int(r.get("gems", 0))

@@ -164,7 +164,10 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 		var back := _nearest_ground(m, h)
 		if back != Vector2.ZERO:
 			inp["move"] = back
-			inp["glide"] = h.ai["skill"] > 0.35
+			inp["glide"] = h.ai["skill"] > 0.15
+			# below the lip: flick the glider shut and open again to feather back up
+			if h.below_lip and h.gliding and h.vel.y < -0.5 and h.glide_fuel > 0.25:
+				inp["glide"] = false
 	# unstick
 	if Vector2(h.pos.x - a["last_pos"].x, h.pos.z - a["last_pos"].z).length() < 0.03 and move.length() > 0.5:
 		a["stuck"] += dt
@@ -230,12 +233,17 @@ func _use_sec(m: Match, h: Hunter, tgt: Ent) -> void:
 		if Vector2(tgt.pos.x - sp.x, tgt.pos.z - sp.z).length() < 2.6 and float(h.satchel["t"]) < 5.3:
 			h.inp["sec"] = true
 		return
+	if id == "breeze":
+		if h.sec_ch > 0 and (hurt or (d < 2.5 and randf() < 0.05)):
+			h.inp["sec"] = true
+		return
 	if h.sec_cd > 0.0:
 		return
 	var go := false
 	match id:
-		"shadowstep": go = d < 9.0 and randf() < 0.1
-		"haymaker": go = d < 2.3
+		"shadowstep", "bolas", "binding": go = d < 9.0 and randf() < 0.1
+		"divehawk": go = d < 8.0 and randf() < 0.1
+		"haymaker", "cleave": go = d < 2.3
 		"satchel": go = d < 7.5 and randf() < 0.08
 	if tgt is Mob and (tgt as Mob).stag_open > 0.0 and d < 6.0:
 		go = true

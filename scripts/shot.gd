@@ -21,5 +21,21 @@ func _process(d):
 			k += 1
 			get_viewport().get_texture().get_image().save_png(path.replace(".png", "_%d.png" % k))
 	if n == frames:
+		if "--overflow-check" in OS.get_cmdline_user_args():
+			_overflow(get_tree().root)
 		var img := get_viewport().get_texture().get_image()
 		img.save_png(path); print("SHOT ", path); get_tree().quit()
+
+## Tooling: lists visible controls that stick out of the window.
+func _overflow(node: Node) -> void:
+	if node is CanvasItem and not (node as CanvasItem).is_visible_in_tree():
+		return
+	if node is Control:
+		var c := node as Control
+		var vr := c.get_viewport_rect()
+		var r := c.get_global_rect()
+		if r.size.x > 2 and r.size.y > 2 and c.modulate.a > 0.05 and (r.end.y > vr.size.y + 2 or r.position.y < -2 or r.end.x > vr.size.x + 2 or r.position.x < -2):
+			print("OVERFLOW ", c.get_path(), " ", r, " vp ", vr.size)
+			return
+	for ch in node.get_children():
+		_overflow(ch)

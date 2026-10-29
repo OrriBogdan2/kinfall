@@ -8,13 +8,13 @@ const DASH_TIME := 0.17
 const DASH_REGEN := 2.2
 const LEDGE_REACH := 2.8
 const LEDGE_CD := 1.2
-const FLOAT_SPEED := 9.0
+const FLOAT_SPEED := 12.0
 const GLIDE_FALL := 1.7
-const GLIDE_SPEED := 9.6
+const GLIDE_SPEED := 8.4
 const GLIDE_TIME := 6.0
-const GLIDE_DRAG := 1.4         # speed lost per second while gliding
-const GLIDE_MAX := 19.0
-const DROP_FALL := 5.0
+const GLIDE_DRAG := 1.6         # speed lost per second while gliding (more when going fast)
+const GLIDE_MAX := 15.0
+const DROP_FALL := 3.8
 const DROP_SPEED := 9.0
 const REGEN := 7.0            # health per second once you've gone a while without getting hit
 ## Armor: a layer over health that soaks hits first and comes back on its own, fast, once you've
@@ -31,7 +31,7 @@ var wpn: Dictionary = {}
 var ctrl := "bot"             # local | bot | remote
 var inp := {"move": Vector2.ZERO, "aim": Vector3.ZERO, "fire": false, "dash": false, "jump": false,
 	"throw": false, "skill": false, "sig": false, "interact": false, "reload": false, "tonic": false, "glide": false, "ult": false,
-	"sec": false, "sec_hold": false, "crouch": false}
+	"sec": false, "sec_hold": false, "crouch": false, "gear1": false, "gear2": false}
 var base_speed := 5.4
 var ammo := 12
 var reload_t := 0.0
@@ -84,6 +84,8 @@ var bloom := 0.0              # extra spread from moving, jumping and dashing
 var crouch := false           # slower, steadier aim, and much harder to spot
 var crouch_k := 0.0
 var sec_cd := 0.0             # right-click ability
+var sec_ch := 3               # its charges, for heroes that have them
+var sec_ch_t := 0.0
 var satchel := {}             # Pyra's thrown charge, waiting to be set off
 var bshield_on := false       # Bastion's Brightshield is up
 var bshield_t := 0.0
@@ -97,7 +99,12 @@ var land_t := 0.0
 var ghost_t := 0.0
 var step_t := 0.0
 var gliding := false
-var glide_fuel := 1.0
+var glide_fuel := 1.0          # shown as glider heat: 1 = cool, 0 = overheated
+var shot_down := false         # knocked out of an overheated glide: stunned when you land
+var below_lip := false         # dropped below the nearest island's edge, over the abyss
+var lip_y := 0.0               # that edge's height: where your balloon floats
+var heat_burn := 0.0
+var in_current := false        # riding a wind road or an updraft: the glider doesn't heat up
 var glide_max := GLIDE_TIME
 var glide_cd := 0.0
 var glide_k := 0.0             # how far the glider is unfolded, for the model
@@ -137,14 +144,17 @@ func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, n
 	perk = String(kit.get("perk", ""))
 	pname = name_txt
 	ctrl = control
+	if control != "local":
+		bot_look = {"gender": randi() % 3, "body": randi() % 3, "face": randi() % Models.LOOK_FACES.size(), "skin": randi() % Models.LOOK_SKIN.size(),
+			"hair": randi() % Models.LOOK_HAIRS.size(), "hair_col": randi() % 6}
 	max_hp = cdat["hp"] + (15 if perk == "toughskin" else 0); hp = max_hp
-	max_armor = float(ARMOR.get(cls, 50.0)); armor = max_armor
+	max_armor = float(ARMOR.get(cls, 50.0)); armor = max_armor; base_armor = max_armor
 	if perk == "featherfall": glide_max = GLIDE_TIME * 1.6
 	base_speed = cdat["speed"]
 	dashes = max_dashes()
 	ammo = wpn["mag"]
 	r = 0.38 * float(cdat["scale"])
-	set_model(Models.hunter(cls, Data.TEAM_COLORS[team % Data.TEAM_COLORS.size()], wid, hero))
+	set_model(Models.hunter(cls, Data.TEAM_COLORS[team % Data.TEAM_COLORS.size()], wid, hero, Save.d.get("look", {}) if ctrl == "local" else bot_look))
 
 ## Swap to a found weapon for the rest of the expedition.
 func equip(w: String, rar: int, with_ammo := -1) -> void:
@@ -206,6 +216,14 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 			m.fx.burst(pos + Vector3(to.normalized().x * 0.6, 1.0, to.normalized().y * 0.6), Color("fff6c0"), 6, 2.5, 0.25)
 			m.sfx("shield", pos, -10.0, 1.6)
 			return 0.0
+	# getting hit while gliding heats the glider up; an overheated glider gets shot right down
+	if gliding and not dropping and opts.get("src", "") not in ["fall", "burn", "heat"]:
+		if glide_fuel <= 0.001 or below_lip:
+			_shot_down()
+			if by is Hunter: (by as Hunter).add_stat("spikes")
+			elif by is Kin and (by as Kin).owner_h: (by as Kin).owner_h.add_stat("spikes")
+		else:
+			glide_fuel = maxf(0.0, glide_fuel - (0.12 + dmg * 0.008))
 	var d := dmg
 	if ctrl == "local" and m.opts.get("tutorial", false):
 		d *= 0.35
@@ -246,6 +264,68 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 	if extract_prog > 0.0:
 		extract_prog = 0.0
 	return d
+
+func hit_y() -> float:
+	return lip_y if below_lip else pos.y
+
+## Over the abyss and below the lip of the nearest island? Ground level is the lowest land close by.
+func update_lip() -> void:
+	below_lip = false
+	if grounded or downed or out or riding or dropping or not over_void():
+		return
+	var ref := INF
+	for r in [1.5, 3.0, 5.0, 7.5]:
+		for i in 12:
+			var a := TAU * i / 12.0
+			var x: float = pos.x + cos(a) * r; var z: float = pos.z + sin(a) * r
+			if not m.world.is_void(x, z):
+				ref = minf(ref, m.world.ground_at(x, z))
+		if ref < INF:
+			break
+	if ref == INF:
+		ref = last_gy
+	lip_y = ref
+	below_lip = pos.y < ref - 0.5
+
+## Below the lip of an island, a balloon on a string floats at ground level above you: that's
+## what everyone aims at. It glows purple while you glide, when a hit would knock you down.
+var balloon: Node3D
+func _render_balloon() -> void:
+	var show := below_lip and not out and not extracted and visible
+	if not show:
+		if balloon: balloon.visible = false
+		return
+	if balloon == null:
+		balloon = Node3D.new()
+		balloon.top_level = true
+		add_child(balloon)
+		Models.part(balloon, Models.sphere(0.34), Models.toon(Color("ff3a4a"), true, 0.35), Vector3(0, 0.36, 0), Vector3(1.0, 1.15, 1.0), Vector3.ZERO, "Ball")
+		Models.part(balloon, Models.cyl(0.03, 0.06, 0.1), Models.toon(Color("c02030")), Vector3(0, -0.02, 0))
+		var aura := Models.part(balloon, Models.sphere(0.5), Models.glow_mat(Color(0.75, 0.35, 1.0, 0.4)), Vector3(0, 0.36, 0), Vector3.ONE, Vector3.ZERO, "Aura")
+		aura.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var string := Models.part(balloon, Models.cyl(0.012, 0.012, 1.0, 4), Models.toon(Color(0.95, 0.95, 0.95), false), Vector3.ZERO, Vector3.ONE, Vector3.ZERO, "String")
+		string.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	balloon.visible = true
+	var top := Vector3(position.x, lip_y + 1.0, position.z)
+	balloon.global_position = top + Vector3(0, sin(m.time * 3.0) * 0.06, 0)
+	var aura: Node3D = balloon.get_node("Aura")
+	aura.visible = gliding
+	aura.scale = Vector3.ONE * (1.0 + 0.08 * sin(m.time * 9.0))
+	var string: Node3D = balloon.get_node("String")
+	var from_y := position.y + 1.6
+	var len := maxf(0.1, balloon.global_position.y - from_y)
+	string.position = Vector3(0, -len * 0.5, 0)
+	string.scale = Vector3(1, len, 1)
+
+func _shot_down() -> void:
+	gliding = false
+	glide_cd = 2.5
+	shot_down = true
+	vel = Vector3(vel.x * 0.3, minf(vel.y, -6.0), vel.z * 0.3)
+	m.fx.burst(pos + Vector3(0, 1.8, 0), Color("ff9a5a"), 14, 3.0, 0.45, 6.0, 0.8)
+	m.sfx("knock", pos, -2.0, 1.3)
+	if ctrl == "local" and m.hud:
+		m.hud.toast_small("GLIDER SHOT DOWN", Color("ff9a5a"))
 
 func impulse(kbv: Vector2, lift := -1.0) -> void:
 	if fortify_t > 0.0:
@@ -298,7 +378,7 @@ func do_jump() -> void:
 
 ## Fast gliders barely sink; a slow one drifts steadily down.
 static func glide_fall(speed: float) -> float:
-	return lerpf(2.6, 0.25, clampf((speed - 6.0) / 10.0, 0.0, 1.0))
+	return lerpf(2.2, 0.35, clampf((speed - 4.0) / 9.0, 0.0, 1.0))
 
 func can_glide() -> bool:
 	return not grounded and roll_t <= 0.0 and fly_t <= 0.0 and glide_cd <= 0.0 and not downed and stun_t <= 0.0 \
@@ -501,14 +581,22 @@ func sim(dt: float) -> void:
 	# inputs
 	if inp["dash"]: do_dash()
 	if inp["jump"]: do_jump()
-	if inp["sig"]: use_signature()
+	var cdr := gear_stat("cdr")
+	if cdr > 0.0:
+		sig_cd = maxf(0.0, sig_cd - dt * cdr)
+		sec_cd = maxf(0.0, sec_cd - dt * cdr)
+	for gi in 2:
+		gear_cd[gi] = maxf(0.0, float(gear_cd[gi]) - dt)
+		if inp.get("gear%d" % (gi + 1), false):
+			m.use_gear(self, gi)
+		if inp["sig"]: use_signature()
 	if inp["sec"]: Abil.use_s(self)
 	Abil.tick_s(self, dt)
 	if inp["reload"]: start_reload()
 	if inp["tonic"]: use_tonic()
 	if inp["ult"]: Abil.use_r(self)
 	if inp["fire"]: fire()
-	inp["dash"] = false; inp["jump"] = false; inp["sig"] = false; inp["reload"] = false; inp["tonic"] = false; inp["ult"] = false; inp["sec"] = false
+	inp["dash"] = false; inp["jump"] = false; inp["sig"] = false; inp["reload"] = false; inp["tonic"] = false; inp["ult"] = false; inp["sec"] = false; inp["gear1"] = false; inp["gear2"] = false
 	_physics(dt)
 	var ad := aim_dir()
 	var want := atan2(-ad.x, -ad.y)
@@ -548,7 +636,7 @@ func _physics(dt: float) -> void:
 		_grapple(dt)
 		return
 	var mv: Vector2 = inp["move"] if stun_t <= 0.0 and root_t <= 0.0 else Vector2.ZERO
-	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * (0.6 if bshield_on else 1.0) * (0.55 if crouch else 1.0)
+	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * (0.6 if bshield_on else 1.0) * (0.55 if crouch else 1.0) * (1.0 + gear_stat("speed"))
 	var hv := Vector2(vel.x, vel.z)
 	var cur := hv.length()
 	if charge.size() > 0:
@@ -570,27 +658,47 @@ func _physics(dt: float) -> void:
 	elif gliding:
 		# the glider keeps the speed you bring into it and bleeds it off slowly; steering turns
 		# you without slowing you down. Speed is what keeps you up (see the fall below).
-		var gs := DROP_SPEED if dropping else GLIDE_SPEED
+		var gs := DROP_SPEED if dropping else (GLIDE_SPEED * 0.6 if glide_fuel <= 0.001 else GLIDE_SPEED) * (1.0 + gear_stat("glide_speed"))
 		var head := hv.normalized() if cur > 0.3 else mv
 		# steering hard against your heading works as an air brake
 		var brake := 0.0
 		if mv.length() > 0.1 and head.length() > 0.1:
 			brake = clampf(-head.dot(mv.normalized()) + 0.3, 0.0, 1.3) * 7.0
-		var keep := maxf(gs * 0.7, cur - (GLIDE_DRAG + brake) * dt) if cur > gs * 0.7 else gs * 0.7
+		var drag := GLIDE_DRAG + maxf(0.0, cur - gs) * 0.25
+		var keep := maxf(gs * 0.6, cur - (drag + brake) * dt) if cur > gs * 0.6 else gs * 0.6
 		if dropping: keep = gs
 		keep = minf(keep, GLIDE_MAX)
 		if mv.length() > 0.1:
 			head = head.slerp(mv.normalized(), 1.0 - exp(-3.2 * dt)) if head.length() > 0.1 else mv.normalized()
 		hv = head * keep
+		# wind roads carry you along (either way), updrafts lift you
+		in_current = false
+		if not dropping:
+			var wd: Dictionary = m.world.wind_at(pos)
+			if not wd.is_empty():
+				in_current = true
+				var wdir: Vector3 = wd["dir"]
+				var w2 := Vector2(wdir.x, wdir.z).normalized()
+				if hv.dot(w2) < 0.0: w2 = -w2
+				hv = hv.lerp(w2 * 14.0, 1.0 - exp(-2.5 * dt))
+				vel.y = lerpf(vel.y, clampf((float(wd["y"]) - pos.y) * 2.5, -3.0, 6.0), 1.0 - exp(-4.0 * dt))
+			var up: Dictionary = m.world.updraft_at(pos)
+			if not up.is_empty():
+				in_current = true
+				vel.y = move_toward(vel.y, 9.0, 30.0 * dt)
 	else:
 		var wish := mv * spd
 		var over := cur > spd * 1.15
 		var k := (2.6 if over else 16.0) if grounded else (1.5 if over else 3.5)
 		hv += (wish - hv) * (1.0 - exp(-k * dt))
 	vel.x = hv.x; vel.z = hv.y
+	update_lip()
 	_update_glide(dt)
-	if gliding:
-		vel.y = lerpf(vel.y, -(DROP_FALL if dropping else glide_fall(Vector2(vel.x, vel.z).length())), 1.0 - exp(-4.0 * dt))
+	if gliding and in_current:
+		pass   # the current sets the height
+	elif gliding:
+		var sink := DROP_FALL if dropping else (3.0 if glide_fuel <= 0.001 else glide_fall(Vector2(vel.x, vel.z).length()))
+		vel.y = lerpf(vel.y, -sink, 1.0 - exp(-4.0 * dt))
 	elif not grounded:
 		vel.y -= GRAV * (1.3 if vel.y < 0.0 and fly_t <= 0.0 else 1.0) * dt
 	var guard := grounded and roll_t <= 0.0 and hv.length() <= spd * 1.25
@@ -664,6 +772,10 @@ func _physics(dt: float) -> void:
 			if dropping:
 				dropping = false
 				m.on_drop_landed(self)
+			if shot_down:
+				shot_down = false
+				stun_t = maxf(stun_t, 1.0)
+				m.fx.dust(pos, 8)
 			if fv < -11.0 or cur > spd * 1.3:
 				m.fx.dust(pos, 6)
 				squash = 0.35
@@ -692,18 +804,36 @@ func _update_glide(dt: float) -> void:
 		return
 	if grounded:
 		glide_fuel = minf(1.0, glide_fuel + dt / 1.2)
+	if grounded:
+		shot_down = false
+	# an overheated glider scorches you while it stays open
+	if gliding and not dropping and glide_fuel <= 0.001 and not downed:
+		heat_burn += dt * 4.0
+		if heat_burn >= 2.0:
+			heat_burn -= 2.0
+			hurt(2.0, null, {"src": "heat"})
+	# an overheated glider stays open (slow and sinking) until you land or get hit again
 	var can: bool = not grounded and roll_t <= 0.0 and fly_t <= 0.0 and glide_cd <= 0.0 and not downed and stun_t <= 0.0 \
-		and m.time - kb_t > 0.4 and glide_fuel > 0.0 and pad.is_empty()
+		and m.time - kb_t > 0.4 and (glide_fuel > 0.0 or gliding) and pad.is_empty() and not shot_down
 	var want: bool = inp.get("glide", false)
 	if gliding:
 		if not want or not can:
 			gliding = false
 			if glide_fuel <= 0.0:
 				glide_cd = 0.5
-		else:
-			glide_fuel = maxf(0.0, glide_fuel - dt / glide_max)
-	elif want and can and vel.y < 1.5 and glide_fuel > 0.15:
+		elif not in_current:
+			glide_fuel = maxf(0.0, glide_fuel - dt / (glide_max * (1.0 + gear_stat("heat"))))
+		if not dropping:
+			stats["glide_t"] = float(stats.get("glide_t", 0.0)) + dt
+	elif want and can and vel.y < 1.5 and glide_fuel > 0.15 and not gliding:
 		gliding = true
+		if below_lip:
+			# feathering: snapping the glider open below the lip catches an updraft back up to it
+			vel.y = clampf(sqrt(2.0 * GRAV * maxf(0.2, lip_y - pos.y + 0.9)), 4.0, 15.0)
+			glide_fuel = maxf(0.0, glide_fuel - 0.2)
+			m.fx.burst(pos + Vector3(0, 1.2, 0), Color("cfeaff"), 12, 3.5, 0.4, -2.0, 0.8)
+			m.sfx("glide", pos, -2.0, 1.4)
+			add_stat("feathers")
 		m.sfx("glide", pos, -4.0)
 		m.fx.burst(pos + Vector3(0, 1.7, 0), Color("f3eee2"), 8, 2.0, 0.35, 0.0)
 
@@ -711,7 +841,7 @@ func _update_glide(dt: float) -> void:
 # back up onto it, the way Supervive does it. Walking into a step up a few terraces high does
 # the same after a short push. Getting launched hard still carries you past the edge.
 func _try_ledge_grab(dt: float) -> void:
-	if grap.size() > 0 or pad.size() > 0 or fly_t > 0.0 or downed or charge.size() > 0 or dropping or pos.y < -12.0 or (grounded and stun_t > 0.0):
+	if grap.size() > 0 or pad.size() > 0 or fly_t > 0.0 or downed or charge.size() > 0 or dropping or shot_down or pos.y < -12.0 or (grounded and stun_t > 0.0):
 		push_t = 0.0
 		return
 	var w: World = m.world
@@ -789,7 +919,7 @@ func _grapple(dt: float) -> void:
 	var rise := clampf(tz - pos.y, -FLOAT_SPEED * dt, FLOAT_SPEED * dt)
 	pos.y += rise
 	var hd := Vector2(grap["ex"] - pos.x, grap["ez"] - pos.z)
-	var hs := 7.0 * dt
+	var hs := 11.0 * dt
 	if hd.length() <= hs: pos.x = grap["ex"]; pos.z = grap["ez"]
 	else:
 		var hn := hd.normalized() * hs
@@ -807,6 +937,25 @@ func _grapple(dt: float) -> void:
 		pad = {"from": pos, "to": land, "t": 0.0, "dur": 0.22, "h": 0.4, "ledge": true}
 
 # ------------------------------------------------------------------ visuals
+var bot_look: Dictionary = {}  # how a bot hunter looks (random)
+var stats := {}                # this match's counts for challenges (the local player's)
+var gear: Array = [{}, {}]     # two slots of found gear: {id, rar}
+var gear_cd: Array = [0.0, 0.0]
+
+var base_armor := 50.0
+func refresh_gear() -> void:
+	max_armor = base_armor + gear_stat("armor")
+	armor = minf(armor, max_armor)
+
+func gear_stat(k: String) -> float:
+	var t := 0.0
+	for g in gear:
+		if not g.is_empty():
+			t += float(Gear.ALL[g["id"]]["stats"].get(k, 0.0)) * Gear.mult(int(g["rar"]))
+	return t
+
+func add_stat(k: String, n := 1) -> void:
+	stats[k] = int(stats.get(k, 0)) + n
 var unseen := false           # hidden from the local player (in a bush, or behind a wall)
 
 func render(delta: float, alpha: float) -> void:
@@ -816,6 +965,9 @@ func render(delta: float, alpha: float) -> void:
 		return
 	model.rotation.y = face
 	var bs: Node3D = model.get_node_or_null("BShield")
+	if remote:
+		update_lip()
+	_render_balloon()
 	if bshield_on and bs == null:
 		bs = Models.part(model, Models.sphere(0.7, 18), Models.glow_mat(Color(1.0, 0.95, 0.75, 0.45)), Vector3(0, 0.9, -0.65), Vector3(1.0, 1.15, 0.22), Vector3.ZERO, "BShield")
 		bs.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -886,7 +1038,7 @@ func render(delta: float, alpha: float) -> void:
 			step_t = 0.32
 			m.fx.dust(pos, 2)
 	crouch_k = move_toward(crouch_k, 1.0 if crouch else 0.0, delta * 8.0)
-	torso.rotation.x += crouch_k * 0.3
+	torso.rotation.x -= crouch_k * 0.32          # hunch forward
 	rig.scale = Vector3(1.0 + sq * 0.35 - stretch * 0.3 + crouch_k * 0.06, 1.0 - sq * 0.4 + stretch * 0.15 - crouch_k * 0.3, 1.0 + sq * 0.35 + stretch * 0.5 + crouch_k * 0.06)
 	if downed:
 		rig.rotation.x = lerpf(rig.rotation.x, -1.35, delta * 8.0)

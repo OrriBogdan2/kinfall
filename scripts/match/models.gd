@@ -54,12 +54,14 @@ static func part(parent: Node3D, mesh: Mesh, mat: Material, pos: Vector3, scl :=
 
 static func sphere(r: float, seg := 16) -> SphereMesh:
 	var s := SphereMesh.new()
-	s.radius = r; s.height = r * 2.0; s.radial_segments = seg; s.rings = maxi(6, seg / 2)
+	# smoother than the segment count asked for: bigger shapes get more, tiny dots stay cheap
+	var sg := seg + (8 if r > 0.12 else 4)
+	s.radius = r; s.height = r * 2.0; s.radial_segments = sg; s.rings = maxi(8, sg / 2)
 	return s
 
 static func capsule(r: float, h: float) -> CapsuleMesh:
 	var c := CapsuleMesh.new()
-	c.radius = r; c.height = h; c.radial_segments = 14; c.rings = 6
+	c.radius = r; c.height = h; c.radial_segments = 22; c.rings = 10
 	return c
 
 static func box(x: float, y: float, z: float) -> BoxMesh:
@@ -69,7 +71,7 @@ static func box(x: float, y: float, z: float) -> BoxMesh:
 
 static func cyl(top: float, bottom: float, h: float, seg := 14) -> CylinderMesh:
 	var c := CylinderMesh.new()
-	c.top_radius = top; c.bottom_radius = bottom; c.height = h; c.radial_segments = seg; c.rings = 1
+	c.top_radius = top; c.bottom_radius = bottom; c.height = h; c.radial_segments = seg + 6; c.rings = 1
 	return c
 
 static func flat_quad(size: float) -> PlaneMesh:
@@ -78,7 +80,20 @@ static func flat_quad(size: float) -> PlaneMesh:
 	return p
 
 # ---------------------------------------------------------------- hunters
-static func hunter(cls: String, team_col: Color, weapon: String, hero := "") -> Node3D:
+## Looks a player can pick for their hunter. Purely visual: the body's size never changes the hitbox.
+const LOOK_SKIN := [Color("f6d3b0"), Color("f1c9a0"), Color("e0ac7e"), Color("c68a5c"), Color("9a6440"), Color("6e4428"), Color("4a2e1e")]
+const LOOK_HAIR := [Color("2b2124"), Color("5a3a26"), Color("9a6a3a"), Color("e8c87a"), Color("d8d2c8"), Color("c4462e"), Color("6a8aff"), Color("ff8ac8")]
+const LOOK_BODIES := ["Slim", "Average", "Sturdy"]
+const LOOK_GENDERS := ["Female", "Male", "Nonbinary"]
+const LOOK_FACES := ["Bright eyes", "Calm", "Sleepy", "Cheerful", "Fierce"]
+const LOOK_HAIRS := ["Short", "Long", "Ponytail", "Bun", "Spiky", "Buzzed"]
+
+static func default_look() -> Dictionary:
+	return {"body": 1, "gender": 2, "face": 0, "skin": 1, "hair": 0, "hair_col": 0}
+
+static func hunter(cls: String, team_col: Color, weapon: String, hero := "", appearance := {}) -> Node3D:
+	var lk: Dictionary = default_look()
+	lk.merge(appearance, true)
 	var root := Node3D.new()
 	var look0: String = hero if hero != "" else {"light": "veil", "medium": "sage", "heavy": "bastion"}.get(cls, "sage")
 	var hero_col: Color = Data.HEROES[look0]["color"] if Data.HEROES.has(look0) else team_col
@@ -86,7 +101,8 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "") -> 
 	var body_col := team_col.lerp(hero_col, 0.45).lerp(Color("3a3f52"), 0.3)
 	var mats: Array = []
 	var m_body := toon(body_col); mats.append(m_body)
-	var m_skin := toon(Color("f1c9a0")); mats.append(m_skin)
+	var m_skin := toon(LOOK_SKIN[clampi(int(lk["skin"]), 0, LOOK_SKIN.size() - 1)]); mats.append(m_skin)
+	var m_hair := toon(LOOK_HAIR[clampi(int(lk["hair_col"]), 0, LOOK_HAIR.size() - 1)]); mats.append(m_hair)
 	var m_dark := toon(Color("2b2a33")); mats.append(m_dark)
 	var m_acc := toon(team_col); mats.append(m_acc)
 	var m_gun := toon(Color("4a4d5c")); mats.append(m_gun)
@@ -95,11 +111,16 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "") -> 
 	part(legs, capsule(0.09, 0.42), m_dark, Vector3(-0.12, 0.22, 0), Vector3.ONE, Vector3.ZERO, "LegL")
 	part(legs, capsule(0.09, 0.42), m_dark, Vector3(0.12, 0.22, 0), Vector3.ONE, Vector3.ZERO, "LegR")
 	var torso := Node3D.new(); torso.name = "Torso"; torso.position = Vector3(0, 0.42, 0); rig.add_child(torso)
-	part(torso, capsule(0.25, 0.72), m_body, Vector3(0, 0.3, 0))
-	part(torso, box(0.3, 0.32, 0.16), m_dark, Vector3(0, 0.36, 0.24))  # backpack
+	var bw: float = [0.86, 1.0, 1.16][clampi(int(lk["body"]), 0, 2)]
+	var gender := int(lk["gender"])
+	part(torso, capsule(0.25, 0.72), m_body, Vector3(0, 0.3, 0), Vector3(bw * (0.94 if gender == 0 else 1.0), 1.0, bw))
+	part(torso, box(0.3, 0.32, 0.16), m_dark, Vector3(0, 0.36, 0.24 * bw))  # backpack
 	part(torso, sphere(0.215), m_skin, Vector3(0, 0.82, 0), Vector3.ONE, Vector3.ZERO, "Head")
-	part(torso, sphere(0.035, 8), m_dark, Vector3(-0.08, 0.84, -0.19))
-	part(torso, sphere(0.035, 8), m_dark, Vector3(0.08, 0.84, -0.19))
+	_face(torso, int(lk["face"]), gender, m_dark, m_skin)
+	_hair(torso, int(lk["hair"]), gender, m_hair)
+	# boots and gloves for a less blocky silhouette
+	for sx in [-1.0, 1.0]:
+		part(legs, sphere(0.1), m_trim0(team_col), Vector3(0.12 * sx, 0.05, -0.03), Vector3(1.0, 0.6, 1.35))
 	var look: String = hero if hero != "" else {"light": "veil", "medium": "sage", "heavy": "bastion"}.get(cls, "sage")
 	var hc: Color = Data.HEROES[look]["color"] if Data.HEROES.has(look) else team_col
 	var m_hero := toon(hc); mats.append(m_hero)
@@ -209,6 +230,70 @@ static func hunter(cls: String, team_col: Color, weapon: String, hero := "") -> 
 	root.scale = Vector3.ONE * float(Data.CLASSES[cls]["scale"])
 	return root
 
+static func m_trim0(c: Color) -> ShaderMaterial:
+	return toon(c.darkened(0.55).lerp(Color("3a2f2a"), 0.5))
+
+## Eyes, brows and a mouth: small shapes, but they carry a lot of character.
+static func _face(torso: Node3D, face: int, gender: int, m_dark: Material, m_skin: Material) -> void:
+	var shine := toon(Color.WHITE, false, 1.0)
+	var y := 0.845
+	for sx in [-1.0, 1.0]:
+		var ex: float = 0.08 * sx
+		match face:
+			0:   # bright eyes: big pupils with a shine
+				part(torso, sphere(0.045, 10), m_dark, Vector3(ex, y, -0.185), Vector3(0.9, 1.15, 0.6))
+				part(torso, sphere(0.014, 6), shine, Vector3(ex + 0.015, y + 0.02, -0.21))
+			1:   # calm: small dots
+				part(torso, sphere(0.032, 8), m_dark, Vector3(ex, y, -0.19), Vector3(1.0, 1.0, 0.6))
+			2:   # sleepy: half-closed
+				part(torso, box(0.06, 0.016, 0.02), m_dark, Vector3(ex, y - 0.005, -0.198), Vector3.ONE, Vector3(0, 0, 0.12 * sx))
+			3:   # cheerful: eyes that smile
+				var t := TorusMesh.new(); t.inner_radius = 0.022; t.outer_radius = 0.034; t.rings = 12; t.ring_segments = 6
+				part(torso, t, m_dark, Vector3(ex, y - 0.01, -0.195), Vector3(1.0, 1.0, 0.5), Vector3(PI / 2, 0, 0))
+				part(torso, box(0.075, 0.03, 0.03), m_skin, Vector3(ex, y - 0.03, -0.2))
+			4:   # fierce: sharp brows over the eyes
+				part(torso, sphere(0.035, 8), m_dark, Vector3(ex, y, -0.19), Vector3(1.0, 0.85, 0.6))
+				part(torso, box(0.07, 0.018, 0.02), m_dark, Vector3(ex, y + 0.05, -0.19), Vector3.ONE, Vector3(0, 0, -0.35 * sx))
+		if gender == 0 and face != 2:
+			# lashes
+			part(torso, box(0.022, 0.012, 0.012), m_dark, Vector3(ex + 0.035 * sx, y + 0.03, -0.19), Vector3.ONE, Vector3(0, 0, 0.6 * sx))
+	# a small mouth
+	if face in [0, 3]:
+		var sm := TorusMesh.new(); sm.inner_radius = 0.022; sm.outer_radius = 0.03; sm.rings = 12; sm.ring_segments = 6
+		part(torso, sm, m_dark, Vector3(0, 0.765, -0.192), Vector3(1.0, 1.0, 0.4), Vector3(PI / 2, 0, PI))
+	else:
+		part(torso, box(0.04, 0.012, 0.012), m_dark, Vector3(0, 0.765, -0.2))
+	# cheeks
+	if gender != 1:
+		var blush := toon(Color("ff9a9a"), false)
+		for sx in [-1.0, 1.0]:
+			part(torso, sphere(0.028, 8), blush, Vector3(0.13 * sx, 0.79, -0.165), Vector3(1.0, 0.6, 0.4))
+
+## Hair that peeks out under whatever the hero wears on their head.
+static func _hair(torso: Node3D, style: int, gender: int, m_hair: Material) -> void:
+	# a fringe for most styles
+	if style != 5:
+		part(torso, sphere(0.2), m_hair, Vector3(0, 0.95, -0.06), Vector3(1.08, 0.45, 0.8))
+	match style:
+		0:   # short
+			part(torso, sphere(0.215), m_hair, Vector3(0, 0.88, 0.03), Vector3(1.04, 0.85, 1.0))
+		1:   # long
+			part(torso, sphere(0.215), m_hair, Vector3(0, 0.88, 0.03), Vector3(1.06, 0.88, 1.02))
+			part(torso, capsule(0.15, 0.5), m_hair, Vector3(0, 0.66, 0.1), Vector3(1.35, 1.0, 0.7))
+		2:   # ponytail
+			part(torso, sphere(0.215), m_hair, Vector3(0, 0.88, 0.03), Vector3(1.04, 0.86, 1.0))
+			part(torso, capsule(0.07, 0.36), m_hair, Vector3(0, 0.82, 0.26), Vector3.ONE, Vector3(0.5, 0, 0))
+		3:   # bun
+			part(torso, sphere(0.215), m_hair, Vector3(0, 0.88, 0.03), Vector3(1.04, 0.86, 1.0))
+			part(torso, sphere(0.1), m_hair, Vector3(0, 1.0, 0.18))
+		4:   # spiky
+			part(torso, sphere(0.215), m_hair, Vector3(0, 0.88, 0.03), Vector3(1.04, 0.85, 1.0))
+			for i in 5:
+				var a := -0.9 + i * 0.45
+				part(torso, cyl(0.0, 0.06, 0.18, 8), m_hair, Vector3(sin(a) * 0.12, 1.04, 0.04 + cos(a) * 0.04), Vector3.ONE, Vector3(-0.3, 0, -a * 0.8))
+		5:   # buzzed
+			part(torso, sphere(0.218), m_hair, Vector3(0, 0.86, 0.02), Vector3(1.0, 0.82, 1.0))
+
 ## The gun's pieces, shared by hunters and the weapons lying around on the islands.
 static func gun_parts(gun: Node3D, weapon: String, m_gun: Material, m_dark: Material, m_acc: Material) -> void:
 	match weapon:
@@ -245,6 +330,49 @@ static func weapon_drop(weapon: String, rar: int) -> Node3D:
 	var ring := MeshInstance3D.new(); ring.mesh = flat_quad(1.3)
 	ring.material_override = ring_mat(col, 0.12); ring.position.y = 0.05
 	root.add_child(ring)
+	return root
+
+## A piece of gear lying on the ground: a glowing gem-like token with a light beam.
+static func gear_drop(col: Color, rar: int) -> Node3D:
+	var root := Node3D.new()
+	var rc: Color = Data.RARITY[clampi(rar, 0, Data.RARITY.size() - 1)]["color"]
+	var spin := Node3D.new(); spin.name = "Spin"; spin.position = Vector3(0, 0.7, 0); root.add_child(spin)
+	var core := PrismMesh.new(); core.size = Vector3(0.38, 0.38, 0.38)
+	part(spin, core, toon(col, true, 0.6), Vector3(0, 0.1, 0))
+	part(spin, core, toon(col, true, 0.6), Vector3(0, -0.12, 0), Vector3.ONE, Vector3(PI, 0, 0))
+	var t := TorusMesh.new(); t.inner_radius = 0.28; t.outer_radius = 0.33
+	part(spin, t, toon(rc, false, 0.8), Vector3.ZERO, Vector3.ONE, Vector3(PI / 2, 0, 0))
+	var beam := part(root, cyl(0.12, 0.22, 4.0, 10), glow_mat(Color(col, 0.3)), Vector3(0, 2.0, 0))
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var ring := MeshInstance3D.new(); ring.mesh = flat_quad(1.2)
+	ring.material_override = ring_mat(rc, 0.12); ring.position.y = 0.05
+	root.add_child(ring)
+	return root
+
+static func gear_pad(col: Color) -> Node3D:
+	var root := Node3D.new()
+	part(root, cyl(0.5, 0.58, 0.14, 18), toon(Color("3a3f52")), Vector3(0, 0.07, 0))
+	var top := part(root, cyl(0.38, 0.38, 0.06, 18), toon(col, false, 1.0), Vector3(0, 0.16, 0), Vector3.ONE, Vector3.ZERO, "Top")
+	top.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return root
+
+static func gear_platform(col: Color) -> Node3D:
+	var root := Node3D.new()
+	part(root, cyl(1.6, 1.3, 0.24, 24), toon(Color("e8dcc0")), Vector3(0, -0.12, 0))
+	part(root, cyl(1.62, 1.62, 0.06, 24), toon(col, false, 0.7), Vector3(0, 0.0, 0))
+	var g := part(root, cyl(1.0, 0.2, 0.7, 18), glow_mat(Color(col, 0.35)), Vector3(0, -0.6, 0))
+	g.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return root
+
+static func gear_smoke() -> Node3D:
+	var root := Node3D.new()
+	var m := toon(Color(0.78, 0.78, 0.84), false)
+	var rng := RandomNumberGenerator.new(); rng.randomize()
+	for i in 14:
+		var a := rng.randf() * TAU; var r := rng.randf_range(0.0, 3.0)
+		var s := rng.randf_range(0.9, 1.6)
+		var p := part(root, sphere(0.8), m, Vector3(cos(a) * r, rng.randf_range(0.4, 1.6), sin(a) * r), Vector3.ONE * s)
+		p.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return root
 
 ## Things that break when shot or dashed through.
@@ -785,6 +913,20 @@ static func building(id: String) -> Node3D:
 			part(body, box(0.7, 0.12, 0.3), dark, Vector3(1.0, 0.42, 1.6))
 			part(body, box(1.6, 0.04, 0.5), toon(Color("f3eee2")), Vector3(-0.3, 1.75, 1.2), Vector3.ONE, Vector3(-0.4, 0, 0))
 			part(body, box(0.3, 0.05, 0.52), toon(Color("ff9a4a")), Vector3(-0.95, 1.76, 1.2), Vector3.ONE, Vector3(-0.4, 0, 0))
+		"board":
+			# a little guild house with a big notice board out front and pennants on the roof
+			part(body, box(2.6, 1.6, 1.6), toon(Color("e8d2b0")), Vector3(0, 0.8, -0.2))
+			var pr0 := PrismMesh.new(); pr0.size = Vector3(3.0, 1.1, 2.0)
+			part(body, pr0, toon(Color("b84a3a")), Vector3(0, 2.15, -0.2))
+			part(body, box(0.8, 1.2, 0.08), dark, Vector3(-0.6, 0.6, 0.62))
+			part(body, box(1.3, 0.9, 0.08), wood, Vector3(0.65, 1.05, 0.66))
+			for k in 4:
+				var pc: Color = [Color("fff6c0"), Color("cfeaff"), Color("ffd6e0"), Color("e0ffd6")][k]
+				part(body, box(0.26, 0.3, 0.02), toon(pc, false), Vector3(0.38 + (k % 2) * 0.55, 1.22 - (k / 2) * 0.38, 0.71), Vector3.ONE, Vector3(0, 0, randf_range(-0.12, 0.12)))
+			part(body, cyl(0.03, 0.03, 1.0, 6), wood, Vector3(0.65, 0.3, 0.66))
+			for k in 5:
+				part(body, PrismMesh.new(), toon([Color("ffd23f"), Color("5ab0f0"), Color("e0607e"), Color("8fd16a"), Color("b48cf2")][k], false), Vector3(-1.2 + k * 0.6, 2.75 - absf(k - 2) * 0.12, -0.2), Vector3(0.22, 0.28, 0.04), Vector3(PI, 0, 0))
+			part(body, sphere(0.16, 10), toon(Color("ffd23f"), false, 0.8), Vector3(0, 2.85, -0.2))
 		"cottage", "cottage2":
 			var wall := Color("f3dcc4") if id == "cottage" else Color("dfe8cf")
 			var roof := Color("5a9ab8") if id == "cottage" else Color("c28a3a")

@@ -118,7 +118,7 @@ func _find_target() -> Ent:
 		if not h.targetable():
 			continue
 		var d := flat_dist(h)
-		if d > 2.6 and h.reveal_t <= 0.0 and m.world.in_bush(h.pos.x, h.pos.z):
+		if d > 2.6 and h.reveal_t <= 0.0 and (m.world.in_bush(h.pos.x, h.pos.z) or m.in_smoke(h.pos)):
 			continue        # hiding in the grass
 		if d < bd and absf(h.pos.y - pos.y) < 2.5:
 			bd = d; best = h
@@ -255,7 +255,8 @@ func _begin_attack() -> void:
 			tele = m.fx.telegraph_circle(atk_at, float(md.get("slam_r", 2.3)), Color("ff8a2a"))
 		"volley":
 			tele = m.fx.telegraph_rect(pos, atk_dir, 10.0, 1.1, Color("6ad8ff"))
-	m.sfx("warn", pos, -8.0)
+	# each kind has its own call as it winds up, instead of the same alarm for everyone
+	m.sfx("v_" + mkind, pos, -9.0 if mkind != "warden" else -3.0, randf_range(0.9, 1.12))
 
 func _strike() -> void:
 	_cancel_tele()

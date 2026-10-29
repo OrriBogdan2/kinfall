@@ -67,7 +67,7 @@ func _ready() -> void:
 			Save.d["gems"] = int(Save.d["gems"]) + 5
 	var hero: String = Save.d.get("hero", "sage")
 	if not Data.HEROES.has(hero): hero = "sage"
-	player = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], Data.HEROES[hero]["weapon"], hero)
+	player = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], Data.HEROES[hero]["weapon"], hero, Save.d.get("look", {}))
 	add_child(player)
 	ppos = Vector3(W * 0.5, 0, D - 0.9)
 	player.position = ppos
@@ -642,3 +642,8 @@ func _open_music() -> void:
 		v.add_child(UI.button("Back to the island's own music", func():
 			Sfx.music_lock = ""
 			_open_music(), 300))
+
+## The menu's "I'm stuck": back to the doormat.
+func unstick() -> void:
+	ppos = Vector3(W * 0.5, 0, D - 1.0)
+	if player: player.position = ppos

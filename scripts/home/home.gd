@@ -67,6 +67,7 @@ var rain_k := 0.0
 var weather_t := 40.0
 
 func _ready() -> void:
+	if Game.modding(): Game.apply_mod()
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	Sfx.play_ambience("home")
 	Sfx.new_track.connect(_on_new_track)
@@ -79,6 +80,9 @@ func _ready() -> void:
 		ek["level"] = 8
 		Game._evolve(ek, {})
 		Save.d["tutorial"]["home"] = true
+	# the Challenge House comes with the farm
+	if visit.is_empty() and not Save.d.get("buildings", []).has("board"):
+		Save.d["buildings"].append("board")
 	if "--home-all" in dbg:
 		Save.d["bridges"] = Data.ISLES.keys()
 		Save.d["buildings"] = Data.BUILDINGS.keys()
@@ -127,6 +131,14 @@ func _ready() -> void:
 		if _has_b(b):
 			var rc: Array = Data.BUILDINGS[b]["rect"]
 			world.set_block_rect(rc[0], rc[1], rc[2], rc[3])
+	if "--print-home" in OS.get_cmdline_user_args():
+		for z in range(16, 46):
+			var line := "%2d " % z
+			for x in range(18, 60):
+				var i := world.idx(x, z)
+				line += "." if world.kind[i] == World.T_VOID else ("#" if world.kind[i] == World.T_BLOCK else ("o" if world.paint.has(i) else "g"))
+			print(line)
+		get_tree().quit()
 	world.build_meshes()
 	fx = Fx.new(); add_child(fx)
 	cam = CamRig.new(); add_child(cam)
@@ -159,7 +171,7 @@ func _ready() -> void:
 	_build_bridges()
 	_build_plots()
 	var hero0 := _hero()
-	player = Models.hunter(Data.HEROES[hero0]["cls"], Data.TEAM_COLORS[0], _weapon(), hero0)
+	player = Models.hunter(Data.HEROES[hero0]["cls"], Data.TEAM_COLORS[0], _weapon(), hero0, Save.d.get("look", {}))
 	add_child(player)
 	ppos = Vector3(38.0, 0, 34.5)
 	if spawn == "house":
@@ -235,6 +247,7 @@ func _ready() -> void:
 				elif which == "expedition": _open_expedition()
 				elif which == "kin": _open_kin(Save.active_kin())
 				elif which == "shop": _open_shop()
+				elif which == "challenges": _open_challenges()
 				elif which == "kitchen": _open_kitchen()
 				elif which == "plot": _open_plot("plots", 0)
 				elif which == "chat":
@@ -512,12 +525,15 @@ func _spawn_kin() -> void:
 		add_child(n)
 		var isl: int = 0 if rec["uid"] == _d().get("active", "") else open_isles[ri % open_isles.size()]
 		ri += 1
-		var at := world.random_ground(isl)
+		# somewhere open, not wedged against a building and not on top of another kin
+		var taken: Array = kins.map(func(o): return o["pos"])
+		taken.append(ppos)
+		var at := world.free_spot_near(world.random_ground(isl), taken, 1.3)
 		n.position = at
 		var lbl := Label3D.new()
-		lbl.font = UI.big; lbl.font_size = 40; lbl.pixel_size = 0.01; lbl.outline_size = 10
+		lbl.font = UI.big; lbl.font_size = 48; lbl.pixel_size = 0.013; lbl.outline_size = 14
 		lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED; lbl.no_depth_test = true
-		lbl.position.y = 1.15; lbl.visible = false
+		lbl.position.y = 1.25; lbl.visible = false
 		n.add_child(lbl)
 		var kd := {"rec": rec, "node": n, "pos": at, "vel": Vector3.ZERO, "goal": Vector3.INF, "t": randf() * 3.0, "emote": lbl, "emote_t": 0.0, "hop": randf() * 6.0}
 		var ri2: int = _d()["roster"].find(rec)
@@ -586,6 +602,7 @@ func _process(delta: float) -> void:
 		farm_t = 1.0
 		_farm_tick()
 	_update_sky(d)
+	_update_hover()
 	_move_player(d)
 	_move_kin(d)
 	_care_tick(d)
@@ -820,6 +837,60 @@ func _find_interact() -> void:
 	var vp := get_viewport().get_visible_rect().size
 	prompt_box.position = Vector2((vp.x - prompt_box.size.x) * 0.5, vp.y - 110.0)
 
+## Point at a kin to see who it is, how it's doing and what you can do with it.
+var hover_k: Dictionary = {}
+var hover_box: PanelContainer
+var hover_lbl: RichTextLabel
+func _update_hover() -> void:
+	if hover_box == null:
+		hover_box = UI.card(Color(0.05, 0.06, 0.09, 0.92), 10, 12)
+		hover_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hover_lbl = RichTextLabel.new()
+		hover_lbl.bbcode_enabled = true; hover_lbl.fit_content = true; hover_lbl.scroll_active = false
+		hover_lbl.custom_minimum_size = Vector2(300, 0)
+		hover_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		hover_lbl.add_theme_font_size_override("normal_font_size", 14)
+		hover_lbl.add_theme_font_size_override("bold_font_size", 19)
+		hover_lbl.add_theme_font_override("bold_font", UI.big)
+		hover_box.add_child(hover_lbl)
+		root_ui.add_child(hover_box)
+	var vp := get_viewport()
+	var mp := vp.get_mouse_position()
+	var best: Dictionary = {}; var bd := 52.0
+	if panel_open == "" and not chat_open and not building_now and not Overlay.is_open():
+		for k in kins:
+			var np: Vector3 = (k["node"] as Node3D).global_position + Vector3(0, 0.45, 0)
+			if cam.is_position_behind(np): continue
+			var d := cam.unproject_position(np).distance_to(mp)
+			if d < bd: bd = d; best = k
+	hover_k = best
+	hover_box.visible = not best.is_empty()
+	if best.is_empty():
+		return
+	var rec: Dictionary = best["rec"]
+	var sp: Dictionary = Data.KIN[rec["species"]]
+	var col: Color = Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"]
+	var needs: Dictionary = rec.get("needs", {})
+	var nl: Array = []
+	for n in Care.NEEDS:
+		var v := float(needs.get(n, 100.0))
+		nl.append("%s %s" % [n.capitalize(), "[color=#ff8a7a]%d%%[/color]" % int(v) if v < 35.0 else "%d%%" % int(v)])
+	var b: Array = Care.bond(rec)
+	var t := "[b][color=#%s]%s[/color][/b]\n" % [col.to_html(false), rec["name"]]
+	t += "[color=#9aa3b8]Lv %d %s  ·  %s  ·  %s bond[/color]\n" % [int(rec["level"]), Evo.form_name(rec), String(sp["type"]).capitalize(), b[1]]
+	t += "  ·  ".join(nl) + "\n"
+	if visit.is_empty():
+		t += "[color=#ffd36a]Click[/color] details    [color=#ffd36a]%s[/color] pet    [color=#ffd36a]%s[/color] fetch    [color=#ffd36a]%s[/color] talk" % [Settings.key_cap("interact"), Settings.key_cap("play"), Settings.key_cap("talk")]
+		if rec["uid"] == Save.d.get("active", ""):
+			t += "\n[color=#8fe0a0]Your partner: comes on expeditions with you.[/color]"
+	hover_lbl.text = t
+	hover_box.reset_size()
+	var vs := vp.get_visible_rect().size
+	var pos := mp + Vector2(20, 16)
+	if pos.x + hover_box.size.x > vs.x - 8: pos.x = mp.x - hover_box.size.x - 20
+	if pos.y + hover_box.size.y > vs.y - 8: pos.y = mp.y - hover_box.size.y - 16
+	hover_box.position = pos
+
 func _label_for(it: Dictionary) -> String:
 	if not visit.is_empty():
 		match it["kind"]:
@@ -893,6 +964,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 	if event is InputEventMouseButton and event.pressed and panel_open == "":
+		# click a kin to see its details
+		if event.button_index == MOUSE_BUTTON_LEFT and not hover_k.is_empty() and visit.is_empty() and not building_now and not chat_open:
+			_open_kin(hover_k["rec"])
+			get_viewport().set_input_as_handled()
+			return
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP: cam.zoom_to = clampf(cam.zoom_to - 0.08, 0.55, 1.6)
 		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: cam.zoom_to = clampf(cam.zoom_to + 0.08, 0.55, 1.6)
 	if event.is_action_pressed("menu") and not Overlay.is_open():
@@ -924,14 +1000,13 @@ func _build_ui() -> void:
 	prompt_box.add_child(prompt_lbl)
 	root_ui.add_child(prompt_box)
 	var hint_box := UI.card(Color(0.06, 0.07, 0.1, 0.7), 8, 10)
-	hint = UI.label("WASD walk   ·   Space jump   ·   F use   ·   I inventory   ·   Scroll to zoom   ·   Esc menu", 14, UI.INK)
+	hint = UI.label("WASD walk   ·   Space jump   ·   " + Settings.key_cap("interact") + " use   ·   I inventory   ·   Scroll to zoom   ·   Esc menu", 14, UI.INK)
 	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hint_box.add_child(hint)
-	hint_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	root_ui.add_child(hint_box)
+	hint_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 12)
 	hint_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	hint_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
-	hint_box.position.y = -16
-	root_ui.add_child(hint_box)
 	panel_host = CenterContainer.new()
 	panel_host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	panel_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -1030,7 +1105,7 @@ func _open_welcome() -> void:
 	var v := _new_panel("Welcome to your island", 560)
 	v.add_child(UI.label("Your kin live here with you. Each one has its own personality, remembers what you do together, and decides how far it trusts you.", 16))
 	v.add_child(UI.label("Grow crops between expeditions, then step through the portal to hunt in the floating islands. Bring treasure, seeds and new kin home before the islands fall. If you go down, everything you carried is lost.", 16, UI.MUTED))
-	v.add_child(UI.label("Walk up to anything and press F. Start by saying hi to %s." % Save.active_kin().get("name", "your kin"), 16, UI.GOLD))
+	v.add_child(UI.label("Walk up to anything and press " + Settings.key_cap("interact") + ". Start by saying hi to %s." % Save.active_kin().get("name", "your kin"), 16, UI.GOLD))
 	v.add_child(UI.button("Let's go", func():
 		Save.d["tutorial"]["home"] = true
 		Save.save_game()
@@ -1118,6 +1193,7 @@ func _open_plot(arr: String, i: int) -> void:
 			var care := int(d.get("care", 0))
 			var n := 2 + (1 if care * 2 >= grow else 0)
 			Save.d["crops"][d["crop"]] = int(Save.d["crops"].get(d["crop"], 0)) + n
+			Progress.add("harvested", n)
 			var extra := ""
 			# a fully tended common crop sometimes drops a seed (rare ones never do)
 			if care >= grow and float(cd.get("weight", 1.0)) >= 1.0 and randf() < 0.5:
@@ -1165,7 +1241,7 @@ func _open_plot(arr: String, i: int) -> void:
 		v.add_child(row)
 	if not any:
 		v.add_child(UI.label("You have no seeds. Find them in chests and from monsters on expeditions, or buy some at the stall.", 16, UI.MUTED))
-	v.add_child(UI.label("Water a plant (F) and it grows a stage every %d seconds while you're home. Expeditions grow everything a stage too. Rain waters for you." % int(Data.WATER_TIME), 13, UI.MUTED))
+	v.add_child(UI.label("Water a plant (" + Settings.key_cap("interact") + ") and it grows a stage every %d seconds while you're home. Expeditions grow everything a stage too. Rain waters for you." % int(Data.WATER_TIME), 13, UI.MUTED))
 
 func _open_kitchen() -> void:
 	var v := _new_panel("Cooking pot", 520)
@@ -1220,69 +1296,209 @@ func _open_kitchen() -> void:
 
 var shop_tab := "Seeds"
 
+var shop_page := 0
+
+## The market: goods in tabs, shown as cards a page at a time. Some only go on sale once you've
+## made it out of enough expeditions or finished a challenge at the Challenge House.
 func _open_shop() -> void:
-	var v := _new_panel("Market stall", 560)
+	var v := _new_panel("Market stall", 780)
 	var top := UI.hbox(6)
-	for t in ["Seeds", "Kin care", "Wear", "Sell"]:
+	for t in ["Seeds", "Kin food", "Wear", "Home", "Farm", "Sell"]:
 		var tn: String = t
-		top.add_child(UI.choice(t, t == shop_tab, func(): shop_tab = tn; UI._page_of.erase("Market stall"); _open_shop()))
+		top.add_child(UI.choice(t, t == shop_tab, func(): shop_tab = tn; shop_page = 0; UI._page_of.erase("Market stall"); _open_shop()))
+	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(sp)
+	top.add_child(UI.label("%d gems" % int(Save.d["gems"]), 18, UI.GOLD, UI.big))
 	top.set_meta("pg_keep", true)
 	v.add_child(top)
-	var gl := UI.label("You have %d gems." % int(Save.d["gems"]), 15, UI.GOLD)
-	gl.set_meta("pg_keep", true)
-	v.add_child(gl)
+	if shop_tab == "Sell":
+		_shop_sell(v)
+		return
+	# [key, name, description, price, colour, on_buy, owned_text]
+	var goods: Array = []
 	match shop_tab:
 		"Seeds":
-			for s in Data.CROPS:
-				var cd: Dictionary = Data.CROPS[s]
-				var sk: String = s
-				_shop_row(v, "%s seed" % cd["name"], cd["desc"], int(cd["price"]), func(): Save.add_seed(sk, 1))
-			_shop_row(v, "Tonic", "Heals 45 in a match (key 1).", 30, func(): Save.add_item("tonic", 1))
-			if int(Save.d["plot_cap"]) < 8:
-				_shop_row(v, "Two more plots", "Grow more at once.", 120 + 80 * (int(Save.d["plot_cap"]) - 4), func():
-					Save.d["plot_cap"] = int(Save.d["plot_cap"]) + 2
-					_build_plots())
-		"Kin care":
+			for c in Data.CROPS:
+				var cd: Dictionary = Data.CROPS[c]
+				var ck: String = c
+				goods.append(["seed:" + c, "%s seeds" % cd["name"], cd["desc"], int(cd["price"]), cd["color"], func(): Save.add_seed(ck, 1), "have %d" % int(Save.d.get("seeds", {}).get(c, 0))])
+		"Kin food":
 			for f in Care.FOODS:
 				var fd: Dictionary = Care.FOODS[f]
 				var fk: String = f
-				_shop_row(v, "%s  (have %d)" % [fd["name"], int(Save.d["items"].get(f, 0))], fd["desc"], int(fd["price"]), func(): Save.add_item(fk, 1))
+				goods.append(["food:" + f, fd["name"], fd["desc"], int(fd["price"]), Color("ffb36a"), func(): Save.add_item(fk, 1), "have %d" % int(Save.d["items"].get(f, 0))])
+			goods.append(["tonic", "Tonic", "Heals 45 in a match (%s)." % Settings.key_cap("tonic"), 30, Color("8fe0a0"), func(): Save.add_item("tonic", 1), "have %d" % int(Save.d["items"].get("tonic", 0))])
 		"Wear":
 			var owned: Array = Save.d.get("accs", [])
 			for a in Data.ACCS:
 				var ad: Dictionary = Data.ACCS[a]
 				var ak: String = a
-				if owned.has(a):
-					var row := UI.hbox(10)
-					var l := UI.label("%s  ·  yours" % ad["name"], 16, ad["col"]); l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-					row.add_child(l)
-					v.add_child(row)
-				else:
-					_shop_row(v, ad["name"], "Put it on from a kin's card (Dress). Worn into matches too.", int(ad["price"]), func():
-						if not Save.d.has("accs"): Save.d["accs"] = []
-						Save.d["accs"].append(ak))
-		"Sell":
-			var sell_any := false
-			for s in Data.CROPS:
-				var n := int(Save.d["crops"].get(s, 0))
-				if n <= 0: continue
-				sell_any = true
-				var sk: String = s
-				var gain := maxi(1, int(round(int(Data.CROPS[s]["price"]) * 0.4)))
-				var row := UI.hbox(10)
-				var l := UI.label("%s  ×%d" % [Data.CROPS[s]["name"], n], 16, Data.CROPS[s]["color"]); l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				row.add_child(l)
-				row.add_child(UI.button("Sell 1 for %d" % gain, func():
-					if int(Save.d["crops"].get(sk, 0)) <= 0: return
-					Save.d["crops"][sk] = int(Save.d["crops"][sk]) - 1
-					Save.d["gems"] = int(Save.d["gems"]) + gain
-					Sfx.play("pickup")
-					Save.save_game()
-					_refresh_top()
-					_open_shop(), 140))
-				v.add_child(row)
-			if not sell_any:
-				v.add_child(UI.label("Nothing to sell. Harvest your plots first.", 15, UI.MUTED))
+				goods.append(["acc:" + a, ad["name"], "Put it on from a kin's card (Dress). Worn on expeditions too.", -1 if owned.has(a) else int(ad["price"]), ad["col"], func():
+					if not Save.d.has("accs"): Save.d["accs"] = []
+					Save.d["accs"].append(ak), "yours" if owned.has(a) else ""])
+		"Home":
+			for f in Data.FURN:
+				var fd: Dictionary = Data.FURN[f]
+				var fk: String = f
+				goods.append(["furn:" + f, fd["name"], "For your house or a cottage. It waits in your inventory until you place it.", int(fd["price"]), Color("c8a07a"), func():
+					if not Save.d.has("furniture"): Save.d["furniture"] = {}
+					Save.d["furniture"][fk] = int(Save.d["furniture"].get(fk, 0)) + 1, "have %d" % int(Save.d.get("furniture", {}).get(f, 0))])
+		"Farm":
+			if int(Save.d["plot_cap"]) < 8:
+				goods.append(["plots", "Two more plots", "Grow more at once.", 120 + 80 * (int(Save.d["plot_cap"]) - 4), Color("9c7a52"), func():
+					Save.d["plot_cap"] = int(Save.d["plot_cap"]) + 2
+					_build_plots(), "%d plots" % int(Save.d["plot_cap"])])
+	# open goods first, then the ones still locked
+	goods.sort_custom(func(a, b): return int(Progress.unlocked(a[0])) > int(Progress.unlocked(b[0])))
+	var per := 6
+	var pages := maxi(1, int(ceil(goods.size() / float(per))))
+	shop_page = clampi(shop_page, 0, pages - 1)
+	var grid := GridContainer.new(); grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 10); grid.add_theme_constant_override("v_separation", 10)
+	for g in goods.slice(shop_page * per, shop_page * per + per):
+		grid.add_child(_shop_card(g))
+	if goods.is_empty():
+		v.add_child(UI.label("Nothing for sale here right now.", 15, UI.MUTED))
+	v.add_child(grid)
+	if pages > 1:
+		# page arrows live in the header so they never get pushed off the panel
+		var pv := UI.button("‹", func(): shop_page -= 1; _open_shop(), 44); pv.disabled = shop_page <= 0
+		var nx := UI.button("›", func(): shop_page += 1; _open_shop(), 44); nx.disabled = shop_page >= pages - 1
+		top.add_child(pv); top.add_child(UI.label("%d/%d" % [shop_page + 1, pages], 14, UI.MUTED)); top.add_child(nx)
+
+func _shop_card(g: Array) -> Control:
+	var key: String = g[0]
+	var open := Progress.unlocked(key)
+	var price: int = g[3]
+	var card := UI.card(UI.CARD if open else Color(0.1, 0.1, 0.13, 0.9), 12, 12)
+	card.custom_minimum_size = Vector2(236, 150)
+	var v := UI.vbox(6); card.add_child(v)
+	var hr := UI.hbox(8)
+	var sw := Panel.new(); sw.custom_minimum_size = Vector2(26, 26)
+	var sb := StyleBoxFlat.new(); sb.bg_color = Color(g[4]) if open else Color(g[4]).darkened(0.6); sb.set_corner_radius_all(13)
+	sw.add_theme_stylebox_override("panel", sb)
+	hr.add_child(sw)
+	var nm := UI.label(String(g[1]), 17, UI.INK if open else UI.MUTED, UI.big); nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	nm.clip_text = true
+	hr.add_child(nm)
+	v.add_child(hr)
+	var d := UI.label(String(g[2]), 13, UI.MUTED)
+	d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	d.custom_minimum_size = Vector2(212, 40)
+	d.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	v.add_child(d)
+	if not open:
+		var lk := UI.label("Locked  ·  " + Progress.req_text(key), 12, Color("ff9a8a"))
+		lk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		lk.custom_minimum_size.x = 212
+		v.add_child(lk)
+		return card
+	var br := UI.hbox(8)
+	var own := UI.label(String(g[6]), 12, UI.MUTED); own.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	br.add_child(own)
+	if price >= 0:
+		var on_buy: Callable = g[5]
+		var b := UI.primary("%d gems" % price, func():
+			if int(Save.d["gems"]) < price: return
+			Save.d["gems"] = int(Save.d["gems"]) - price
+			on_buy.call()
+			Sfx.play("pickup")
+			Save.save_game()
+			_open_shop(), 110)
+		b.disabled = int(Save.d["gems"]) < price
+		br.add_child(b)
+	v.add_child(br)
+	return card
+
+## The Challenge House: goals with rewards. Finished ones are claimed here for gems, and some open
+## up new goods at the market.
+var chal_page := 0
+func _open_challenges() -> void:
+	var v := _new_panel("Challenge House", 780)
+	var ready := Progress.ready_to_claim()
+	var donec: int = Save.d.get("challenges", []).size()
+	var head := UI.label("%d of %d done%s" % [donec, Progress.CHALLENGES.size(), ("  ·  %d ready to claim!" % ready.size()) if ready.size() > 0 else ""], 16, UI.GOLD if ready.size() > 0 else UI.MUTED)
+	var hrow := UI.hbox(8)
+	head.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hrow.add_child(head)
+	hrow.set_meta("pg_keep", true)
+	v.add_child(hrow)
+	# ready first, then in progress, then finished
+	var list: Array = Progress.CHALLENGES.duplicate()
+	list.sort_custom(func(a, b):
+		var ra := 0 if ready.has(a) else (2 if Progress.done(a[0]) else 1)
+		var rb := 0 if ready.has(b) else (2 if Progress.done(b[0]) else 1)
+		return ra < rb)
+	var per := 4
+	var pages := maxi(1, int(ceil(list.size() / float(per))))
+	chal_page = clampi(chal_page, 0, pages - 1)
+	var grid := GridContainer.new(); grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 10); grid.add_theme_constant_override("v_separation", 10)
+	for c in list.slice(chal_page * per, chal_page * per + per):
+		grid.add_child(_challenge_card(c, ready.has(c)))
+	v.add_child(grid)
+	if pages > 1:
+		var pv := UI.button("‹", func(): chal_page -= 1; _open_challenges(), 44); pv.disabled = chal_page <= 0
+		var nx := UI.button("›", func(): chal_page += 1; _open_challenges(), 44); nx.disabled = chal_page >= pages - 1
+		hrow.add_child(pv); hrow.add_child(UI.label("%d/%d" % [chal_page + 1, pages], 14, UI.MUTED)); hrow.add_child(nx)
+
+func _challenge_card(c: Array, ready: bool) -> Control:
+	var donec := Progress.done(c[0])
+	var card := UI.card(UI.CARD if not donec else Color(0.08, 0.12, 0.09, 0.9), 12, 12)
+	card.custom_minimum_size = Vector2(360, 120)
+	if ready: UI.set_card_border(card, UI.GOLD)
+	var v := UI.vbox(5); card.add_child(v)
+	var hr := UI.hbox(8)
+	var nm := UI.label(String(c[1]), 18, UI.GOLD if ready else (UI.GOOD if donec else UI.INK), UI.big); nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hr.add_child(nm)
+	hr.add_child(UI.label("+%d gems" % int(c[5]), 14, UI.GOLD))
+	v.add_child(hr)
+	v.add_child(UI.label(String(c[2]), 14, UI.MUTED))
+	var cur := mini(Progress.stat(c[3]), int(c[4]))
+	var bar := ProgressBar.new(); bar.max_value = float(c[4]); bar.value = float(cur); bar.show_percentage = false
+	bar.custom_minimum_size = Vector2(320, 10)
+	v.add_child(bar)
+	var br := UI.hbox(8)
+	var ul: Array = Progress.unlocks_of(c[0]).map(func(k): return Progress.item_name(k))
+	var info := UI.label(("%d / %d" % [cur, int(c[4])]) + (("  ·  unlocks " + ", ".join(ul)) if ul.size() > 0 else ""), 12, UI.MUTED)
+	info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	info.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	br.add_child(info)
+	if ready:
+		br.add_child(UI.primary("Claim", func():
+			var g := Progress.claim(c[0])
+			if g > 0:
+				Sfx.play("unlock")
+				_toast("%s done!  +%d gems" % [c[1], g])
+				_refresh_top()
+			_open_challenges(), 100))
+	elif donec:
+		br.add_child(UI.label("Done", 14, UI.GOOD, UI.big))
+	v.add_child(br)
+	return card
+
+func _shop_sell(v: VBoxContainer) -> void:
+	var sell_any := false
+	for s in Data.CROPS:
+		var n := int(Save.d["crops"].get(s, 0))
+		if n <= 0: continue
+		sell_any = true
+		var sk: String = s
+		var gain := maxi(1, int(round(int(Data.CROPS[s]["price"]) * 0.4)))
+		var row := UI.hbox(10)
+		var l := UI.label("%s  ×%d" % [Data.CROPS[s]["name"], n], 16, Data.CROPS[s]["color"]); l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+		row.add_child(UI.button("Sell 1 for %d" % gain, func():
+			if int(Save.d["crops"].get(sk, 0)) <= 0: return
+			Save.d["crops"][sk] = int(Save.d["crops"][sk]) - 1
+			Save.d["gems"] = int(Save.d["gems"]) + gain
+			Sfx.play("pickup")
+			Save.save_game()
+			_refresh_top()
+			_open_shop(), 140))
+		v.add_child(row)
+	if not sell_any:
+		v.add_child(UI.label("Nothing to sell. Harvest your plots first.", 15, UI.MUTED))
 
 func _shop_row(v: VBoxContainer, name_txt: String, desc: String, price: int, on_buy: Callable) -> void:
 	var row := UI.hbox(10)
@@ -1406,7 +1622,7 @@ func _fetch_step(k: Dictionary, d: float) -> void:
 func _say(k: Dictionary, text: String, secs := 4.0) -> void:
 	if not k.has("say"):
 		var l := Label3D.new()
-		l.font = UI.body; l.font_size = 30; l.pixel_size = 0.0075; l.outline_size = 12
+		l.font = UI.body; l.font_size = 34; l.pixel_size = 0.0105; l.outline_size = 14
 		l.outline_modulate = Color(0.06, 0.05, 0.09, 0.95)
 		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED; l.no_depth_test = true
 		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; l.width = 520
@@ -1727,7 +1943,7 @@ func _open_expedition() -> void:
 		v.add_child(UI.label(("%s trusts you enough to find its way home if you fall." if safe else "%s's trust is %d. Below 80, it won't come home if you fall here.") % ([ak["name"]] if safe else [ak["name"], int(ak["trust"])]), 14, UI.GOOD if safe else UI.BAD))
 	v.add_child(UI.section("Match"))
 	var modes := UI.hbox(8)
-	for m in [["solo", "Solo · 4 squads"], ["duo", "Duos with a bot · 3 squads"], ["big", "Solo · 6 squads"]]:
+	for m in [["solo", "Solo · 20 hunters"], ["duo", "Duos · 10 squads"], ["trio", "Trios · 7 squads"]]:
 		var mk: String = m[0]
 		var b := UI.choice(m[1], exp_mode == mk, func(): exp_mode = mk; _open_expedition())
 		modes.add_child(b)
@@ -1748,10 +1964,12 @@ func _start_training() -> void:
 func _start_match() -> void:
 	Save.d["cls"] = Data.HEROES[_hero()]["cls"]
 	Save.save_game()
-	var o := {"teams": 4, "squad": 1}
+	# about 20 hunters a match, whatever the squad size (your squadmates are bots)
+	var o := {"teams": Data.MATCH_PLAYERS, "squad": 1}
 	match exp_mode:
-		"duo": o = {"teams": 3, "squad": 2}
-		"big": o = {"teams": 6, "squad": 1}
+		"duo": o = {"teams": Data.MATCH_PLAYERS / 2, "squad": 2}
+		"trio": o = {"teams": int(ceil(Data.MATCH_PLAYERS / 3.0)), "squad": 3}
+	o["total"] = Data.MATCH_PLAYERS
 	o["tier"] = exp_tier
 	Game.start_match(o)
 
@@ -1837,6 +2055,9 @@ func _open_lot(b: String) -> void:
 		if b == "hall":
 			_open_hall()
 			return
+		if b == "board":
+			_open_challenges()
+			return
 		var v := _new_panel(bd["name"], 480)
 		v.add_child(UI.label(bd["desc"], 16))
 		if b in ["cottage", "cottage2"]:
@@ -1863,6 +2084,20 @@ func _open_lot(b: String) -> void:
 	btn.disabled = int(Save.d["gems"]) < cost
 	v.add_child(btn)
 
+## Moves you (and any kin) to the nearest open ground if something has boxed you in.
+func unstick() -> void:
+	var p2 := world.free_spot_near(ppos, [], 1.0, 0.5)
+	if p2.distance_to(ppos) > 0.05:
+		ppos = Vector3(p2.x, ppos.y, p2.z)
+		if player: player.position = ppos
+	for k in kins:
+		var kp: Vector3 = k["pos"]
+		if not world._fits(kp.x, kp.z, 0.35) or not world.roomy(int(floor(kp.x)), int(floor(kp.z))):
+			var np := world.free_spot_near(kp, [ppos], 1.2, 0.4)
+			k["pos"] = np
+			k["goal"] = Vector3.INF
+			(k["node"] as Node3D).position = np
+
 ## Builds a building on its lot: the site packs away and the building pops up with dust and hammering.
 func _construct(b: String) -> void:
 	building_now = true
@@ -1870,9 +2105,8 @@ func _construct(b: String) -> void:
 	var holder: Node3D = l["node"]
 	var rc: Array = Data.BUILDINGS[b]["rect"]
 	world.set_block_rect(rc[0], rc[1], rc[2], rc[3])
-	# step the player out of the footprint if needed
-	if world.is_block(ppos.x, ppos.z):
-		ppos = l["door"]
+	# step the player and any kin out of the footprint (and away from its walls)
+	unstick()
 	for c in holder.get_children():
 		var tw0 := create_tween()
 		tw0.tween_property(c, "scale", Vector3(1, 0.01, 1), 0.25)
@@ -1906,7 +2140,7 @@ func _open_bridge(k: String) -> void:
 	v.add_child(UI.label(isd["desc"], 16))
 	var ex := int(Save.d.get("extracts", 0))
 	var cost := int(isd["cost"])
-	var need := int(isd["need"])
+	var need := 0 if Game.modding() else int(isd["need"])
 	if ex < need:
 		v.add_child(UI.label("Make it out of %d more expedition%s to get the materials." % [need - ex, "" if need - ex == 1 else "s"], 15, UI.BAD))
 		return
@@ -2052,7 +2286,7 @@ func _refresh_player_model() -> void:
 	var rot := player.rotation
 	player.queue_free()
 	var w := _weapon()
-	player = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], w, hero)
+	player = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], w, hero, Save.d.get("look", {}))
 	player.position = at; player.rotation = rot
 	add_child(player)
 
@@ -2770,6 +3004,7 @@ func _hatch_nest_egg() -> void:
 	# it's yours from the moment it hatches; the naming card only renames it
 	baby["name"] = Data.KIN_NAMES.pick_random()
 	Save.remember(baby, "born", "hatched in the nest on your farm", 0.0)
+	Progress.add("hatched")
 	Save.d["roster"].append(baby)
 	Care.dex_mark(baby["species"], "caught")
 	if baby.get("shimmer", false): Care.dex_mark(baby["species"], "shimmer")

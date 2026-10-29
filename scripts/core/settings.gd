@@ -11,7 +11,7 @@ const DEFAULTS := {
 	# video
 	"fullscreen": false, "vsync": true, "max_fps": 0, "msaa": 2, "shadows": true, "ui_scale": 1.0, "show_fps": false,
 	# gameplay
-	"shake": 1.0, "cam_lead": 1.0, "damage_numbers": true, "tips": true, "quick_cast": false, "crouch_toggle": false,
+	"shake": 1.0, "cam_lead": 1.0, "damage_numbers": true, "tips": true, "quick_cast": false, "crouch_toggle": false, "mod_mode": false,
 	# accessibility
 	"reduce_flashes": false, "hud_opacity": 1.0,
 	# controls: action -> list of "key:<physical keycode>" / "mouse:<button>"
@@ -22,7 +22,7 @@ const DEFAULTS := {
 const ACTIONS := [
 	["up", "Move up"], ["down", "Move down"], ["left", "Move left"], ["right", "Move right"],
 	["fire", "Fire"], ["secondary", "Hero secondary (right click)"], ["dash", "Dash"], ["jump", "Jump (hold to glide)"], ["crouch", "Crouch"], ["signature", "Hero ability"],
-	["ultimate", "Ultimate"], ["throw", "Throw / call back kin"], ["kin_skill", "Kin skill"],
+	["ultimate", "Ultimate"], ["gear1", "Gear active 1"], ["gear2", "Gear active 2"], ["throw", "Throw / call back kin"], ["kin_skill", "Kin skill"],
 	["interact", "Use, catch, revive, pet"], ["tonic", "Drink a tonic"], ["scores", "Scoreboard"],
 	["play", "Play fetch with a kin"], ["talk", "Talk to a kin"], ["details", "A kin's details"], ["inventory", "Inventory"],
 ]
@@ -48,6 +48,7 @@ func _ready() -> void:
 	if not cf.has_section_key("s", "crouch_toggle") and OS.has_feature("web"):
 		v["crouch_toggle"] = true      # browsers close the tab on Ctrl+W, so don't make people hold Ctrl
 	get_tree().node_added.connect(_on_node_added)
+	get_tree().root.size_changed.connect(_apply_ui_scale)
 
 ## Called by Game once the input actions exist, so saved key bindings can replace them.
 func apply_all() -> void:
@@ -114,13 +115,27 @@ func apply(k: String) -> void:
 		"shadows":
 			for n in get_tree().root.find_children("*", "DirectionalLight3D", true, false):
 				(n as DirectionalLight3D).shadow_enabled = bool(v[k])
-		"ui_scale": get_tree().root.content_scale_factor = clampf(float(v[k]), 0.75, 1.5)
+		"ui_scale": _apply_ui_scale()
 		"keys":
 			# kin throw moved off right click when heroes got secondaries
 			if v[k].has("throw") and (v[k]["throw"] as Array).has("mouse:2") and not v[k].has("secondary"):
 				v[k].erase("throw")
 			for a in v[k]:
 				_bind(a, v[k][a])
+
+## The interface is laid out for a 1280x720 window. Smaller windows (a laptop browser with its
+## toolbars) shrink it to fit, so nothing ever ends up off the bottom or side of the screen.
+func _apply_ui_scale() -> void:
+	var win := Vector2(get_tree().root.size)
+	if win.x < 10.0 or win.y < 10.0:
+		return
+	var user := clampf(float(v.get("ui_scale", 1.0)), 0.75, 1.5)
+	var fit := minf(1.0, minf(win.y / 720.0, win.x / 1240.0))
+	var f := user * fit
+	# never let the user's own size setting push the layout past the window either
+	f = minf(f, minf(win.y / 640.0, win.x / 1100.0))
+	if absf(get_tree().root.content_scale_factor - f) > 0.001:
+		get_tree().root.content_scale_factor = f
 
 ## Lights made later (every screen builds its own) follow the shadow setting too.
 func _on_node_added(n: Node) -> void:

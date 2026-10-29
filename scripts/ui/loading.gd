@@ -9,7 +9,7 @@ const TIPS := [
 	"Knocked off an edge? Touch the island's side and you float back up onto it.",
 	"Exits open partway through. Stand inside one to fly home with everything you carry.",
 	"C throws your kin. It stuns whatever it hits, and C again calls it back.",
-	"Veil, Marlow, Pyra and Bastion have a right-click secondary. Try it in Training.",
+	"Right click is your hero's own ability. Every hero's is different, so try it in Training.",
 	"You only see what's in front of you. Rivals behind you or past a wall stay hidden, and so do you.",
 	"Tall grass hides you from anyone outside it. Shooting gives you away for a moment.",
 	"Crouch (Ctrl) to move quietly: you're only spotted up close, and your aim steadies.",
@@ -22,9 +22,9 @@ const TIPS := [
 	"Wild kin with a ring under them can be caught. Weaken them first.",
 	"Jump off the skyship over an island nobody else picked, and loot in peace.",
 	"Lives are shared out per tier. In the Hollow you only get one.",
-	"A teammate is down? Stand next to them and hold F to bring them back.",
+	"A teammate is down? Stand next to them and hold E to bring them back.",
 	"Dash through a shot at the last moment and you take nothing.",
-	"Shrines on the islands give a short power-up. Stand by one and press F.",
+	"Shrines on the islands give a short power-up. Stand by one and press E.",
 ]
 const STAGES := ["Raising the islands", "Waking the monsters", "Hiding the loot", "Fueling the skyship", "Ready"]
 

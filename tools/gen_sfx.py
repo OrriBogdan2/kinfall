@@ -77,5 +77,54 @@ S['build'] = np.concatenate([knock(420), np.zeros(int(SR*.09)), knock(380), np.z
 S['unlock'] = np.concatenate([chirp(523, .1), chirp(659, .1), chirp(784, .1), chirp(1047, .16), chirp(1319, .3)])
 d = .03; S['hover'] = sweep(2400, 2000, d, 'sine') * env(int(SR*d), .001, .012, 4) * .35
 d = .16; S['whoosh'] = hp(noise(d), .3) * env(int(SR*d), .04, .06, 3) * .5
+# ---- variants, so repeated sounds don't sound copy-pasted
+V = {}
+def vary(name, fn, n=3):
+    for i in range(1, n + 1):
+        V['%s_%d' % (name, i)] = fn(i)
+vary('hit', lambda i: mix(hp(noise(.08 + .01 * i), .45 + .05 * i) * env(int(SR*(.08 + .01 * i)), .0005, .02, 6) * .55, sweep(620 + 90 * i, 180 + 30 * i, .08, 'tri') * env(int(SR*.08), .0005, .03, 6)))
+vary('crit', lambda i: mix(V['hit_%d' % i], sweep(1600 + 200 * i, 820 + 60 * i, .18, 'sine') * env(int(SR*.18), .001, .07, 5) * .6))
+vary('hurt', lambda i: mix(sweep(260 + 40 * i, 100 + 15 * i, .15, 'sq') * env(int(SR*.15), .001, .06, 5) * .55, lp(noise(.15), .25 + .05 * i) * env(int(SR*.15), .001, .04, 6) * .5))
+vary('smg', lambda i: mix(lp(noise(.11), .3 + .04 * i) * env(int(SR*.11), .001, .03, 5), sweep(820 + 80 * i, 280, .11, 'sq') * env(int(SR*.11), .001, .02, 6) * .45))
+vary('rifle', lambda i: mix(lp(noise(.22), .22 + .03 * i) * env(int(SR*.22), .001, .06, 5), sweep(380 + 40 * i, 85 + 8 * i, .22, 'tri') * env(int(SR*.22), .001, .05, 5) * .9))
+vary('kinhit', lambda i: mix(sweep(460 + 60 * i, 110 + 15 * i, .2, 'tri') * env(int(SR*.2), .001, .08, 4), lp(noise(.2), .18 + .03 * i) * env(int(SR*.2), .001, .05, 5) * .8))
+vary('land', lambda i: lp(noise(.1 + .01 * i), .08 + .02 * i) * env(int(SR*(.1 + .01 * i)), .001, .04, 5))
+vary('boom', lambda i: mix(lp(noise(.7), .05 + .015 * i) * env(int(SR*.7), .003, .25, 4) * 1.2, sweep(80 + 12 * i, 28, .7) * env(int(SR*.7), .002, .3, 4)), 2)
+# ---- monster voices: short, distinct per kind, a few takes each
+def tremolo(x, f, depth=.5):
+    return x * (1 - depth + depth * (0.5 + 0.5 * np.sin(2 * np.pi * f * np.arange(len(x)) / SR)))
+def chitter(i):
+    out = []
+    for k in range(3 + i % 2):
+        f = 1900 + 300 * ((k + i) % 3)
+        out += [sweep(f, f * .7, .025, 'sq') * env(int(SR*.025), .0005, .012, 5) * .5, np.zeros(int(SR*(.018 + .006 * i)))]
+    return np.concatenate(out)
+def gurgle(i):
+    d = .32; x = lp(noise(d), .05) * 3
+    return tremolo(mix(x * env(int(SR*d), .02, .15, 3), sweep(240 + 30 * i, 160, d, 'sine') * env(int(SR*d), .02, .15, 3) * .5), 18 + 5 * i, .7)
+def grunt(i):
+    d = .28 + .03 * i
+    return lp(mix(sweep(110 + 12 * i, 75, d, 'saw') * env(int(SR*d), .015, .14, 3), lp(noise(d), .1) * env(int(SR*d), .01, .08, 4) * .4), .18)
+def fizz(i):
+    d = .45
+    return hp(noise(d), .35) * np.linspace(.2, 1, int(SR*d)) * env(int(SR*d), .2, .2, 2) * .6 + sweep(500, 900 + 100 * i, d, 'sine') * env(int(SR*d), .2, .2, 2) * .2
+def whirr(i):
+    d = .3; tt = t(d)
+    f = 320 + 40 * i + 30 * np.sin(2 * np.pi * 22 * tt)
+    return mix(np.sign(np.sin(2 * np.pi * np.cumsum(f) / SR)) * .25 * env(len(tt), .02, .15, 3), knock(900 + 100 * i) * .5)
+def chime(i):
+    d = .5; base = [988, 1175, 1319][i % 3]
+    return mix(*[sweep(base * h, base * h, d, 'sine') * env(int(SR*d), .002, .3 / h, 3) * (.6 / h) for h in (1, 2.01, 3.03)])
+def roar(i):
+    d = .7
+    return tremolo(lp(mix(sweep(90 + 10 * i, 55, d, 'saw') * env(int(SR*d), .05, .4, 2), lp(noise(d), .12) * env(int(SR*d), .05, .3, 2) * .8), .2), 9 + 2 * i, .35)
+for kind, fn in [('skitter', chitter), ('spitter', gurgle), ('brute', grunt), ('bomber', fizz), ('sentinel', whirr), ('glimmer', chime), ('warden', roar)]:
+    vary('v_' + kind, fn)
+def pop(i, big=False):
+    d = .35 if big else .18
+    return mix(lp(noise(d), .12 if big else .3) * env(int(SR*d), .001, d * .4, 4), sweep((300 if big else 700) + 60 * i, (70 if big else 200), d, 'tri') * env(int(SR*d), .001, d * .4, 4) * .8)
+vary('die_small', lambda i: pop(i))
+vary('die_big', lambda i: pop(i, True))
 for k, v in S.items(): save(k, v)
-print(len(S), 'sounds')
+for k, v in V.items(): save(k, v, 0.8)
+print(len(S) + len(V), 'sounds')

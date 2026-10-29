@@ -56,7 +56,7 @@ func _ready() -> void:
 	if not Data.HEROES.has(hero): hero = "sage"
 	var w: String = Save.d.get("weapon", "")
 	if not Data.CLASSES[Data.HEROES[hero]["cls"]]["weapons"].has(w): w = Data.HEROES[hero]["weapon"]
-	player = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], w, hero)
+	player = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], w, hero, Save.d.get("look", {}))
 	add_child(player)
 	player.position = ppos
 	for a in OS.get_cmdline_user_args():
@@ -430,7 +430,7 @@ func _find_interact() -> void:
 		prompt_box.visible = false
 		return
 	prompt_box.visible = true
-	prompt_lbl.text = "F  " + String(best["label"])
+	prompt_lbl.text = Settings.key_cap("interact") + "  " + String(best["label"])
 	prompt_box.reset_size()
 	var vp := get_viewport().get_visible_rect().size
 	prompt_box.position = Vector2((vp.x - prompt_box.size.x) * 0.5, vp.y - 110.0)
@@ -463,7 +463,7 @@ func _build_ui() -> void:
 	prompt_box.add_child(prompt_lbl)
 	root_ui.add_child(prompt_box)
 	var hint_box := UI.card(Color(0.06, 0.07, 0.1, 0.7), 8, 10)
-	var hint := UI.label("WASD walk   ·   Space jump   ·   F use   ·   Scroll to zoom   ·   Esc menu", 14, UI.INK)
+	var hint := UI.label("WASD walk   ·   Space jump   ·   " + Settings.key_cap("interact") + " use   ·   Scroll to zoom   ·   Esc menu", 14, UI.INK)
 	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hint_box.add_child(hint)
 	hint_box.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)

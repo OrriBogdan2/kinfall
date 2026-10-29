@@ -14,6 +14,8 @@ var zoom := 1.0
 var zoom_to := 1.0
 var lead := 1.0
 var kick := 0.0               # a quick zoom-in punch on big moments
+var top := 0.0                # 0 = the usual angle, 1 = looking straight down (the opening drop)
+var top_to := 0.0
 
 func _ready() -> void:
 	fov = 28.0
@@ -46,6 +48,7 @@ func follow(p: Vector3, delta: float, mouse_lead := true) -> void:
 	var want := Vector3(p.x, p.y * 0.6, p.z) + off
 	focus = focus.lerp(want, minf(1.0, delta * 6.0))
 	zoom = lerpf(zoom, zoom_to, minf(1.0, delta * 2.5))
+	top = move_toward(top, top_to, delta * (0.9 if top_to < top else 2.0))
 	var shake := Vector3.ZERO
 	if trauma > 0.0:
 		var s := trauma * trauma * 0.6
@@ -58,8 +61,9 @@ func _apply(shake: Vector3) -> void:
 	kick = maxf(0.0, kick - get_process_delta_time() * 0.5)
 	var z := zoom * (1.0 - kick)
 	far = 120.0 * maxf(1.0, z) + 30.0
-	position = focus + Vector3(0, HEIGHT * z, BACK * z) + shake
-	look_at(focus + shake, Vector3.UP)
+	var k := top * top * (3.0 - 2.0 * top)
+	position = focus + Vector3(0, HEIGHT * z * (1.0 + 0.15 * k), BACK * z * (1.0 - 0.9 * k)) + shake
+	look_at(focus + shake, Vector3.UP if k < 0.95 else Vector3(0, 0, -1))
 
 ## Where the mouse points on the horizontal plane at height y.
 func mouse_on_plane(y: float) -> Vector3:

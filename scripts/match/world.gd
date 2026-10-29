@@ -21,6 +21,10 @@ var islands: Array = []      # {cx, cz, r, base, cells:Array[Vector2i]}
 var pads: Array = []         # {pos:Vector3, land:Vector3, from:int, to:int, cd:float, node}
 var links: Array = []        # glide routes between close islands {from, to, take: Vector3, land: Vector3}
 var rings: Array = []        # air rings {pos: Vector3, dir: Vector2}
+var winds: Array = []        # wind roads across long gaps {a: Vector3, b: Vector3} (either way)
+var updrafts: Array = []     # rising air off island edges {pos: Vector3, r: float, top: float}
+const BIG_SIZE := 216            # an expedition map's side, in tiles (about 3x the area it used to be)
+const BIG_ISLANDS := 32
 const GLIDE_GAP := 14.0      # islands closer than this (edge to edge) are reached by gliding, not pads
 var spawns: Array = []       # Vector3 candidates at island edges
 var portal_spots: Array = []
@@ -96,14 +100,71 @@ func los(a: Vector3, b: Vector3, y: float) -> bool:
 	return true
 
 func random_ground(isl := -1, avoid_block := true) -> Vector3:
+	var fallback := Vector3.INF
 	for _t in 400:
 		var x := rng.randi_range(0, w - 1); var z := rng.randi_range(0, h - 1)
 		var i := idx(x, z)
 		if kind[i] == T_GROUND and (isl < 0 or island[i] == isl):
 			if avoid_block and _near_block(x, z):
 				continue
-			return Vector3(x + 0.5, level[i] * LEVEL, z + 0.5)
-	return Vector3(w / 2.0, 0, h / 2.0)
+			var spot := Vector3(x + 0.5, level[i] * LEVEL, z + 0.5)
+			if avoid_block and not roomy(x, z):
+				if fallback == Vector3.INF: fallback = spot
+				continue
+			return spot
+	return fallback if fallback != Vector3.INF else Vector3(w / 2.0, 0, h / 2.0)
+
+## Is this tile part of open ground, rather than a little pocket walled in by rocks, walls,
+## buildings or cliffs? (Walks outward over tiles you could step between.)
+func roomy(x: int, z: int, need := 40) -> bool:
+	if not inb(x, z) or kind[idx(x, z)] != T_GROUND:
+		return false
+	var seen := {Vector2i(x, z): true}
+	var q: Array = [Vector2i(x, z)]
+	var qi := 0
+	while qi < q.size():
+		var c: Vector2i = q[qi]; qi += 1
+		if seen.size() >= need:
+			return true
+		var lc := int(level[idx(c.x, c.y)])
+		for dv in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var n: Vector2i = c + dv
+			if seen.has(n) or not inb(n.x, n.y):
+				continue
+			var ni := idx(n.x, n.y)
+			if kind[ni] != T_GROUND or absi(int(level[ni]) - lc) > 1:
+				continue
+			seen[n] = true
+			q.append(n)
+	return seen.size() >= need
+
+## The nearest spot to p where a body fits: on open ground, clear of rocks, walls and buildings,
+## and at least `gap` away from every point in `avoid` (so spawns never pile up or start stuck).
+func free_spot_near(p: Vector3, avoid: Array = [], gap := 1.0, r := 0.45, max_rad := 10.0) -> Vector3:
+	var rad := 0.0
+	while rad <= max_rad:
+		var n := maxi(1, int(TAU * rad / 0.6))
+		for k in n:
+			var a := TAU * k / n + rad
+			var x := p.x + cos(a) * rad; var z := p.z + sin(a) * rad
+			if _fits(x, z, r) and roomy(int(floor(x)), int(floor(z))):
+				var ok := true
+				for o in avoid:
+					if Vector2((o as Vector3).x - x, (o as Vector3).z - z).length() < gap:
+						ok = false; break
+				if ok:
+					return Vector3(x, ground_at(x, z), z)
+		rad += 0.5
+	return p
+
+func _fits(x: float, z: float, r: float) -> bool:
+	if is_void(x, z):
+		return false
+	var g := ground_at(x, z)
+	for o in [Vector2(0, 0), Vector2(r, 0), Vector2(-r, 0), Vector2(0, r), Vector2(0, -r), Vector2(r, r) * 0.7, Vector2(-r, r) * 0.7, Vector2(r, -r) * 0.7, Vector2(-r, -r) * 0.7]:
+		if is_block(x + o.x, z + o.y) or is_void(x + o.x, z + o.y) or absf(ground_at(x + o.x, z + o.y) - g) > 0.05:
+			return false
+	return true
 
 func _near_block(x: int, z: int) -> bool:
 	for dz in range(-1, 2):
@@ -131,7 +192,7 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 	island.resize(w * h); island.fill(-1)
 	depth.resize(w * h); depth.fill(0.0)
 	islands.clear(); pads.clear(); spawns.clear(); portal_spots.clear(); chest_spots.clear(); camp_spots.clear(); wild_spots.clear()
-	links.clear(); rings.clear()
+	links.clear(); rings.clear(); winds.clear(); updrafts.clear()
 	var shape := FastNoiseLite.new(); shape.seed = seed_val; shape.frequency = 0.09
 	var terr := FastNoiseLite.new(); terr.seed = seed_val + 7; terr.frequency = 0.07
 	# island centres: a big heart island in the middle and a ring of outer islands around it,
@@ -149,10 +210,22 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 		var c := Vector2(w / 2.0, h / 2.0) + Vector2(cos(ang), sin(ang)) * dist
 		c.x = clampf(c.x, r + 2, w - r - 2); c.y = clampf(c.y, r + 2, h - r - 2)
 		centers.append({"c": c, "r": r})
+	# the biggest maps add a third, outermost ring of larger islands
+	var n_outmost := 0
+	if w >= 180:
+		n_outmost = maxi(0, n_far - 13)
+		n_far -= n_outmost
 	for k in n_far:
 		var r := rng.randf_range(6.0, 8.6)
 		var ang := a0 + PI / maxf(1.0, n_far) + TAU * k / n_far + rng.randf_range(-0.12, 0.12)
 		var dist: float = centers[0]["r"] + 32.0 + r * 0.5 + rng.randf_range(0.0, 5.0)
+		var c := Vector2(w / 2.0, h / 2.0) + Vector2(cos(ang), sin(ang)) * dist
+		c.x = clampf(c.x, r + 2, w - r - 2); c.y = clampf(c.y, r + 2, h - r - 2)
+		centers.append({"c": c, "r": r})
+	for k in n_outmost:
+		var r := rng.randf_range(7.0, 10.5)
+		var ang := a0 + TAU * k / n_outmost + rng.randf_range(-0.1, 0.1)
+		var dist: float = centers[0]["r"] + 62.0 + r * 0.5 + rng.randf_range(-3.0, 6.0)
 		var c := Vector2(w / 2.0, h / 2.0) + Vector2(cos(ang), sin(ang)) * dist
 		c.x = clampf(c.x, r + 2, w - r - 2); c.y = clampf(c.y, r + 2, h - r - 2)
 		centers.append({"c": c, "r": r})
@@ -226,6 +299,7 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 			islands[k + 1]["role"] = roles[k]
 	_place_blockers()
 	_place_pads()
+	_place_updrafts()
 	_place_spots()
 
 var wall_mat: ShaderMaterial = null   # walls fade where they hide the player
@@ -382,7 +456,11 @@ func _place_pads() -> void:
 		var ga: Vector2i = g[1]; var gb: Vector2i = g[2]
 		var dy: float = absf(float(level[idx(ga.x, ga.y)]) - float(level[idx(gb.x, gb.y)])) * LEVEL
 		if float(g[0]) > GLIDE_GAP or dy > LEVEL * 2.2 or (dy > LEVEL * 1.2 and float(g[0]) > 10.0):
-			pad_edges.append(e)
+			# long or steep: a wind road carries gliders across (pads only for the very longest)
+			if float(g[0]) > 46.0:
+				pad_edges.append(e)
+			else:
+				_wind_link(k.x, k.y, g)
 			continue
 		_glide_link(k.x, k.y, g)
 	edges = pad_edges
@@ -421,6 +499,70 @@ func _place_pads() -> void:
 				bs = score; best = Vector3(cp.x, level[i] * LEVEL, cp.y)
 		pd["land"] = best
 	pads = pads.filter(func(pd): return pd["land"] != Vector3.INF)
+
+## A wind road: a current of air from one island's edge to another's, either way. Glide into it
+## and it carries you along without heating your glider, climbing if the far side is higher.
+func _wind_link(a: int, b: int, g: Array) -> void:
+	var ca: Vector2i = g[1]; var cb: Vector2i = g[2]
+	var pa := Vector3(ca.x + 0.5, level[idx(ca.x, ca.y)] * LEVEL, ca.y + 0.5)
+	var pb := Vector3(cb.x + 0.5, level[idx(cb.x, cb.y)] * LEVEL, cb.y + 0.5)
+	var land_b := _inward(b, pb, pa); var land_a := _inward(a, pa, pb)
+	links.append({"from": a, "to": b, "take": pa, "land": land_b, "wind": true})
+	links.append({"from": b, "to": a, "take": pb, "land": land_a, "wind": true})
+	winds.append({"a": pa + Vector3(0, 1.6, 0), "b": pb + Vector3(0, 1.6, 0)})
+
+## Where wind carries a glider at p: {dir (along the road, either way), y (its height)} or {}.
+func wind_at(p: Vector3) -> Dictionary:
+	for wd in winds:
+		var a: Vector3 = wd["a"]; var b: Vector3 = wd["b"]
+		var ab := Vector2(b.x - a.x, b.z - a.z)
+		var l2 := ab.length_squared()
+		if l2 < 0.01: continue
+		var t := clampf(Vector2(p.x - a.x, p.z - a.z).dot(ab) / l2, 0.0, 1.0)
+		var q := a.lerp(b, t)
+		if Vector2(p.x - q.x, p.z - q.z).length() < 1.9 and absf(p.y - q.y) < 3.0 and t > 0.0 and t < 1.0:
+			return {"dir": Vector3(ab.x, b.y - a.y, ab.y).normalized(), "y": q.y}
+	return {}
+
+## Rising air off island edges: glide into it to climb.
+func updraft_at(p: Vector3) -> Dictionary:
+	for u in updrafts:
+		var c: Vector3 = u["pos"]
+		if Vector2(p.x - c.x, p.z - c.z).length() < float(u["r"]) and p.y < float(u["top"]) and p.y > c.y - 6.0:
+			return u
+	return {}
+
+func _place_updrafts() -> void:
+	# beside the higher islands and along the edges of big ones, so the high ground can be reached
+	# by gliding as well as by climbing
+	for ii in islands.size():
+		var isl: Dictionary = islands[ii]
+		var cells: Array = isl["cells"]
+		if cells.size() < 30:
+			continue
+		var top_lvl := 0
+		for c in cells:
+			top_lvl = maxi(top_lvl, int(level[idx(c.x, c.y)]))
+		var n := 1 if cells.size() < 160 else 2
+		if top_lvl < 2 and rng.randf() < 0.5:
+			continue
+		for _k in n:
+			# a void spot just off the edge
+			for _t in 30:
+				var c: Vector2i = cells[rng.randi_range(0, cells.size() - 1)]
+				if edge_dist(c.x, c.y, 1) != 1:
+					continue
+				var a := rng.randf() * TAU
+				var p := Vector2(c.x + 0.5 + cos(a) * 2.6, c.y + 0.5 + sin(a) * 2.6)
+				if not is_void(p.x, p.y):
+					continue
+				var base := float(level[idx(c.x, c.y)]) * LEVEL
+				var ok := true
+				for u in updrafts:
+					if Vector2((u["pos"] as Vector3).x, (u["pos"] as Vector3).z).distance_to(p) < 10.0: ok = false
+				if not ok: continue
+				updrafts.append({"pos": Vector3(p.x, base, p.y), "r": 1.6, "top": float(top_lvl) * LEVEL + 7.0})
+				break
 
 ## A glide route both ways between two close islands, with air rings over anything but a hop.
 func _glide_link(a: int, b: int, g: Array) -> void:
@@ -628,6 +770,7 @@ func a0_of(isl: int) -> float:
 func build_meshes() -> void:
 	for c in get_children():
 		c.queue_free()
+	_assign_regions()
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var tn := FastNoiseLite.new(); tn.seed = rng.seed + 3; tn.frequency = 0.3
@@ -637,11 +780,13 @@ func build_meshes() -> void:
 			if kind[i] == T_VOID or bridge.has(i):
 				continue
 			var y := level[i] * LEVEL
+			var bio := _bio(i)
+			cur_bio = bio
 			var cols := []
 			for cv in [Vector2(x, z), Vector2(x + 1, z), Vector2(x + 1, z + 1), Vector2(x, z + 1)]:
 				var v := tn.get_noise_2d(cv.x * 0.6, cv.y * 0.6) * 0.5 + 0.5
 				var v2 := tn.get_noise_2d(cv.x * 2.1 + 40.0, cv.y * 2.1) * 0.5 + 0.5
-				var col: Color = biome["top"].lerp(biome["top2"], v).lerp(biome["top"].lightened(0.08), v2 * 0.35)
+				var col: Color = Color(bio["top"]).lerp(bio["top2"], v).lerp(Color(bio["top"]).lightened(0.08), v2 * 0.35)
 				col = col.lightened(0.035 * level[i])
 				if not paint.is_empty():
 					var pc := Color(0, 0, 0, 0); var pn := 0
@@ -663,7 +808,7 @@ func build_meshes() -> void:
 				var lo := maxf(ny, bottom)
 				_side(st, x, z, dir, y, lo, ny <= -1.0e8)
 			# underside of the column
-			_quad(st, Vector3(x, bottom, z + 1), Vector3(x + 1, bottom, z + 1), Vector3(x + 1, bottom, z), Vector3(x, bottom, z), Vector3.DOWN, biome["deep"].darkened(0.3))
+			_quad(st, Vector3(x, bottom, z + 1), Vector3(x + 1, bottom, z + 1), Vector3(x + 1, bottom, z), Vector3(x, bottom, z), Vector3.DOWN, Color(bio["deep"]).darkened(0.3))
 	var mesh := st.commit()
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
@@ -671,6 +816,7 @@ func build_meshes() -> void:
 	mi.name = "Ground"
 	add_child(mi)
 	_decorate()
+	_build_air()
 
 func _quad4(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, cols: Array) -> void:
 	st.set_normal(n)
@@ -701,13 +847,13 @@ func _side(st: SurfaceTool, x: int, z: int, dir: Vector2i, top: float, lo: float
 		_: p0 = Vector3(x + 1, 0, z); p1 = Vector3(x, 0, z)
 	# a grassy lip, then dirt fading into dark rock toward the bottom
 	var lip := minf(0.18, top - lo)
-	var grass: Color = biome["top2"].darkened(0.12)
-	var dirt: Color = biome["side"]
+	var grass: Color = Color(cur_bio["top2"]).darkened(0.12)
+	var dirt: Color = cur_bio["side"]
 	_band(st, p0, p1, top, top - lip, n, grass, grass)
 	var mid := maxf(lo, top - lip - 1.2)
 	_band(st, p0, p1, top - lip, mid, n, dirt, dirt.darkened(0.15))
 	if mid > lo:
-		_band(st, p0, p1, mid, lo, n, dirt.darkened(0.15), biome["deep"] if to_void else dirt.darkened(0.3))
+		_band(st, p0, p1, mid, lo, n, dirt.darkened(0.15), cur_bio["deep"] if to_void else dirt.darkened(0.3))
 
 func _band(st: SurfaceTool, p0: Vector3, p1: Vector3, y0: float, y1: float, n: Vector3, c0: Color, c1: Color) -> void:
 	if y0 - y1 < 0.001:
@@ -722,6 +868,88 @@ func _band(st: SurfaceTool, p0: Vector3, p1: Vector3, y0: float, y1: float, n: V
 	st.set_color(c1); st.add_vertex(c)
 	st.set_color(c1); st.add_vertex(d)
 
+# ------------------------------------------------------------------ regions
+## Big maps are split into regions with their own look: meadows, autumn woods, frost, red mesas,
+## blossom groves. Each keeps a little of the tier's palette so the mood carries over.
+const REGIONS := [
+	{},
+	{"top": Color("c99a4c"), "top2": Color("a97a3c"), "side": Color("8b5a3a"), "leaf": Color("e0743a")},
+	{"top": Color("d2e2ea"), "top2": Color("aac6d6"), "side": Color("7a8aa0"), "deep": Color("2c3448"), "leaf": Color("8ac8d8")},
+	{"top": Color("d8a86a"), "top2": Color("c08a50"), "side": Color("a4583a"), "deep": Color("3a2228"), "leaf": Color("9aa04a")},
+	{"top": Color("7cbc6c"), "top2": Color("5c9c5c"), "side": Color("8b6d52"), "leaf": Color("ff9ac8")},
+]
+var cur_bio: Dictionary = {}
+var _isl_bio: Array = []
+func _assign_regions() -> void:
+	_isl_bio.clear()
+	var center := Vector2(w * 0.5, h * 0.5)
+	var off := rng.randf() * TAU
+	for ii in islands.size():
+		var c: Vector2 = islands[ii]["c"]
+		var reg := 0
+		if w >= 120 and ii > 0:
+			var a := fposmod(atan2(c.y - center.y, c.x - center.x) + off, TAU)
+			reg = int(a / TAU * REGIONS.size()) % REGIONS.size()
+		var b: Dictionary = biome.duplicate()
+		var r: Dictionary = REGIONS[reg]
+		for k in r:
+			b[k] = Color(r[k]).lerp(Color(biome.get(k, r[k])), 0.22)
+		islands[ii]["region"] = reg
+		_isl_bio.append(b)
+
+func _bio(i: int) -> Dictionary:
+	var ii := island[i] if i >= 0 and i < island.size() else -1
+	return _isl_bio[ii] if ii >= 0 and ii < _isl_bio.size() else biome
+
+## Wind roads as ribbons of flowing streaks; updrafts as glowing columns of rising air.
+func _build_air() -> void:
+	var wsh: Shader = load("res://shaders/wind.gdshader")
+	for wd in winds:
+		var a: Vector3 = wd["a"]; var b: Vector3 = wd["b"]
+		var d := b - a
+		var len := d.length()
+		for k in 3:
+			var mi := MeshInstance3D.new()
+			var qm := QuadMesh.new(); qm.size = Vector2(len, 2.4 if k == 0 else 1.4)
+			mi.mesh = qm
+			var mat := ShaderMaterial.new(); mat.shader = wsh
+			mat.set_shader_parameter("color", Color(0.75, 0.95, 1.0, 0.32 if k == 0 else 0.22))
+			mat.set_shader_parameter("tiles", maxf(2.0, len / 3.0))
+			mat.set_shader_parameter("speed", 0.9 + 0.25 * k)
+			mi.material_override = mat
+			mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+			add_child(mi)
+			# lay the quad along the road: flat for the main ribbon, tilted for the two wisps
+			var fwd := d.normalized()
+			var side := fwd.cross(Vector3.UP).normalized()
+			var up := side.cross(fwd).normalized()
+			var roll: float = [0.0, 1.0, -1.0][k]
+			# QuadMesh faces +z; turn it so its width runs along the road and it lies flat
+			mi.basis = Basis(fwd, up.rotated(fwd, roll * 0.9), -side.rotated(fwd, roll * 0.9))
+			mi.position = (a + b) * 0.5 + Vector3(0, -0.2 + k * 0.25, 0)
+	for u in updrafts:
+		var c: Vector3 = u["pos"]
+		var hgt: float = float(u["top"]) - c.y + 6.0
+		var col := MeshInstance3D.new()
+		col.mesh = Models.cyl(float(u["r"]), float(u["r"]) * 1.15, hgt, 18)
+		var mat := ShaderMaterial.new(); mat.shader = wsh
+		mat.set_shader_parameter("color", Color(1.0, 0.95, 0.75, 0.22))
+		mat.set_shader_parameter("tiles", hgt / 2.5)
+		mat.set_shader_parameter("speed", 1.4)
+		col.material_override = mat
+		col.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		col.position = Vector3(c.x, c.y - 6.0 + hgt * 0.5, c.z)
+		add_child(col)
+		var p := CPUParticles3D.new()
+		p.amount = 18; p.lifetime = 1.6; p.preprocess = 1.6
+		p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE; p.emission_sphere_radius = float(u["r"]) * 0.8
+		p.direction = Vector3.UP; p.spread = 8.0; p.initial_velocity_min = 5.0; p.initial_velocity_max = 8.0
+		p.gravity = Vector3.ZERO
+		p.mesh = Models.sphere(0.06, 4)
+		p.material_override = Models.glow_mat(Color(1.0, 0.96, 0.8, 0.8))
+		p.position = Vector3(c.x, c.y - 3.0, c.z)
+		add_child(p)
+
 func _decorate() -> void:
 	var drng := RandomNumberGenerator.new(); drng.seed = rng.seed + 11
 	var deco := Node3D.new(); deco.name = "Deco"; add_child(deco)
@@ -733,7 +961,7 @@ func _decorate() -> void:
 			var y := level[i] * LEVEL
 			var n: Node3D
 			if drng.randf() < 0.5:
-				n = Models.tree(drng, biome["leaf"])
+				n = Models.tree(drng, _bio(i)["leaf"])
 			else:
 				n = Models.rock(drng, drng.randf_range(0.9, 1.25))
 			n.position = Vector3(x + 0.5, y, z + 0.5)
@@ -776,7 +1004,7 @@ func _decorate() -> void:
 			var p := Vector3(bx + drng.randf_range(0.2, 0.8), level[bi] * LEVEL + 0.35, bz + drng.randf_range(0.2, 0.8))
 			var sc := drng.randf_range(0.8, 1.15)
 			bm.set_instance_transform(k, Transform3D(Basis().scaled(Vector3(sc, sc * drng.randf_range(1.0, 1.5), sc)), p))
-			bm.set_instance_color(k, Color(biome["leaf"]).darkened(drng.randf_range(0.0, 0.25)))
+			bm.set_instance_color(k, Color(_bio(bi)["leaf"]).darkened(drng.randf_range(0.0, 0.25)))
 		var bmi := MultiMeshInstance3D.new(); bmi.multimesh = bm
 		bmi.material_override = Models.vtoon()
 		bmi.name = "Bushes"
@@ -792,12 +1020,13 @@ func _decorate() -> void:
 				continue
 			for _k in 2:
 				if drng.randf() < 0.45:
-					xs.append([Vector3(x + drng.randf(), level[i] * LEVEL + 0.1, z + drng.randf()), drng.randf()])
+					xs.append([Vector3(x + drng.randf(), level[i] * LEVEL + 0.1, z + drng.randf()), drng.randf(), i])
 	mm.instance_count = xs.size()
 	for k in xs.size():
 		var t := Transform3D(Basis().scaled(Vector3.ONE * (0.7 + xs[k][1] * 0.8)), xs[k][0])
 		mm.set_instance_transform(k, t)
-		var c: Color = biome["top2"].darkened(0.1).lerp(Color("f4e27a") if xs[k][1] > 0.93 else biome["top"].lightened(0.15), xs[k][1])
+		var tb := _bio(int(xs[k][2]))
+		var c: Color = Color(tb["top2"]).darkened(0.1).lerp(Color("f4e27a") if xs[k][1] > 0.93 else Color(tb["top"]).lightened(0.15), xs[k][1])
 		mm.set_instance_color(k, c)
 	var mmi := MultiMeshInstance3D.new(); mmi.multimesh = mm
 	var mat := Models.vtoon(); mmi.material_override = mat

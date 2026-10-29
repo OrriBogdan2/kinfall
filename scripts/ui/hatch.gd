@@ -9,6 +9,8 @@ const EGGS := [
 		"play": "Keeps you safe and pushes foes back with waves. Loyal, a bit of a worrier."},
 	{"species": "burrlet", "name": "Mossy egg", "temper": "Curious", "desc": "Covered in soft moss, and it keeps turning toward little sounds. Something curious is in here.",
 		"play": "Roots foes in place with brambles. Notices everything, wanders off sometimes."},
+	{"species": "mystery", "name": "Mystery egg", "temper": "???", "desc": "Speckled, and strangely quiet. Nobody knows what's inside.",
+		"play": "Something that isn't any of the other three. You'll find out when it hatches."},
 ]
 
 const STORY := [
@@ -38,6 +40,13 @@ var root_ui: Control
 var bottom: VBoxContainer
 var title: Label
 var cam_from := Vector3(0, 3.6, 6.4)
+var egg_defs: Array = []      # EGGS with the mystery egg's species decided
+var look: Dictionary = {}
+var preview: Node3D
+var look_at_t := Vector3(0, 0.25, 0.5)
+var edit_only := false
+var create_box: Control
+var sub_lbl: Label        # opened from the menu just to change how you look
 var cam_to := Vector3(0, 3.6, 6.4)
 
 func _ready() -> void:
@@ -90,11 +99,17 @@ func _ready() -> void:
 		var r := Models.rock(drift, drift.randf_range(0.4, 1.2))
 		r.position = Vector3(drift.randf_range(-14, 14), drift.randf_range(-8, -3), drift.randf_range(-16, 2))
 		add_child(r)
-	for i in EGGS.size():
-		var d: Dictionary = EGGS[i]
+	egg_defs = EGGS.duplicate(true)
+	var others: Array = Data.KIN.keys().filter(func(k): return not k in ["cindle", "puddlet", "burrlet"])
+	for d in egg_defs:
+		if d["species"] == "mystery":
+			d["species"] = others[randi() % others.size()] if others.size() > 0 else "cindle"
+			d["mystery"] = true
+	for i in egg_defs.size():
+		var d: Dictionary = egg_defs[i]
 		var sp: Dictionary = Data.KIN[d["species"]]
 		var holder := Node3D.new()
-		var x := -1.7 + i * 1.7
+		var x := -2.55 + i * 1.7
 		holder.position = Vector3(x, 0, 0.2)
 		add_child(holder)
 		var nest := Models.nest(); nest.scale = Vector3.ONE * 0.8
@@ -103,6 +118,8 @@ func _ready() -> void:
 				ch.visible = false
 		holder.add_child(nest)
 		var egg := EggHatch.new(d["species"], fx, 0.32, 0.42, 1.1)
+		if d.get("mystery", false):
+			egg.shell_col = Color("c4bcd6"); egg.spot_col = Color("6a5a8a")
 		egg.hop_out = 0.35
 		egg.position = Vector3(0, 0.12, 0)
 		holder.add_child(egg)
@@ -110,7 +127,10 @@ func _ready() -> void:
 	_build_ui()
 	cam_from = Vector3(-9, 7.5, 16); cam.position = cam_from
 	cam_to = Vector3(-3.5, 4.2, 9.0)
-	if "--skip-intro" in OS.get_cmdline_user_args() or Save.d["tutorial"].get("intro", false):
+	if edit_only:
+		stage = "intro"
+		_end_intro()
+	elif "--skip-intro" in OS.get_cmdline_user_args() or Save.d["tutorial"].get("intro", false):
 		_end_intro()
 	else:
 		_show_story()
@@ -134,6 +154,7 @@ func _build_ui() -> void:
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	top.add_child(title)
 	var sub := UI.label("Every kin is different. It will remember how you treat it.", 16, UI.MUTED)
+	sub_lbl = sub
 	sub.autowrap_mode = TextServer.AUTOWRAP_OFF
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	top.add_child(sub)
@@ -142,6 +163,7 @@ func _build_ui() -> void:
 	holder.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
 	holder.offset_top = -330
 	holder.offset_bottom = -14
+	holder.grow_vertical = Control.GROW_DIRECTION_BEGIN     # a tall card grows up, never off the bottom
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root_ui.add_child(holder)
 	bottom = UI.vbox(10)
@@ -204,8 +226,11 @@ func _end_intro() -> void:
 		if c: c.queue_free()
 	if story_box: story_box.queue_free()
 	title.get_parent().visible = true
-	cam_to = Vector3(0, 3.6, 6.4)
-	_show_pick()
+	if not Save.d.has("look") or edit_only or "--create" in OS.get_cmdline_user_args():
+		_show_create()
+	else:
+		cam_to = Vector3(0, 3.6, 6.4)
+		_show_pick()
 
 func _unhandled_input(event: InputEvent) -> void:
 	if stage == "intro":
@@ -230,23 +255,111 @@ func _clear_bottom() -> void:
 	for ch in bottom.get_children():
 		ch.queue_free()
 
+# ---- your hunter
+const LOOK_ROWS := [["gender", "Gender", Models.LOOK_GENDERS], ["body", "Body", Models.LOOK_BODIES], ["face", "Face", Models.LOOK_FACES],
+	["skin", "Skin", Models.LOOK_SKIN], ["hair", "Hair", Models.LOOK_HAIRS], ["hair_col", "Hair colour", Models.LOOK_HAIR]]
+
+func _show_create() -> void:
+	stage = "create"
+	if look.is_empty():
+		look = Models.default_look()
+		look.merge(Save.d.get("look", {}), true)
+	title.text = "Make your hunter"
+	_clear_bottom()
+	if create_box: create_box.queue_free()
+	_rebuild_preview()
+	for e in eggs: (e["holder"] as Node3D).visible = false
+	if sub_lbl: sub_lbl.text = "How you look is just for show: every body has the same hitbox."
+	cam_to = Vector3(0, 1.5, 4.6)
+	look_at_t = Vector3(0.0, 0.9, 1.6)
+	var card := UI.card(UI.CARD, 14, 16)
+	card.custom_minimum_size = Vector2(500, 0)
+	create_box = card
+	var v := UI.vbox(8); card.add_child(v)
+	for row in LOOK_ROWS:
+		var key: String = row[0]
+		var opts: Array = row[2]
+		var hr := UI.hbox(8)
+		var l := UI.label(row[1], 15, UI.MUTED); l.custom_minimum_size.x = 120
+		hr.add_child(l)
+		hr.add_child(UI.button("‹", func(): _step_look(key, -1, opts.size()), 44))
+		var val := UI.label("", 16, UI.INK); val.custom_minimum_size.x = 170
+		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		var i := int(look[key])
+		if opts[0] is Color:
+			var sw := ColorRect.new(); sw.color = opts[i]; sw.custom_minimum_size = Vector2(170, 26)
+			hr.add_child(sw)
+		else:
+			val.text = String(opts[i])
+			hr.add_child(val)
+		hr.add_child(UI.button("›", func(): _step_look(key, 1, opts.size()), 44))
+		v.add_child(hr)
+	var nr := UI.hbox(8)
+	var nl := UI.label("Your name", 15, UI.MUTED); nl.custom_minimum_size.x = 120
+	nr.add_child(nl)
+	var ne := LineEdit.new(); ne.text = Save.d.get("name", "Hunter"); ne.max_length = 16; ne.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ne.text_changed.connect(func(t): Save.d["name"] = t.strip_edges() if t.strip_edges() != "" else "Hunter")
+	nr.add_child(ne)
+	v.add_child(nr)
+	var br := UI.hbox(10)
+	br.add_child(UI.button("Random", func():
+		for row in LOOK_ROWS:
+			look[row[0]] = randi() % (row[2] as Array).size()
+		_show_create(), 140))
+	br.add_child(UI.primary("Looks good", func():
+		Save.d["look"] = look.duplicate()
+		Save.save_game()
+		Sfx.play("click")
+		if preview: preview.queue_free()
+		preview = null
+		if create_box: create_box.queue_free()
+		create_box = null
+		for e in eggs: (e["holder"] as Node3D).visible = true
+		if sub_lbl: sub_lbl.text = "Every kin is different. It will remember how you treat it."
+		if edit_only or Save.d.get("tutorial", {}).get("hatched", false):
+			Game.goto("home")
+			return
+		stage = "pick"
+		title.text = "Choose your first kin"
+		cam_to = Vector3(0, 3.6, 6.4)
+		_show_pick(), 200))
+	v.add_child(br)
+	root_ui.add_child(card)
+	card.set_anchors_and_offsets_preset(Control.PRESET_CENTER_LEFT, Control.PRESET_MODE_MINSIZE, 48)
+
+func _step_look(key: String, d: int, n: int) -> void:
+	look[key] = posmod(int(look[key]) + d, n)
+	Sfx.play("hover", null, -6.0)
+	_show_create()
+
+func _rebuild_preview() -> void:
+	if preview: preview.queue_free()
+	var hero: String = Save.d.get("hero", "sage")
+	if not Data.HEROES.has(hero): hero = "sage"
+	preview = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], Data.HEROES[hero]["weapon"], hero, look)
+	preview.position = Vector3(0.8, 0, 1.6)
+	preview.rotation.y = PI
+	add_child(preview)
+
 func _show_pick() -> void:
 	_clear_bottom()
 	var row := UI.hbox(14)
-	for i in EGGS.size():
-		var d: Dictionary = EGGS[i]
+	for i in egg_defs.size():
+		var d: Dictionary = egg_defs[i]
+		var mystery: bool = d.get("mystery", false)
 		var card := UI.card(UI.CARD, 12, 14)
-		card.custom_minimum_size = Vector2(250, 0)
+		card.custom_minimum_size = Vector2(228, 0)
 		if i == chosen:
 			UI.set_card_border(card, UI.ACCENT)
 		var v := UI.vbox(6); card.add_child(v)
 		var hr := UI.hbox(8)
-		var tt := UI.title(d["name"], 22, Data.KIN[d["species"]]["color"]); tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var ecol: Color = Color("c4bcd6") if mystery else Data.KIN[d["species"]]["color"]
+		var tt := UI.title(d["name"], 22, ecol); tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		hr.add_child(tt)
-		hr.add_child(UI.section(d["temper"], Data.KIN[d["species"]]["color"]))
+		hr.add_child(UI.section(d["temper"], ecol))
 		v.add_child(hr)
 		var dl := UI.label(d["desc"], 14, UI.MUTED)
-		dl.custom_minimum_size.x = 220
+		dl.custom_minimum_size.x = 200
 		dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		v.add_child(dl)
 		if i == chosen:
@@ -304,7 +417,11 @@ func _start_hatch() -> void:
 func _process(delta: float) -> void:
 	t += delta
 	cam.position = cam.position.lerp(cam_to, minf(1.0, delta * 2.0))
-	cam.look_at(Vector3(0, (0.25 if stage != "pick" else 0.55) if stage != "name" else -0.55, 0.5))
+	if stage == "create":
+		cam.look_at(look_at_t)
+		if preview: preview.rotation.y += delta * 0.6
+	else:
+		cam.look_at(Vector3(0, (0.25 if stage != "pick" else 0.55) if stage != "name" else -0.55, 0.5))
 	if stage == "pick":
 		var hv := _egg_under_mouse()
 		if hv != hover:
@@ -339,7 +456,7 @@ func _process(delta: float) -> void:
 			wegg.position.y = 0.12
 			wegg.popped.connect(func(k: Node3D):
 				kin_node = k
-				title.text = "It's a %s!" % Data.KIN[EGGS[chosen]["species"]]["name"])
+				title.text = "It's a %s!" % Data.KIN[egg_defs[chosen]["species"]]["name"])
 			wegg.done.connect(func():
 				stage = "name"
 				cam_to = Vector3(0, 2.2, 5.6)
@@ -355,7 +472,7 @@ func _process(delta: float) -> void:
 
 func _show_name() -> void:
 	_clear_bottom()
-	var sp_id: String = EGGS[chosen]["species"]
+	var sp_id: String = egg_defs[chosen]["species"]
 	var sp: Dictionary = Data.KIN[sp_id]
 	var card := UI.card(UI.CARD, 16, 18)
 	card.custom_minimum_size = Vector2(520, 0)

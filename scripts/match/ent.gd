@@ -55,6 +55,11 @@ func teleport(p: Vector3) -> void:
 func ground() -> float:
 	return m.world.ground_at(pos.x, pos.z)
 
+## The height shots and blasts aim at to hit this body. (A hunter who has dropped below an
+## island's lip is hit through the balloon floating at ground level above them.)
+func hit_y() -> float:
+	return pos.y
+
 func over_void() -> bool:
 	return m.world.is_void(pos.x, pos.z)
 

@@ -149,6 +149,16 @@ func open_pause(where: String) -> void:
 		v.add_child(UI.button("Inventory  (%s)" % Settings.key_cap("inventory"), open_inventory, bw))
 	v.add_child(UI.button("Settings", open_settings, bw))
 	v.add_child(UI.button("Controls", func(): tab = "Controls"; open_settings(), bw))
+	if where == "home":
+		v.add_child(UI.button("Change how you look", func():
+			close()
+			Game.goto("hatch", {"create": true}), bw))
+	var scr = Game.main.screen_node() if Game.main else null
+	if scr and scr.has_method("unstick"):
+		v.add_child(UI.button("I'm stuck", func():
+			close()
+			scr.unstick()
+			Sfx.play("whoosh"), bw))
 	if admin_allowed():
 		v.add_child(UI.button("Admin tools  (F1)", open_admin, bw))
 	if where == "match":
@@ -230,6 +240,8 @@ func _show_settings() -> void:
 			_toggle(v, "Tips during matches", "tips")
 			_toggle(v, "Quick cast (abilities fire on press, no aiming preview)", "quick_cast")
 			_toggle(v, "Tap to crouch (instead of holding the crouch key)", "crouch_toggle")
+			if admin_allowed():
+				_toggle(v, "Mod mode: everything unlocked, free building and bridges, god mode, spawn kin (F1)", "mod_mode")
 		"Accessibility":
 			_slider(v, "Interface size", "ui_scale", 0.75, 1.5, 0.05)
 			_slider(v, "Screen shake", "shake", 0.0, 1.5)
@@ -484,6 +496,8 @@ func open_admin() -> void:
 		if c == "home": _reload_home())
 	add.call("Unlock every expedition tier", func(): Save.d["extracts"] = maxi(int(Save.d.get("extracts", 0)), 10))
 	add.call("Replay the tutorials", func(): Save.d["tutorial"] = {})
+	var spawn := UI.button("Spawn a kin…", open_spawn_kin, 290)
+	grid.add_child(spawn)
 	if c == "home":
 		var h = Game.main.screen_node()
 		add.call("Morning", func(): h.day_t = 0.27)
@@ -506,6 +520,37 @@ func open_admin() -> void:
 			if m.player and not m.player.out:
 				close()
 				m._extract(m.player))
+	var stat := UI.label("", 13, UI.MUTED)
+	stat.name = "AdminStat"
+	v.add_child(stat)
+	_admin_refresh()
+
+## Admin: pick any species to add to your farm.
+func open_spawn_kin() -> void:
+	if page != "spawn" and page != "":
+		stack.append(page)
+	var v := _page("spawn", "Spawn a kin", 640)
+	v.add_child(UI.label("Adds a level 8 kin with a Close bond to your farm.", 13, UI.MUTED))
+	var grid := GridContainer.new(); grid.columns = 3
+	grid.add_theme_constant_override("h_separation", 8); grid.add_theme_constant_override("v_separation", 8)
+	v.add_child(grid)
+	for sp in Data.KIN:
+		var sid: String = sp
+		var b := UI.button(String(Data.KIN[sid]["name"]), func():
+			var rec := Save.new_kin(sid)
+			rec["level"] = 8
+			rec["trust"] = 60.0
+			Evo.simulate(rec, RandomNumberGenerator.new())
+			Save.d["roster"].append(rec)
+			Care.dex_mark(sid, "caught")
+			Save.save_game()
+			Sfx.play("unlock")
+			var s = Game.main.screen_node() if Game.main else null
+			if s and s.has_method("_spawn_kin"):
+				s._spawn_kin()
+			_admin_refresh(), 196)
+		b.add_theme_color_override("font_color", Data.KIN[sid]["color"])
+		grid.add_child(b)
 	var stat := UI.label("", 13, UI.MUTED)
 	stat.name = "AdminStat"
 	v.add_child(stat)

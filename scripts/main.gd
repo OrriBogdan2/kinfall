@@ -66,7 +66,7 @@ func _ready() -> void:
 		get_tree().quit()
 		return
 	if "--gentime" in args:
-		for sz in [[64, 7], [128, 16]]:
+		for sz in [[64, 7], [128, 16], [World.BIG_SIZE, World.BIG_ISLANDS]]:
 			var t0 := Time.get_ticks_msec()
 			var w := World.new()
 			w.generate(int(OS.get_environment("GSEED")) if OS.get_environment("GSEED") != "" else 5, sz[0], sz[1])
@@ -78,7 +78,7 @@ func _ready() -> void:
 	if "--mapcheck" in args:
 		var MC = load("res://tools/mapcheck.gd")
 		if not "--big" in args: MC.new().run(range(1, 201))
-		MC.new().run(range(1, 61), 128, 16)
+		MC.new().run(range(1, 41), World.BIG_SIZE, World.BIG_ISLANDS)
 		get_tree().quit()
 		return
 	if "--speak-test" in args:
@@ -207,6 +207,7 @@ func show_screen(screen: String, opts: Dictionary) -> void:
 		"hatch":
 			var Hx = load("res://scripts/ui/hatch.gd")
 			current = Hx.new()
+			current.set("edit_only", bool(opts.get("create", false)))
 			add_child(current)
 		"home":
 			var H = load("res://scripts/home/home.gd")
