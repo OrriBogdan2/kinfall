@@ -125,6 +125,7 @@ func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--hatch-auto="):
 			var i := int(a.substr(13))
+			if not Save.d.has("look"): Save.d["look"] = Models.default_look()
 			_end_intro()
 			_pick(i); _pick(i)
 			auto_warm = true
@@ -221,6 +222,9 @@ func _end_intro() -> void:
 		_show_pick()
 
 func _unhandled_input(event: InputEvent) -> void:
+	if stage == "warm" and ((event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT) or event.is_action_pressed("jump")):
+		_tap_egg()
+		return
 	if stage == "intro":
 		if (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT) or event.is_action_pressed("jump") or event.is_action_pressed("ui_accept"):
 			_next_story()
@@ -370,15 +374,58 @@ func _pick(i: int) -> void:
 	fx.burst(e["holder"].position + Vector3(0, 0.6, 0), Data.KIN[e["data"]["species"]]["color"], 10, 2.0, 0.5, 2.0)
 	_show_pick()
 
+## Hatching by knocks: each tap hits harder than the last. The egg jumps higher and twists further,
+## the camera punches in, the sound climbs in pitch, sparks fly, a new crack opens, and the last
+## few knocks flash the screen before it bursts.
+const TAPS := 7
+var taps := 0
+var cam_shake := 0.0
+func _tap_egg() -> void:
+	if taps >= TAPS or chosen < 0:
+		return
+	taps += 1
+	var k := float(taps) / TAPS
+	var wegg: EggHatch = eggs[chosen]["egg"]
+	var holder: Node3D = eggs[chosen]["holder"]
+	var col: Color = Color("ffd36a").lerp(Color(Data.KIN[egg_defs[chosen]["species"]]["color"]), k)
+	# a jump and a twist that grow with every knock
+	var hop := create_tween()
+	var up := 0.12 + 0.1 + 0.32 * k
+	hop.tween_property(wegg, "position:y", up, 0.09 + 0.05 * k).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
+	hop.tween_property(wegg, "position:y", 0.12, 0.12 + 0.06 * k).set_trans(Tween.TRANS_BOUNCE).set_ease(Tween.EASE_OUT)
+	wegg.rotation.z = (0.12 + 0.45 * k) * (1.0 if taps % 2 == 0 else -1.0)
+	var sq := create_tween()
+	wegg.scale = Vector3(1.0 + 0.12 + 0.2 * k, 1.0 - 0.1 - 0.15 * k, 1.0 + 0.12 + 0.2 * k)
+	sq.tween_property(wegg, "scale", Vector3.ONE, 0.25 + 0.1 * k).set_trans(Tween.TRANS_ELASTIC).set_ease(Tween.EASE_OUT)
+	# a new crack each time
+	var base := 8 + taps * 3
+	wegg._crack(base, base + 2 + int(k * 2.0))
+	# sparks, sound and camera
+	fx.burst(holder.position + Vector3(0, 0.5, 0), col, int(4 + 26 * k), 1.5 + 4.0 * k, 0.4 + 0.3 * k, -2.0)
+	if taps >= TAPS - 2:
+		fx.ring(holder.position + Vector3(0, 0.05, 0), 0.8 + 1.4 * k, col, 0.35)
+	Sfx.play("hit", null, -10.0 + 10.0 * k, 0.02, 0.8 + 0.7 * k)
+	if taps >= 4: Sfx.play("thump", null, -12.0 + 8.0 * k, 0.02, 1.2 - 0.3 * k)
+	cam_shake = 0.02 + 0.16 * k * k
+	cam_to = Vector3(0, 2.5, 5.4).lerp(Vector3(0, 1.8, 3.9), k)
+	if taps >= TAPS - 1:
+		var fl := ColorRect.new(); fl.color = Color(1, 0.95, 0.85, 0.25 + 0.35 * k)
+		fl.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); fl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		root_ui.add_child(fl)
+		create_tween().tween_property(fl, "color:a", 0.0, 0.35).finished.connect(fl.queue_free)
+	if title:
+		title.text = ["Help it hatch", "Something stirs...", "It knocks back!", "Again!", "Harder!", "It's cracking!", "One more!", "Here it comes!"][mini(taps, 7)]
+
 func _start_hatch() -> void:
 	stage = "warm"
 	hatch_t = 0.0
 	_clear_bottom()
-	title.text = "Keep it warm"
+	title.text = "Help it hatch"
+	taps = 0
 	var card := UI.card(UI.CARD, 14, 16)
 	card.custom_minimum_size = Vector2(460, 0)
 	var v := UI.vbox(10); card.add_child(v)
-	var l := UI.label("Hold the left mouse button (or Space) to keep the egg warm. Don't let it go cold.", 15)
+	var l := UI.label("Tap the egg: click (or press Space) again and again. Every knock wakes it a little more.", 15)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(l)
 	warm_bar = Control.new()
@@ -418,24 +465,19 @@ func _process(delta: float) -> void:
 			var hs := 1.12 if i == hover else 1.0
 			var hn: Node3D = eggs[i]["holder"]
 			hn.scale = hn.scale.lerp(Vector3.ONE * hs, minf(1.0, delta * 10.0))
+	if cam_shake > 0.0:
+		cam.position += Vector3(randf_range(-1, 1), randf_range(-1, 1), randf_range(-1, 1)) * cam_shake
+		cam_shake = maxf(0.0, cam_shake - delta * 1.8)
 	if stage == "warm" and chosen >= 0:
-		var holding := auto_warm or Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT) or Input.is_action_pressed("jump")
-		warmth = clampf(warmth + delta * (0.32 if holding else -0.12), 0.0, 1.0)
+		if auto_warm and int(t * 3.0) != int((t - delta) * 3.0):
+			_tap_egg()          # test hook: taps by itself
+		warmth = lerpf(warmth, float(taps) / TAPS, minf(1.0, delta * 10.0))
 		if warm_bar: warm_bar.queue_redraw()
 		var wegg: EggHatch = eggs[chosen]["egg"]
 		wegg.set_warmth(warmth)
-		# it rocks gently in the warmth, and gives a happy little hop as it warms through
-		wegg.rotation.z = sin(t * 2.4) * (0.03 + warmth * 0.06)
-		var step := int(warmth * 3.0)
-		if step > warm_step:
-			warm_step = step
-			var hop := create_tween()
-			hop.tween_property(wegg, "position:y", 0.24, 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-			hop.tween_property(wegg, "position:y", 0.12, 0.16).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-			Sfx.play("jump", null, -12.0, 0.05, 1.7)
-		if holding and int(t * 8.0) != int((t - delta) * 8.0):
-			fx.burst(eggs[chosen]["holder"].position + Vector3(0, 0.5, 0), Color("ffb36a"), 2, 1.0, 0.5, -1.0, 0.5)
-		if warmth >= 1.0:
+		# between knocks it trembles, more and more the closer it is
+		wegg.rotation.z = lerpf(wegg.rotation.z, sin(t * (6.0 + warmth * 30.0)) * warmth * 0.05, minf(1.0, delta * 12.0))
+		if taps >= TAPS and warmth >= 0.98:
 			stage = "hatching"
 			title.text = "Something's moving..."
 			_clear_bottom()
