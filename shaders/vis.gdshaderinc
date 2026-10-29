@@ -34,5 +34,5 @@ float vis_fog(vec3 wp) {
 
 vec3 vis_apply(vec3 c, float fog) {
 	vec3 grey = vec3(dot(c, vec3(0.3, 0.59, 0.11))) * vec3(0.7, 0.76, 0.95);
-	return mix(c, grey, fog * 0.55) * (1.0 - fog * 0.46);
+	return mix(c, grey, fog * 0.45) * (1.0 - fog * 0.38);
 }

@@ -1159,8 +1159,9 @@ func _decorate() -> void:
 	sea.mesh = pm
 	var cm := ShaderMaterial.new(); cm.shader = load("res://shaders/clouds.gdshader")
 	if clouds.size() == 2:
-		cm.set_shader_parameter("deep", clouds[0])
-		cm.set_shader_parameter("light", clouds[1])
+		cm.set_shader_parameter("deep", (clouds[0] as Color).lightened(0.1))
+		cm.set_shader_parameter("light", (clouds[1] as Color).lightened(0.28))
+		cm.set_shader_parameter("glow_amount", 0.25)
 	sea.material_override = cm
 	sea.position = Vector3(w / 2.0, -18.0, h / 2.0)
 	sea.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
