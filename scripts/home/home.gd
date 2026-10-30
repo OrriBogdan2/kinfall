@@ -2016,6 +2016,7 @@ func _open_expedition() -> void:
 	var go := UI.hbox(10)
 	go.add_child(UI.primary("Start expedition", _confirm_start, 220))
 	go.add_child(UI.button("Training area", _start_training, 180))
+	go.add_child(UI.button("Duel room", _start_duel, 150))
 	if Bridge.net_available():
 		go.add_child(UI.button("Play online with friends", func(): Game.goto("lobby", {"cls": Data.class_of_save(), "tier": exp_tier}), 240))
 	v.add_child(go)
@@ -2181,6 +2182,12 @@ func _start_training() -> void:
 	Save.d["cls"] = Data.class_of_save()
 	Save.save_game()
 	Game.start_match({"training": true, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242})
+
+## The duel room: you against one sparring bot you set up yourself.
+func _start_duel() -> void:
+	Save.d["cls"] = Data.class_of_save()
+	Save.save_game()
+	Game.start_match(Match.duel_opts())
 
 ## Before a run where kin can be lost, say so plainly and make the player confirm.
 func _confirm_start() -> void:

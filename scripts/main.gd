@@ -133,6 +133,9 @@ func _ready() -> void:
 	if Array(args).any(func(a): return String(a).begins_with("--weapon-check")):
 		_weapon_check()
 		return
+	if "--duel-check" in args:
+		_duel_check()
+		return
 	if "--simtest" in args:
 		_simtest(opts)
 		return
@@ -218,6 +221,8 @@ func _ready() -> void:
 		show_screen("hatch", {"create": true})    # test: the hunter creator
 	elif "--match" in args:
 		show_screen("match", opts)
+	elif "--duel" in args:
+		show_screen("match", Match.duel_opts())
 	elif "--training" in args:
 		show_screen("match", {"training": true, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242, "no_drop": "--no-drop" in args, "perk_demo": "--perk-demo" in args})
 	elif "--tutorial" in args:
@@ -580,6 +585,38 @@ func _weapon_check() -> void:
 				print("WCHECK %-12s %-6s dist %4.1f  dps %6.1f  (%d in %ds)" % [wid, mode, dist, dealt / dur, int(dealt), int(dur)])
 				m.queue_free()
 				await get_tree().process_frame
+	get_tree().quit()
+
+## Headless smoke test for the duel room: your autopilot against the sparring bot for a few
+## minutes, changing the bot's class, behaviour, glove and difficulty along the way.
+func _duel_check() -> void:
+	var o := Match.duel_opts()
+	o["autoplay"] = true
+	var m := Match.new()
+	add_child(m)
+	m.start(o)
+	m.set_process(false)
+	var ok := true
+	if m.duel == null or m.duel.bot == null:
+		print("DUEL FAIL no bot"); get_tree().quit(); return
+	var plan := {20.0: ["mode", 1], 40.0: ["mode", 1], 60.0: ["mode", 1], 80.0: ["cls", 1], 100.0: ["glove", 1], 120.0: ["diff", 1], 140.0: ["weapon", 1]}
+	var done := {}
+	while m.time < 170.0:
+		m.step(Match.DT)
+		for t in plan:
+			if m.time >= float(t) and not done.has(t):
+				done[t] = true
+				m.duel.cycle(String(plan[t][0]), int(plan[t][1]))
+				print("DUEL t=%d %s -> %s / %s / %s / %s / %s" % [m.time, plan[t][0], m.duel.pick_text("cls"), m.duel.pick_text("weapon"), m.duel.pick_text("glove"), m.duel.pick_text("diff"), m.duel.pick_text("mode")])
+		if m.duel.bot == null or not is_instance_valid(m.duel.bot):
+			print("DUEL FAIL bot lost at ", m.time); ok = false; break
+		if m.over:
+			print("DUEL FAIL match ended at ", m.time); ok = false; break
+	var st: Dictionary = m.duel.stats
+	print("DUEL STATS ", st, " rounds=", m.duel.round_n, " bots=", m.hunters.size())
+	if int(st["shots"]) <= 0 or float(st["dealt"]) <= 0.0:
+		print("DUEL FAIL nothing landed"); ok = false
+	print("DUEL CHECK ", "PASS" if ok else "FAIL")
 	get_tree().quit()
 
 func _simtest(opts: Dictionary) -> void:

@@ -189,7 +189,7 @@ func _draw_all() -> void:
 		_draw_scores(sz)
 	if p and not p.out and not p.extracted:
 		_draw_hover_tip(sz, p)
-		if hover_id == "":
+		if hover_id == "" and m.perk_offer.is_empty():
 			_draw_world_hover(sz, p)
 
 func _draw_world_labels() -> void:
@@ -292,6 +292,8 @@ func _draw_world_labels() -> void:
 func _draw_bubbles() -> void:
 	var cam := m.cam
 	for b in m.bubbles:
+		if not is_instance_valid(b["ent"]):
+			continue
 		var k: Kin = b["ent"]
 		if k.dead:
 			continue
@@ -335,22 +337,36 @@ func _draw_pings(sz: Vector2) -> void:
 			c.draw_colored_polygon(PackedVector2Array([edge + d * 14, edge - d * 8 + n * 10, edge - d * 8 - n * 10]), col)
 
 func _draw_top(sz: Vector2) -> void:
+	if m.duel:
+		_draw_duel(sz)
+		return
 	if m.opts.get("training", false):
 		var rr := Rect2(Vector2(sz.x * 0.5 - 220, 12), Vector2(440, 54))
 		_panel(rr, Color(0.06, 0.07, 0.1, 0.88), 12)
 		_ctext(Vector2(sz.x * 0.5, 34), "TRAINING AREA", 12, Color("8fe3c8"))
 		_ctext(Vector2(sz.x * 0.5, 56), "Nothing can hurt you here  ·  Esc to leave", 15, INK)
-		# the checklist
-		var lines: Array = m.train_rows()
-		var box := Rect2(Vector2(sz.x - 346, 16), Vector2(330, 34 + lines.size() * 24))
+		# the checklist: only what's left (up to six), with a count; H folds it away
+		var all_rows: Array = m.train_rows()
+		var left: Array = all_rows.filter(func(t): return not m.train.has(t[0]))
+		var n_done := all_rows.size() - left.size()
+		if guide_hidden:
+			var pill := Rect2(Vector2(sz.x - 196, 16), Vector2(180, 30))
+			_panel(pill, Color(0.06, 0.07, 0.1, 0.8), 10)
+			_text(pill.position + Vector2(12, 20), "Guide %d/%d  ·  H to show" % [n_done, all_rows.size()], 13, MUTED)
+			return
+		var shown: Array = left.slice(0, 6)
+		var box := Rect2(Vector2(sz.x - 346, 16), Vector2(330, 58 + maxi(1, shown.size()) * 24))
 		_panel(box, Color(0.06, 0.07, 0.1, 0.82), 12)
 		_text(box.position + Vector2(14, 24), "Try everything", 15, GOLD, big)
-		for i in lines.size():
-			var t: Array = lines[i]
-			var done: bool = m.train.has(t[0])
+		_text(box.position + Vector2(box.size.x - 120, 24), "%d / %d done" % [n_done, all_rows.size()], 12, MUTED)
+		if shown.is_empty():
+			_text(box.position + Vector2(14, 50), "All done. Try the duel room!", 13, GOOD)
+		for i in shown.size():
+			var t: Array = shown[i]
 			var key := ("[%s]  " % Settings.key_cap(t[2])) if t[2] != "" else ""
 			if t[0] == "move": key = "[%s%s%s%s]  " % [Settings.key_cap("up"), Settings.key_cap("left"), Settings.key_cap("down"), Settings.key_cap("right")]
-			_text(box.position + Vector2(14, 50 + i * 24), ("✓  " if done else "○  ") + key + String(t[1]), 13, GOOD if done else INK)
+			_text(box.position + Vector2(14, 50 + i * 24), ("→  " if i == 0 else "○  ") + key + String(t[1]), 13, GOLD if i == 0 else INK)
+		_text(box.position + Vector2(14, box.size.y - 10), "H hides the guide and your kit", 11, Color(MUTED, 0.8))
 		return
 	if m.opts.get("tutorial", false):
 		var txt: String = m.tut_text
@@ -384,6 +400,33 @@ func _draw_top(sz: Vector2) -> void:
 	for h in m.hunters:
 		if not h.out and not h.extracted: teams[h.team] = true
 	_text(Vector2(r.end.x + 12, 34), "%d squads left" % teams.size(), 14, MUTED)
+
+## The duel room: what you're up against at the top, and your numbers on the right.
+func _draw_duel(sz: Vector2) -> void:
+	var d: Duel = m.duel
+	var rr := Rect2(Vector2(sz.x * 0.5 - 260, 12), Vector2(520, 58))
+	_panel(rr, Color(0.06, 0.07, 0.1, 0.88), 12)
+	_ctext(Vector2(sz.x * 0.5, 32), "DUEL ROOM  ·  ROUND %d" % d.round_n, 12, Color("ff9a8a"))
+	_ctext(Vector2(sz.x * 0.5, 56), "%s %s  ·  %s  ·  %s  ·  %s" % [d.pick_text("diff"), d.pick_text("cls"), d.pick_text("weapon"), d.pick_text("glove") if d.glove != "" else "no glove", d.pick_text("mode")], 15, INK)
+	if guide_hidden:
+		return
+	var st: Dictionary = d.stats
+	var shots := maxi(1, int(st["shots"]))
+	var rows := [
+		["Damage dealt", "%d" % int(st["dealt"]), GOOD],
+		["Damage taken", "%d" % int(st["taken"]), Color("ff8a7a")],
+		["Shots landed", "%d / %d  (%d%%)" % [int(st["hits"]), int(st["shots"]), int(round(100.0 * int(st["hits"]) / shots)) if int(st["shots"]) > 0 else 0], INK],
+		["Shots dodged", "%d / %d" % [int(st["dodged"]), int(st["bot_shots"])], Color("9af0ff")],
+		["Knocks", "%d  -  %d" % [int(st["knocks"]), int(st["knocked"])], GOLD],
+	]
+	var box := Rect2(Vector2(sz.x - 286, 16), Vector2(270, 40 + rows.size() * 24 + 28))
+	_panel(box, Color(0.06, 0.07, 0.1, 0.82), 12)
+	_text(box.position + Vector2(14, 24), "Your numbers", 15, GOLD, big)
+	for i in rows.size():
+		var y := box.position.y + 50 + i * 24
+		_text(Vector2(box.position.x + 14, y), String(rows[i][0]), 13, MUTED)
+		_text(Vector2(box.position.x + 140, y), String(rows[i][1]), 14, rows[i][2], big)
+	_text(Vector2(box.position.x + 14, box.end.y - 12), "B bot setup  ·  X reset  ·  H hide", 11, Color(MUTED, 0.85))
 
 func _draw_feed(sz: Vector2) -> void:
 	var y := 36.0
@@ -670,7 +713,15 @@ func _ab_slot(id: String, rect: Rect2, icon: String, key: String, col: Color, cd
 		var k := 1.0 - fl / 0.35
 		_rounded(rect.grow(2.0 + k * 8.0), Color(0, 0, 0, 0), 14, Color(col, 1.0 - k), 3)
 
+var guide_hidden := false
+var _h_down := false
+
 func _hud_tick(delta: float) -> void:
+	# H folds the training guide and the kit panel away (and back)
+	var hd := Input.is_physical_key_pressed(KEY_H)
+	if hd and not _h_down and (m.opts.get("training", false) or m.opts.get("duel", false)):
+		guide_hidden = not guide_hidden
+	_h_down = hd
 	for id in slot_fx.keys():
 		slot_fx[id]["t"] = float(slot_fx[id]["t"]) + delta
 		if float(slot_fx[id]["t"]) > 0.4: slot_fx.erase(id)
@@ -986,7 +1037,7 @@ func _draw_ship_prompt(sz: Vector2) -> void:
 
 ## For the first seconds of every match: what each of your buttons does.
 func _draw_kit(sz: Vector2, p: Hunter) -> void:
-	if not Settings.get_v("tips") or m.opts.get("tutorial", false) or p.out:
+	if not Settings.get_v("tips") or m.opts.get("tutorial", false) or p.out or guide_hidden or not m.perk_offer.is_empty():
 		return
 	var show_t := 14.0 if not m.opts.get("training", false) else 1e9
 	var t := m.time - kit_t0
@@ -1026,7 +1077,9 @@ func _draw_kit(sz: Vector2, p: Hunter) -> void:
 	var bottom := sz.y - 120.0
 	var box := Rect2(Vector2(sz.x - w - 16, bottom - total), Vector2(w, total))
 	if m.opts.get("training", false):
-		box.position.y = 240
+		# in training it stays up, so it lives on the left under the minimap, clear of the checklist
+		box.position = Vector2(16, 240)
+		box.size.y = minf(box.size.y, sz.y - 240 - 200)
 	_panel(box, Color(0.06, 0.07, 0.1, 0.82 * a), 12)
 	_text(box.position + Vector2(14, 22), "Your kit", 14, Color(GOLD, a), big)
 	var y := box.position.y + 34

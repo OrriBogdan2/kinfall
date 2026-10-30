@@ -18,19 +18,18 @@ The project uses the Compatibility renderer so the same build runs on the web.
 |---|---|
 | WASD | Move |
 | Mouse | Aim |
-| Left click | Shoot (your weapon) |
-| Right click | Your weapon's utility |
-| Q | Your active kin's first ability (thrown out first if it's on your shoulder) |
-| V | Your active kin's second ability |
-| R | Bond ultimate, once the bond meter is full |
-| C | Throw your kin at the cursor, or recall it (short cooldown after a recall) |
-| X | Swap which of your two kin is active |
-| Shift | Dodge (your class decides how: slip, dash or shoulder charge) |
+| Left click | Weapon attack |
+| Right click | Your weapon's ability |
+| Shift | Dash (in the air it's the long dash; your class decides distance and charges) |
 | Space | Jump; hold it in the air to glide |
-| Ctrl | Crouch (hold; tap to toggle on the web version, since Ctrl+W closes browser tabs) |
-| E | Catch a dazed kin, revive a teammate, open a chest, take a found weapon |
-| F / G | Gear actives |
-| 1 | Tonic |
+| Mouse 5 | Glide (hold in the air; never jumps) |
+| Q | Your active glove (gloves are found on the run) |
+| E | Your kin's ability (thrown out first if it's on your shoulder) |
+| C or middle mouse | Throw your kin at the cursor, or recall it |
+| R | Bond ultimate, once the bond meter is full |
+| 1 | Heal: a tonic when you're hurt, an armor kit when your health is full |
+| F | Catch a dazed kin, revive a teammate, open a chest, take a found weapon or glove |
+| Ctrl | Sneak (hold; tap to toggle on the web version, since Ctrl+W closes browser tabs) |
 | Tab | Scoreboard |
 | Esc | Menu: settings, controls, save files |
 | F1 or ` | Admin tools (god mode, gems, unlocks) for the game's owner |
@@ -55,8 +54,9 @@ Touch the side of an island while you're falling (or gliding) and you float back
 - **Sight.** You see a cone in front of you (where you aim) plus a small circle around you; everything else is dimmed and rival hunters there are hidden. Walls cast sight shadows. Teammates share what they see. Tall grass hides you from anyone outside it, and firing or getting hit gives you away for a moment. Crouching (Ctrl) slows you down and steadies your aim, and rivals only spot you at close range.
 - **Stagger.** Big monsters (Brutes, Sentinels, the Warden, the Glimmerkin) open short purple-ring windows, always while winding up a slam. Hit one with an ability (a kin ability, your utility or a throw) in that window, not a regular shot: it takes a big hit, is stunned for a few seconds, takes extra damage the whole time, and your kin's abilities come straight back.
 - **Your kit.** Class (light, medium, heavy) sets health, armor, speed and your dodge. Your weapon gives left click and its right-click utility. Everything else comes from your kin.
-- **Two kin per run.** The active kin gives you Q, V and the R ultimate; X swaps the benched one in (3s cooldown), and the one you swap out rests and heals. Change kin and your build changes.
-- **Throw and recall.** C throws the kin into a fight, where it picks targets and fights on its own. C again recalls it straight to your shoulder; after a recall there's a one-second wait before the next throw.
+- **One kin per run.** Your kin gives you its ability (E) and its bond ultimate (R). Change kin and your build changes.
+- **Gloves.** Found on the run, like Supervive's grips: one active glove (Q) and one passive glove at a time. A new one replaces the one in its slot. They last one expedition.
+- **Throw and recall.** C (or middle mouse) throws the kin into a fight, where it picks targets and fights on its own. Pressing it again recalls it straight to your shoulder; after a recall there's a one-second wait before the next throw.
 - **Bond meter.** Your hits, your kin's hits, combos and kin knockouts fill a shared meter. When it's full, R calls the active kin's bond ultimate: an armor form (it fuses onto you: bonus damage, shields, shots that burn, slow or arc) or a giant form (it grows huge and stomps).
 - **Combos.** Your kin stuns or roots a foe and your next hit on it lands a COMBO (bonus damage and bond). You stun or slow a foe and your kin's next hit POUNCES for more. A kin ability on a burning foe FLARES.
 - **How kin fight.** Each kin's aggression, loyalty and caution (from its species and its own traits) decide how far it chases, how close it stays, who it goes after and when it backs off. Kin also use their abilities on their own (Settings can turn that off); Lunowl's Moonlift will lift you out of a fall into the abyss if it's loyal enough.

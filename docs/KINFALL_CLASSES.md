@@ -27,6 +27,13 @@ How the classes differ:
 - **Medium:** the Supervive baseline.
 - **Heavy:** most HP, slowest, two short dashes instead of one long one, hard to push off ledges. That last point matters a lot in an abyss game.
 
+### The kit (keys)
+
+LMB weapon · RMB weapon ability · Shift dash (the air dash is the long dash, so there's no separate
+ex-dash key; classes differ by dash distance and charges) · Space jump, hold to glide (Mouse 5 glides
+too) · Q active glove · E kin ability · C or middle mouse throw / recall kin · R bond ultimate ·
+1 heal (tonic when hurt, armor kit when health is full) · F interact. One kin per expedition.
+
 ## Weapons
 
 Each class has two guns and one sword. Firing behavior is measured from Supervive footage and patch notes (see WEAPON_FIRING_DATA.md).

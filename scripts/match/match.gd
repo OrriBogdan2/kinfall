@@ -54,6 +54,8 @@ var pings: Array = []       # {pos, col, t}
 var bubbles: Array = []     # {ent, text, t, cat}
 var interact := {}          # what F would do right now for the local player
 var paused := false
+var duel: Duel = null
+var shot_n := 0          # the duel room: you and one sparring bot (opts "duel")
 var slowmo := 0.0
 var slow_k := 0.35
 var killcam_text := ""
@@ -139,9 +141,10 @@ func start(o: Dictionary) -> void:
 		Net.begin_match("kf-" + String(o["net"]["mid"]), String(o["net"]["host"]), self)
 	_spawn_pads_and_portals()
 	_spawn_hunters()
-	if not opts.get("tutorial", false):
+	if not opts.get("tutorial", false) and not opts.get("duel", false):
 		_spawn_mobs()        # the tutorial brings its own monsters, one step at a time
-	_spawn_chests()
+	if not opts.get("duel", false):
+		_spawn_chests()
 	Life.place_beacons(self)
 	_spawn_breakables()
 	for rg in world.rings:
@@ -158,7 +161,8 @@ func start(o: Dictionary) -> void:
 		player.teleport(b0 + Vector3(2.2, 0, 0.6))
 		spawn_weapon("sniper", 3, b0 + Vector3(1.6, 0, 1.8), "", false)
 		spawn_weapon("smg", 4, b0 + Vector3(3.0, 0, 1.6), "", false)
-	_spawn_wild()
+	if not opts.get("duel", false):
+		_spawn_wild()
 	var Hud = load("res://scripts/ui/hud.gd")
 	hud = Hud.new()
 	hud.name = "Hud"
@@ -168,6 +172,11 @@ func start(o: Dictionary) -> void:
 		hud.toast("Steer to choose where you land", Color("f3eee2"))
 	if player:
 		cam.snap(player.pos)
+	if opts.get("duel", false) and player:
+		duel = Duel.new()
+		duel.setup(self)
+		duel.attach_keys()
+		hud.toast("Duel room  ·  B sets up the bot  ·  X resets", Color("f3eee2"))
 	_build_aim()
 	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
 	set_process(true)
@@ -644,6 +653,24 @@ func _spawn_breakables() -> void:
 				continue
 			q2.y = world.ground_at(q2.x, q2.z)
 			spawn_gear(gid, 2, q2)
+		# the way into the duel room: a glowing pad next to where you start
+		if not opts.get("duel", false):
+			for off in [Vector3(3.6, 0, 2.6), Vector3(-3.6, 0, 2.6), Vector3(3.6, 0, -1.0), Vector3(0, 0, 4.0)]:
+				var dq: Vector3 = player.pos + off
+				if world.is_void(dq.x, dq.z) or world.is_block(dq.x, dq.z):
+					continue
+				dq.y = world.ground_at(dq.x, dq.z)
+				duel_pad = dq
+				var pad := Models.jump_pad(Color("ff8a7a"))
+				pad.position = dq
+				add_child(pad)
+				var lbl := Label3D.new()
+				lbl.text = "DUEL ROOM\n%s to enter" % Settings.key_cap("interact")
+				lbl.font = UI.big; lbl.font_size = 40; lbl.pixel_size = 0.01; lbl.outline_size = 12
+				lbl.modulate = Color("ffb0a0"); lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED; lbl.no_depth_test = true
+				lbl.position = dq + Vector3(0, 2.0, 0)
+				add_child(lbl)
+				break
 	# the weapons lying in the open are the same for everyone in an online match
 	var wr := RandomNumberGenerator.new(); wr.seed = seed_val * 31 + 7
 	var keys: Array = Data.weapon_ids()
@@ -1162,8 +1189,14 @@ func on_damage(target: Ent, by: Ent, d: float, o: Dictionary) -> void:
 	if crit: col = Color("ffd23f") if not armor_hit else Color("b0e4ff")
 	if target == player: col = Color("ff6a5a")
 	elif target is Kin and target.owner_h == player: col = Color("ffa08a")
-	if mine or (player and target.flat_dist(player) < 12.0):
+	# only numbers that involve you: other fights nearby don't spray digits over yours
+	if mine:
 		fx.number(target.pos + Vector3(0, 1.5 if target is Hunter else 1.0, 0), d, col, crit)
+	# impact: a short freeze on heavy hits you deal or take (scaled by the hit, never on chip damage)
+	if mine and src != "burn":
+		var kbv: Vector2 = o.get("kb", Vector2.ZERO) if o.get("kb", null) is Vector2 else Vector2.ZERO
+		if d >= 18.0 or kbv.length() >= 7.0 or o.get("stun", 0.0) > 0.0:
+			freeze_frame(clampf(0.025 + d * 0.0011 + kbv.length() * 0.003, 0.03, 0.075))
 	if credit == player and target != player and src != "burn":
 		sfx("crit" if crit else "hit", target.pos, -4.0 if crit else -6.0, 1.25 if armor_hit else randf_range(0.92, 1.08))
 		if hud: hud.hitmarker(crit, armor_hit)
@@ -1438,6 +1471,13 @@ func on_fell(e: Ent) -> void:
 		if e.out:
 			return
 		sfx("fall", e.pos, 0.0)
+		if duel and e == duel.bot:
+			# knocked off the island in the duel room: that's a knock, then a fresh round
+			duel.stats["knocks"] = int(duel.stats["knocks"]) + 1
+			duel.round_n += 1
+			hud.toast("Off the edge! Round to you", Color("8fe3c8"))
+			duel.reset()
+			return
 		if e == player and S_dev_god():
 			var back: Vector3 = e.ai.get("land", world.spawns[0] if world.spawns.size() > 0 else world.random_ground())
 			e.teleport(back)
@@ -1843,6 +1883,8 @@ func _update_vision() -> void:
 
 func _exit_tree() -> void:
 	RenderingServer.global_shader_parameter_set("vis_on", 0.0)
+	if duel:
+		duel.teardown()
 	if _bond_cb.is_valid() and CombatBus.hit_landed.is_connected(_bond_cb):
 		CombatBus.hit_landed.disconnect(_bond_cb)
 	if _combo_cb.is_valid() and CombatBus.status_applied.is_connected(_combo_cb):
@@ -1948,8 +1990,19 @@ func spawn_shot(by: Ent, at: Vector3, v2: Vector2, dmg: float, life: float, size
 		mi = null          # a melee strike is invisible; the swing has its own effect
 	if mi:
 		mi.visible = true
-		mi.material_override.set_shader_parameter("color", col)
-		mi.scale = Vector3.ONE * size * 2.0
+		# readability: what can hurt you is the brightest, hottest thing on screen; your own and your
+		# team's shots are smaller and dimmer so they never hide an incoming one
+		var vis_col := col
+		var vis_size := size * 2.0
+		if player and by.team != player.team:
+			vis_col = col.lerp(Color("ff5a3a"), 0.35)
+			vis_col.a = 1.0
+			vis_size *= 1.3
+		elif player:
+			vis_col = Color(col, 0.5)
+			vis_size *= 0.85
+		mi.material_override.set_shader_parameter("color", vis_col)
+		mi.scale = Vector3.ONE * vis_size
 		mi.global_position = at
 	if not extra.has("dy") and not extra.get("mob", false) and not extra.get("cos", false) and not extra.get("melee", false):
 		var src: Hunter = by as Hunter if by is Hunter else ((by as Kin).owner_h as Hunter if by is Kin and (by as Kin).owner_h else null)
@@ -1963,7 +2016,10 @@ func spawn_shot(by: Ent, at: Vector3, v2: Vector2, dmg: float, life: float, size
 				extra["y0"] = at.y
 				extra["gmax"] = maxf(src.pos.y, float(src.inp["aim_y"]))
 	var team := by.team
-	shots.append({"pos": at, "vel": v2, "dmg": dmg, "team": team, "by": by, "life": life, "r": size, "col": col, "x": extra, "node": mi, "prev": at, "start": at})
+	if duel and not extra.get("cos", false):
+		duel.note_shot(by)
+	shot_n += 1
+	shots.append({"sid": shot_n, "pos": at, "vel": v2, "dmg": dmg, "team": team, "by": by, "life": life, "r": size, "col": col, "x": extra, "node": mi, "prev": at, "start": at})
 	if net_on and not extra.get("cos", false) and not extra.get("melee", false) and not by.remote:
 		net_event(["s", _r(at.x), _r(at.y), _r(at.z), _r(v2.x), _r(v2.y), snappedf(life, 0.01), snappedf(size, 0.01), col.to_html(false), float(extra.get("boom", 0.0)), team, 1 if extra.get("mob", false) else 0])
 	if by is Hunter and not extra.get("melee", false):
@@ -2527,6 +2583,9 @@ func step(dt: float) -> void:
 	for h in hunters:
 		if h.ctrl == "bot" and not h.remote and not h.out and not h.extracted:
 			bot_brain.think(self, h, dt)
+	if duel:
+		duel.after_think()
+		duel.tick(dt)
 	for h in hunters: h.sim(dt)
 	if opts.get("autoplay", false) and int(time * 60.0) % 15 == 0:
 		for h in hunters:
@@ -2568,7 +2627,7 @@ func step(dt: float) -> void:
 		if opts.get("tut_test", false):
 			_tut_drive()
 		_update_tutorial(dt)
-	if opts.get("training", false):
+	if opts.get("training", false) and duel == null:
 		_update_training(dt)
 	_update_rules(dt)
 	if net_on:
@@ -2951,9 +3010,19 @@ const TRAIN := [["move", "Walk around", "up"], ["dash", "Dash", "dash"], ["glide
 var train := {}
 var train_t := 0.0
 
+var duel_pad := Vector3.INF
+
+## The training pad that takes you to the duel room.
+static func duel_opts() -> Dictionary:
+	return {"training": true, "duel": true, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 5151, "no_drop": true}
+
 func _update_training(dt: float) -> void:
 	if player == null:
 		return
+	if duel_pad != Vector3.INF and player.flat_dist(duel_pad) < 1.3 and not player.downed:
+		if Input.is_action_just_pressed("interact") and not paused:
+			Game.start_match(duel_opts())
+			return
 	train_t += dt
 	if player.downed and train_t > 2.0:
 		revive_hunter(player, null)

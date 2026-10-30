@@ -29,10 +29,6 @@ static func _load() -> void:
 		var id := String(d.get("id", String(fn).trim_suffix(".json")))
 		d["col"] = Color(String(d.get("col", "ffffff")))
 		d["cd"] = float(d.get("cd", 0.0))
-		if d.has("effects"):
-			for e in d["effects"]:
-				if e is Dictionary and e.has("color") and e["color"] is String:
-					e["color"] = Color(String(e["color"]))
 		ALL[id] = d
 
 static func active(id: String) -> bool:

@@ -20,6 +20,7 @@ class_name Effects
 ##   cleanse     (clears slow, root, stun and burn)     refill_dash      cool_glider      crit time      burst color
 
 static func run(effects: Array, caster: Node, ctx: Dictionary) -> void:
+	effects = _readable(effects, caster)
 	for e in effects:
 		if e is Dictionary:
 			var delay := float(e.get("delay", 0.0))
@@ -30,6 +31,28 @@ static func run(effects: Array, caster: Node, ctx: Dictionary) -> void:
 					if is_instance_valid(caster) and not caster.dead: run([ee], caster, ctx))
 				continue
 			_one(e, caster, ctx)
+
+## Readability: an area attack someone on the other side lands on you gets a short wind-up: a
+## ground marker that fills, then the hit. Your own casts stay instant.
+const ENEMY_WINDUP := 0.32
+
+static func _readable(effects: Array, caster: Node) -> Array:
+	var m := _m(caster)
+	if m == null or m.get("player") == null or caster == null:
+		return effects
+	var own: Node = owner_of(caster)
+	if own == null or own.get("team") == null or int(own.team) == int(m.player.team):
+		return effects
+	var out: Array = []
+	for e in effects:
+		if e is Dictionary and String(e.get("type", "")) == "area" and not e.has("delay") and String(e.get("at", "self")) == "aim" and float(e.get("radius", 2.0)) >= 1.4:
+			out.append({"type": "telegraph", "radius": float(e.get("radius", 2.0)), "time": ENEMY_WINDUP, "at": "aim", "color": String(e.get("color", "ff6a4a"))})
+			var ee: Dictionary = e.duplicate()
+			ee["delay"] = ENEMY_WINDUP
+			out.append(ee)
+		else:
+			out.append(e)
+	return out
 
 static func _m(caster: Node) -> Node:
 	return caster.get("m") if caster else null
@@ -194,8 +217,14 @@ static func _one(e: Dictionary, caster: Node, ctx: Dictionary) -> void:
 			var at := _where(e, caster, ctx, "aim")
 			m.fields.add(caster, at, e, ctx, pw)
 		"telegraph":
+			# a warning marker on the ground that fills up, then disappears as the hit lands
 			var at := _where(e, caster, ctx, "aim")
-			m.fx.ring(at, float(e.get("radius", 2.0)), Color(col, 0.7), float(e.get("time", 0.4)))
+			var tt := float(e.get("time", 0.4))
+			var tele: Node3D = m.fx.telegraph_circle(at, float(e.get("radius", 2.0)), Color(col, 0.9))
+			m.sfx("warn", at, -10.0, 0.8)
+			var tw := tele.create_tween()
+			tw.tween_method(func(k: float): if is_instance_valid(tele): m.fx.telegraph_progress(tele, k), 0.0, 1.0, tt)
+			tw.tween_callback(func(): if is_instance_valid(tele): m.fx.end_telegraph(tele))
 		"rush":
 			if caster is Kin:
 				(caster as Kin).start_rush(_aim_dir(caster, ctx), e, ctx)
