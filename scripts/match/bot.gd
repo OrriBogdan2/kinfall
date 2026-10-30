@@ -162,6 +162,13 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 				move = Vector2.ZERO
 		if h.kin and h.kin.state == "active" and h.kin.flat_dist(h) > 6.0:
 			h.kin.recall()
+		# far from the squad with nothing to fight: now and then, base to a teammate
+		if h.base_t <= 0.0 and h.base_cd <= 0.0 and h.grounded and randf() < dt * 0.05:
+			var mate := m.base_target(h)
+			if mate and h.flat_dist(mate) > 30.0:
+				h.start_base(mate)
+		if h.base_t > 0.0:
+			move = Vector2.ZERO
 		if h.hp < h.max_hp * 0.45 and h.tonics > 0:
 			inp["tonic"] = true
 		elif h.armor < h.max_armor * 0.3 and h.armor_kits > 0:

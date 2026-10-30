@@ -272,6 +272,8 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 		return 0.0
 	reveal_t = maxf(reveal_t, 1.0)
 	hurt_at = m.time
+	if base_t > 0.0 and dmg > 0.0:
+		cancel_base("you took damage")
 	if opts.has("wallstun"):
 		wallstun = float(opts["wallstun"])
 	# Getting hit while gliding, as in Supervive: a hit does NOT knock you out of the air by itself
@@ -524,7 +526,71 @@ var dash_held := 0.0
 ## or a ledge climb it's buffered and fires the moment that ends; off a jump pad (after the first
 ## beat of the launch) it breaks the pad flight into a dash. Jump out of a ground dash keeps half
 ## its speed. Dash in the air and keep holding glide and the glider opens again as the dash ends.
+## B: base to a teammate (Supervive's recall-to-ally). A 3s channel where you stand still and can't
+## attack; moving, attacking or taking any damage cancels it. Everyone sees the channel ring on you
+## and a marker on the teammate. You arrive beside them weakened for 3s: half damage, and the crowd
+## control, healing and shields you apply are halved.
+const BASE_TIME := 3.0
+const BASE_CD := 40.0
+const WEAK_TIME := 3.0
+var base_t := 0.0
+var base_to: Hunter = null
+var base_cd := 0.0
+var weak_t := 0.0
 var dash_buf := 0.0
+
+func start_base(to: Hunter) -> void:
+	if to == null:
+		if is_local() and m.hud: m.hud.toast_small("No teammate to base to", Color("a2a8bb"))
+		_ab_feedback("base", "deny")
+		return
+	if base_cd > 0.0 or downed or out or dropping or riding or not grounded or base_t > 0.0:
+		_ab_feedback("base", "deny")
+		return
+	base_t = BASE_TIME
+	base_to = to
+	_ab_feedback("base", "cast")
+	m.sfx("portal", pos, -6.0, 1.2)
+	if is_local() and m.hud: m.hud.toast_small("Basing to %s  ·  hold still" % to.pname, Color("8fe3c8"))
+
+func cancel_base(why := "") -> void:
+	if base_t <= 0.0:
+		return
+	base_t = 0.0
+	base_to = null
+	base_cd = 4.0          # a short lockout after an interrupted channel
+	m.sfx("warn", pos, -10.0, 0.8)
+	if is_local() and m.hud and why != "": m.hud.toast_small("Base interrupted: " + why, Color("ff9a8a"))
+
+func _tick_base(dt: float) -> void:
+	if base_t <= 0.0:
+		return
+	var o := base_to
+	if o == null or not is_instance_valid(o) or o.out or o.downed or o.extracted or downed or out:
+		cancel_base("your teammate can't take you")
+		return
+	var mv: Vector2 = inp.get("move", Vector2.ZERO)
+	if mv.length() > 0.2 or inp.get("fire", false) or inp["dash"] or inp["jump"] or inp["sig"] or inp["sec"] or inp["ult"] or inp.get("gear1", false) or inp.get("throw", false):
+		cancel_base("you moved")
+		return
+	base_t -= dt
+	if base_t <= 0.0:
+		base_t = 0.0
+		base_to = null
+		var at := o.pos
+		for i in 12:
+			var a := TAU * i / 12.0
+			var q := o.pos + Vector3(cos(a) * 1.3, 0, sin(a) * 1.3)
+			if not m.world.is_void(q.x, q.z) and not m.world.is_block(q.x, q.z) and absf(m.world.ground_at(q.x, q.z) - o.pos.y) < 0.6:
+				at = Vector3(q.x, m.world.ground_at(q.x, q.z), q.z); break
+		m.fx.ring(pos, 1.6, Color("8fe3c8"), 0.4)
+		teleport(at)
+		vel = Vector3.ZERO
+		weak_t = WEAK_TIME
+		base_cd = BASE_CD
+		m.fx.ring(at, 1.8, Color("8fe3c8"), 0.45)
+		m.sfx("portal", at, -2.0, 1.5)
+		if is_local() and m.hud: m.hud.toast_small("Recall weakness: half damage and effects for 3s", Color("ffb36a"))
 var air_peak := 0.0              # the highest point of this time in the air (for skyfall landings)
 const SKYFALL_H := 8.0           # drop at least this far, fast, onto rivals and you land a skyfall
 
@@ -1126,7 +1192,7 @@ func sim(dt: float) -> void:
 	tick_status(dt)
 	if grounded:
 		air_peak = pos.y
-	for k in ["dash_buf", "hit_heat_t", "ex_cd", "reveal_t", "inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t", "sick_t"]:
+	for k in ["base_cd", "weak_t", "dash_buf", "hit_heat_t", "ex_cd", "reveal_t", "inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t", "sick_t"]:
 		set(k, maxf(0.0, get(k) - dt))
 	if shield_t > 0.0:
 		shield_t -= dt
@@ -1174,6 +1240,9 @@ func sim(dt: float) -> void:
 			inp[kk] = false
 		inp["move"] = Vector2.ZERO
 	# inputs
+	_tick_base(dt)
+	if base_t > 0.0:
+		inp["fire"] = false        # channeling: no attacks while you base
 	if inp["dash"]: do_dash()
 	if dash_buf > 0.0 and roll_t <= 0.0 and grap.is_empty() and pad.is_empty() and not inp["dash"]:
 		dash_buf = 0.0

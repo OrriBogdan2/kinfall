@@ -71,7 +71,7 @@ var aim_ring: MeshInstance3D
 var muzzle_light: OmniLight3D
 var collapse_warned := false
 var rng := RandomNumberGenerator.new()
-var pending_input := {"dash": false, "jump": false, "sig": false, "reload": false, "tonic": false, "kit": false, "throw": false, "skill": false, "ult": false, "sec": false, "gear1": false, "gear2": false, "swap": false}
+var pending_input := {"base": false, "dash": false, "jump": false, "sig": false, "reload": false, "tonic": false, "kit": false, "throw": false, "skill": false, "ult": false, "sec": false, "gear1": false, "gear2": false, "swap": false}
 var zones: Array = []      # hero areas: dome, sanctuary, well
 var fields: Fields = null  # patches made by kin abilities (Thorn Patch)
 var _bond_cb: Callable
@@ -283,6 +283,21 @@ func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String
 		ents_by_id[k2.nid] = k2
 		h.kin2 = k2
 	return h
+
+## Who B would take you to: the teammate nearest the cursor on screen (alive, standing, not out).
+func base_target(h: Hunter) -> Hunter:
+	var mates: Array = hunters.filter(func(o): return o != h and o.team == h.team and not o.out and not o.downed and not o.extracted and not o.dropping and not o.riding)
+	if mates.is_empty():
+		return null
+	if h != player or mates.size() == 1:
+		return mates[0]
+	var mp := get_viewport().get_mouse_position()
+	var best: Hunter = mates[0]; var bd := 1e9
+	for o in mates:
+		var sp := cam.unproject_position(o.pos) if not cam.is_position_behind(o.pos) else Vector2(1e6, 1e6)
+		var d := sp.distance_to(mp)
+		if d < bd: bd = d; best = o
+	return best
 
 ## How high the player is over the ground under them (over the abyss: over the last ground they stood on).
 func player_altitude() -> float:
@@ -1168,7 +1183,7 @@ func foes_of(team: int) -> Array:
 func dmg_mult(h: Hunter) -> float:
 	if h == null: return 1.0
 	var bot_k := float((h.ai.get("diff", {}) as Dictionary).get("dmg", 1.0)) if h.ctrl == "bot" and h != player else 1.0
-	return bot_k * (1.25 if h.bless_t > 0.0 else 1.0) * (1.0 + h.gear_stat("dmg")) * h.fuse_mod("dmg") * (Life.R["sickness_dmg"] if h.sick_t > 0.0 else 1.0)
+	return bot_k * (0.5 if h.weak_t > 0.0 else 1.0) * (1.25 if h.bless_t > 0.0 else 1.0) * (1.0 + h.gear_stat("dmg")) * h.fuse_mod("dmg") * (Life.R["sickness_dmg"] if h.sick_t > 0.0 else 1.0)
 
 func sfx(n: String, p = null, vol := 0.0, pitch := 1.0) -> void:
 	Sfx.play(n, p, vol, 0.07, pitch)
@@ -2458,6 +2473,8 @@ func _gather_input() -> void:
 				_perk_keys_down.erase(pi)
 	# the kit: Q glove, E kin ability, C throw kin, R bond, 1 heal (the second kin ability, kin swap
 	# and the separate armor-kit key are retired)
+	if Input.is_action_just_pressed("base") and not paused and duel == null:
+		pending_input["base"] = true
 	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["ultimate", "ult"], ["secondary", "sec"], ["gear1", "gear1"]]:
 		if a[0] == "tonic" and (not perk_offer.is_empty() or not _perk_keys_down.is_empty()):
 			continue       # 1, 2 and 3 pick a perk while a choice is open
@@ -2620,6 +2637,9 @@ func step(dt: float) -> void:
 		player.inp["glide"] = true
 		player.inp["move"] = Vector2(1, 0.3).normalized()
 	if player and not player.out:
+		if pending_input["base"]:
+			pending_input["base"] = false
+			player.start_base(base_target(player))
 		for k in ["dash", "jump", "sig", "reload", "tonic", "kit", "ult", "sec", "gear1", "gear2", "skill", "swap"]:
 			if pending_input[k]:
 				player.inp[k] = true

@@ -262,6 +262,20 @@ func _draw_world_labels() -> void:
 		if cam.is_position_behind(h.position):
 			continue
 		_nameplate(sp, h)
+	# someone basing to a teammate: a ring filling round them, and a marker on where they'll appear
+	for h in m.hunters:
+		if h.base_t <= 0.0 or h.out or (h.unseen and h != m.player) or cam.is_position_behind(h.position):
+			continue
+		var bsp: Vector2 = cam.unproject_position(h.position + Vector3(0, 0.2, 0))
+		var bf: float = 1.0 - h.base_t / Hunter.BASE_TIME
+		c.draw_arc(bsp, 26.0, 0, TAU, 40, Color(0.56, 0.89, 0.78, 0.25), 3.0, true)
+		_arc(bsp, 26.0, bf, Color("8fe3c8"), 4.0)
+		_ctext(bsp + Vector2(0, 44), "BASING  %.1f" % h.base_t, 12, Color("8fe3c8"), big)
+		var to: Hunter = h.base_to
+		if to and is_instance_valid(to) and not cam.is_position_behind(to.position):
+			var tsp := cam.unproject_position(to.position + Vector3(0, 3.0, 0))
+			_ctext(tsp, "%s incoming" % h.pname.substr(0, 10), 12, Color("8fe3c8"), big)
+			c.draw_arc(cam.unproject_position(to.position + Vector3(0, 0.1, 0)), 22.0, 0, TAU, 32, Color(0.56, 0.89, 0.78, 0.4 + 0.3 * sin(m.time * 8.0)), 2.0, true)
 	for mb in m.mobs:
 		if mb.dead or cam.is_position_behind(mb.position):
 			continue
@@ -938,6 +952,11 @@ func _draw_abilities(sz: Vector2, p: Hunter) -> void:
 	_text(Vector2(x + s - 22, y + 16), "×%d" % p.tonics, 12, Color(GOOD, 0.95), big)
 	_text(Vector2(x + s - 22, y + 30), "×%d" % p.armor_kits, 12, Color(ARMOR_COL, 0.95), big)
 	x += s + gap
+	# B: base to a teammate (squads only)
+	if m.hunters.any(func(o): return o != p and o.team == p.team):
+		var brr := Rect2(Vector2(x, y + s - 40.0), Vector2(40, 40))
+		_ab_slot("base", brr, "swap", Settings.key_cap("base"), Color("8fe3c8"), p.base_cd / Hunter.BASE_CD if p.base_cd > 0.0 else 0.0, p.base_cd, p.base_cd <= 0.0 and p.base_t <= 0.0)
+		x += 48.0
 	# the passive glove: a small badge (hover it for what it does)
 	if not g1.is_empty() and Gear.ALL.has(String(g1["id"])):
 		var pg: Dictionary = Gear.ALL[String(g1["id"])]
@@ -1143,10 +1162,13 @@ func _status_row(at: Vector2, e: Ent) -> void:
 	if e.burn_t > 0.0: icons.append(["fireball", Color("ff9a5a")])
 	if e is Hunter and (e as Hunter).shield > 0.0: icons.append(["brightshield", Color("d8ecff")])
 	if e.guard_t > 0.0: icons.append(["anchor", Color("f2e6cf")])
+	if e is Hunter and (e as Hunter).weak_t > 0.0: icons.append(["swap", Color("ffb36a"), (e as Hunter).weak_t])
 	var x := at.x - icons.size() * 8.0 + 8.0
 	for ic in icons:
 		c.draw_circle(Vector2(x, at.y), 7.0, Color(0.03, 0.03, 0.05, 0.85))
 		Icons.draw(c, String(ic[0]), Vector2(x, at.y), 4.2, ic[1])
+		if ic.size() > 2:
+			_ctext(Vector2(x, at.y + 17), "%.1f" % float(ic[2]), 10, ic[1], big)
 		x += 16.0
 
 ## Teammates you can't see on screen get an arrow at the screen edge (with distance, coloured by
@@ -1480,6 +1502,7 @@ func _draw_overhead(p: Hunter) -> void:
 			c.draw_colored_polygon(inner, STAMINA_COL)
 		elif fill > 0.0:
 			c.draw_arc(cpt, 3.0, -PI * 0.5, -PI * 0.5 + TAU * fill, 10, Color(STAMINA_COL, 0.6), 2.0)
+	_status_row(sp + Vector2(0, 30), p)
 	# high up: a small readout of how far above the ground you are
 	var alt := m.player_altitude() if p == m.player else 0.0
 	if alt > 6.0 and not p.grounded:
@@ -1643,6 +1666,11 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 			out.append(["Armor kit", ARMOR_COL])
 			out.append(["Item  ·  %s (when your health is full)" % Settings.key_cap("tonic"), MUTED, 12])
 			out.append(["Repairs your armor to full. Armor takes 20%% off every hit while it lasts, and doesn't come back on its own. You're carrying %d." % p.armor_kits, INK, 14])
+		"base":
+			out.append(["Base to a teammate", Color("8fe3c8")])
+			out.append(["Squads  ·  %s" % Settings.key_cap("base"), MUTED, 12])
+			out.append(["A 3s channel to the teammate nearest your cursor. Stand still: moving, attacking or any damage interrupts it. You arrive weakened for 3s: half damage, and your crowd control, healing and shields are halved.", INK, 14])
+			out.append(["Cooldown %ds%s" % [int(Hunter.BASE_CD), ("  ·  ready in %ds" % int(ceil(p.base_cd))) if p.base_cd > 0.0 else "  ·  ready"], MUTED, 13])
 		"tonic":
 			out.append(["Heal", GOOD])
 			out.append(["Item  ·  %s" % Settings.key_cap("tonic"), MUTED, 12])

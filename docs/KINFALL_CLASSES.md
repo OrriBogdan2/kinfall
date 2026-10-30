@@ -107,6 +107,25 @@ Notes on the table:
   keep holding Space / Mouse 5 and it opens again as the dash ends.
 - **Carry:** out of a dash you keep 15% of its speed on the ground and 30% in the air (no long slide).
 
+## Base to a teammate (B, squads)
+
+- 3s channel toward the teammate nearest your cursor. **Stationary**, like Supervive's recall:
+  moving, dashing, jumping, attacking or casting cancels it, and so does any damage (feedback toast,
+  a 4s lockout). Everyone sees a filling ring on you and an "incoming" marker on the teammate.
+- You appear beside them with **recall weakness** for 3s: damage dealt ×0.5, the stun/root/slow you
+  apply ×0.5, healing and shields you apply ×0.5 (a status icon with a timer on your nameplate).
+- 40s cooldown, shown as a small B slot on the ability bar in squads. Bots far (30m+) from their
+  squad with nothing to fight use it now and then. `--base-check` tests a clean channel and an interrupt.
+- In the duel room B opens the bot setup instead (there are no teammates there).
+
+## Vertical play
+
+- Skyfall: drop 8m+ fast onto rivals and the landing slams them (10-26 damage by height, a pop up).
+- Up-gloves: Rocket (straight up, cools the glider), Skyhook (swing onto a ledge or into the air),
+  Hover (a mid-air second jump). Chains: pad -> dash -> glide, dash-jump, wall kick -> glide.
+- No ceiling: the camera pulls back with altitude (up to 1.7x), its focus stays within 4m below
+  you, and a height readout shows above 6m.
+
 ## Camera and aim (Oct 2026)
 
 - Default follow is **Supervive**: the view leans toward the cursor in proportion to how far the

@@ -27,6 +27,7 @@ The project uses the Compatibility renderer so the same build runs on the web.
 | E | Your kin's ability (thrown out first if it's on your shoulder) |
 | C or middle mouse | Throw your kin at the cursor, or recall it |
 | R | Bond ultimate, once the bond meter is full |
+| B | Base to a teammate (squads): a 3s channel, broken by moving, attacking or any hit; you arrive weakened for 3s (half damage, CC, healing and shields); 40s cooldown |
 | 1 | Heal: a tonic when you're hurt, an armor kit when your health is full |
 | F | Catch a dazed kin, revive a teammate, open a chest, take a found weapon or glove |
 | Ctrl | Sneak (hold; tap to toggle on the web version, since Ctrl+W closes browser tabs) |

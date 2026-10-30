@@ -54,6 +54,11 @@ static func _readable(effects: Array, caster: Node) -> Array:
 			out.append(e)
 	return out
 
+## Recall weakness: healing and shields from someone who just based to a teammate are halved.
+static func _weak_k(caster: Node) -> float:
+	var o: Node = owner_of(caster)
+	return 0.5 if o and "weak_t" in o and float(o.weak_t) > 0.0 else 1.0
+
 static func _m(caster: Node) -> Node:
 	return caster.get("m") if caster else null
 
@@ -281,12 +286,12 @@ static func _one(e: Dictionary, caster: Node, ctx: Dictionary) -> void:
 				m.sfx("whoosh", t.pos, -2.0, 1.2)
 		"heal":
 			for t in _targets(e, caster):
-				_heal(t, float(e.get("amount", 20.0)))
+				_heal(t, float(e.get("amount", 20.0)) * _weak_k(caster))
 				m.fx.burst(t.pos + Vector3(0, 1.0, 0), Color("8fe0a0"), 12, 2.5, 0.5, -3.0)
 		"shield":
 			for t in _targets(e, caster):
 				if "shield" in t:
-					t.shield = maxf(float(t.shield), float(e.get("amount", 40.0)))
+					t.shield = maxf(float(t.shield), float(e.get("amount", 40.0)) * _weak_k(caster))
 					if "shield_t" in t: t.shield_t = maxf(float(t.shield_t), float(e.get("time", 5.0)))
 				m.fx.ring(t.pos + Vector3(0, 0.1, 0), 1.0 if t is Hunter else 0.7, col, 0.4)
 			m.sfx("shield", caster.pos, -3.0)

@@ -23,6 +23,7 @@ const TIPS := [
 	"Fight alongside your kin to fill the bond meter, then R calls its bond ultimate.",
 	"E is your kin's ability, and every kin has a different one. Q fires the active glove you found out here.",
 	"Your kin stuns or roots a foe? Shoot it right away for a combo.",
+	"In a squad, B bases you to the teammate nearest your cursor: 3s standing still, broken by any hit, and you arrive weakened for 3s.",
 	"Gloves drop from chests, vaults and bosses. One active glove (Q) and one passive glove at a time; a new one replaces the old.",
 	"Go down for good and the kin you brought are left behind. Old Pell's Ransom House sells back the ones nobody collects.",
 	"A rival took your kin? You'll sense it when they're nearby. Take it back.",

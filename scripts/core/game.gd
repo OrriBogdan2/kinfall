@@ -73,6 +73,7 @@ func _setup_input() -> void:
 	_key("gear2", [])                         # the second glove slot is passive: no key
 	_key("crouch", [KEY_CTRL])                # sneak: slower, quieter, and you see further
 	_key("throw", [KEY_C], MOUSE_BUTTON_MIDDLE)  # throw your kin, or call it back (C or middle mouse)
+	_key("base", [KEY_B])                     # base to a teammate: a 3s channel (squads only)
 	_key("swap_kin", [])                      # one kin per expedition now; kept so old code paths compile
 	_key("dash", [KEY_SHIFT])
 	_key("jump", [KEY_SPACE])

@@ -133,6 +133,9 @@ func _ready() -> void:
 	if Array(args).any(func(a): return String(a).begins_with("--weapon-check")):
 		_weapon_check()
 		return
+	if "--base-check" in args:
+		_base_check()
+		return
 	if "--duel-check" in args:
 		_duel_check()
 		return
@@ -593,6 +596,34 @@ func _weapon_check() -> void:
 				print("WCHECK %-12s %-6s dist %4.1f  dps %6.1f  (%d in %ds)" % [wid, mode, dist, dealt / dur, int(dealt), int(dur)])
 				m.queue_free()
 				await get_tree().process_frame
+	get_tree().quit()
+
+## Headless check for basing to a teammate (B): a clean channel arrives weakened; a hit interrupts.
+func _base_check() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.start({"teams": 2, "squad": 2, "tier": 0, "no_drop": true, "seed": 77, "autoplay": true, "big": false})
+	m.set_process(false)
+	var p: Hunter = m.player
+	p.ctrl = "local"
+	var mate := m.base_target(p)
+	if mate == null:
+		print("BCHECK FAIL no teammate"); get_tree().quit(); return
+	for i in 30: m.step(Match.DT)
+	p.inp["move"] = Vector2.ZERO
+	p.start_base(mate)
+	var t := 0.0
+	while t < 3.3:
+		p.inp["move"] = Vector2.ZERO
+		m.step(Match.DT); t += Match.DT
+	var near := p.flat_dist(mate) < 2.5
+	print("BCHECK clean: arrived=%s weak=%.1f cd=%.0f dmg_mult=%.2f" % [near, p.weak_t, p.base_cd, m.dmg_mult(p)])
+	p.base_cd = 0.0
+	p.start_base(mate)
+	for i in 30: m.step(Match.DT)
+	p.hurt(5.0, null, {"src": "test"})
+	print("BCHECK interrupt: channel=%.2f cancelled=%s" % [p.base_t, p.base_t <= 0.0])
+	print("BCHECK ", "PASS" if near and p.base_t <= 0.0 else "FAIL")
 	get_tree().quit()
 
 ## Headless smoke test for the duel room: your autopilot against the sparring bot for a few
