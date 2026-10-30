@@ -26,6 +26,9 @@ const JUMP_V := 8.5
 const GRAV := 26.0
 var pface := 0.0
 var walk_ph := 0.0
+var house_node: Node3D
+var whistle_cd := 0.0
+var whistle_player: AudioStreamPlayer
 var kins: Array = []           # {rec, node, pos, vel, goal, t, emote, emote_t, hop}
 var spots := {}                # name -> Vector3
 var plots: Array = []          # nodes, index matches Save plots
@@ -151,6 +154,7 @@ func _ready() -> void:
 	if "--home-wide" in OS.get_cmdline_user_args():
 		cam.zoom_to = 2.6; cam.zoom = 2.6     # test: the whole farm in one shot
 	var house := Models.house(); house.position = spots["house"]; add_child(house)
+	house_node = house
 	var pot := Models.cauldron(); pot.position = spots["pot"]; add_child(pot)
 	var stall := Models.stall(); stall.position = spots["stall"]; stall.rotation.y = PI * 0.5; add_child(stall)
 	var portal := Models.portal(UI.TEAL); portal.position = spots["portal"]; add_child(portal)
@@ -186,6 +190,14 @@ func _ready() -> void:
 		ppos = lots[spawn]["door"]
 	player.position = ppos
 	cam.snap(ppos)
+	if "--whistle-test" in dbg:
+		# test: every kin but one is indoors, then you whistle
+		get_tree().create_timer(0.3).timeout.connect(func():
+			for j in kins.size():
+				if j == 0: continue
+				kins[j]["indoors"] = 999.0
+				(kins[j]["node"] as Node3D).visible = false
+			get_tree().create_timer(0.6).timeout.connect(_whistle))
 	for a in dbg:
 		if a.begins_with("--home-zoom="):
 			cam.zoom_to = float(a.substr(12)); cam.zoom = cam.zoom_to
@@ -692,10 +704,37 @@ func _move_player(d: float) -> void:
 		Sfx.step(null, -20.0)
 
 func _move_kin(d: float) -> void:
+	whistle_cd = maxf(0.0, whistle_cd - d)
 	for k in kins:
 		if k.get("busy", false):
 			continue
+		if k.has("indoors"):
+			# inside the house: out of sight until it fancies coming out (or hears you whistle)
+			k["indoors"] = float(k["indoors"]) - d
+			if float(k["indoors"]) <= 0.0 and not k.has("exiting"):
+				_kin_exit_house(k, false)
+			continue
+		if k.has("leap"):
+			_leap_step(k, d)
+			continue
 		k["t"] -= d
+		if k.has("called_t"):
+			# you whistled: drop everything and come to you
+			k["called_t"] = float(k["called_t"]) - d
+			var slot: Vector3 = k.get("call_slot", Vector3.ZERO)
+			k["goal"] = ppos + slot
+			k.erase("chase"); k.erase("task"); k.erase("going_in")
+			var to_me := Vector2(ppos.x + slot.x - k["pos"].x, ppos.z + slot.z - k["pos"].z).length()
+			if world.island_of(k["pos"].x, k["pos"].z) != world.island_of(ppos.x, ppos.z) and world.island_of(ppos.x, ppos.z) >= 0:
+				_start_leap(k, ppos + slot)
+				continue
+			if to_me < 0.6 or float(k["called_t"]) <= 0.0:
+				var arrived := to_me < 0.6
+				k.erase("called_t"); k.erase("call_slot")
+				if arrived:
+					k["hold_t"] = 1.4; k["joy_t"] = 0.9; k["t"] = randf_range(2.5, 4.0)
+					_emote(k, "♥" if float(k["rec"]["trust"]) > 55.0 else "♪")
+					Sfx.play("kin_happy", k["pos"], -10.0, 0.15)
 		var pos: Vector3 = k["pos"]
 		var rec: Dictionary = k["rec"]
 		var trust := float(rec["trust"])
@@ -749,9 +788,18 @@ func _move_kin(d: float) -> void:
 			if _care_goal(k):
 				pass
 			elif night and randf() < 0.6:
-				# at night they head for bed and doze
-				k["goal"] = k.get("bed", world.random_ground(maxi(here, 0)))
+				if here == world.island_of(spots["house"].x, spots["house"].z) and randf() < 0.45:
+					# some sleep indoors
+					k["going_in"] = true
+					k["goal"] = _house_door()
+				else:
+					# at night they head for bed and doze
+					k["goal"] = k.get("bed", world.random_ground(maxi(here, 0)))
 				if randf() < 0.5: _emote(k, "z")
+			elif not night and randf() < 0.05 and here == world.island_of(spots["house"].x, spots["house"].z):
+				# pops inside for a nap now and then
+				k["going_in"] = true
+				k["goal"] = _house_door()
 			elif friends.size() > 0 and randf() < 0.22:
 				var f: Dictionary = friends[randi() % friends.size()]
 				k["chase"] = f; k["chase_t"] = 4.0
@@ -776,7 +824,7 @@ func _move_kin(d: float) -> void:
 		if goal != Vector3.INF:
 			var to := Vector2(goal.x - pos.x, goal.z - pos.z)
 			if to.length() > 0.4:
-				wish = to.normalized() * (4.4 if k.has("fetch") else (3.6 if k.has("chase") else 2.4)) * _care_speed(rec)
+				wish = to.normalized() * (4.4 if (k.has("fetch") or k.has("called_t")) else (3.6 if k.has("chase") else 2.4)) * _care_speed(rec)
 		var hv := Vector2(k["vel"].x, k["vel"].z)
 		hv += (wish - hv) * (1.0 - exp(-8.0 * d))
 		var nx := pos.x + hv.x * d
@@ -787,6 +835,13 @@ func _move_kin(d: float) -> void:
 		k["pos"] = pos
 		var n: Node3D = k["node"]
 		n.position = pos
+		if k.get("going_in", false) and Vector2(pos.x - _house_door().x, pos.z - _house_door().z).length() < 0.6:
+			k.erase("going_in")
+			var night_now := sin((day_t - 0.25) * TAU) < -0.2
+			k["indoors"] = randf_range(70.0, 140.0) if night_now else randf_range(20.0, 55.0)
+			n.visible = false
+			Sfx.play("thump", pos, -16.0, 0.1, 1.3)
+			continue
 		var face := atan2(-hv.x, -hv.y) if hv.length() > 0.2 else atan2(-(ppos.x - pos.x), -(ppos.z - pos.z))
 		n.rotation.y = lerp_angle(n.rotation.y, face, minf(1.0, d * 8.0))
 		k["hop"] += d * (9.0 if hv.length() > 0.3 else 2.5)
@@ -806,6 +861,206 @@ func _move_kin(d: float) -> void:
 			var lbl: Label3D = k["emote"]
 			lbl.visible = k["emote_t"] > 0.0
 			lbl.position.y = 1.15 + (1.6 - k["emote_t"]) * 0.2
+
+# ---- the whistle: press H at home and your kin come running, even from inside the house
+func _house_door() -> Vector3:
+	return spots["house"] + Vector3(0, 0, 2.1)
+
+func _whistle() -> void:
+	if whistle_cd > 0.0:
+		return
+	whistle_cd = 1.6
+	_whistle_sound()
+	_whistle_ring()
+	var my_isle := world.island_of(ppos.x, ppos.z)
+	var n := kins.size()
+	var inside: Array = []
+	var i := 0
+	for k in kins:
+		var slot := Vector3(cos(TAU * i / maxf(1.0, n) + 0.4), 0, sin(TAU * i / maxf(1.0, n) + 0.4)) * (1.3 + 0.15 * n)
+		i += 1
+		if k.get("busy", false) or k.has("fetch") or k.has("bath"):
+			continue
+		var rec: Dictionary = k["rec"]
+		# a kin that doesn't trust you might just pretend it didn't hear
+		if float(rec["trust"]) < 22.0 and randf() < 0.7:
+			if not k.has("indoors"):
+				get_tree().create_timer(0.4).timeout.connect(func(): if is_instance_valid(k["node"]): _emote(k, "…"))
+			continue
+		k["call_slot"] = slot
+		if k.has("indoors"):
+			inside.append(k)
+			continue
+		var dist := Vector2(k["pos"].x - ppos.x, k["pos"].z - ppos.z).length()
+		get_tree().create_timer(0.12 + dist * 0.015 + randf() * 0.15).timeout.connect(func():
+			if not is_instance_valid(k["node"]) or not kins.has(k): return
+			k["nap_t"] = 0.0
+			k.erase("nap_go"); k.erase("nap_go_t"); k.erase("going_in")
+			k["called_t"] = 7.0
+			_emote(k, "!")
+			Sfx.play("kin_alert", k["pos"], -12.0, 0.15)
+			if world.island_of(k["pos"].x, k["pos"].z) != my_isle and my_isle >= 0:
+				_start_leap(k, ppos + slot))
+	if not inside.is_empty():
+		_house_alert(inside)
+
+## The whistle itself: a bright two-note rising whistle, made in code.
+func _whistle_sound() -> void:
+	if whistle_player == null:
+		whistle_player = AudioStreamPlayer.new()
+		whistle_player.bus = "Master"
+		add_child(whistle_player)
+		var rate := 22050
+		var notes := [[1350.0, 1750.0, 0.13], [0.0, 0.0, 0.04], [1600.0, 2350.0, 0.22]]
+		var data := PackedByteArray()
+		var ph := 0.0
+		for nt in notes:
+			var cnt := int(rate * float(nt[2]))
+			for j in cnt:
+				var u := float(j) / cnt
+				var f := lerpf(float(nt[0]), float(nt[1]), u * u)
+				var env := minf(1.0, u * 12.0) * minf(1.0, (1.0 - u) * 6.0)
+				var v := 0.0
+				if f > 0.0:
+					ph += TAU * f * (1.0 + 0.012 * sin(j * 0.02)) / rate
+					v = (sin(ph) * 0.8 + sin(ph * 2.0) * 0.12) * env * 0.55
+				var sv := int(clampf(v, -1.0, 1.0) * 32767.0)
+				data.append(sv & 0xff); data.append((sv >> 8) & 0xff)
+		var w := AudioStreamWAV.new()
+		w.format = AudioStreamWAV.FORMAT_16_BITS
+		w.mix_rate = rate
+		w.data = data
+		whistle_player.stream = w
+	whistle_player.pitch_scale = randf_range(0.97, 1.03)
+	whistle_player.volume_db = -6.0
+	whistle_player.play()
+
+## A soft ring spreading out from you, and a little note over your head.
+func _whistle_ring() -> void:
+	var ring := MeshInstance3D.new()
+	var tm := TorusMesh.new(); tm.inner_radius = 0.92; tm.outer_radius = 1.0; tm.rings = 32; tm.ring_segments = 4
+	ring.mesh = tm
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.albedo_color = Color(1.0, 0.92, 0.6, 0.7)
+	ring.material_override = m
+	ring.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	ring.position = ppos + Vector3(0, 0.15, 0)
+	ring.scale = Vector3(0.4, 1.0, 0.4)
+	add_child(ring)
+	var tw := ring.create_tween().set_parallel(true)
+	tw.tween_property(ring, "scale", Vector3(9.0, 1.0, 9.0), 0.9).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.tween_property(m, "albedo_color:a", 0.0, 0.9)
+	tw.chain().tween_callback(ring.queue_free)
+	var note := Label3D.new()
+	note.text = "♪"
+	note.font = UI.big; note.font_size = 64; note.pixel_size = 0.012; note.outline_size = 14
+	note.modulate = Color("ffe08a")
+	note.billboard = BaseMaterial3D.BILLBOARD_ENABLED; note.no_depth_test = true
+	note.position = ppos + Vector3(0.35, 2.1, 0)
+	add_child(note)
+	var nt := note.create_tween().set_parallel(true)
+	nt.tween_property(note, "position:y", note.position.y + 0.8, 0.9)
+	nt.tween_property(note, "modulate:a", 0.0, 0.9).set_delay(0.3)
+	nt.chain().tween_callback(note.queue_free)
+
+## Kin inside the house heard you: a "!" pops over the roof, the house rattles with little feet,
+## then they tumble out of the door one after another and run over.
+func _house_alert(inside: Array) -> void:
+	var names: Array = inside.map(func(k): return String(k["rec"]["name"]))
+	var bub := Label3D.new()
+	bub.text = "!"
+	bub.font = UI.big; bub.font_size = 150; bub.pixel_size = 0.012; bub.outline_size = 26
+	bub.modulate = UI.GOLD; bub.outline_modulate = Color(0.12, 0.06, 0.1)
+	bub.billboard = BaseMaterial3D.BILLBOARD_ENABLED; bub.no_depth_test = true
+	bub.position = spots["house"] + Vector3(0, 4.6, 0)
+	bub.scale = Vector3.ONE * 0.1
+	add_child(bub)
+	var who := Label3D.new()
+	who.text = ("%s heard you!" % names[0]) if names.size() == 1 else ("%s and %s heard you!" % [", ".join(names.slice(0, names.size() - 1)), names[-1]])
+	who.font = UI.big; who.font_size = 46; who.pixel_size = 0.012; who.outline_size = 12
+	who.modulate = UI.INK
+	who.billboard = BaseMaterial3D.BILLBOARD_ENABLED; who.no_depth_test = true
+	who.position = spots["house"] + Vector3(0, 3.7, 0)
+	who.modulate.a = 0.0
+	add_child(who)
+	var tw := bub.create_tween()
+	tw.tween_property(bub, "scale", Vector3.ONE * 1.25, 0.16).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.tween_property(bub, "scale", Vector3.ONE, 0.12)
+	tw.tween_property(bub, "position:y", bub.position.y + 0.25, 0.35).set_trans(Tween.TRANS_SINE)
+	tw.tween_property(bub, "position:y", bub.position.y, 0.35).set_trans(Tween.TRANS_SINE)
+	tw.tween_interval(1.2)
+	tw.tween_property(bub, "modulate:a", 0.0, 0.3)
+	tw.tween_callback(bub.queue_free)
+	var wt := who.create_tween()
+	wt.tween_property(who, "modulate:a", 1.0, 0.2)
+	wt.tween_interval(2.0)
+	wt.tween_property(who, "modulate:a", 0.0, 0.3)
+	wt.tween_callback(who.queue_free)
+	Sfx.play("kin_alert", spots["house"], -6.0, 0.1, 1.15)
+	# the house might be off screen: say it on the HUD as well
+	_toast(who.text.replace("heard you!", "heard you from the house and are on their way") if names.size() > 1 else who.text.replace("heard you!", "heard you from the house and is on its way"))
+	# the house rattles: little feet scurrying for the door
+	if is_instance_valid(house_node):
+		var base := house_node.scale
+		var ht := house_node.create_tween()
+		for j in 4:
+			ht.tween_property(house_node, "scale", base * Vector3(1.025, 0.97, 1.025), 0.07)
+			ht.tween_property(house_node, "scale", base, 0.09)
+			ht.tween_interval(0.08)
+	for j in 5:
+		get_tree().create_timer(0.15 + j * 0.16).timeout.connect(func(): Sfx.play("step%d" % (j % 3), spots["house"], -8.0, 0.2, 1.5))
+	for j in inside.size():
+		var k: Dictionary = inside[j]
+		k["exiting"] = true
+		get_tree().create_timer(0.95 + j * 0.35).timeout.connect(func():
+			if kins.has(k): _kin_exit_house(k, true))
+
+## Out of the front door (with a little pop), and on to wherever it was going.
+func _kin_exit_house(k: Dictionary, called: bool) -> void:
+	k.erase("indoors"); k.erase("exiting")
+	var door := _house_door() + Vector3(randf_range(-0.4, 0.4), 0, 0.2)
+	k["pos"] = door
+	k["vel"] = Vector3(0, 0, 2.5)
+	var n: Node3D = k["node"]
+	n.position = door
+	n.visible = true
+	var s0 := n.scale
+	n.scale = s0 * 0.3
+	n.create_tween().tween_property(n, "scale", s0, 0.25).set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	Sfx.play("pickup", door, -12.0, 0.1, 1.3)
+	if called:
+		k["called_t"] = 7.0
+		_emote(k, "!")
+	else:
+		k["goal"] = door + Vector3(randf_range(-3, 3), 0, randf_range(2, 4))
+		k["t"] = randf_range(1.0, 3.0)
+
+## Too far to walk (another island): a big happy bound through the air to you.
+func _start_leap(k: Dictionary, to: Vector3) -> void:
+	var from: Vector3 = k["pos"]
+	var dist := Vector2(to.x - from.x, to.z - from.z).length()
+	k["leap"] = {"a": from, "b": to, "t": 0.0, "dur": clampf(dist / 10.0, 0.6, 1.6), "h": 1.6 + dist * 0.12}
+	_emote(k, "!")
+	Sfx.play("jump", from, -10.0, 0.1, 1.3)
+
+func _leap_step(k: Dictionary, d: float) -> void:
+	var L: Dictionary = k["leap"]
+	L["t"] = float(L["t"]) + d
+	var f := clampf(float(L["t"]) / float(L["dur"]), 0.0, 1.0)
+	var p: Vector3 = (L["a"] as Vector3).lerp(L["b"], f)
+	p.y = sin(PI * f) * float(L["h"])
+	var n: Node3D = k["node"]
+	n.position = p
+	var dir: Vector3 = (L["b"] as Vector3) - (L["a"] as Vector3)
+	n.rotation.y = lerp_angle(n.rotation.y, atan2(-dir.x, -dir.z), minf(1.0, d * 10.0))
+	if f >= 1.0:
+		k.erase("leap")
+		k["pos"] = Vector3(p.x, 0, p.z)
+		n.position = k["pos"]
+		k["vel"] = Vector3.ZERO
+		Sfx.play("land", k["pos"], -10.0, 0.1, 1.3)
 
 func _emote(k: Dictionary, s: String) -> void:
 	var lbl: Label3D = k["emote"]
@@ -839,6 +1094,7 @@ func _find_interact() -> void:
 		var d := p2.distance_to(sg)
 		if d < 2.4 and d < bd + 0.4: bd = d; best = {"kind": "bridge", "isle": k}
 	for k in kins:
+		if k.has("indoors"): continue
 		var d := p2.distance_to(Vector2(k["pos"].x, k["pos"].z))
 		if d < bd: bd = d; best = {"kind": "kin", "k": k}
 	if p2.distance_to(Vector2(NEST_AT.x, NEST_AT.z)) < 1.8 and visit.is_empty():
@@ -901,6 +1157,7 @@ func _update_hover() -> void:
 	var best: Dictionary = {}; var bd := 52.0
 	if panel_open == "" and not chat_open and not building_now and not Overlay.is_open():
 		for k in kins:
+			if k.has("indoors"): continue
 			var np: Vector3 = (k["node"] as Node3D).global_position + Vector3(0, 0.45, 0)
 			if cam.is_position_behind(np): continue
 			var d := cam.unproject_position(np).distance_to(mp)
@@ -1015,6 +1272,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP: cam.zoom_to = clampf(cam.zoom_to - 0.08, 0.55, 1.6)
 		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: cam.zoom_to = clampf(cam.zoom_to + 0.08, 0.55, 1.6)
+	if event.is_action_pressed("whistle") and panel_open == "" and not chat_open and visit.is_empty() and train.is_empty() and not Overlay.is_open():
+		_whistle()
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("menu") and not Overlay.is_open():
 		if chat_open:
 			_close_chat()
@@ -1049,7 +1310,7 @@ func _build_ui() -> void:
 	root_ui.add_child(prompt_box)
 	var hint_box := UI.card(Color(0.06, 0.07, 0.11, 0.66), 8, 12)
 	hint_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var keys := UI.key_hints([["W A S D", "walk"], ["Space", "jump"], [Settings.key_cap("interact"), "use"], ["I", "inventory"], ["Esc", "menu"]], 12, Color(1, 1, 1, 0.8))
+	var keys := UI.key_hints([["W A S D", "walk"], ["Space", "jump"], [Settings.key_cap("interact"), "use"], [Settings.key_cap("whistle"), "whistle"], ["I", "inventory"], ["Esc", "menu"]], 12, Color(1, 1, 1, 0.8))
 	hint_box.add_child(keys)
 	hint = UI.label("", 14, UI.INK)     # kept for code that still sets hint text; the key row replaces it
 	hint.visible = false
@@ -2233,7 +2494,7 @@ func _play_evolutions() -> void:
 		return
 	var k: Dictionary = {}
 	for kk in kins:
-		if kk["rec"].get("pending_evo", []).size() > 0:
+		if kk["rec"].get("pending_evo", []).size() > 0 and not kk.has("indoors"):
 			k = kk; break
 	if k.is_empty():
 		return
@@ -2784,7 +3045,7 @@ func _care_tick(d: float) -> void:
 		for k in kins:
 			var rec: Dictionary = k["rec"]
 			var in_bed: bool = k.has("bed") and Vector2(k["pos"].x - k["bed"].x, k["pos"].z - k["bed"].z).length() < 0.6
-			Care.tick(rec, care_acc, float(k.get("nap_t", 0.0)) > 0.0 or (night and in_bed))
+			Care.tick(rec, care_acc, float(k.get("nap_t", 0.0)) > 0.0 or (night and in_bed) or k.has("indoors"))
 		care_acc = 0.0
 	if care_save > 20.0:
 		care_save = 0.0

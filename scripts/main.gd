@@ -189,6 +189,14 @@ func _ready() -> void:
 	var town_arg := ""
 	for a in args:
 		if a.begins_with("--town="): town_arg = a.substr(7)
+	if "--whistle-test" in args and Save.d["roster"].size() < 3:
+		# test: a few kin, so some can be indoors when you whistle
+		for sp in ["zapple", "cindle", "puddlet"]:
+			var wk := Save.new_kin(sp)
+			wk["trust"] = 70.0
+			Save.d["roster"].append(wk)
+		Save.d["active"] = Save.d["roster"][0]["uid"]
+		Save.d["tutorial"]["home"] = true
 	if "--test-roster" in args and Save.d["roster"].is_empty():
 		# test: a ready-made kin so home and the house rooms have someone to pet
 		var tk := Save.new_kin("zapple", "Pip")

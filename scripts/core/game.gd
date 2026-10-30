@@ -86,6 +86,7 @@ func _setup_input() -> void:
 	_key("play", [KEY_V])                     # at home: play fetch with a kin
 	_key("talk", [KEY_T])                     # at home: talk to a kin
 	_key("details", [KEY_C])                  # at home: a kin's details
+	_key("whistle", [KEY_H])                  # at home: whistle, and your kin come running
 	_key("inventory", [KEY_I])                # your things
 
 func goto(screen: String, opts := {}) -> void:
