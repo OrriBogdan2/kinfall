@@ -1636,7 +1636,7 @@ func on_mob_dead(mb: Mob, by: Ent, _o: Dictionary) -> void:
 		if rng.randf() < (0.35 if mb.mkind == "brute" else 0.12):
 			drop("seed", mb.pos + Vector3(0, 0.6, 0), 1, Data.pick_seed())
 		# a Rift Key: always from the Warden, sometimes from an elite (one that can be staggered, or a rare one)
-		if exits and not exits.list.is_empty() and (mb.mkind == "warden" or ((mb.md.get("stag", false) or mb.rarity >= 2) and mb.mkind != "glimmer" and rng.randf() < 0.12)):
+		if exits and not exits.list.is_empty() and (mb.mkind == "warden" or ((mb.md.get("stag", false) or mb.rarity >= 3) and mb.mkind != "glimmer" and rng.randf() < 0.06)):
 			exits.drop_key(mb.pos)
 	# the big ones are worth a perk to whoever brought them down
 	if mb.mkind in ["warden", "brute"] and credit is Hunter and not (credit as Hunter).remote and (mb.mkind == "warden" or rng.randf() < 0.5):
@@ -3149,7 +3149,7 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 		var a2 := randf() * TAU
 		spawn_gear(Gear.roll(rng), Data.roll_rarity(rng, t), c["pos"] + Vector3(cos(a2) * 1.2, 0, sin(a2) * 1.2))
 	# vaults sometimes hold a Rift Key
-	if not from_net and exits and not exits.list.is_empty() and t == 2 and rng.randf() < 0.45:
+	if not from_net and exits and not exits.list.is_empty() and t == 2 and rng.randf() < 0.35:
 		exits.drop_key(c["pos"])
 	if h and not h.remote and h.tonics < 5 and randf() < [0.35, 0.7, 1.0][t]:
 		h.tonics += 1

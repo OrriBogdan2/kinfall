@@ -389,7 +389,8 @@ func _choose(m: Match, h: Hunter) -> void:
 		# heading home: late in the match, with a good haul, or just because
 		if not a.get("leave", false) and randf() < 0.0015:
 			a["leave"] = true
-		var leaving: bool = time_left < 170.0 or h.gems > 40 or a.get("leave", false)
+		# (not in the first stretch of the match: everyone heading straight home empties the map)
+		var leaving: bool = time_left < 170.0 or (m.time > m.length * 0.3 and (h.gems > 40 or a.get("leave", false)))
 		var g: Array = m.exits.bot_goal(h, leaving)
 		if not g.is_empty() and _banned(m, a, g[0]) and String(g[1]) in ["dock", "uplink"]:
 			g = []
