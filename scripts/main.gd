@@ -607,6 +607,7 @@ func _duel_check() -> void:
 	var ok := true
 	if m.duel == null or m.duel.bot == null:
 		print("DUEL FAIL no bot"); get_tree().quit(); return
+	print("DUEL START player=%s bot=%s dist=%.1f" % [m.player.pos.snapped(Vector3(0.1, 0.1, 0.1)), m.duel.bot.pos.snapped(Vector3(0.1, 0.1, 0.1)), m.player.flat_dist(m.duel.bot)])
 	var plan := {20.0: ["mode", 1], 40.0: ["mode", 1], 60.0: ["mode", 1], 80.0: ["cls", 1], 100.0: ["glove", 1], 120.0: ["diff", 1], 140.0: ["weapon", 1]}
 	var done := {}
 	while m.time < 170.0:

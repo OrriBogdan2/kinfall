@@ -56,7 +56,7 @@ func _spot_for_bot(from: Vector3) -> Vector3:
 	var best := from + Vector3(6, 0, 0); var bs := -1.0
 	for i in 48:
 		var a := TAU * i / 48.0
-		for r in [9.0, 8.0, 7.0, 6.0, 5.0]:
+		for r in [7.0, 6.5, 6.0, 5.0]:
 			var q := from + Vector3(cos(a) * r, 0, sin(a) * r)
 			if m.world.is_void(q.x, q.z) or m.world.is_block(q.x, q.z):
 				continue
@@ -65,7 +65,7 @@ func _spot_for_bot(from: Vector3) -> Vector3:
 				continue
 			if not m.world.los(from + Vector3(0, 0.8, 0), Vector3(q.x, gy + 0.8, q.z), from.y + 0.8):
 				continue
-			var score: float = r
+			var score: float = r + absf(cos(a)) * 1.5     # side by side reads best on a wide screen
 			if score > bs:
 				bs = score; best = Vector3(q.x, gy, q.z)
 			break

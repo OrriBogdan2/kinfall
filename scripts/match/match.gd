@@ -647,7 +647,7 @@ func _spawn_breakables() -> void:
 		# a glove rack: a row of gloves to try (actives go in your Q slot, passives in the other)
 		var gi := 0
 		for gid in ["blink", "quake", "bubble", "grapple", "frost", "power_core"]:
-			var q2: Vector3 = player.pos + Vector3(-3.0 + gi * 1.2, 0, -2.4)
+			var q2: Vector3 = player.pos + Vector3(-4.5 + gi * 1.8, 0, -2.6)
 			gi += 1
 			if world.is_void(q2.x, q2.z) or world.is_block(q2.x, q2.z):
 				continue

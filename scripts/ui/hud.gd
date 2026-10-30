@@ -261,16 +261,7 @@ func _draw_world_labels() -> void:
 		var sp := cam.unproject_position(h.position + Vector3(0, 2.35, 0))
 		if cam.is_position_behind(h.position):
 			continue
-		var tc: Color = Data.TEAM_COLORS[h.team % Data.TEAM_COLORS.size()]
-		var ally: bool = m.player and h.team == m.player.team
-		_ctext(sp + Vector2(0, -12), h.pname, 16, tc if not ally else GOOD, big)
-		if h.downed:
-			_bar(Rect2(sp + Vector2(-26, -2), Vector2(52, 5)), h.down_hp / Data.MATCH["down_hp"], BAD)
-			_ctext(sp + Vector2(0, 14), "DOWN", 12, BAD, big)
-			if h.revive > 0.0:
-				_arc(sp + Vector2(0, 30), 10, h.revive, GOOD, 3.0)
-		else:
-			_vitals(sp + Vector2(0, 4), 64.0, h, (HP_LOW if not ally else GOOD) if h.hp < h.max_hp * 0.35 else (tc if not ally else GOOD), 0.0)
+		_nameplate(sp, h)
 	for mb in m.mobs:
 		if mb.dead or cam.is_position_behind(mb.position):
 			continue
@@ -283,9 +274,26 @@ func _draw_world_labels() -> void:
 		elif mb.stag_open > 0.0:
 			var a := 0.75 + 0.25 * sin(m.time * 12.0)
 			_ctext(sp + Vector2(0, -12), "STAGGERABLE", 17, Color(0.85, 0.6, 1.0, a), big)
-		if mb.hp < mb.max_hp:
+		# compact bar; rare and mutated monsters (mb.rarity, mb.mutations) wear a tinted frame and
+		# little icons for their mutations, and always show their bar
+		var rare: bool = int(mb.rarity) > 0 or not mb.mutations.is_empty()
+		if mb.hp < mb.max_hp or rare:
 			var bw := 64.0 if mb.mkind in ["brute", "warden"] else 48.0
-			_bar(Rect2(sp + Vector2(-bw * 0.5, 0), Vector2(bw, 6)), mb.hp / mb.max_hp, Color("e0b0ff") if mb.stagger_t > 0.0 else Color("ff8a6a"))
+			var br := Rect2(sp + Vector2(-bw * 0.5, 0), Vector2(bw, 6))
+			var bfrac := clampf(mb.hp / mb.max_hp, 0.0, 1.0)
+			if rare:
+				var rc: Color = Data.RARITY[clampi(int(mb.rarity), 0, Data.RARITY.size() - 1)]["color"]
+				_rounded(br.grow(3.0), Color(0, 0, 0, 0), 5, rc, 2)
+				var mx: float = sp.x - mb.mutations.size() * 7.0 + 7.0
+				for mu in mb.mutations:
+					c.draw_circle(Vector2(mx, sp.y - 8), 6.0, Color(0.03, 0.03, 0.05, 0.85))
+					Icons.draw(c, String(mu.get("icon", "burst")) if mu is Dictionary else String(mu), Vector2(mx, sp.y - 8), 3.6, rc)
+					mx += 14.0
+			var ct := _chip_of(mb, bfrac)
+			_bar(br, bfrac, Color("e0b0ff") if mb.stagger_t > 0.0 else Color("ff8a6a"))
+			if ct > bfrac:
+				c.draw_rect(Rect2(br.position + Vector2(bw * bfrac, 0), Vector2(bw * (ct - bfrac), 6)), Color(1.0, 0.95, 0.88, 0.8))
+			_status_row(sp + Vector2(0, 16), mb)
 	# found weapons: name and rarity when you're close enough to care
 	var pp: Vector3 = m.player.pos if m.player else cam.focus
 	for wp in m.wpicks:
@@ -294,7 +302,13 @@ func _draw_world_labels() -> void:
 			continue
 		var r: Dictionary = Data.RARITY[int(wp["rar"])]
 		var sp := cam.unproject_position(wpos + Vector3(0, 1.45, 0))
-		_ctext(sp, String(Data.weapon_stats(String(wp["wid"]), int(wp["rar"]))["name"]), 16, r["color"], big)
+		if wp.has("gear") and Gear.ALL.has(String(wp["gear"])):
+			# a glove: its name, and which slot it goes in
+			var gd: Dictionary = Gear.ALL[String(wp["gear"])]
+			_ctext(sp, String(gd["name"]), 15, gd["col"], big)
+			_ctext(sp + Vector2(0, 14), ("active  ·  " + Settings.key_cap("gear1")) if Gear.active(String(wp["gear"])) else "passive", 11, Color(INK, 0.75))
+		else:
+			_ctext(sp, String(Data.weapon_stats(String(wp["wid"]), int(wp["rar"]))["name"]), 16, r["color"], big)
 	for k in m.kins:
 		if k.dead or not k.visible or k.state == "shoulder" or cam.is_position_behind(k.position):
 			continue
@@ -428,7 +442,7 @@ func _draw_duel(sz: Vector2) -> void:
 	var rr := Rect2(Vector2(sz.x * 0.5 - 260, 12), Vector2(520, 58))
 	_panel(rr, Color(0.06, 0.07, 0.1, 0.88), 12)
 	_ctext(Vector2(sz.x * 0.5, 32), "DUEL ROOM  ·  ROUND %d" % d.round_n, 12, Color("ff9a8a"))
-	_ctext(Vector2(sz.x * 0.5, 56), "%s %s  ·  %s  ·  %s  ·  %s" % [d.pick_text("diff"), d.pick_text("cls"), d.pick_text("weapon"), d.pick_text("glove") if d.glove != "" else "no glove", d.pick_text("mode")], 15, INK)
+	_ctext(Vector2(sz.x * 0.5, 56), "%s bot  ·  %s class  ·  %s  ·  %s  ·  %s" % [d.pick_text("diff"), d.pick_text("cls"), d.pick_text("weapon"), d.pick_text("glove") if d.glove != "" else "no glove", d.pick_text("mode")], 15, INK)
 	if guide_hidden:
 		return
 	var st: Dictionary = d.stats
@@ -1068,9 +1082,72 @@ func _draw_squad(sz: Vector2, p: Hunter) -> void:
 		var at: Vector3 = st[2]
 		if at != Vector3.INF:
 			var dist := int(round(Vector2(at.x - p.pos.x, at.z - p.pos.z).length()))
-			_text(Vector2(r.end.x - 34, r.end.y - 8), "%dm" % dist, 11, MUTED)
+			var dt_txt := "%dm" % dist
+			_text(Vector2(r.end.x - 10 - body.get_string_size(tag, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x - 8 - body.get_string_size(dt_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x, r.position.y + 18), dt_txt, 11, MUTED, body)
 		y += 56
 	_draw_squad_markers(sz, p)
+
+## Supervive-style nameplate over another hunter: a class badge and the name, armor segments over a
+## segmented health bar (each tick is a fixed chunk of health), a white chip that drains after a hit,
+## and a row of status icons. Allies wear their team colour, enemies hostile red. No mana anywhere.
+const HOSTILE := Color("ff5a4a")
+var chip := {}            # nid -> trailing health fraction (the white chip after a hit)
+
+func _unit_col(h: Hunter) -> Color:
+	if m.player and h.team != m.player.team:
+		return HOSTILE
+	return Data.TEAM_COLORS[h.team % Data.TEAM_COLORS.size()] if h != m.player else p_team_col()
+
+func p_team_col() -> Color:
+	return Data.TEAM_COLORS[m.player.team % Data.TEAM_COLORS.size()] if m.player else GOOD
+
+func _chip_of(e: Ent, frac: float) -> float:
+	var was := float(chip.get(e.nid, frac))
+	var t := maxf(frac, move_toward(was, frac, get_process_delta_time() * 0.6))
+	chip[e.nid] = t
+	return t
+
+func _nameplate(sp: Vector2, h: Hunter) -> void:
+	if not sp.is_finite():
+		return
+	var col := _unit_col(h)
+	var w := 70.0
+	var x0 := sp.x - w * 0.5
+	# badge + name
+	var cc: Color = Data.CLASSES.get(h.cls, {}).get("color", INK)
+	var bc := Vector2(x0 - 10, sp.y - 16)
+	c.draw_circle(bc, 7.5, Color(0.03, 0.03, 0.05, 0.9))
+	c.draw_arc(bc, 7.5, 0, TAU, 18, col, 1.6, true)
+	_ctext(bc + Vector2(0, 4), String(h.cls).substr(0, 1).to_upper(), 10, cc, big)
+	_text(Vector2(x0 + 2, sp.y - 11), h.pname.substr(0, 14), 13, col.lerp(Color.WHITE, 0.25), big)
+	if h.downed:
+		_seg_bar(Rect2(Vector2(x0, sp.y - 2), Vector2(w, 6)), h.down_hp, Data.MATCH["down_hp"], 0.0, Color("ffb36a"), 25.0)
+		_ctext(sp + Vector2(0, 16), "DOWN", 11, Color("ffb36a"), big)
+		if h.revive > 0.0:
+			_arc(sp + Vector2(0, 30), 10, h.revive, GOOD, 3.0)
+		return
+	if h.max_armor > 0.5:
+		_seg_bar(Rect2(Vector2(x0, sp.y - 4), Vector2(w, 3)), h.armor, h.max_armor, 0.0, ARMOR_COL, 25.0)
+	var frac := clampf(h.hp / h.max_hp, 0.0, 1.0)
+	_seg_bar(Rect2(Vector2(x0, sp.y + 2), Vector2(w, 7)), h.hp, h.max_hp, _chip_of(h, frac), col if frac > 0.35 else col.lerp(Color.WHITE, 0.2 + 0.2 * sin(m.time * 9.0)), 25.0)
+	if h.shield > 0.0:
+		c.draw_rect(Rect2(Vector2(x0, sp.y + 2), Vector2(w * clampf(h.shield / 120.0, 0.0, 1.0), 7)), Color(0.85, 0.93, 1.0, 0.5))
+	_status_row(Vector2(sp.x, sp.y + 19), h)
+
+## Little icons for what's happening to someone: stunned, rooted, slowed, burning, shielded, braced.
+func _status_row(at: Vector2, e: Ent) -> void:
+	var icons: Array = []
+	if e.stun_t > 0.0: icons.append(["concussion", Color("fff27a")])
+	if e.root_t > 0.0: icons.append(["binding", Color("8fe0a0")])
+	if e.slow_t > 0.0: icons.append(["snare", Color("9ae8ff")])
+	if e.burn_t > 0.0: icons.append(["fireball", Color("ff9a5a")])
+	if e is Hunter and (e as Hunter).shield > 0.0: icons.append(["brightshield", Color("d8ecff")])
+	if e.guard_t > 0.0: icons.append(["anchor", Color("f2e6cf")])
+	var x := at.x - icons.size() * 8.0 + 8.0
+	for ic in icons:
+		c.draw_circle(Vector2(x, at.y), 7.0, Color(0.03, 0.03, 0.05, 0.85))
+		Icons.draw(c, String(ic[0]), Vector2(x, at.y), 4.2, ic[1])
+		x += 16.0
 
 ## Teammates you can't see on screen get an arrow at the screen edge (with distance, coloured by
 ## how they're doing); a dead teammate's deathbox gets a marker while their soul can still be saved.
@@ -1389,7 +1466,7 @@ func _draw_overhead(p: Hunter) -> void:
 	var w := 84.0
 	var frac := clampf(p.hp / p.max_hp, 0.0, 1.0)
 	head_hp = maxf(frac, lerpf(head_hp, frac, 0.06))
-	_vitals(sp, w, p, GOOD if frac > 0.35 else BAD, head_hp, true)
+	_vitals(sp, w, p, p_team_col().lerp(Color.WHITE, 0.15) if frac > 0.35 else BAD, head_hp, true)
 	# stamina: one yellow pip per dash under the bars, the next one filling as it recharges
 	var n := int(p.max_dashes()) + 1
 	for i in n:
