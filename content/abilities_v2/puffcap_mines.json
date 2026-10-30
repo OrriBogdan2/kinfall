@@ -1,0 +1,73 @@
+{
+	"grammar": 1,
+	"id": "puffcap_mines",
+	"name": "Puffcap Mines",
+	"short": "Mines",
+	"flavor": "Mycroll plants three puffcaps in a triangle. Step on one and it bursts: rooted 1.4s inside a lingering spore cloud.",
+	"theme": "spore",
+	"tier": 1,
+	"from": "kin",
+	"range": 8,
+	"cooldown": 10,
+	"charges": 1,
+	"trigger": {
+		"type": "on_cast"
+	},
+	"cue": {
+		"type": "foe_in_range",
+		"range": 7
+	},
+	"stages": [
+		{
+			"delivery": {
+				"type": "trap",
+				"origin": "aim",
+				"count": 3,
+				"spread": 1.5,
+				"radius": 0.9,
+				"arm": 0.5,
+				"duration": 18
+			},
+			"then": {
+				"on_trigger": [
+					{
+						"delivery": {
+							"type": "burst",
+							"origin": "here",
+							"radius": 1.8
+						},
+						"effects": [
+							{
+								"type": "damage",
+								"amount": 8
+							},
+							{
+								"type": "root",
+								"preset": "snare"
+							}
+						]
+					},
+					{
+						"delivery": {
+							"type": "zone",
+							"origin": "here",
+							"radius": 1.8,
+							"duration": 3,
+							"every": 0.5
+						},
+						"effects": [
+							{
+								"type": "damage",
+								"amount": 2
+							},
+							{
+								"type": "slow",
+								"duration": 0.8
+							}
+						]
+					}
+				]
+			}
+		}
+	]
+}

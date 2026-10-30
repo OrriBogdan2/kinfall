@@ -1,0 +1,24 @@
+{
+	"grammar": 1,
+	"id": "curious_form",
+	"name": "Curious",
+	"flavor": "Raised to explore: it hits softer and keeps you patched up.",
+	"affinity": "curious",
+	"requires": {
+		"level": 4
+	},
+	"grants": [
+		{
+			"kind": "stat_shift",
+			"from": "kin_damage",
+			"to": "owner_regen",
+			"points": 1
+		}
+	],
+	"cosmetic": {
+		"parts": [
+			"antennae"
+		],
+		"tint": "#9a7af0"
+	}
+}

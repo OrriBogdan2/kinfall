@@ -1,0 +1,131 @@
+{
+	"grammar": 1,
+	"id": "zapple",
+	"name": "Echolop",
+	"animals": [
+		"Hare",
+		"Bat"
+	],
+	"theme": "echo",
+	"flavor": "A long-eared hare with bat wings. It hears everything coming and fires ringing pulses of sound.",
+	"colors": {
+		"body": "#4a5aa8",
+		"belly": "#c9d2ff",
+		"glow": "#7fe8ff",
+		"wing": "#5a4a8a"
+	},
+	"look": {
+		"ears": "none",
+		"body": "echolop",
+		"tail": "none",
+		"feet": "none",
+		"aura": "rings"
+	},
+	"body": {
+		"size": "small",
+		"reach": 1.3,
+		"mass": 0.8,
+		"gait": {
+			"hop_rate": 8.0,
+			"hop_height": 0.16,
+			"pace": 1.0
+		}
+	},
+	"stats": {
+		"kin_hp": 2,
+		"kin_damage": 2,
+		"kin_speed": 13,
+		"owner_move_speed": 3
+	},
+	"personality": {
+		"bravery": 0.65,
+		"loyalty": 0.4,
+		"temper": 0.6,
+		"curiosity": 0.9
+	},
+	"ai": {
+		"aggression": 0.65,
+		"loyalty": 0.35,
+		"caution": 0.35,
+		"role": "skirmisher"
+	},
+	"carry": {
+		"style": "shoulder",
+		"name": "Tempo",
+		"passives": [
+			{
+				"stat": "fire_rate",
+				"amount": 0.2
+			},
+			{
+				"stat": "reload",
+				"amount": 0.2
+			}
+		]
+	},
+	"throw": {
+		"effects": [
+			{
+				"type": "stun",
+				"duration": 0.9
+			}
+		]
+	},
+	"dodge_rider": {
+		"name": "Echo Step",
+		"modifiers": [
+			{
+				"type": "repeat",
+				"count": 1,
+				"delay": 0.18,
+				"falloff": 0.55
+			}
+		]
+	},
+	"active": "chain_spark",
+	"auto": "echolocate",
+	"merge": "stormcoat",
+	"evolution": {
+		"root": "Zap",
+		"paths": [
+			{
+				"affinity": "fierce",
+				"nodes": [
+					"fierce_form"
+				]
+			},
+			{
+				"affinity": "steadfast",
+				"nodes": [
+					"steadfast_form"
+				]
+			},
+			{
+				"affinity": "curious",
+				"nodes": [
+					"curious_form"
+				]
+			},
+			{
+				"affinity": "swift",
+				"nodes": [
+					"swift_form",
+					"zapple_overtone"
+				]
+			}
+		]
+	},
+	"voice": {
+		"line": "hyper, easily distracted, loves winning",
+		"syllables": [
+			"Zap",
+			"ple"
+		]
+	},
+	"egg": {
+		"name": "Echo Egg",
+		"temper": "Hyper",
+		"desc": "Deep blue and humming. Tap it and it taps back. Something restless is in here.",
+		"play": "Fast, loud and everywhere. Chains sound pulses between foes."
+	}
+}

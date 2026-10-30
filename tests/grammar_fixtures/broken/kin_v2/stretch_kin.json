@@ -1,0 +1,52 @@
+{
+	"grammar": 1,
+	"id": "stretch_kin",
+	"name": "Stretch",
+	"animals": [
+		"Giraffe"
+	],
+	"colors": {
+		"body": "#c8a060",
+		"belly": "#f0e0c0",
+		"glow": "#ffd27a"
+	},
+	"look": {
+		"body": "round"
+	},
+	"body": {
+		"size": "small"
+	},
+	"stats": {
+		"kin_hp": 8,
+		"kin_damage": 4,
+		"kin_speed": 8
+	},
+	"personality": {
+		"bravery": 0.5,
+		"loyalty": 0.5,
+		"temper": 0.5,
+		"curiosity": 0.5
+	},
+	"ai": {
+		"aggression": 0.5,
+		"loyalty": 0.5,
+		"caution": 0.5,
+		"role": "skirmisher"
+	},
+	"carry": {
+		"style": "shoulder"
+	},
+	"active": "fixture_bolt",
+	"merge": "fixture_merge",
+	"evolution": {
+		"root": "Stretch",
+		"paths": [
+			{
+				"affinity": "swift",
+				"nodes": [
+					"overreach"
+				]
+			}
+		]
+	}
+}

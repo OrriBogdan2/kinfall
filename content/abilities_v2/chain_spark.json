@@ -1,0 +1,50 @@
+{
+	"grammar": 1,
+	"id": "chain_spark",
+	"name": "Echo Chain",
+	"short": "Echo",
+	"flavor": "A sound pulse leaps between up to 3 foes, stunning each 0.4s, then echoes 0.9s later and does it all again at half strength.",
+	"theme": "echo",
+	"tier": 1,
+	"from": "kin",
+	"range": 7,
+	"cooldown": 7,
+	"charges": 1,
+	"trigger": {
+		"type": "on_cast"
+	},
+	"cue": {
+		"type": "foe_in_range",
+		"range": 7
+	},
+	"stages": [
+		{
+			"delivery": {
+				"type": "beam",
+				"range": 7,
+				"seek": true
+			},
+			"effects": [
+				{
+					"type": "damage",
+					"amount": 14
+				},
+				{
+					"type": "stun",
+					"preset": "jolt"
+				}
+			],
+			"modifiers": [
+				{
+					"type": "chain",
+					"count": 2,
+					"range": 4.5
+				},
+				{
+					"type": "repeat",
+					"preset": "echo"
+				}
+			]
+		}
+	]
+}

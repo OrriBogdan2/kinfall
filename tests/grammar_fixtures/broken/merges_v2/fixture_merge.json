@@ -1,0 +1,21 @@
+{
+	"grammar": 1,
+	"id": "fixture_merge",
+	"name": "Fixture Merge",
+	"duration": 6,
+	"passives": [
+		{
+			"stat": "move_speed",
+			"amount": 0.2
+		}
+	],
+	"merged": {
+		"active": {
+			"stage": 0,
+			"scale": {
+				"range": 1.3,
+				"rope": 1.1
+			}
+		}
+	}
+}

@@ -1,0 +1,45 @@
+{
+	"grammar": 1,
+	"id": "moon_swap",
+	"name": "Moon Swap",
+	"short": "Swap",
+	"flavor": "Lunowl throws a moon mark 9m. The first foe it touches trades places with YOU (stunned 0.4s): pull a rival off a ledge, or step behind them.",
+	"theme": "lunar",
+	"tier": 1,
+	"from": "kin",
+	"range": 9,
+	"cooldown": 10,
+	"charges": 1,
+	"trigger": {
+		"type": "on_cast"
+	},
+	"cue": {
+		"type": "foe_in_range",
+		"range": 8
+	},
+	"stages": [
+		{
+			"delivery": {
+				"type": "projectile",
+				"range": 9,
+				"speed": 30,
+				"size": 0.2
+			},
+			"effects": [
+				{
+					"type": "damage",
+					"amount": 4
+				},
+				{
+					"type": "signature",
+					"id": "swap",
+					"who": "owner"
+				},
+				{
+					"type": "stun",
+					"duration": 0.4
+				}
+			]
+		}
+	]
+}

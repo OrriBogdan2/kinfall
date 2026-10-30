@@ -1,0 +1,81 @@
+{
+	"grammar": 1,
+	"id": "titan",
+	"name": "Heavy Star",
+	"flavor": "Gravadillo collapses into a towering heavy star for 8s. Huge health, and every stomp launches foes away.",
+	"theme": "gravity",
+	"duration": 8,
+	"grow_duration": 1.0,
+	"grow_strength": 0.1,
+	"passives": [
+		{
+			"stat": "armor",
+			"amount": 0.5
+		},
+		{
+			"stat": "knockback_resist",
+			"amount": 0.75
+		},
+		{
+			"stat": "shield",
+			"amount": 120
+		}
+	],
+	"on_start": [
+		{
+			"delivery": {
+				"type": "burst",
+				"origin": "owner",
+				"radius": 4.5
+			},
+			"effects": [
+				{
+					"type": "damage",
+					"amount": 22
+				},
+				{
+					"type": "push",
+					"strength": 14
+				},
+				{
+					"type": "lift",
+					"strength": 8
+				}
+			]
+		}
+	],
+	"pulses": [
+		{
+			"every": 1.5,
+			"stage": {
+				"delivery": {
+					"type": "burst",
+					"origin": "owner",
+					"radius": 2.6
+				},
+				"effects": [
+					{
+						"type": "damage",
+						"amount": 14
+					},
+					{
+						"type": "push",
+						"strength": 12
+					},
+					{
+						"type": "lift",
+						"strength": 7
+					}
+				]
+			}
+		}
+	],
+	"merged": {
+		"active": {
+			"stage": 0,
+			"scale": {
+				"range": 1.3
+			}
+		}
+	}
+}

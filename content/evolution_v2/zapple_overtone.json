@@ -1,0 +1,29 @@
+{
+	"grammar": 1,
+	"id": "zapple_overtone",
+	"name": "Overtone",
+	"flavor": "Its echo pulse rings through the first foe it hits.",
+	"affinity": "swift",
+	"requires": {
+		"level": 8,
+		"after": [
+			"swift_form"
+		]
+	},
+	"grants": [
+		{
+			"kind": "add_modifier",
+			"slot": "active",
+			"stage": 0,
+			"modifier": {
+				"type": "pierce",
+				"count": 1
+			}
+		}
+	],
+	"cosmetic": {
+		"parts": [
+			"fins"
+		]
+	}
+}

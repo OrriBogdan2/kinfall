@@ -1,0 +1,17 @@
+{
+	"grammar": 1,
+	"id": "big_shift",
+	"name": "Big Shift",
+	"affinity": "fierce",
+	"requires": {
+		"level": 4
+	},
+	"grants": [
+		{
+			"kind": "stat_shift",
+			"from": "kin_speed",
+			"to": "kin_damage",
+			"points": 2
+		}
+	]
+}

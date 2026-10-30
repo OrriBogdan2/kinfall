@@ -1,0 +1,47 @@
+{
+	"grammar": 1,
+	"id": "bad_parts",
+	"name": "Unknown Parts",
+	"trigger": {
+		"type": "on_spawn"
+	},
+	"cue": {
+		"type": "owner_sad"
+	},
+	"colour": "#ff0000",
+	"stages": [
+		{
+			"delivery": {
+				"type": "fireball",
+				"radius": 2
+			},
+			"effects": [
+				{
+					"type": "explode"
+				}
+			]
+		},
+		{
+			"delivery": {
+				"type": "burst",
+				"radius": 2
+			},
+			"effects": [
+				{
+					"type": "heal",
+					"amount": 20,
+					"target": "foes"
+				},
+				{
+					"type": "slow",
+					"preset": "frost_nova",
+					"duration": 1
+				},
+				{
+					"type": "root",
+					"preset": "frost"
+				}
+			]
+		}
+	]
+}

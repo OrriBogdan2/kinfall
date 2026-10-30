@@ -1,0 +1,74 @@
+{
+	"grammar": 1,
+	"id": "tidal_shell",
+	"name": "Prism Shell",
+	"flavor": "Prismander wraps around you as a shell of living crystal for 7s: an 80 point shield, steady healing, and shots that slow.",
+	"theme": "prism",
+	"duration": 7,
+	"grow_duration": 1.0,
+	"grow_strength": 0.1,
+	"passives": [
+		{
+			"stat": "shield",
+			"amount": 80
+		},
+		{
+			"stat": "regen",
+			"amount": 6
+		}
+	],
+	"on_shot": {
+		"effects": [
+			{
+				"type": "slow",
+				"duration": 1.2
+			}
+		]
+	},
+	"on_start": [
+		{
+			"delivery": {
+				"type": "burst",
+				"origin": "owner",
+				"radius": 3.5
+			},
+			"effects": [
+				{
+					"type": "damage",
+					"amount": 6
+				},
+				{
+					"type": "push",
+					"strength": 12
+				},
+				{
+					"type": "slow",
+					"duration": 2
+				}
+			]
+		},
+		{
+			"delivery": {
+				"type": "burst",
+				"origin": "owner",
+				"radius": 5
+			},
+			"effects": [
+				{
+					"type": "heal",
+					"target": "allies",
+					"amount": 20
+				}
+			]
+		}
+	],
+	"merged": {
+		"active": {
+			"stage": 0,
+			"scale": {
+				"length": 1.25,
+				"hp": 1.2
+			}
+		}
+	}
+}

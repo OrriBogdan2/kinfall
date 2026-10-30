@@ -1,0 +1,33 @@
+{
+	"grammar": 1,
+	"id": "overreach",
+	"name": "Overreach",
+	"affinity": "swift",
+	"requires": {
+		"level": 8,
+		"after": [
+			"fierce_form"
+		]
+	},
+	"grants": [
+		{
+			"kind": "sidegrade",
+			"slot": "active",
+			"up": {
+				"param": "delivery.range",
+				"scale": 1.2
+			},
+			"down": {
+				"param": "effects.3.amount",
+				"scale": 0.9
+			}
+		},
+		{
+			"kind": "add_modifier",
+			"slot": "active",
+			"modifier": {
+				"type": "spike"
+			}
+		}
+	]
+}

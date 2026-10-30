@@ -1,0 +1,106 @@
+{
+	"grammar": 1,
+	"id": "wrong_id",
+	"name": "Broken Rules",
+	"trigger": {
+		"type": "auto"
+	},
+	"from": "owner",
+	"stages": [
+		{
+			"delivery": {
+				"type": "cone"
+			},
+			"effects": [
+				{
+					"type": "damage",
+					"amount": 10
+				}
+			],
+			"modifiers": [
+				{
+					"type": "bounce"
+				}
+			],
+			"then": {
+				"on_land": [
+					{
+						"delivery": {
+							"type": "burst",
+							"origin": "here"
+						},
+						"effects": [
+							{
+								"type": "damage",
+								"amount": 5
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"delivery": {
+				"type": "burst",
+				"origin": "here",
+				"radius": 15
+			},
+			"effects": [
+				{
+					"type": "stun",
+					"duration": 0.5
+				}
+			],
+			"modifiers": [
+				{
+					"type": "linger"
+				},
+				{
+					"type": "linger"
+				}
+			]
+		},
+		{
+			"delivery": {
+				"type": "projectile",
+				"origin": "caster"
+			},
+			"effects": [
+				{
+					"type": "damage",
+					"amount": 5
+				}
+			],
+			"modifiers": [
+				{
+					"type": "split",
+					"count": 5
+				},
+				{
+					"type": "bounce",
+					"count": 3
+				},
+				{
+					"type": "chain",
+					"count": 4
+				}
+			]
+		},
+		{
+			"delivery": {
+				"type": "zone"
+			}
+		},
+		{
+			"delivery": {
+				"type": "wall"
+			},
+			"effects": [
+				{
+					"type": "stun",
+					"duration": 0.5
+				}
+			]
+		}
+	]
+}

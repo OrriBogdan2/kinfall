@@ -1,0 +1,47 @@
+{
+	"grammar": 1,
+	"id": "bad_bounds",
+	"name": "Out Of Bounds",
+	"trigger": {
+		"type": "on_cast"
+	},
+	"stages": [
+		{
+			"delivery": {
+				"type": "projectile",
+				"speed": 200,
+				"range": 9,
+				"rope": "yes"
+			},
+			"effects": [
+				{
+					"type": "damage",
+					"amount": 500
+				},
+				{
+					"type": "stun",
+					"duration": 5
+				},
+				{
+					"type": "mark",
+					"mode": "vulnerable",
+					"amount": 0.5
+				},
+				{
+					"type": "slow",
+					"strength": 0.4
+				}
+			],
+			"modifiers": [
+				{
+					"type": "bounce",
+					"count": 10
+				},
+				{
+					"type": "split",
+					"count": 2.5
+				}
+			]
+		}
+	]
+}

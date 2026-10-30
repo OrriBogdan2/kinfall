@@ -1,0 +1,24 @@
+{
+	"grammar": 1,
+	"id": "fierce_form",
+	"name": "Fierce",
+	"flavor": "Raised to fight hard: it trades a little toughness for bite.",
+	"affinity": "fierce",
+	"requires": {
+		"level": 4
+	},
+	"grants": [
+		{
+			"kind": "stat_shift",
+			"from": "kin_hp",
+			"to": "kin_damage",
+			"points": 1
+		}
+	],
+	"cosmetic": {
+		"parts": [
+			"horns"
+		],
+		"tint": "#e0503a"
+	}
+}

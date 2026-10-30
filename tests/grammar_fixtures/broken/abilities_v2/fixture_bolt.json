@@ -1,0 +1,23 @@
+{
+	"grammar": 1,
+	"id": "fixture_bolt",
+	"name": "Fixture Bolt",
+	"trigger": {
+		"type": "on_cast"
+	},
+	"range": 9,
+	"stages": [
+		{
+			"delivery": {
+				"type": "projectile",
+				"range": 18
+			},
+			"effects": [
+				{
+					"type": "damage",
+					"amount": 10
+				}
+			]
+		}
+	]
+}
