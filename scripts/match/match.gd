@@ -2820,6 +2820,12 @@ func _update_interact(dt: float) -> void:
 				if o.remote:
 					_rev_out[o.nid] = float(_rev_out.get(o.nid, 0.0)) + dt / Life.R["revive_time"]
 					o.revive += dt / Life.R["revive_time"]
+				if h == player and best.is_empty():
+					# your own revive bar, so you know it's working (and when it's blocked)
+					if o.get_meta("stomped", false):
+						best = {"kind": "revive", "ent": o, "label": "An enemy is standing on %s: revive blocked. Knock them off!" % o.pname, "col": Color("ff6a5a")}
+					else:
+						best = {"kind": "revive", "ent": o, "label": "Reviving %s  ·  stay in the ring" % o.pname, "col": Color("9ee2a0")}
 			elif not o.remote:
 				best = {"kind": "finish", "ent": o, "label": "Hold %s to stomp %s  (you'll be locked in)" % [Settings.key_cap("interact"), o.pname], "col": Color("ff8a6a")}
 		if not want or best.get("kind", "") != "finish":

@@ -580,7 +580,8 @@ func _weapon_check() -> void:
 				var home := Vector3.ZERO
 				# find flat open ground for both
 				for tries in 400:
-					var at: Vector3 = m.world.random_ground(m.world.island_of(P.pos.x, P.pos.z))
+					# the training island first; long sightlines may need the open ground elsewhere
+					var at: Vector3 = m.world.random_ground(m.world.island_of(P.pos.x, P.pos.z)) if tries < 200 else m.world.random_ground()
 					var to := at + Vector3(dist, 0, 0)
 					var ok := true
 					for k in 9:
