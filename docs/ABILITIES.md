@@ -10,8 +10,8 @@ Every run starts with abilities locked (see `Hunter.slot_lv`). A skill point unl
 
 - damage +15% (`Effects.level_k`)
 - cooldown 10% shorter (RMB, Q, E via `AbilityRunner`/`Hunter.rank_cd_k`); Shift dashes recharge 15% faster
-- each verb grows the numbers that define it (`Effects.RANK_GROW`): walls +20% health, +15% time, +10% length; mirrors +20% time; tethers +15% time, +20% snap stun; traps +15% time and root; zones +15% time, +10% radius; fissures +10% length; shots +10% range and +15% stun/root/slow; pulls +15% strength; chains +1 hop at rank 3; yanks and swaps +25% stun; bridges +20% time; cloaks/decoys/reveals +20-25% time; shields and heals +15%; blinks +10% distance; blink-strike crit window +25%
-- the bond ultimate (R) at rank 2 lasts 30% longer and hits 15% harder
+- each verb grows the numbers that define it (`Effects.RANK_GROW`): walls +20% health, +15% time, +10% length; mirrors +20% time; tethers +15% time, +20% snap stun; traps +15% time and root; zones +15% time, +10% radius; fissures +10% length; shots +10% range and +15% stun/root/slow; pulls +15% strength; chains +1 hop per rank; yanks and swaps +25% stun; bridges +20% time; cloaks/decoys/reveals +20-25% time; shields and heals +15%; blinks +10% distance; blink-strike crit window +25%
+- the bond ultimate (R) at rank 2 lasts 30% longer and its cast effects hit 15% harder
 - dash and charge distances never grow: dashes stay short
 
 An ability JSON can override any of these with `"per_level": {"key": flat amount per rank}`.
@@ -138,17 +138,17 @@ Each kin has one E verb fitting its element, a second ability it uses by itself,
 Several verbs appear in more than one element, tuned to fit it:
 
 - **Hook / yank**: Hook Glove (neutral, drags to your feet or zips you to terrain), Stinger Hook (venom: poisons and blights), Leash Bolt (tether that snaps back).
-- **Wall**: Barrier Glove (stone, blocks shots and bodies both ways), Bulwark (energy, follows your aim, yours pass through), Rock Guard (gravity plate, raised for you when you're shot), Prism Wall (crystal, reflects shots).
+- **Wall**: Barrier Glove (stone, blocks shots and bodies both ways), Bulwark (energy, follows your aim, yours pass through), Mass Guard (gravity plate, raised for you when you're shot), Prism Wall (crystal, reflects shots).
 - **Reflect**: Mirror Glove (all-round bubble), Riposte (frontal, parries melee), Refraction (prism, auto when hurt), Prism Wall (reflecting wall).
 - **Slam / knock-up**: Earthshatter (hunter leap), Gravity Slam (kin meteor that pulls in first), Fissure Glove (a line eruption), Vortex Glove (pull then pop).
 - **Blink**: Blink Glove (blink-strike), Shadow Step (appear behind who your knife hits), Moon Swap (lunar: trade places), Lunar dash rider.
-- **Trap / zone**: Tripwire Mine (root + reveal), Puffcap Mines (spore triangle), Thorn Patch (spore cloud), Spore dash rider.
+- **Trap / zone**: Tripwire Mine (root + reveal), Puffcap Mines (spore triangle), Spore Patch (spore cloud), Spore dash rider.
 
 ## Readability
 
 - Holding RMB, Q, E or R shows the cast's shape before you let go: a lane for shots and rushes (with a tick at the far end), a range ring plus landing circle for lobs and leaps, the wall's footprint across your aim, a cone, or a ring round you (`Match._update_indicators`, shape from `AbilityDef.aim_spec`).
 - Enemy area casts get a 0.32s filling ground marker before they land; leaps show their landing circle to everyone; fissures show their lane filling.
-- Each verb has its own shape in the world (wall slabs, a mirror shell, a rope for tethers, a disc, a hook, an orb, trap pads, ice tiles, ghost decoys) in its element colour, plus HOOKED / SPIKED / PARRIED / REFLECTED words on hit.
+- Each verb has its own shape in the world (wall slabs, a mirror shell, a rope for tethers, a disc, a hook, an orb, trap pads, ice tiles, ghost decoys) in its element colour, plus HOOKED / SPIKED / PARRIED / SNAP / TRAP words when they go off.
 
 ## Bots
 

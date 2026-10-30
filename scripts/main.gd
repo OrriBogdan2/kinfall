@@ -288,6 +288,10 @@ func _ready() -> void:
 	if "--sandbox" in args:
 		var so := {"training": true, "sandbox": true, "sandbox_demo": "--sandbox-demo" in args, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242, "no_drop": true, "weapon": "rifle"}
 		for a in args:
+			if a.begins_with("--weapon="): so["weapon"] = a.substr(9)
+			if a.begins_with("--aim-demo="): so["aim_demo"] = a.substr(11); so["sandbox_demo"] = false
+			if a.begins_with("--glove="): so["glove"] = a.substr(8)
+			if a.begins_with("--class="): so["cls"] = a.substr(8)
 			if a.begins_with("--kin-demo="):
 				# test: bring this species (and the next one) and run its whole kit on the dummies
 				so["demo_kin"] = a.substr(11)
@@ -804,21 +808,21 @@ func _ac_setup(dist: float, extra_t := false) -> Array:
 	var P: Hunter = m.player
 	for mb in m.mobs: mb.queue_free()
 	m.mobs.clear()
-	var home := Vector3.INF
-	for tries in 600:
-		var at: Vector3 = m.world.random_ground(m.world.island_of(P.pos.x, P.pos.z)) if tries < 300 else m.world.random_ground()
-		var ok := true
-		for k in 13:
-			var q := at + Vector3((dist + 3.0) * k / 12.0, 0, 0)
-			for sz in [-1.2, 0.0, 1.2]:
-				var q2 := q + Vector3(0, 0, sz)
-				if m.world.is_block(q2.x, q2.z) or absf(m.world.ground_at(q2.x, q2.z) - at.y) > 0.01: ok = false
-		var back := at + Vector3(-3.0, 0, 0)
-		if m.world.is_block(back.x, back.z) or absf(m.world.ground_at(back.x, back.z) - at.y) > 0.01: ok = false
-		if ok:
-			home = at; break
-	if home == Vector3.INF:
-		home = P.pos
+	# a flat, open strip of ground for the test: the training map is small and busy, so the logical
+	# tiles around the spawn are levelled (headless, nothing is drawn)
+	var W = m.world
+	var hx := int(floor(P.pos.x)); var hz := int(floor(P.pos.z))
+	var hi: int = W.idx(hx, hz)
+	var lv: int = int(W.level[hi]) if W.kind[hi] != World.T_VOID else 0
+	for dz in range(-3, 4):
+		for dx in range(-6, int(dist) + 7):
+			if not W.inb(hx + dx, hz + dz): continue
+			var i: int = W.idx(hx + dx, hz + dz)
+			W.kind[i] = World.T_GROUND
+			W.level[i] = lv
+			W.island[i] = W.island[hi]
+			W.stairs.erase(i); W.walls.erase(i); W.props.erase(i); W.bush.erase(i)
+	var home := Vector3(hx + 0.5, lv * World.LEVEL, hz + 0.5)
 	P.teleport(home)
 	P.vel = Vector3.ZERO
 	P.hp = P.max_hp
@@ -849,25 +853,14 @@ func _ac_glove(P: Hunter, gid: String, rar := 1) -> void:
 
 func _ac_dbg() -> void:
 	var r := _ac_setup(5.0); var m: Match = r[0]; var P: Hunter = r[1]; var T: Hunter = r[2]
-	P.runner.set_slot("utility", Content.ability("earthshatter"))
-	P.runner.use("utility", {})
-	for i in 40:
+	var gk: Kin = P.kin
+	gk.teleport(P.pos + Vector3(1, 0, 0)); gk.state = "active"
+	var land := T.pos + Vector3(1.5, 0, 0)
+	print("GS start T=%s land=%s kin=%s" % [T.pos, land, gk.pos])
+	Effects.run(Content.ability("slam").effects, gk, {"aim": land})
+	for i in 60:
 		_ac_run(m, Match.DT)
-		if i % 3 == 0: print("ES %d P=%s T=%s Thp=%.0f Tgr=%s inv=%.2f" % [i, P.pos.snapped(Vector3.ONE*0.01), T.pos.snapped(Vector3.ONE*0.01), T.hp, T.grounded, T.inv_t])
-	m.queue_free(); await get_tree().process_frame
-	r = _ac_setup(2.5); m = r[0]; P = r[1]; T = r[2]
-	P.runner.set_slot("utility", Content.ability("breach"))
-	P.runner.use("utility", {})
-	for i in 30:
-		_ac_run(m, Match.DT)
-		if i % 3 == 0: print("BR %d P=%s v=%s gr=%s fly=%.2f knock=%.2f T=%s" % [i, P.pos.snapped(Vector3.ONE*0.01), P.vel.snapped(Vector3.ONE*0.01), P.grounded, P.fly_t, P.knock_t, T.pos.snapped(Vector3.ONE*0.01)])
-	m.queue_free(); await get_tree().process_frame
-	r = _ac_setup(6.0); m = r[0]; P = r[1]; T = r[2]
-	P.runner.set_slot("utility", Content.ability("shadow_step"))
-	P.runner.use("utility", {})
-	for i in 20:
-		_ac_run(m, Match.DT)
-		if i % 2 == 0: print("SS %d P=%s T=%s Thp=%.0f shots=%d" % [i, P.pos.snapped(Vector3.ONE*0.01), T.pos.snapped(Vector3.ONE*0.01), T.hp, m.shots.size()])
+		if i >= 26: print("GS %d T=%s v=%s kin=%s st=%s knock=%.2f" % [i, T.pos.snapped(Vector3.ONE*0.01), T.vel.snapped(Vector3.ONE*0.01), gk.pos.snapped(Vector3.ONE*0.01), gk.state, T.knock_t])
 	get_tree().quit()
 
 func _ability_check() -> void:
@@ -1067,11 +1060,14 @@ func _ability_check() -> void:
 		Effects.run(Content.ability("slam").effects, gk, {"aim": land})
 		acc["top"] = 0.0; g = T.pos.y
 		var dl := T.flat_dist(land)
-		var mind := {"d": dl}
+		var mind := {"d": dl, "v": 0.0}
+		var to_c := Vector2(land.x - T.pos.x, land.z - T.pos.z).normalized()
 		_ac_run(m, 1.0, func():
 			acc["top"] = maxf(acc["top"], T.pos.y - g)
+			mind["v"] = maxf(float(mind["v"]), Vector2(T.vel.x, T.vel.z).dot(to_c))
 			mind["d"] = minf(mind["d"], T.flat_dist(land)))
-		_ac("gravity slam pulls + lifts", acc["top"] > 0.4 and float(mind["d"]) < dl - 0.3, "rose %.2f, to crater %.1f -> %.1f (kin %s)" % [acc["top"], dl, mind["d"], gk.state])
+		# (the kin itself lands in the crater, so the pull ends against its body)
+		_ac("gravity slam pulls + lifts", acc["top"] > 0.4 and float(mind["v"]) > 3.0, "rose %.2f, pulled at %.1fm/s toward the crater (kin %s)" % [acc["top"], mind["v"], gk.state])
 	m.queue_free(); await get_tree().process_frame
 	# 20. Dashes: class verbs and kin riders. Each starts grounded at the same spot, 3m short of the target.
 	r = _ac_setup(6.0); m = r[0]; P = r[1]; T = r[2]
@@ -1118,10 +1114,10 @@ func _ability_check() -> void:
 		_ac("venom dash poisons", T.burn_t > 0.0 or T.blight_t > 0.0, "burn %.1f blight %.1f" % [T.burn_t, T.blight_t])
 		# gravity: where you stop, foes nearby are tugged toward you
 		ready.call("medium", "pebbit", home2, Vector2(1, 0))
-		var gd0 := P.flat_dist(T)
+		var tmin := {"x": T.pos.x}
 		P.do_dash()
-		_ac_run(m, 0.5)
-		_ac("gravity dash tugs", P.flat_dist(T) < gd0 - 3.6 - 0.3 or T.vel.length() > 0.5 or T.pos.x < home2.x + 5.7, "target x %.2f" % (T.pos.x - home2.x))
+		_ac_run(m, 0.5, func(): tmin["x"] = minf(float(tmin["x"]), T.pos.x))
+		_ac("gravity dash tugs", float(tmin["x"]) < home2.x + 5.6, "target pulled to x %.2f (from 6.0)" % (float(tmin["x"]) - home2.x))
 		# echo: a second, shorter dash a beat later
 		ready.call("medium", "zapple", home2 + Vector3(-4.0, 0, 0), Vector2(1, 0))
 		var e0 := P.pos.x
@@ -1160,6 +1156,24 @@ func _ability_check() -> void:
 				_ac_run(m, 0.6)
 			n += 1
 	_ac("all abilities run", true, "%d ran" % n)
+	m.queue_free(); await get_tree().process_frame
+	# 22. Ranks: a rank-3 slot makes the same verb stronger and recharge faster
+	r = _ac_setup(7.0); m = r[0]; P = r[1]; T = r[2]
+	P.inp["aim"] = P.pos + Vector3(2.5, 0.9, 0)
+	P.slot_lv["gear"] = 1
+	_ac_glove(P, "barrier")
+	var hp1: float = m.verbs.walls[-1]["hp"] if not m.verbs.walls.is_empty() else 0.0
+	var cd1: float = P.gear_cd[0]
+	P.slot_lv["gear"] = 3
+	_ac_glove(P, "barrier")
+	var hp3: float = m.verbs.walls[-1]["hp"] if not m.verbs.walls.is_empty() else 0.0
+	var cd3: float = P.gear_cd[0]
+	_ac("rank 3 glove: tougher, faster", hp3 > hp1 * 1.3 and cd3 < cd1 * 0.85, "wall hp %.0f -> %.0f, cooldown %.1f -> %.1f" % [hp1, hp3, cd1, cd3])
+	P.runner.set_slot("utility", Content.ability("leash_bolt"))
+	P.slot_lv["sec"] = 3
+	P.inp["aim"] = T.pos + Vector3(0, 0.9, 0)
+	P.runner.use("utility", {"level": P.ability_level("sec")})
+	_ac("rank 3 RMB cooldown", P.runner.cd_left("utility") < Content.ability("leash_bolt").cooldown * 0.85, "%.1fs" % P.runner.cd_left("utility"))
 	m.queue_free(); await get_tree().process_frame
 	print("ACHECK DONE, failures: ", _ac_fail)
 	get_tree().quit()

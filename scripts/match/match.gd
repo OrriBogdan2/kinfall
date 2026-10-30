@@ -2834,6 +2834,8 @@ func step(dt: float) -> void:
 				player.teleport(Vector3(q.x + 1.0, player.pos.y - 4.0, q.z)); player.grounded = false
 				break
 	if opts.has("aim_demo") and player:
+		if opts.has("glove") and (player.gear[0] as Dictionary).is_empty():
+			player.gear[0] = {"id": String(opts["glove"]), "rar": 2}
 		aim_hold = String(opts["aim_demo"])
 		player.inp["aim"] = player.pos + Vector3(4.0, 0, -3.0)
 	if opts.get("sandbox_demo", false) and player:
