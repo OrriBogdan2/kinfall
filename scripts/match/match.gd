@@ -2759,6 +2759,8 @@ func step(dt: float) -> void:
 	if opts.get("ring_demo", false) and player and player.gliding:
 		player.inp["glide"] = true
 		player.inp["move"] = Vector2(player.vel.x, player.vel.z).normalized()
+	if opts.get("truce_demo", false) and truce:
+		truce.demo()
 	if opts.has("exit_demo") and exits and player and not player.dropping:
 		exits.demo(String(opts["exit_demo"]))
 	if opts.get("glide_demo", false) and player:

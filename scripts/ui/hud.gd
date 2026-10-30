@@ -2508,6 +2508,10 @@ func _tick_wheel() -> void:
 	var can: bool = m.truce != null and p != null and not p.out and not p.extracted and not p.riding and not m.paused and m.duel == null
 	var held := can and Input.is_action_pressed("emote")
 	var n := Truce.EMOTES.size()
+	if has_meta("wheel_demo"):
+		# test: the wheel held open, pointing at Truce
+		wheel_open = true; wheel_at = c.size * Vector2(0.72, 0.5); wheel_sel = 0
+		return
 	if held and not wheel_open:
 		wheel_open = true
 		var sz := c.size
@@ -2591,5 +2595,5 @@ func _draw_truce_marks() -> void:
 		if m.truce.is_marked(h):
 			_ctext(tp + Vector2(0, -2), "BROKE THE TRUCE", 12, BAD, big)
 		elif m.truce.allied(me.team, h.team):
-			_flag(tp + Vector2(-26, -14), 0.65, Color("f4f1e6"))
-			_text(tp + Vector2(-14, -2), "truce", 11, Color("f4f1e6"), big)
+			# a white flag beside their name plate
+			_flag(tp + Vector2(-66, -12), 0.7, Color("f4f1e6"))

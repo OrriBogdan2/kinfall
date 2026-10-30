@@ -355,3 +355,34 @@ func partner_at(p: Vector3, team: int) -> Hunter:
 		if h.team != team and not h.out and not h.extracted and allied(team, h.team) and Vector2(h.pos.x - p.x, h.pos.z - p.z).length() < 1.3:
 			return h
 	return null
+
+# ------------------------------------------------------------------ screenshots
+## Test hook (--truce-demo): a rival squad right next to you has just taken your truce (a Deal
+## bubble over them, white flags), and your emote wheel is open.
+func demo() -> void:
+	var p := m.player
+	if p == null or p.dropping:
+		return
+	if not m.has_meta("tdemo"):
+		m.set_meta("tdemo", true)
+		var rivals: Array = m.hunters.filter(func(x): return x.team != p.team)
+		if rivals.is_empty():
+			return
+		var rt: int = rivals[0].team
+		var i := 0
+		# where the player is looking (so they're in sight), a few steps away
+		var ad: Vector2 = p.aim_dir()
+		var fwd := Vector3(ad.x, 0, ad.y); var side := Vector3(-ad.y, 0, ad.x)
+		for h in m.hunters:
+			if h == p: continue
+			h.ctrl = "idle"
+			if h.team == rt:
+				h.teleport(m.world.free_spot_near(p.pos + fwd * 3.6 + side * (i * 1.6 - 0.8), [p.pos], 1.2, 0.5, 6.0))
+				i += 1
+		make(p.team, rt)
+		m.set_meta("tdemo_r", rivals[0])
+		if m.hud: m.hud.set_meta("wheel_demo", true)
+		m.cam.zoom_to = 0.7
+	var r: Hunter = m.get_meta("tdemo_r", null)
+	if r and (shown.is_empty() or float(shown[-1]["t"]) > 1.6):
+		emote(r, "accept")

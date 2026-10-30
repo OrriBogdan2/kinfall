@@ -83,6 +83,7 @@ func _ready() -> void:
 		if a.begins_with("--bot-diff="): opts["bot_diff"] = a.substr(11)
 		if a == "--perk-demo": opts["perk_demo"] = true
 		if a.begins_with("--exit-demo="): opts["exit_demo"] = a.substr(12); opts["no_drop"] = true
+		if a == "--truce-demo": opts["truce_demo"] = true; opts["no_drop"] = true
 	if "--check" in args:
 		var CheckT = load("res://tools/check.gd")
 		var bad := 0
