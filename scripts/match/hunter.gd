@@ -1365,7 +1365,13 @@ func _physics(dt: float) -> void:
 		wall_kicks = 2 if cls == "light" else 1
 	wall_touch_t = maxf(0.0, wall_touch_t - dt)
 	wslam_t = maxf(0.0, wslam_t - dt)
-	if not grounded and not dropping and blk > 0.0 and blk < pos.y + 2.4 and mantle_cd <= 0.0 and blk - pos.y < World.BLOCK_H - 0.1:
+	# a hop onto a rock only when you meant it: you jumped (still rising) and you're pushing into it.
+	# Brushing a rock or a terrace while stepping down, falling or being knocked never throws you up
+	# onto it (that was the "random bounce").
+	var push_in := Vector2(pre_v.x if b1 > 0.0 else 0.0, pre_v.y if b2 > 0.0 else 0.0)
+	var wants: bool = (inp["move"] as Vector2).dot(push_in) > 0.2 if push_in.length() > 0.01 else false
+	if not grounded and not dropping and vel.y > 0.5 and wants and blk > 0.0 and blk < pos.y + 1.6 and mantle_cd <= 0.0 \
+			and blk - pos.y < World.BLOCK_H - 0.1 and m.time - kb_t > 0.4:
 		vel.y = sqrt(2.0 * H_GRAV * (blk - pos.y + 0.3))
 		mantle_cd = 0.45
 	var g := ground()

@@ -387,7 +387,7 @@ func _place_stairs() -> void:
 				cands.append([c, d])
 		cands.shuffle()
 		var placed: Array = []
-		var want := clampi(cells.size() / 45, 1, 6)
+		var want := clampi(cells.size() / 45, 1, 6) if layout_id == "" else clampi(cells.size() / 220, 2, 8)
 		for cd in cands:
 			if placed.size() >= want: break
 			var c: Vector2i = cd[0]
@@ -399,6 +399,18 @@ func _place_stairs() -> void:
 			if not ok: continue
 			stairs[idx(c.x, c.y)] = cd[1]
 			placed.append(c)
+			if layout_id != "":
+				# authored maps get wide, readable ramps: the flight spreads sideways along the terrace edge
+				var dd: Vector2i = cd[1]
+				var side := Vector2i(dd.y, dd.x)
+				for k in [1, -1, 2, -2]:
+					var q: Vector2i = c + side * k
+					var up2 := q + dd; var back2 := q - dd
+					if not inb(q.x, q.y) or not inb(up2.x, up2.y) or not inb(back2.x, back2.y): continue
+					var iq := idx(q.x, q.y)
+					if kind[iq] == T_GROUND and kind[idx(up2.x, up2.y)] == T_GROUND and kind[idx(back2.x, back2.y)] == T_GROUND \
+							and level[idx(up2.x, up2.y)] == level[iq] + 1 and level[idx(back2.x, back2.y)] == level[iq] and not bridge.has(iq):
+						stairs[iq] = dd
 
 var wall_mat: ShaderMaterial = null   # walls fade where they hide the player
 var walls := {}           # tile index -> true: built stone walls (drawn as walls, not rocks)
@@ -1555,7 +1567,7 @@ func generate_authored(L: Dictionary, seed_val: int) -> void:
 	layout_id = String(L.get("id", "authored"))
 	# the ground is the same every match: its noise and depths come from the layout, not the match
 	var lr := RandomNumberGenerator.new(); lr.seed = int(L.get("seed", 1))
-	var nz := FastNoiseLite.new(); nz.seed = int(L.get("seed", 1)); nz.frequency = 0.11
+	var nz := FastNoiseLite.new(); nz.seed = int(L.get("seed", 1)); nz.frequency = 0.055   # broad, gentle coastlines
 	var defs: Array = L.get("islands", [])
 	var ids := {}
 	for ii in defs.size():
@@ -1581,8 +1593,8 @@ func generate_authored(L: Dictionary, seed_val: int) -> void:
 				for si in shapes.size():
 					var S: Dictionary = shapes[si]
 					var sd := _shape_d(S, pt)
-					# the outline gets the full ragged edge; terraces inside it only a little
-					var n := nz.get_noise_2d(x, z) * nk * (1.0 if si == 0 else 0.45)
+					# the outline gets a gentle natural coast; terraces inside are crisp, deliberate shapes
+					var n := nz.get_noise_2d(x, z) * nk if si == 0 else 0.0
 					if si == 0: d0 = sd
 					if sd + n < 1.0:
 						if S.get("cut", false):
@@ -1611,6 +1623,7 @@ func generate_authored(L: Dictionary, seed_val: int) -> void:
 			for S in shapes: top_lv = maxi(top_lv, int(S.get("lv", 0)))
 			labels.append({"name": String(D["name"]), "pos": Vector3(poi.x, 0, poi.y), "kind": "perch" if D.get("perch", false) else "poi",
 				"role": String(D.get("role", "")), "height": top_lv * LEVEL})
+	_tidy_ground()
 	# land bridges: narrow, sheer-sided necks of ground between two islands. The whole bridge
 	# belongs to the first island, so walking along it never changes which island you're on.
 	var neck := {}
@@ -1778,16 +1791,83 @@ func _authored_blockers(defs: Array, neck: Dictionary) -> void:
 					if Vector2(x + 0.5, z + 0.5).distance_to(bc) > rad + rng.randf_range(-0.2, 0.3): continue
 					if inb(x, z) and kind[idx(x, z)] == T_GROUND and island[idx(x, z)] == ii and edge_dist(x, z, 2) >= 2:
 						bush[idx(x, z)] = true
-		# a light scatter of rocks for cover
+		# cover: a few deliberate rock formations (a 2x2 boulder, an L, a short ridge) spaced well
+		# apart on open, flat ground, never single random blocks scattered everywhere
 		var poi := _v2(D.get("poi", [0, 0]))
-		for cell in islands[ii]["cells"]:
-			var i := idx(cell.x, cell.y)
-			if kind[i] != T_GROUND or neck.has(i) or edge_dist(cell.x, cell.y, 3) <= 2:
+		if D.get("perch", false) or D.get("no_rocks", false):
+			continue
+		var cells2: Array = islands[ii]["cells"].duplicate()
+		var want := int(cells2.size() / 240)
+		var placed: Array = []
+		var tries := 0
+		while placed.size() < want and tries < want * 30 + 30:
+			tries += 1
+			var c: Vector2i = cells2[rng.randi_range(0, cells2.size() - 1)]
+			var cp := Vector2(c.x + 0.5, c.y + 0.5)
+			if cp.distance_to(poi) < 7.0 or edge_dist(c.x, c.y, 5) <= 4:
 				continue
-			if Vector2(cell.x + 0.5, cell.y + 0.5).distance_to(poi) < 4.0:
-				continue
-			if rng.randf() < 0.018:
-				kind[i] = T_BLOCK
+			var far := true
+			for p in placed:
+				if (p as Vector2).distance_to(cp) < 11.0: far = false; break
+			if not far: continue
+			var shape: Array = [[Vector2i(0, 0), Vector2i(1, 0), Vector2i(0, 1), Vector2i(1, 1)],
+				[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0), Vector2i(0, 1)],
+				[Vector2i(0, 0), Vector2i(1, 0), Vector2i(2, 0)],
+				[Vector2i(0, 0), Vector2i(0, 1), Vector2i(0, 2)]][rng.randi_range(0, 3)]
+			var lv0 := int(level[idx(c.x, c.y)])
+			var ok := true
+			for o in shape:
+				var q: Vector2i = c + o
+				# flat ground all around it, so it reads as a rock on a plateau, not a step
+				for dz in range(-1, 2):
+					for dx in range(-1, 2):
+						var r2 := q + Vector2i(dx, dz)
+						if not inb(r2.x, r2.y) or kind[idx(r2.x, r2.y)] != T_GROUND or int(level[idx(r2.x, r2.y)]) != lv0 or neck.has(idx(r2.x, r2.y)) or bush.has(idx(r2.x, r2.y)):
+							ok = false
+			if not ok: continue
+			for o in shape:
+				kind[idx(c.x + o.x, c.y + o.y)] = T_BLOCK
+			placed.append(cp)
+
+## Cleans an authored island's ground so it's easy to walk: removes one-tile specks and spurs of
+## ground, fills one-tile holes, and evens out terrace levels so no lone tile sits a step above or
+## below its neighbours (the little bumps that made walking feel bouncy).
+func _tidy_ground() -> void:
+	for _pass in 2:
+		for z in range(1, h - 1):
+			for x in range(1, w - 1):
+				var i := idx(x, z)
+				var n_ground := 0
+				var lv_count := {}
+				for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+					var j := idx(x + d.x, z + d.y)
+					if kind[j] != T_VOID:
+						n_ground += 1
+						lv_count[int(level[j])] = int(lv_count.get(int(level[j]), 0)) + 1
+				if kind[i] == T_VOID:
+					if n_ground >= 3:
+						# a pinhole in the ground: fill it at the level around it
+						var best_lv := 0; var bc := -1
+						for lv in lv_count:
+							if int(lv_count[lv]) > bc: bc = int(lv_count[lv]); best_lv = int(lv)
+						var nb := idx(x + 1, z) if kind[idx(x + 1, z)] != T_VOID else (idx(x - 1, z) if kind[idx(x - 1, z)] != T_VOID else (idx(x, z + 1) if kind[idx(x, z + 1)] != T_VOID else idx(x, z - 1)))
+						kind[i] = T_GROUND; level[i] = best_lv; island[i] = island[nb]; depth[i] = depth[nb]
+						if island[i] >= 0: islands[island[i]]["cells"].append(Vector2i(x, z))
+					continue
+				if n_ground <= 1:
+					# a speck or a one-tile spur sticking out into the air
+					var ii := island[i]
+					kind[i] = T_VOID; level[i] = 0; island[i] = -1
+					if ii >= 0: islands[ii]["cells"].erase(Vector2i(x, z))
+					continue
+				# a lone tile on a different terrace from all four neighbours goes to the common level
+				var mine := int(level[i])
+				if not lv_count.has(mine) and lv_count.size() > 0:
+					var best := mine; var bcount := -1
+					for lv in lv_count:
+						if int(lv_count[lv]) > bcount: bcount = int(lv_count[lv]); best = int(lv)
+					if bcount >= 3:
+						level[i] = best
 
 func _wall_tiles(Wd: Dictionary) -> Array:
 	var out: Array = []
