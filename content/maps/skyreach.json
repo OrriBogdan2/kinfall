@@ -3,7 +3,7 @@
 	"name": "Skyreach",
 	"size": 216,
 	"seed": 4242,
-	"notes": "Hand-made expedition map. The Heart sits in the middle, reached from three sides by narrow land bridges (the chokepoints) and from the east by a wind road. Four inner islands guard the bridges; eight outer islands make a safer ring joined by wind roads all the way round. Extraction gates open on the outer ring first and in the Heart last. Angles are in degrees around an island's centre: 0 = east, 90 = south, 180 = west, 270 = north. 'sheer' arcs are smooth cliffs you can't grab; every other rim has a stone lip you can.",
+	"notes": "Hand-made expedition map. The Heart sits in the middle, reached from three sides by narrow land bridges (the chokepoints) and from the east by a wind road. Four inner islands guard the bridges; eight outer islands make a safer ring joined by wind roads all the way round. Extraction gates open on the outer ring first and in the Heart last. Angles are in degrees around an island's centre: 0 = east, 90 = south, 180 = west, 270 = north. 'sheer' arcs are smooth cliffs you can't grab; every other rim has a stone lip you can. Perches (Stormspire, Frost Needle, Ember Spire, Gloom Eye) float high over the gaps: up by a one-way launch pad, or by riding a chain of updrafts (glide into the short column, then the tall one); each holds a top chest and looks down on a chokepoint, and glide routes run back down from it.",
 	"islands": [
 		{
 			"id": "heart",
@@ -877,6 +877,134 @@
 			],
 			"biome": "ember",
 			"danger": 0
+		},
+		{
+			"id": "spire",
+			"name": "Stormspire",
+			"role": "perch",
+			"biome": "storm",
+			"danger": 2,
+			"poi": [
+				128,
+				84
+			],
+			"noise": 0.1,
+			"perch": true,
+			"shapes": [
+				{
+					"circle": [
+						128,
+						84
+					],
+					"r": 3.6,
+					"lv": 12
+				}
+			],
+			"sheer": [],
+			"chests": [
+				[
+					128,
+					84,
+					2
+				]
+			]
+		},
+		{
+			"id": "needle",
+			"name": "Frost Needle",
+			"role": "perch",
+			"biome": "frost",
+			"danger": 2,
+			"poi": [
+				134,
+				40
+			],
+			"noise": 0.1,
+			"perch": true,
+			"shapes": [
+				{
+					"circle": [
+						134,
+						40
+					],
+					"r": 3.2,
+					"lv": 14
+				}
+			],
+			"sheer": [],
+			"chests": [
+				[
+					134,
+					40,
+					2
+				]
+			]
+		},
+		{
+			"id": "emberspire",
+			"name": "Ember Spire",
+			"role": "perch",
+			"biome": "ember",
+			"danger": 2,
+			"poi": [
+				82,
+				88
+			],
+			"noise": 0.1,
+			"perch": true,
+			"shapes": [
+				{
+					"circle": [
+						82,
+						88
+					],
+					"r": 3.6,
+					"lv": 12
+				}
+			],
+			"sheer": [],
+			"chests": [
+				[
+					82,
+					88,
+					2
+				]
+			]
+		},
+		{
+			"id": "eye",
+			"name": "Gloom Eye",
+			"role": "perch",
+			"biome": "gloom",
+			"danger": 2,
+			"poi": [
+				134,
+				132
+			],
+			"noise": 0.1,
+			"perch": true,
+			"shapes": [
+				{
+					"circle": [
+						134,
+						132
+					],
+					"r": 3.2,
+					"lv": 10
+				}
+			],
+			"sheer": [],
+			"chests": [
+				[
+					134,
+					132,
+					1
+				]
+			],
+			"weapon": [
+				133,
+				133
+			]
 		}
 	],
 	"bridges": [
@@ -1026,16 +1154,29 @@
 		[
 			"gull",
 			"fern"
+		],
+		[
+			"heart",
+			"spire",
+			"up"
+		],
+		[
+			"gull",
+			"needle",
+			"up"
+		],
+		[
+			"quarry",
+			"emberspire",
+			"up"
+		],
+		[
+			"nest",
+			"eye",
+			"up"
 		]
 	],
 	"updrafts": [
-		{
-			"at": [
-				124,
-				124
-			],
-			"top": 2
-		},
 		{
 			"at": [
 				92,
@@ -1084,6 +1225,62 @@
 				176
 			],
 			"top": 2
+		},
+		{
+			"at": [
+				127,
+				93
+			],
+			"top": 6
+		},
+		{
+			"at": [
+				130,
+				89
+			],
+			"top": 14
+		},
+		{
+			"at": [
+				72,
+				100
+			],
+			"top": 6
+		},
+		{
+			"at": [
+				78,
+				92
+			],
+			"top": 14
+		},
+		{
+			"at": [
+				124,
+				124
+			],
+			"top": 8
+		},
+		{
+			"at": [
+				130,
+				128
+			],
+			"top": 12
+		},
+		{
+			"at": [
+				146,
+				48
+			],
+			"top": 8
+		},
+		{
+			"at": [
+				139,
+				43
+			],
+			"top": 16
 		}
 	],
 	"portals": [
@@ -1115,5 +1312,55 @@
 		"Port Stair",
 		"Dawn Bridge",
 		"Wind Gap"
+	],
+	"glides": [
+		[
+			"spire",
+			"keep"
+		],
+		[
+			"spire",
+			"heart"
+		],
+		[
+			"spire",
+			"shrine"
+		],
+		[
+			"needle",
+			"skyport"
+		],
+		[
+			"needle",
+			"keep"
+		],
+		[
+			"needle",
+			"gull"
+		],
+		[
+			"emberspire",
+			"heart"
+		],
+		[
+			"emberspire",
+			"quarry"
+		],
+		[
+			"emberspire",
+			"lantern"
+		],
+		[
+			"eye",
+			"heart"
+		],
+		[
+			"eye",
+			"nest"
+		],
+		[
+			"eye",
+			"still"
+		]
 	]
 }

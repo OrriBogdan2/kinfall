@@ -859,8 +859,10 @@ func _place_spots() -> void:
 		var p: Vector3 = pick.call(ii, 2, 7)
 		if p != Vector3.INF:
 			portal_spots.append(p)
-	# hunters land on the outer islands, two spots each near the edge
+	# hunters land on the outer islands, two spots each near the edge (never on a high perch)
 	for ii in range(1, islands.size()):
+		if islands[ii].get("perch", false):
+			continue
 		var got := 0
 		for _k in 2:
 			var p: Vector3 = pick.call(ii, 2, 4)
@@ -1590,8 +1592,8 @@ func generate_authored(L: Dictionary, seed_val: int) -> void:
 					continue
 				kind[i] = T_GROUND
 				island[i] = ii
-				level[i] = clampi(lv, 0, 4)
-				depth[i] = -(2.2 + (1.0 - clampf(d0, 0.0, 1.0)) * 4.5 + lr.randf() * 1.5)
+				level[i] = clampi(lv, 0, 20)      # authored perches float far higher than any terrace
+				depth[i] = -(2.2 + (1.0 - clampf(d0, 0.0, 1.0)) * 4.5 + lr.randf() * 1.5) * (0.6 if D.get("perch", false) else 1.0)
 				cells.append(Vector2i(x, z))
 		var c0: Dictionary = shapes[0]
 		var cen := _shape_box(c0).get_center() if not (c0.has("circle") or c0.has("ellipse")) else _v2(c0.get("circle", c0.get("ellipse", [0, 0])))
@@ -1599,13 +1601,16 @@ func generate_authored(L: Dictionary, seed_val: int) -> void:
 		islands.append({"c": cen, "r": sqrt(cells.size() / PI), "base": 0, "cells": cells, "role": String(D.get("role", "grove")),
 			"form": "authored", "fdir": Vector2.RIGHT, "name": String(D.get("name", "")), "id": String(D["id"]),
 			"region_fixed": int(D.get("region", 0)), "poi_at": poi, "drop": bool(D.get("drop", false)), "sheer_arcs": D.get("sheer", []),
-			"biome": String(D.get("biome", "")), "danger": int(D.get("danger", 0))})
+			"biome": String(D.get("biome", "")), "danger": int(D.get("danger", 0)), "perch": bool(D.get("perch", false))})
 		if String(D.get("biome", "")) != "":
 			var bj := load_biome(String(D["biome"]))
 			if bj.has("colors"):
 				islands[ii]["biome_colors"] = bj["colors"]
 		if String(D.get("name", "")) != "":
-			labels.append({"name": String(D["name"]), "pos": Vector3(poi.x, 0, poi.y), "kind": "poi", "role": String(D.get("role", ""))})
+			var top_lv := 0
+			for S in shapes: top_lv = maxi(top_lv, int(S.get("lv", 0)))
+			labels.append({"name": String(D["name"]), "pos": Vector3(poi.x, 0, poi.y), "kind": "perch" if D.get("perch", false) else "poi",
+				"role": String(D.get("role", "")), "height": top_lv * LEVEL})
 	# land bridges: narrow, sheer-sided necks of ground between two islands. The whole bridge
 	# belongs to the first island, so walking along it never changes which island you're on.
 	var neck := {}
@@ -1696,7 +1701,8 @@ func generate_authored(L: Dictionary, seed_val: int) -> void:
 		var a: int = ids.get(String(P[0]), -1); var b: int = ids.get(String(P[1]), -1)
 		if a < 0 or b < 0:
 			continue
-		for dir in [[a, b], [b, a]]:
+		# a launch pad up to a perch only goes one way: you glide back down
+		for dir in ([[a, b]] if (P as Array).size() > 2 else [[a, b], [b, a]]):
 			var from: int = dir[0]; var to: int = dir[1]
 			var c_from := _edge_cell_toward(from, islands[to]["c"], used)
 			if c_from.x < 0: c_from = _edge_cell_toward(from, islands[to]["c"], used, 3.0)
@@ -1724,9 +1730,31 @@ func generate_authored(L: Dictionary, seed_val: int) -> void:
 	for U in L.get("updrafts", []):
 		var at := _v2(U["at"])
 		updrafts.append({"pos": Vector3(at.x, 0.0, at.y), "r": 1.7, "top": float(U.get("top", 2)) * LEVEL + 1.6})
+	# glide routes down from the perches (one way: you can't glide up to them)
+	for G in L.get("glides", []):
+		var a: int = ids.get(String(G[0]), -1); var b: int = ids.get(String(G[1]), -1)
+		if a < 0 or b < 0:
+			continue
+		var g := _gap(a, b, edges_of)
+		var ca: Vector2i = g[1]; var cb: Vector2i = g[2]
+		var pa := Vector3(ca.x + 0.5, level[idx(ca.x, ca.y)] * LEVEL, ca.y + 0.5)
+		var pb := Vector3(cb.x + 0.5, level[idx(cb.x, cb.y)] * LEVEL, cb.y + 0.5)
+		links.append({"from": a, "to": b, "take": pa, "land": _inward(b, pb, pa), "glide": true})
 	for ap in L.get("portals", []):
 		authored_portals.append(_v2(ap))
 	_place_spots()
+	# loot placed by hand: the perches' chests and weapons
+	for ii in defs.size():
+		var D2: Dictionary = defs[ii]
+		for ch in D2.get("chests", []):
+			var cx := int(ch[0]); var cz := int(ch[1])
+			if inb(cx, cz) and kind[idx(cx, cz)] != T_VOID:
+				kind[idx(cx, cz)] = T_GROUND
+				chest_spots.append({"pos": Vector3(cx + 0.5, level[idx(cx, cz)] * LEVEL, cz + 0.5), "tier": int(ch[2])})
+		if D2.has("weapon"):
+			var wx := int(D2["weapon"][0]); var wz := int(D2["weapon"][1])
+			if inb(wx, wz) and kind[idx(wx, wz)] == T_GROUND:
+				weapon_spots.append(Vector3(wx + 0.5, level[idx(wx, wz)] * LEVEL, wz + 0.5))
 	_place_stairs()
 
 ## Walls, pillars and tall grass from the layout, plus a light scatter of rocks for cover away from

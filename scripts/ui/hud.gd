@@ -79,7 +79,8 @@ func _build_minimap() -> void:
 			var i := w.idx(x, z)
 			var col := Color(0, 0, 0, 0)
 			if w.kind[i] == World.T_GROUND:
-				col = Color(w._bio(i)["top"]).lightened(0.12 + 0.08 * w.level[i])
+				col = Color(w._bio(i)["top"]).lightened(0.12 + 0.08 * mini(w.level[i], 4))
+				if w.level[i] >= 8: col = col.lightened(0.35)      # a high perch: brighter, and marked
 				# authored maps: grabbable rims pale, sheer cliffs dark, so the map shows where you can climb
 				if w.sheer.has(i): col = Color("6a6488")
 				elif w.lip.has(i): col = Color("e6d6ae")
@@ -1493,6 +1494,13 @@ func _draw_map_labels(w: World, inner: Rect2, view: Rect2, k: float, overview: b
 		if not inner.grow(-6.0).has_point(pv):
 			continue
 		var nm := String(lb["name"])
+		if String(lb["kind"]) == "perch":
+			# a high perch: an up-arrow with its height, so you know it takes vertical tech
+			c.draw_colored_polygon(PackedVector2Array([pv + Vector2(0, -8), pv + Vector2(6, 3), pv + Vector2(-6, 3)]), Color(0, 0, 0, 0.6))
+			c.draw_colored_polygon(PackedVector2Array([pv + Vector2(0, -6), pv + Vector2(4.5, 2), pv + Vector2(-4.5, 2)]), Color("9af0ff"))
+			if overview:
+				_ctext(pv + Vector2(0, 15), "%s  %dm" % [nm, int(round(float(lb.get("height", 0.0))))], 10, Color("c8f6ff"))
+			continue
 		if String(lb["kind"]) == "choke":
 			# a chokepoint: a small orange diamond, named in the overview
 			c.draw_colored_polygon(PackedVector2Array([pv + Vector2(0, -5), pv + Vector2(5, 0), pv + Vector2(0, 5), pv + Vector2(-5, 0)]), Color(0, 0, 0, 0.55))

@@ -330,6 +330,8 @@ func place_hazards() -> void:
 	for c in w.chest_spots: taken.append(c["pos"])
 	for c in w.camp_spots: taken.append(c["pos"])
 	for ii in w.islands.size():
+		if w.islands[ii].get("perch", false):
+			continue      # the perches' danger is the drop, not traps
 		var B: Dictionary = defs.get(String(w.islands[ii].get("biome", "")), {})
 		for H in B.get("hazards", []):
 			var n := int(H.get("per_island", 1)) + (1 if int(w.islands[ii].get("danger", 0)) >= 2 else 0)
