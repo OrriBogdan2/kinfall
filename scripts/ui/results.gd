@@ -8,6 +8,7 @@ func _ready() -> void:
 func show_result(r: Dictionary) -> void:
 	Sfx.play_music("title")
 	Sfx.play_ambience("")
+	shown_at = Time.get_ticks_msec()
 	var s := Game.apply_result(r)
 	var bg := ColorRect.new(); bg.color = UI.BG; bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(bg)
 	_stage(r, s)
@@ -28,7 +29,20 @@ func show_result(r: Dictionary) -> void:
 	var outer := UI.vbox(14)
 	panel.add_child(outer)
 	var v := UI.vbox(10)
-	outer.add_child(UI.scroll_box(v, 40.0))
+	# the details scroll if they're taller than the window; the way home stays below them, always visible
+	var sc := ScrollContainer.new()
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var pad := MarginContainer.new(); pad.add_theme_constant_override("margin_right", 12)
+	pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	pad.add_child(v)
+	sc.add_child(pad)
+	outer.add_child(sc)
+	var fit := func() -> void:
+		if is_instance_valid(sc) and sc.is_inside_tree():
+			sc.custom_minimum_size.y = minf(pad.get_combined_minimum_size().y, sc.get_viewport_rect().size.y - 200.0)
+	v.minimum_size_changed.connect(func(): fit.call_deferred())
+	sc.tree_entered.connect(func(): fit.call_deferred())
 	# header: a coloured kicker, the outcome, one line on what it means
 	var tier_name := String(Data.TIERS[clampi(Game.last_tier, 0, Data.TIERS.size() - 1)]["name"])
 	var kick := "FIRST EXPEDITION" if r.get("tutorial", false) else tier_name.to_upper()
@@ -101,6 +115,9 @@ func show_result(r: Dictionary) -> void:
 		var tl := UI.label("That's the basics. Now come see your home.", 15, UI.GOLD)
 		tl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(tl)
+	var kh := UI.key_hints([["Enter", "continue"]], 12, Color(1, 1, 1, 0.5))
+	kh.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(kh)
 	outer.add_child(row)
 	go.grab_focus()
 	Sfx.play("bond" if won else "fall", null, -6.0, 0.0, 1.0 if won else 0.8)
@@ -187,6 +204,15 @@ func _note(txt: String, col: Color) -> Label:
 	var l := UI.label(txt, 15, col)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return l
+
+var shown_at := 0
+## Enter, Space or Esc also takes you home, so you can never get stuck on this screen.
+func _unhandled_input(e: InputEvent) -> void:
+	if Time.get_ticks_msec() - shown_at < 900:
+		return
+	if e.is_action_pressed("ui_accept") or e.is_action_pressed("menu") or e.is_action_pressed("jump"):
+		get_viewport().set_input_as_handled()
+		Game.goto("home")
 
 var hunter_node: Node3D
 var h_anim: HunterAnim
