@@ -1,0 +1,254 @@
+class_name Gliders
+## Glider skins: a canopy shape and colours, a trail, and its own sounds when it opens and closes.
+## Bought with gems at the glider rack by the portal, or earned. Purely cosmetic.
+##   cloth / stripe / edge: colours ("team" and "hero" mean the hunter's own colours)
+##   shape: wing | leaf | bat | kite | moth      trail: "" | leaves | embers | sparkle | dust | sparks
+##   sound: cloth | rustle | leather | chime | flame | flutter | zap
+##   cost: gems; unlock: "stat:n" earned instead (Progress.stat), e.g. "extracts:10"
+
+const LIST := [
+	{"id": "classic", "name": "Field Wing", "desc": "The standard-issue striped wing every hunter starts with.",
+		"cloth": "f3eee2", "stripe": "team", "edge": "hero", "shape": "wing", "trail": "", "sound": "cloth", "cost": 0},
+	{"id": "sunset", "name": "Sunset Kite", "desc": "Warm stripes that catch the evening light.",
+		"cloth": "ffd6a0", "stripe": "ff7a4a", "edge": "8a3a6a", "shape": "wing", "trail": "", "sound": "cloth", "cost": 120},
+	{"id": "leaf", "name": "Great Leaf", "desc": "A giant leaf, veins and all. It rustles when it opens.",
+		"cloth": "7ad06a", "stripe": "3f8a3a", "edge": "2a5a2a", "shape": "leaf", "trail": "leaves", "sound": "rustle", "cost": 180},
+	{"id": "moth", "name": "Moonmoth", "desc": "Soft, dusty moth wings with eye spots. Flutters open.",
+		"cloth": "e8dcc8", "stripe": "6a5a8a", "edge": "4a3a5a", "shape": "moth", "trail": "dust", "sound": "flutter", "cost": 260},
+	{"id": "bat", "name": "Nightwing", "desc": "Scalloped bat wings that open with a leathery snap.",
+		"cloth": "3a2a4a", "stripe": "6a4a8a", "edge": "1a1224", "shape": "bat", "trail": "", "sound": "leather", "cost": 300},
+	{"id": "prism", "name": "Prism Sail", "desc": "Glass-clear panels that chime as they unfold.",
+		"cloth": "c8f0ff", "stripe": "9ad0ff", "edge": "ffffff", "shape": "kite", "trail": "sparkle", "sound": "chime", "cost": 380},
+	{"id": "ember", "name": "Ember Wing", "desc": "Smoulders the whole way down. Opens with a whump of flame.",
+		"cloth": "ff8a3a", "stripe": "ffd23f", "edge": "8a2a1a", "shape": "wing", "trail": "embers", "sound": "flame", "cost": 450},
+	{"id": "storm", "name": "Stormcatcher", "desc": "Crackles with static every time it catches the wind. Earned: extract 10 times.",
+		"cloth": "2f3c78", "stripe": "9af0ff", "edge": "ffe85a", "shape": "kite", "trail": "sparks", "sound": "zap", "unlock": "extracts:10"},
+]
+
+static func get_skin(id: String) -> Dictionary:
+	for g in LIST:
+		if g["id"] == id: return g
+	return LIST[0]
+
+static func owned(id: String) -> bool:
+	var g := get_skin(id)
+	if int(g.get("cost", 0)) == 0 and not g.has("unlock"):
+		return true
+	if g.has("unlock"):
+		var p := String(g["unlock"]).split(":")
+		if Progress.stat(p[0]) >= int(p[1]):
+			return true
+	return Save.d.get("gliders", []).has(id)
+
+static func equipped() -> String:
+	var id := String(Save.d.get("look", {}).get("glider", "classic"))
+	return id if owned(id) else "classic"
+
+static func col(spec: String, team: Color, hero: Color) -> Color:
+	match spec:
+		"team": return team
+		"hero": return hero
+	return Color(spec)
+
+## The canopy mesh for a skin.
+static func mesh(id: String, team: Color, hero: Color) -> ArrayMesh:
+	var g := get_skin(id)
+	var cloth := col(g["cloth"], team, hero)
+	var stripe := col(g["stripe"], team, hero)
+	var edge := col(g["edge"], team, hero)
+	var shape := String(g["shape"])
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var segs := 18
+	var rows := 3        # front-to-back strips, so patterns can be spots and veins, not just stripes
+	var span := 1.05 if shape != "moth" else 1.12
+	for side in [1.0, -1.0]:
+		for k in segs:
+			var x0 := -span + 2.0 * span * k / segs
+			var x1 := -span + 2.0 * span * (k + 1) / segs
+			var um := absf((x0 + x1) * 0.5) / span
+			var outline := []      # per x: [y, lead, trail]
+			for x in [x0, x1]:
+				var u: float = absf(x) / span
+				var y: float = -0.32 * u * u
+				var lead := 0.0
+				var trail := 0.0
+				match shape:
+					"wing":
+						var ch := 0.42 * sqrt(maxf(0.0, 1.0 - pow(u, 3.0))) + 0.05
+						lead = ch * 0.55; trail = ch * 0.45
+					"leaf":
+						var ch2 := 0.62 * sqrt(maxf(0.0, 1.0 - u * u)) + 0.02
+						lead = ch2 * 0.5; trail = ch2 * 0.5
+						y = -0.22 * u * u
+					"bat":
+						lead = 0.24 * (1.0 - u * 0.5) + 0.04
+						# the trailing edge scallops between the finger bones
+						trail = 0.26 * (1.0 - u * 0.4) - 0.13 * absf(sin(u * PI * 3.0))
+					"kite":
+						lead = 0.5 * (1.0 - u) + 0.04
+						trail = 0.3 * (1.0 - u) + 0.02
+						y = -0.18 * u
+					"moth":
+						# two lobes a side: a big forewing and a smaller hindwing
+						var fore := 0.34 * sin(PI * clampf(u / 0.95, 0.0, 1.0)) + 0.06
+						var hind := 0.3 * sin(PI * clampf((u - 0.05) / 0.6, 0.0, 1.0))
+						lead = fore * 0.9 + 0.05; trail = maxf(0.1, hind) + 0.05
+						y = -0.2 * u * u
+				outline.append([y, lead, trail])
+			for j in rows:
+				var c := _pattern(shape, k, j, segs, um, cloth, stripe, edge)
+				var pts := []
+				for xi in 2:
+					var o: Array = outline[xi]
+					var x: float = [x0, x1][xi]
+					var za: float = lerpf(-float(o[1]), float(o[2]), float(j) / rows)
+					var zb: float = lerpf(-float(o[1]), float(o[2]), float(j + 1) / rows)
+					pts.append(Vector3(x, float(o[0]) + side * 0.012, za))
+					pts.append(Vector3(x, float(o[0]) + side * 0.012, zb))
+				var n: Vector3 = Vector3.UP * side
+				st.set_color(c)
+				var order := [0, 2, 3, 0, 3, 1] if side > 0.0 else [0, 3, 2, 0, 1, 3]
+				for i in order:
+					st.set_normal(n)
+					st.add_vertex(pts[i])
+	return st.commit()
+
+## The colour of one patch of canopy: k across the span, j front (0) to back.
+static func _pattern(shape: String, k: int, j: int, segs: int, um: float, cloth: Color, stripe: Color, edge: Color) -> Color:
+	match shape:
+		"wing":
+			return stripe if k % 4 == 1 or k % 4 == 2 else (edge if k == 0 or k == segs - 1 else cloth)
+		"leaf":
+			if k == segs / 2 - 1 or k == segs / 2: return stripe          # the midrib
+			if j == 1 and k % 3 == 0: return cloth.lerp(stripe, 0.55)      # side veins
+			return edge if um > 0.88 else cloth
+		"bat":
+			if k % 3 == 0: return stripe                                     # the finger bones
+			return cloth.lerp(edge, 0.25 * j)
+		"kite":
+			if um > 0.8: return edge
+			return stripe if (k + j) % 2 == 0 else cloth                    # a harlequin of panels
+		"moth":
+			if um > 0.9: return edge
+			if j == 1 and absf(um - 0.5) < 0.12: return stripe              # an eye spot on each wing
+			if j == 1 and absf(um - 0.5) < 0.2: return stripe.lerp(cloth, 0.55)
+			return cloth.lerp(edge, 0.12 * j)
+	return cloth
+
+## A trail of particles behind the glider while it's open (or null for none).
+static func trail(id: String, team: Color, hero: Color) -> CPUParticles3D:
+	var g := get_skin(id)
+	var kind := String(g["trail"])
+	if kind == "":
+		return null
+	var p := CPUParticles3D.new()
+	p.name = "Trail"
+	p.local_coords = false
+	p.amount = 18
+	p.lifetime = 1.1
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	p.emission_box_extents = Vector3(0.9, 0.05, 0.1)
+	p.direction = Vector3(0, -0.3, 1)
+	p.spread = 25.0
+	p.initial_velocity_min = 0.3; p.initial_velocity_max = 0.9
+	p.gravity = Vector3(0, -0.6, 0)
+	p.scale_amount_min = 0.5; p.scale_amount_max = 1.0
+	var m := StandardMaterial3D.new()
+	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	m.vertex_color_use_as_albedo = true
+	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	m.billboard_mode = BaseMaterial3D.BILLBOARD_PARTICLES
+	var q := QuadMesh.new(); q.size = Vector2(0.09, 0.09); q.material = m
+	p.mesh = q
+	var c0 := col(g["stripe"], team, hero)
+	var grad := Gradient.new()
+	match kind:
+		"embers":
+			m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+			grad.set_color(0, Color(1, 0.85, 0.4, 1)); grad.set_color(1, Color(0.9, 0.2, 0.05, 0))
+			p.gravity = Vector3(0, 0.8, 0)
+		"sparkle", "sparks":
+			m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
+			grad.set_color(0, Color(c0, 1)); grad.set_color(1, Color(c0, 0))
+			p.lifetime = 0.6; p.amount = 22
+			q.size = Vector2(0.06, 0.06)
+		"leaves":
+			grad.set_color(0, Color(c0.lightened(0.2), 1)); grad.set_color(1, Color(c0, 0))
+			q.size = Vector2(0.12, 0.07)
+			p.angular_velocity_min = -180.0; p.angular_velocity_max = 180.0
+			p.amount = 8; p.lifetime = 1.6
+		"dust":
+			grad.set_color(0, Color(1, 0.97, 0.9, 0.7)); grad.set_color(1, Color(1, 0.97, 0.9, 0))
+			p.amount = 14; p.lifetime = 1.4
+	p.color_ramp = grad
+	return p
+
+# ---------------------------------------------------------------- sounds, made in code
+static var _cache := {}
+
+## The open (or close) sound of a skin's sound set.
+static func sound(id: String, which := "open") -> AudioStreamWAV:
+	var set := String(get_skin(id)["sound"])
+	var key := set + "|" + which
+	if not _cache.has(key):
+		_cache[key] = _make(set, which == "close")
+	return _cache[key]
+
+static func _make(set: String, close: bool) -> AudioStreamWAV:
+	var rate := 22050
+	var dur := 0.38 if not close else 0.22
+	var n := int(rate * dur)
+	var data := PackedByteArray()
+	var rng := RandomNumberGenerator.new(); rng.seed = hash(set) + (7 if close else 0)
+	var lp := 0.0
+	var ph := 0.0
+	var ph2 := 0.0
+	for i in n:
+		var t := float(i) / rate
+		var u := float(i) / n
+		var env := minf(1.0, u * 30.0) * pow(1.0 - u, 1.6)
+		var noise := rng.randf_range(-1.0, 1.0)
+		var v := 0.0
+		match set:
+			"cloth":
+				# a sharp cloth snap, then a soft rush of air
+				var snap := exp(-t * 60.0) * noise
+				lp += (noise - lp) * 0.08
+				v = snap * 0.9 + lp * 1.6 * env
+			"rustle":
+				var crackle := noise * (1.0 if rng.randf() < 0.25 else 0.15)
+				lp += (crackle - lp) * 0.35
+				v = lp * env * 1.4
+			"leather":
+				ph += TAU * lerpf(140.0, 70.0, u) / rate
+				v = sin(ph) * exp(-t * 18.0) * 0.9 + noise * exp(-t * 45.0) * 0.6
+			"chime":
+				for nt in [[1320.0, 0.0], [1760.0, 0.06], [2217.0, 0.12]]:
+					var f: float = nt[0]
+					var start: float = nt[1]
+					if t >= start:
+						var tt := t - start
+						v += sin(TAU * f * tt) * exp(-tt * 9.0) * 0.28 + sin(TAU * f * 2.01 * tt) * exp(-tt * 14.0) * 0.08
+				v *= minf(1.0, u * 60.0)
+			"flame":
+				lp += (noise - lp) * 0.05
+				var crack := noise * (0.8 if rng.randf() < 0.04 else 0.0)
+				v = lp * 2.2 * env + crack * exp(-t * 4.0)
+			"flutter":
+				var beat := 0.5 + 0.5 * sin(TAU * 26.0 * t)
+				lp += (noise - lp) * 0.12
+				v = lp * beat * env * 1.8
+			"zap":
+				ph += TAU * lerpf(900.0, 300.0, u) / rate
+				ph2 += TAU * 60.0 / rate
+				v = (signf(sin(ph)) * 0.25 + noise * 0.35) * (0.6 + 0.4 * sin(ph2 * 3.0)) * env
+		if close:
+			v *= 0.6
+		var sv := int(clampf(v * 0.7, -1.0, 1.0) * 32767.0)
+		data.append(sv & 0xff); data.append((sv >> 8) & 0xff)
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = rate
+	w.data = data
+	return w
