@@ -64,10 +64,50 @@ static func capsule(r: float, h: float) -> CapsuleMesh:
 	c.radius = r; c.height = h; c.radial_segments = 22; c.rings = 10
 	return c
 
-static func box(x: float, y: float, z: float) -> BoxMesh:
-	var b := BoxMesh.new()
-	b.size = Vector3(x, y, z)
-	return b
+static var _rbox := {}
+
+## A box with softly rounded edges (a stylized, toy-like bevel instead of razor corners). Very thin
+## or tiny boxes stay plain. Meshes are cached by size, so it costs nothing after the first one.
+static func box(x: float, y: float, z: float) -> Mesh:
+	var mn := minf(x, minf(y, z))
+	var r := minf(mn * 0.22, 0.07)
+	if r < 0.008:
+		var b := BoxMesh.new()
+		b.size = Vector3(x, y, z)
+		return b
+	var key := "%.3f|%.3f|%.3f" % [x, y, z]
+	if _rbox.has(key):
+		return _rbox[key]
+	var src := BoxMesh.new()
+	src.size = Vector3(x, y, z)
+	src.subdivide_width = 4; src.subdivide_height = 4; src.subdivide_depth = 4
+	var arrs := src.get_mesh_arrays()
+	var verts: PackedVector3Array = arrs[Mesh.ARRAY_VERTEX]
+	var norms: PackedVector3Array = arrs[Mesh.ARRAY_NORMAL]
+	var h := Vector3(x, y, z) * 0.5
+	var inner := h - Vector3(r, r, r)
+	for i in verts.size():
+		var v := verts[i]
+		var cl := Vector3(clampf(v.x, -inner.x, inner.x), clampf(v.y, -inner.y, inner.y), clampf(v.z, -inner.z, inner.z))
+		var d := v - cl
+		if d.length() > 0.00001:
+			var nd := d.normalized()
+			verts[i] = cl + nd * r
+			norms[i] = nd
+	arrs[Mesh.ARRAY_VERTEX] = verts
+	arrs[Mesh.ARRAY_NORMAL] = norms
+	arrs[Mesh.ARRAY_TANGENT] = null
+	var am := ArrayMesh.new()
+	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrs)
+	_rbox[key] = am
+	return am
+
+## A glossy material: metal, gems, polished things catch a crisp highlight.
+static func shiny(c: Color, gloss := 0.6) -> ShaderMaterial:
+	var m := toon(c)
+	m.set_shader_parameter("gloss", gloss)
+	m.set_shader_parameter("paint", 0.03)
+	return m
 
 static func cyl(top: float, bottom: float, h: float, seg := 14) -> CylinderMesh:
 	var c := CylinderMesh.new()
@@ -165,8 +205,8 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 	var m_hair := toon(LOOK_HAIR[clampi(int(lk["hair_col"]), 0, LOOK_HAIR.size() - 1)]); mats.append(m_hair)
 	var m_dark := toon(Color("2b2a33")); mats.append(m_dark)
 	var m_acc := toon(team_col); mats.append(m_acc)
-	var m_gold := toon(Color("f2c84a"), true, 0.15); mats.append(m_gold)
-	var m_gun := toon(Color("4a4d5c")); mats.append(m_gun)
+	var m_gold := shiny(Color("f2c84a"), 0.7); m_gold.set_shader_parameter("glow", 0.15); mats.append(m_gold)
+	var m_gun := shiny(Color("4a4d5c"), 0.5); mats.append(m_gun)
 	var m_hero := toon(hc); mats.append(m_hero)
 	var m_trim := toon(hero_col.darkened(0.15)); mats.append(m_trim)
 	for mm in [m_body, m_shirt, m_hair, m_acc, m_hero, m_trim]:
