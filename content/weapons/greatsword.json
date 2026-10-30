@@ -29,7 +29,7 @@
   "charged_kb": 8.0,
   "size": 0.25,
   "color": "#ffb070",
-  "sfx": "thump",
+  "sfx": "cleave",
   "desc": "A slow, huge 3-hit combo, strongest on the tip. Hold 1s for a slam that stuns and throws people far."
  },
  "utility": "earthshatter"
