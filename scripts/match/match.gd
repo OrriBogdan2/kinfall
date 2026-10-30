@@ -301,6 +301,8 @@ func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String
 		kit["weapon"] = pool[rng.randi_range(0, pool.size() - 1)]
 	h.init_hunter(self, id, team, cls, pname, ctrl, kit)
 	h.lives = 99 if (opts.get("tutorial", false) or opts.get("training", false)) else int(T.get("lives", 2))
+	if opts.get("tutorial", false) or opts.get("training", false) or opts.get("duel", false) or opts.get("sandbox", false) or opts.get("unlocked", false):
+		h.unlock_all()        # practice modes (and the sim's scripted player) start with the whole kit
 	add_child(h)
 	h.teleport(at)
 	hunters.append(h)
@@ -1291,6 +1293,7 @@ func on_damage(target: Ent, by: Ent, d: float, o: Dictionary) -> void:
 		if not credit.remote and target.team != credit.team and src != "burn":
 			credit.ult = minf(1.0, credit.ult + d / 320.0 * (1.3 if credit.perk_n("overcharge") > 0 else 1.0))
 		if not credit.remote and target.team != credit.team and not (target is Hunter and (target as Hunter).downed):
+			credit.gain_xp(d * (0.6 if target is Hunter else 0.35))
 			var lv: int = credit.armor_gain(d * (1.0 if target is Hunter else 0.33))
 			if lv >= 0:
 				_armor_up(credit)
@@ -1359,6 +1362,7 @@ func knock(h: Hunter, by: Ent, _o: Dictionary) -> void:
 			credit.hp += healed
 			if healed > 0.5: fx.word(credit.pos + Vector3(0, 2.1, 0), "+%d" % int(round(healed)), Color("7fe08a"), false)
 			if credit.armor_gain(Hunter.ARMOR_KNOCK_XP) >= 0: _armor_up(credit)
+			credit.gain_xp(90.0)
 			credit.dashes = minf(credit.max_dashes(), floorf(credit.dashes) + 1.0)
 			credit.ex_cd = 0.0 if credit.max_dashes() <= 1.0 else credit.ex_cd
 		add_feed("%s knocked %s" % [credit.pname, h.pname])
@@ -2690,12 +2694,21 @@ func _gather_input() -> void:
 	# and the separate armor-kit key are retired)
 	if Input.is_action_just_pressed("base") and not paused and duel == null:
 		pending_input["base"] = true
+	var slot_of := {"dash": "dash", "secondary": "sec", "gear1": "gear", "signature": "kin", "ultimate": "ult"}
 	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["ultimate", "ult"], ["secondary", "sec"], ["gear1", "gear1"]]:
 		if a[0] == "tonic" and (not perk_offer.is_empty() or not _perk_keys_down.is_empty()):
 			continue       # 1, 2 and 3 pick a perk while a choice is open
 		if a[0] == "secondary" and aim_hold != "" and aim_hold != "secondary" and Input.is_action_just_pressed("secondary"):
 			aim_hold = ""          # right click while aiming something else cancels the cast
 			continue
+		if slot_of.has(a[0]) and player and Input.is_action_just_pressed(a[0]) and not paused:
+			var sl: String = slot_of[a[0]]
+			if Input.is_key_pressed(KEY_ALT) and player.can_level(sl) and int(player.slot_lv[sl]) > 0:
+				player.level_slot(sl)       # Alt + key: put a point into it
+				continue
+			if int(player.slot_lv[sl]) == 0:
+				pending_input[a[1]] = true      # locked: the press unlocks it if you have a point
+				continue
 		var aimable: bool = a[0] in ["signature", "ultimate", "gear1", "secondary"] and not quick
 		if a[0] == "secondary" and player.runner and player.runner.def_of("utility") and not player.runner.def_of("utility").charge.is_empty():
 			aimable = false       # a charge-up starts on the press and fires on the release

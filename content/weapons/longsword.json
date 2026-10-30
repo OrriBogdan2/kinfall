@@ -28,7 +28,7 @@
   "charged_kb": 5.0,
   "size": 0.22,
   "color": "#fff0b0",
-  "sfx": "dash",
+  "sfx": "swipe",
   "desc": "A wide 3-hit combo, stronger on the tip of the blade. Hold 0.8s for a long-reaching thrust.",
   "charged_reach": 3.8,
   "charged_arc": 50.0

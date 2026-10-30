@@ -1,15 +1,27 @@
 extends Node
-## Plays the synthesized sound effects. Positional sounds fade with distance from the camera focus.
+## Plays the synthesized sound effects (made by tools/gen_sfx.py). Positional sounds fade with distance
+## from the camera focus, and far ones are also muffled (they go through a low-passed bus), so a fight
+## across the map stays soft. The SFX bus has a gentle compressor, a touch of room reverb and a
+## limiter, so a crowd of sounds blends together instead of piling up into peaks.
 
 const NAMES := ["smg", "rifle", "thump", "boom", "hit", "crit", "kill", "knock", "hurt", "dash", "jump", "land", "grab",
 	"throw", "kinhit", "skill", "kin_happy", "kin_unsure", "kin_alert", "recall", "pickup", "catch", "warn", "portal",
-	"revive", "click", "reload", "shield", "cloak", "heal", "fall", "plant", "harvest", "ping", "glide", "build", "unlock", "whoosh", "step0", "step1", "step2", "hover", "zap", "bond", "ult", "combo", "swap", "horn", "rail"]
+	"revive", "click", "reload", "shield", "cloak", "heal", "fall", "plant", "harvest", "ping", "glide", "build", "unlock", "whoosh", "step0", "step1", "step2", "hover", "zap", "bond", "ult", "combo", "swap", "horn", "rail",
+	"swipe", "cleave", "charge", "k_venom", "k_spore", "k_gravity", "k_prism", "k_lunar", "k_echo"]
 const POOL := 24
 ## Sounds that only exist as several takes (monster voices, little pops); one is picked at random.
 const VOICES := ["v_skitter", "v_spitter", "v_brute", "v_bomber", "v_sentinel", "v_glimmer", "v_warden", "die_small", "die_big"]
 ## The shortest gap before the same sound can play again, so a crowd doesn't machine-gun it.
-const MIN_GAP := {"hit": 45, "crit": 60, "hurt": 120, "kinhit": 60, "die_small": 90, "die_big": 150, "land": 80}
+const MIN_GAP := {"hit": 45, "crit": 60, "hurt": 120, "kinhit": 60, "die_small": 90, "die_big": 150, "land": 80, "step0": 60, "step1": 60, "step2": 60}
+## On top of that, at most STACK_MAX of one sound start within STACK_MS, each extra one a little quieter.
+const STACK_MAX := 3
+const STACK_MS := 90
+const STACK_DB := 3.5
+## Distance falloff: full volume within NEAR metres, then a gentle roll-off; muffled beyond FAR.
+const NEAR := 3.5
+const FAR := 9.0
 var last_take := {}
+var recent := {}          # sound -> start times (ms) still inside the stacking window
 
 var streams := {}
 var players: Array[AudioStreamPlayer] = []
@@ -29,12 +41,13 @@ var music_bus := 0
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
-	for bn in ["Music", "SFX", "Ambience"]:
+	for bn in ["Music", "SFX", "Ambience", "SFXFar"]:
 		AudioServer.add_bus()
 		var bi := AudioServer.bus_count - 1
 		AudioServer.set_bus_name(bi, bn)
-		AudioServer.set_bus_send(bi, "Master")
+		AudioServer.set_bus_send(bi, "SFX" if bn == "SFXFar" else "Master")
 	music_bus = AudioServer.get_bus_index("Music")
+	_setup_mix()
 	for i in 2:
 		var mp := AudioStreamPlayer.new(); mp.bus = "Music"; mp.volume_db = -80.0
 		add_child(mp); music.append(mp)
@@ -52,14 +65,41 @@ func _ready() -> void:
 			streams[n] = takes[0]
 		elif takes.size() > 1:
 			streams[n] = takes
-	# sounds made in code: the glider snapping open (a cloth snap, a whoosh, a soft pop) and folding away
-	streams["glider_open"] = _glider_sound(true)
-	streams["glider_close"] = _glider_sound(false)
 	for i in POOL:
 		var p := AudioStreamPlayer.new()
 		p.bus = "SFX"
 		add_child(p)
 		players.append(p)
+
+## The effects on the buses: SFX gets a soft compressor, a little room and a limiter; far-away sounds
+## are low-passed on their way into it; the master has a last safety limiter.
+func _setup_mix() -> void:
+	var sfx := AudioServer.get_bus_index("SFX")
+	var comp := AudioEffectCompressor.new()
+	comp.threshold = -18.0
+	comp.ratio = 3.0
+	comp.attack_us = 8000.0
+	comp.release_ms = 180.0
+	AudioServer.add_bus_effect(sfx, comp)
+	var rv := AudioEffectReverb.new()
+	rv.room_size = 0.35
+	rv.damping = 0.75
+	rv.spread = 0.6
+	rv.hipass = 0.25
+	rv.predelay_msec = 18.0
+	rv.dry = 1.0
+	rv.wet = 0.1
+	AudioServer.add_bus_effect(sfx, rv)
+	var lim := AudioEffectHardLimiter.new()
+	lim.ceiling_db = -2.0
+	AudioServer.add_bus_effect(sfx, lim)
+	var far := AudioServer.get_bus_index("SFXFar")
+	var lp := AudioEffectLowPassFilter.new()
+	lp.cutoff_hz = 1800.0
+	AudioServer.add_bus_effect(far, lp)
+	var mlim := AudioEffectHardLimiter.new()
+	mlim.ceiling_db = -0.5
+	AudioServer.add_bus_effect(0, mlim)
 
 func set_bus(bus_name: String, v: float) -> void:
 	var i := AudioServer.get_bus_index(bus_name)
@@ -114,20 +154,52 @@ func play_ambience(name: String) -> void:
 	amb.play()
 	create_tween().tween_property(amb, "volume_db", -14.0, 2.0)
 
-## Muffles the music for a moment, e.g. under a big slow-motion beat.
+## Softens the music for a moment, e.g. under a big slow-motion beat (eased, never a sudden drop).
 func duck(seconds: float) -> void:
 	var p := music[music_i]
 	var tw := create_tween()
-	tw.tween_property(p, "volume_db", -22.0, 0.08)
+	tw.tween_property(p, "volume_db", -17.0, 0.18).set_trans(Tween.TRANS_SINE)
 	tw.tween_interval(seconds)
-	tw.tween_property(p, "volume_db", -9.0, 0.6)
+	tw.tween_property(p, "volume_db", -9.0, 0.8).set_trans(Tween.TRANS_SINE)
 
 var _step_i := 0
 func step(pos = null, vol := -16.0) -> void:
 	_step_i = (_step_i + 1) % 3
 	play("step%d" % _step_i, pos, vol, 0.12)
 
-## pos: world position, or null for UI sounds. Repeats of one sound within 30ms are merged.
+func has(sname: String) -> bool:
+	return streams.has(sname)
+
+## How much quieter (dB) a sound at pos is for the listener, or NAN when it's out of earshot.
+func _distance_db(pos) -> float:
+	if pos == null:
+		return 0.0
+	var dist := Vector2(pos.x - listener.x, pos.z - listener.z).length()
+	if dist > hear_range:
+		return NAN
+	# a soft inverse-distance roll-off (about -8 dB by 10 m), easing to silence at the edge of hearing
+	var db := -20.0 * log(1.0 + maxf(0.0, dist - NEAR) / 5.0) / log(10.0)
+	var edge := 1.0 - smoothstep(hear_range * 0.7, hear_range, dist)
+	return db + linear_to_db(maxf(edge, 0.001))
+
+## A free voice from the pool, so a new sound doesn't cut one that's still ringing (the oldest if all are busy).
+func _voice(pos) -> AudioStreamPlayer:
+	var p: AudioStreamPlayer = null
+	for k in POOL:
+		var c := players[(next + k) % POOL]
+		if not c.playing:
+			p = c
+			next = (next + k + 1) % POOL
+			break
+	if p == null:
+		p = players[next]
+		next = (next + 1) % POOL
+	var far := pos != null and Vector2(pos.x - listener.x, pos.z - listener.z).length() > FAR
+	p.bus = "SFXFar" if far else "SFX"
+	return p
+
+## pos: world position, or null for UI sounds. Repeats of one sound within 30ms are merged, and a
+## burst of the same sound is capped and stacked quieter.
 func play(sname: String, pos = null, vol_db := 0.0, pitch_var := 0.07, pitch := 1.0) -> void:
 	if not streams.has(sname):
 		return
@@ -135,15 +207,19 @@ func play(sname: String, pos = null, vol_db := 0.0, pitch_var := 0.07, pitch := 
 	var gap: int = 260 if sname.begins_with("v_") else int(MIN_GAP.get(sname, 30))
 	if now - int(last_played.get(sname, -1000)) < gap:
 		return
+	var v := vol_db + _distance_db(pos)
+	if is_nan(v):
+		return
+	var times: Array = recent.get(sname, [])
+	while not times.is_empty() and now - int(times[0]) > STACK_MS:
+		times.pop_front()
+	if times.size() >= STACK_MAX:
+		return
+	v -= STACK_DB * times.size()
+	times.append(now)
+	recent[sname] = times
 	last_played[sname] = now
-	var v := vol_db
-	if pos != null:
-		var dist := Vector2(pos.x - listener.x, pos.z - listener.z).length()
-		if dist > hear_range:
-			return
-		v += linear_to_db(clampf(1.0 - dist / hear_range, 0.05, 1.0))
-	var p := players[next]
-	next = (next + 1) % POOL
+	var p := _voice(pos)
 	var st = streams[sname]
 	if st is Array:
 		# a different take from last time
@@ -163,56 +239,17 @@ func play(sname: String, pos = null, vol_db := 0.0, pitch_var := 0.07, pitch := 
 func play_stream(st: AudioStream, pos = null, vol_db := 0.0, pitch_var := 0.05) -> void:
 	if st == null or players.is_empty():
 		return
-	var v := vol_db
-	if pos != null:
-		var dist := Vector2(pos.x - listener.x, pos.z - listener.z).length()
-		if dist > hear_range:
-			return
-		v += linear_to_db(clampf(1.0 - dist / hear_range, 0.05, 1.0))
-	var p := players[next]
-	next = (next + 1) % POOL
+	# the same stream twice within 80ms (a glider flicked open and shut) plays once
+	var key := "#%d" % st.get_instance_id()
+	var now := Time.get_ticks_msec()
+	if now - int(last_played.get(key, -1000)) < 80:
+		return
+	var v := vol_db + _distance_db(pos)
+	if is_nan(v):
+		return
+	last_played[key] = now
+	var p := _voice(pos)
 	p.stream = st
 	p.volume_db = v
 	p.pitch_scale = 1.0 + rng.randf_range(-pitch_var, pitch_var)
 	p.play()
-
-## A glider opening (snap + whoosh + pop) or closing (a soft falling swish), synthesized.
-func _glider_sound(opening: bool) -> AudioStreamWAV:
-	const R := 22050
-	var n := int(R * (0.42 if opening else 0.28))
-	var buf := PackedFloat32Array(); buf.resize(n)
-	var rng := RandomNumberGenerator.new(); rng.seed = 7 if opening else 11
-	var lp := 0.0; var lp2 := 0.0; var prev := 0.0
-	for i in n:
-		var t := float(i) / R
-		var noise := rng.randf_range(-1.0, 1.0)
-		var v := 0.0
-		if opening:
-			# the snap: a bright, very short crack of high-passed noise
-			var hp := noise - prev
-			v += hp * exp(-t * 70.0) * 0.9
-			# the whoosh: noise through a filter that opens up, swelling then fading
-			var cut := 0.04 + 0.22 * clampf(t / 0.12, 0.0, 1.0)
-			lp += (noise - lp) * cut
-			var env := clampf((t - 0.015) / 0.05, 0.0, 1.0) * exp(-maxf(0.0, t - 0.08) * 9.0)
-			v += lp * env * 1.4
-			# the pop of the canopy filling: a quick low thump
-			v += sin(TAU * (150.0 - t * 200.0) * t) * exp(-t * 28.0) * 0.55
-		else:
-			# folding away: a soft swish that falls in pitch
-			var cut2 := 0.18 * (1.0 - clampf(t / 0.25, 0.0, 1.0)) + 0.02
-			lp += (noise - lp) * cut2
-			lp2 += (lp - lp2) * 0.5
-			var env2 := clampf(t / 0.04, 0.0, 1.0) * exp(-t * 11.0)
-			v = lp2 * env2 * 1.1
-		prev = noise
-		buf[i] = v
-	var data := PackedByteArray(); data.resize(n * 2)
-	for i in n:
-		data.encode_s16(i * 2, int(clampf(tanh(buf[i] * 1.3), -1.0, 1.0) * 30000.0))
-	var w := AudioStreamWAV.new()
-	w.format = AudioStreamWAV.FORMAT_16_BITS
-	w.mix_rate = R
-	w.stereo = false
-	w.data = data
-	return w
