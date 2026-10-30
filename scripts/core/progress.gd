@@ -43,7 +43,7 @@ const SHOP_REQ := {
 
 # ---- your first day: a short list of things to try, each worth a few gems. Shared by the island
 # and the rooms inside the house, so the list stays on screen and counts wherever you do the thing.
-const DAY1 := [["pet", "Pet %s"], ["fetch", "Play fetch with %s"], ["plant", "Plant a seed in your farm"], ["water", "Water it"],
+const DAY1 := [["pet", "Pet a kin"], ["fetch", "Play fetch with a kin"], ["plant", "Plant a seed in your farm"], ["water", "Water it"],
 	["inside", "Go inside your house"], ["inventory", "Open your inventory"], ["portal", "Visit the portal"]]
 const DAY1_KEYS := {"pet": "interact", "fetch": "play", "water": "interact", "inventory": "inventory"}
 

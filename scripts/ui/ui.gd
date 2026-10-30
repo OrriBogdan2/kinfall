@@ -174,9 +174,11 @@ static func theme() -> Theme:
 	t.set_color("selection_color", "LineEdit", Color(ACCENT, 0.35))
 	t.set_color("font_color", "Label", INK)
 	# panels: a soft lit edge and a drop shadow
-	var pc := _box(PANEL, 18, Color(1, 1, 1, 0.07), 1)
-	pc.border_width_top = 2; pc.border_color = Color(1, 1, 1, 0.09)
-	pc.shadow_color = Color(0, 0, 0, 0.5); pc.shadow_size = 26; pc.shadow_offset = Vector2(0, 10)
+	# menus: a deep night-blue card with a warm gilded edge, brighter along the top like it's lit
+	# from above, and a long soft shadow
+	var pc := _box(Color(0.075, 0.08, 0.135, 0.97), 18, Color(0.86, 0.68, 0.42, 0.42), 2)
+	pc.border_width_top = 3; pc.border_color = Color(0.92, 0.74, 0.46, 0.5)
+	pc.shadow_color = Color(0.02, 0.0, 0.06, 0.6); pc.shadow_size = 30; pc.shadow_offset = Vector2(0, 12)
 	pc.content_margin_left = 26; pc.content_margin_right = 26; pc.content_margin_top = 20; pc.content_margin_bottom = 22
 	t.set_stylebox("panel", "PanelContainer", pc)
 	# scroll bars: thin and quiet
@@ -591,28 +593,67 @@ static func scroll_box(content: Control, margin := 120.0) -> Control:
 
 ## A menu panel: a title row with a Close button, and a body that pages whenever it's taller than
 ## the window, so nothing ends up off screen and nothing scrolls. Returns [panel, body].
-static func scroll_panel(title_txt: String, width: float, on_close: Callable, close_txt := "Close") -> Array:
+static func scroll_panel(title_txt: String, width: float, on_close: Callable, close_txt := "Close", scroll := false) -> Array:
 	var p := PanelContainer.new()
 	p.mouse_filter = Control.MOUSE_FILTER_STOP
 	var outer := vbox(12)
 	p.add_child(outer)
 	var head := hbox(8)
-	var t := title(title_txt, 30)
+	var t := title(title_txt, 32, Color("ffe9c9"))
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	t.clip_text = true
+	t.add_theme_constant_override("outline_size", 10)
+	t.add_theme_color_override("font_outline_color", Color(0.12, 0.06, 0.12))
 	head.add_child(t)
 	if on_close.is_valid():
 		head.add_child(button(close_txt, on_close))
 	outer.add_child(head)
-	var rule := ColorRect.new()
-	rule.custom_minimum_size = Vector2(0, 2)
-	rule.color = Color(ACCENT, 0.35)
-	outer.add_child(rule)
+	outer.add_child(Ornament.new())
 	var body := vbox(12)
-	outer.add_child(paged(body, 170.0, title_txt, head, width - 56.0))
+	if scroll:
+		# a real scroll for long lists like Settings: grows with its content up to the window height
+		var sc := ScrollContainer.new()
+		sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		sc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var pad := MarginContainer.new(); pad.add_theme_constant_override("margin_right", 14)
+		pad.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		pad.add_child(body)
+		sc.add_child(pad)
+		outer.add_child(sc)
+		var fit := func() -> void:
+			if is_instance_valid(sc) and sc.is_inside_tree():
+				sc.custom_minimum_size.y = minf(pad.get_combined_minimum_size().y, sc.get_viewport_rect().size.y - 190.0)
+		body.minimum_size_changed.connect(func(): fit.call_deferred())
+		sc.tree_entered.connect(func(): fit.call_deferred())
+	else:
+		outer.add_child(paged(body, 170.0, title_txt, head, width - 56.0))
 	var fitw := func():
 		if is_instance_valid(p) and p.is_inside_tree():
 			p.custom_minimum_size.x = minf(width, p.get_viewport_rect().size.x - 32.0)
 	p.tree_entered.connect(func(): fitw.call_deferred())
 	p.custom_minimum_size.x = width
 	return [p, body]
+
+## The rule under a menu title: a gilded line that fades out at both ends, a small diamond in the
+## middle and a dot either side.
+class Ornament extends Control:
+	func _init() -> void:
+		custom_minimum_size = Vector2(0, 14)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+	func _draw() -> void:
+		var w := size.x
+		var y := size.y * 0.5
+		var gold := Color(0.92, 0.74, 0.46)
+		var n := 40
+		for i in n:
+			var a := float(i) / n
+			var b := float(i + 1) / n
+			var k := sin(a * PI)
+			draw_line(Vector2(w * a, y), Vector2(w * b, y), Color(gold, 0.08 + 0.5 * k), 2.0)
+		var c := Vector2(w * 0.5, y)
+		draw_colored_polygon(PackedVector2Array([c + Vector2(0, -6), c + Vector2(7, 0), c + Vector2(0, 6), c + Vector2(-7, 0)]), gold)
+		draw_colored_polygon(PackedVector2Array([c + Vector2(0, -3), c + Vector2(3.5, 0), c + Vector2(0, 3), c + Vector2(-3.5, 0)]), Color(0.12, 0.08, 0.12))
+		for sx in [-1.0, 1.0]:
+			draw_circle(c + Vector2(22 * sx, 0), 2.2, Color(gold, 0.85))
+
