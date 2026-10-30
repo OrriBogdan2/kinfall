@@ -1484,10 +1484,17 @@ func _draw_kit(sz: Vector2, p: Hunter) -> void:
 		total += 26.0 + dh + 8.0
 	var bottom := sz.y - 120.0
 	var box := Rect2(Vector2(sz.x - w - 16, bottom - total), Vector2(w, total))
+	var compact := false
 	if m.opts.get("training", false):
-		# in training it stays up, so it lives on the left under the minimap, clear of the checklist
+		# in training it stays up, so it lives on the left under the minimap, clear of the checklist;
+		# on a short screen it drops the descriptions rather than run into your kin card
 		box.position = Vector2(16, 240)
-		box.size.y = minf(box.size.y, sz.y - 240 - 200)
+		if total > sz.y - 240 - 124:
+			compact = true
+			hs = []
+			for l in lines: hs.append(28.0)
+			total = 34.0 + 28.0 * lines.size() + 4.0
+		box.size.y = total
 	_panel(box, Color(0.06, 0.07, 0.1, 0.82 * a), 12)
 	_text(box.position + Vector2(14, 22), "Your kit", 14, Color(GOLD, a), big)
 	var y := box.position.y + 34
@@ -1498,7 +1505,8 @@ func _draw_kit(sz: Vector2, p: Hunter) -> void:
 		c.draw_style_box(ks, Rect2(Vector2(box.position.x + 14, y), Vector2(kw + 12, 20)))
 		c.draw_string(big, Vector2(box.position.x + 20, y + 15), l[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.07, 0.06, 0.08, a))
 		_text(Vector2(box.position.x + 34 + kw, y + 15), l[1], 14, Color(INK, a))
-		c.draw_multiline_string(body, Vector2(box.position.x + 14, y + 38), String(l[2]), HORIZONTAL_ALIGNMENT_LEFT, w - 28, 12, -1, Color(MUTED, a))
+		if not compact:
+			c.draw_multiline_string(body, Vector2(box.position.x + 14, y + 38), String(l[2]), HORIZONTAL_ALIGNMENT_LEFT, w - 28, 12, -1, Color(MUTED, a))
 		y += float(hs[i])
 
 ## Perks you've picked up this run: a row of little badges over your health bar, with stacks.
@@ -1551,7 +1559,7 @@ func _draw_perk_offer(sz: Vector2) -> void:
 
 func _draw_prompt(sz: Vector2, p: Hunter) -> void:
 	var it := m.interact
-	var y := sz.y - 128.0
+	var y := sz.y - 222.0
 	if not it.is_empty():
 		var prog := 0.0
 		match it["kind"]:
@@ -2043,6 +2051,16 @@ func _build_loot() -> void:
 	head.add_child(cl)
 	if items.is_empty():
 		v.add_child(UI.label("Empty.", 14, MUTED))
+	var list := UI.vbox(6)
+	if items.size() > 5:
+		var sc := ScrollContainer.new()
+		sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		sc.custom_minimum_size.y = 5 * 60.0
+		list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sc.add_child(list)
+		v.add_child(sc)
+	else:
+		v.add_child(list)
 	for it in items:
 		var row := UI.hbox(8)
 		var rp := PanelContainer.new()
@@ -2076,7 +2094,7 @@ func _build_loot() -> void:
 				else: _build_loot(), 76)
 		take.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(take)
-		v.add_child(rp)
+		list.add_child(rp)
 	var foot := UI.hbox(8); v.add_child(foot)
 	var sm := UI.primary("Smart loot  (%s)" % Settings.key_cap("interact"), func():
 		if loot_open != null and m.player:

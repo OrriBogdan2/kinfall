@@ -47,6 +47,8 @@ func _ready() -> void:
 		if a.begins_with("--length="): opts["length"] = float(a.substr(9))
 		if a == "--no-drop": opts["no_drop"] = true
 		if a.begins_with("--aim-demo="): opts["aim_demo"] = a.substr(11); opts["no_drop"] = true
+		if a == "--loot-demo": opts["loot_demo"] = true
+		if a == "--stomp-demo": opts["stomp_demo"] = true
 		if a == "--ring-demo": opts["ring_demo"] = true; opts["no_drop"] = true
 		if a == "--wall-demo": opts["wall_demo"] = true; opts["no_drop"] = true
 		if a == "--cone-demo": opts["cone_demo"] = true

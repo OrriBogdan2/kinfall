@@ -1822,7 +1822,7 @@ func on_wild_dazed(k: Kin) -> void:
 func on_stag_open(mb: Mob) -> void:
 	if player and not player.out and player.flat_dist(mb) < 14.0:
 		sfx("warn", mb.pos, -10.0, 1.5)
-		_tip("stagger", "A purple ring means %s can be staggered. Hit it with an ability (%s, %s or your kin's %s) for a big hit, a long stun and your cooldown back." % [mb.md["name"], Settings.key_cap("signature"), Settings.key_cap("ultimate"), Settings.key_cap("kin_skill")])
+		_tip("stagger", "A purple ring means %s can be staggered. Hit it with an ability (%s, %s or %s) for a big hit, a long stun and your cooldown back." % [mb.md["name"], Settings.key_cap("signature"), Settings.key_cap("ultimate"), Settings.key_cap("gear1")])
 
 ## Someone landed an ability in a stagger window. Runs where the monster lives (the host online).
 var stag_n := 0
@@ -2559,6 +2559,28 @@ func step(dt: float) -> void:
 			if time > 1.2: mates[2].hp = mates[2].max_hp * 0.4; mates[2].armor = mates[2].max_armor * 0.5; mates[2].slow_t = 2.0
 			if opts.has("mates_revive") and time > float(opts["mates_revive"]) and mates[0].downed:
 				revive_hunter(mates[0], player)
+			# test: an enemy standing on the knocked teammate (the stomp signal), kept alive for the shot
+			if opts.get("stomp_demo", false) and mates[0].downed and time > 1.3:
+				mates[0].down_hp = maxf(mates[0].down_hp, 55.0)
+				for e in hunters:
+					if e.team != player.team and not e.out:
+						e.ctrl = "idle"
+						e.teleport(mates[0].pos + Vector3(0.4, 0, 0.2))
+						break
+			# test: walk up to the dead teammate's deathbox and open the loot window
+			if opts.get("loot_demo", false) and time > 2.0 and not has_meta("loot_demo_done") and hud:
+				set_meta("loot_demo_done", true)
+				var lb: Dictionary = Life.box_of(self, mates[1])
+				if not lb.is_empty():
+					var ids: Array = Gear.ALL.keys()
+					if ids.size() > 1:
+						(lb["gear"] as Array).append({"id": String(ids[0]), "rar": 3})
+						(lb["gear"] as Array).append({"id": String(ids[1]), "rar": 1})
+					lb["weapon"] = {"wid": "sniper", "rar": 2}
+					lb["gems"] = int(lb.get("gems", 0)) + 25
+					lb["empty"] = false
+					player.teleport(lb["pos"] + Vector3(0.8, 0, 0.6))
+					hud.open_loot(lb)
 	if opts.get("ledge_demo", false) and player and time < 0.05:
 		# test: start just off the edge of your island, a few metres below the lip
 		var p0 := player.pos
@@ -4265,7 +4287,7 @@ func _tips() -> void:
 		return
 	_tip("move", "WASD to move, aim with the mouse, hold left click to shoot. Shift dashes, Space jumps. Hold Space in the air to glide.")
 	if _tip_t > 14.0:
-		_tip("ability", "%s and %s are your kin's abilities. Fighting together fills the bond meter, and %s calls your kin's bond ultimate." % [Settings.key_cap("signature"), Settings.key_cap("kin_skill"), Settings.key_cap("ultimate")])
+		_tip("ability", "%s is your kin's ability. Fighting together fills the bond meter, and %s calls your kin's bond ultimate." % [Settings.key_cap("signature"), Settings.key_cap("ultimate")])
 	if player.ult >= 1.0 and player.kin:
 		var ud := Ultimate.def_for(player.kin)
 		if ud: _tip("ult", "Your bond is full. %s calls %s." % [Settings.key_cap("ultimate"), ud.display_name])
@@ -4282,7 +4304,7 @@ func _tips() -> void:
 	if k.state == "active":
 		var a1 := k.runner.def_of("k1")
 		var a2 := k.runner.def_of("k2")
-		_tip("skill", "%s uses %s's %s and %s its %s. Stun or root a foe with your kin, then shoot it for a combo. %s calls it back to your shoulder." % [Settings.key_cap("signature"), k.rec.get("name", "your kin"), a1.display_name if a1 else "ability", Settings.key_cap("kin_skill"), a2.display_name if a2 else "other ability", Settings.key_cap("throw")])
+		_tip("skill", "%s uses %s's %s. Stun or root a foe with your kin, then shoot it for a combo. %s throws it, and again calls it back to your shoulder." % [Settings.key_cap("signature"), k.rec.get("name", "your kin"), a1.display_name if a1 else "ability", Settings.key_cap("throw")])
 	if not interact.is_empty() and interact["kind"] == "catch":
 		_tip("catch", "Hold " + Settings.key_cap("interact") + " to catch it. Caught kin only come home if you extract.")
 	if portals.any(func(p): return p["open"]):

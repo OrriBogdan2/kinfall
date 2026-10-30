@@ -2523,7 +2523,7 @@ func _kin_pick_row(label_t: String, rec: Dictionary, key: String) -> Control:
 			var ad := Content.ability(String(aid))
 			if ad: names.append(ad.display_name)
 		var ud := Content.ultimate(String(sp.get("ultimate", "")))
-		var keys := ("%s / %s / %s" % [Settings.key_cap("signature"), Settings.key_cap("kin_skill"), Settings.key_cap("ultimate")]) if key == "active" else ("swap in with %s" % Settings.key_cap("swap_kin"))
+		var keys := ("%s / %s" % [Settings.key_cap("signature"), Settings.key_cap("ultimate")]) if key == "active" else ("swap in with %s" % Settings.key_cap("swap_kin"))
 		var al := UI.label("%s  ·  %s  ·  bond: %s" % [keys, ", ".join(names), ud.display_name if ud else "-"], 12, UI.MUTED)
 		al.autowrap_mode = TextServer.AUTOWRAP_OFF
 		al.clip_text = true
