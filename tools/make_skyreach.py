@@ -78,15 +78,15 @@ islands = [
     # Corners: four big, calmer islands joined to both neighbouring regions.
     dict(id="lantern", name="Lantern Hollow", role="grove", region=2, poi=[44, 44], noise=0.14, biome="ember", danger=0,
          shapes=[circle(44, 44, 17), circle(40, 40, 7, 1)], sheer=[[30, 60]], bush=[[52, 52, 1.6]],
-         walls=[dict(box=[46, 46, 54, 54], gates=["e", "s"], gate_w=3)]),
+         walls=[dict(box=[34, 48, 42, 56], gates=["e", "n"], gate_w=3)]),
     dict(id="gull", name="Gullcrest", role="camp", region=1, poi=[172, 44], noise=0.14, biome="frost", danger=0,
          shapes=[circle(172, 44, 17), circle(176, 40, 7, 1)], sheer=[[120, 150]], bush=[[164, 52, 1.6]],
-         walls=[dict(box=[162, 46, 170, 54], gates=["w", "s"], gate_w=3)]),
+         walls=[dict(box=[174, 48, 182, 56], gates=["w", "s"], gate_w=3)]),
     dict(id="moss", name="Mossmere", role="grove", region=3, poi=[44, 172], noise=0.14, biome="bloom", danger=0,
          shapes=[circle(44, 172, 17), circle(40, 176, 7, 1)], sheer=[[300, 330]], bush=[[52, 164, 1.6]]),
     dict(id="still", name="Stillwater", role="nest", region=4, poi=[172, 172], noise=0.14, biome="storm", danger=0,
          shapes=[circle(172, 172, 17), circle(176, 176, 7, 1)], sheer=[[210, 240]], bush=[[164, 164, 1.6]],
-         walls=[dict(box=[162, 162, 170, 170], gates=["w", "n"], gate_w=3)]),
+         walls=[dict(box=[162, 164, 170, 172], gates=["w", "n"], gate_w=3)]),
     # The outer ring: smaller landings where the first gates open.
     dict(id="skyport", name="Skyport", role="landing", region=2, poi=[108, 17], noise=0.12, biome="frost", danger=0,
          shapes=[circle(108, 17, 10)], sheer=[]),
@@ -214,10 +214,11 @@ train = dict(center=[108, 108], r=30, stations=[52, 151, 220, 331], names=["Thor
 
 # The ways out (see scripts/match/exits.gd):
 #  docks    [x, z, out_x, out_z]: a skiff dock on each outer landing, its pier pointing out over the abyss
-#  outposts [x, z, walled]: uplink outposts in the walled yards on three corner islands (walls above)
+#  outposts [x, z, walled]: uplink outposts in the walled yards on three corner islands (walls above; the
+#           yards sit beside the roads in, with a gate facing each, never across a bridge's end)
 #  hatches  [x, z]: sealed rift hatches spread over the regions, opened with a Rift Key
 docks = [[108, 11, 0, -1], [108, 205, 0, 1], [10, 108, -1, 0], [206, 108, 1, 0]]
-outposts = [[50, 50, 1], [166, 50, 1], [166, 166, 1]]
+outposts = [[38, 52, 1], [178, 52, 1], [166, 168, 1]]
 hatches = [[90, 62], [124, 152], [48, 92], [172, 100], [50, 178], [119, 95]]
 chokepoints = ["North Span", "Frost Steps", "Bramble Bridge", "Thorn Walk", "Quarry Causeway", "Storm Causeway", "Wind Gap"]
 
