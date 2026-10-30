@@ -42,7 +42,8 @@ var tut_flag := false
 var tut_down_t := 0.0
 var tut_wait := 0.0
 var tut_throws0 := 0
-var portals: Array = []     # {pos, open_at, open, node}
+var exits: Exits = null     # the ways out: skiff docks, rift hatches, outpost uplinks (see Exits)
+var truce: Truce = null     # emotes and truces between squads (see Truce)
 var time := 0.0
 var acc := 0.0
 var player: Hunter = null
@@ -174,7 +175,7 @@ func start(o: Dictionary) -> void:
 		net_on = true
 		is_host = Net.me == String(o["net"]["host"])
 		Net.begin_match("kf-" + String(o["net"]["mid"]), String(o["net"]["host"]), self)
-	_spawn_pads_and_portals()
+	_spawn_pads_and_exits()
 	_spawn_hunters()
 	if not opts.get("tutorial", false) and not opts.get("duel", false):
 		_spawn_mobs()        # the tutorial brings its own monsters, one step at a time
@@ -249,7 +250,7 @@ func _build_shot_pool() -> void:
 		add_child(mi)
 		shot_pool.append(mi)
 
-func _spawn_pads_and_portals() -> void:
+func _spawn_pads_and_exits() -> void:
 	for pd in world.pads:
 		var n := Models.jump_pad(Color("8fe3c8"))
 		n.position = pd["pos"]
@@ -284,12 +285,9 @@ func _spawn_pads_and_portals() -> void:
 		arc.visible = false
 		add_child(arc)
 		pd["arc"] = arc
-	var open_at := float(Data.MATCH["portal_open"]) * length / float(Data.MATCH["length"])
-	for i in world.portal_spots.size():
-		var n := Models.portal(Color("8fe3c8"))
-		n.position = world.portal_spots[i]
-		add_child(n)
-		portals.append({"pos": world.portal_spots[i], "open_at": (1e9 if opts.get("tutorial", false) or opts.get("training", false) else open_at + i * 35.0), "open": false, "node": n})
+	exits = Exits.new()
+	exits.setup(self)
+	truce = Truce.new(self)
 
 func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String, kin_rec: Dictionary, at: Vector3, kit := {}, kin_rec2 := {}) -> Hunter:
 	var h := Hunter.new()
@@ -444,6 +442,8 @@ func _spawn_hunters() -> void:
 					at.y = world.ground_at(at.x, at.z)
 				player.teleport(at)
 				player.tonics = int(Save.d["items"].get("tonic", 0)) + 2; player.free_tonics = 2     # everyone sets out with a couple
+				if not opts.get("tutorial", false) and not opts.get("training", false):
+					player.rift_keys = int(Save.d["items"].get("rift_key", 0))     # your Rift Keys come with you (and go in your box if you die)
 				_apply_home_perks(player)
 				_apply_armory_kit(player)
 				if player.kin:
@@ -468,6 +468,7 @@ func _spawn_hunters() -> void:
 			# rivals carry a little treasure: worth taking from their box
 			if rng.randf() < 0.35 + 0.15 * tier:
 				h.pack.append(Loot.valuable(Loot.roll_valuable(rng, mini(tier, 2))))
+			if rng.randf() < 0.2: h.rift_keys = 1     # now and then a rival brings a key (and knows where the hatches are)
 			_start_drop(h, at)
 
 ## Every match starts in the sky. Hunters glide down from above their squad's side of the map
@@ -1364,6 +1365,7 @@ func add_feed(t: String) -> void:
 
 # ------------------------------------------------------------------ events
 func on_damage(target: Ent, by: Ent, d: float, o: Dictionary) -> void:
+	if truce: truce.on_damage(target, by, d)
 	var tags: Array = o.get("tags", [])
 	if tags.is_empty():
 		tags = [String(o.get("src", "primary")) if o.get("src", "") != "" else "primary"]
@@ -1680,10 +1682,8 @@ func _check_last() -> void:
 	for h in hunters:
 		if not h.out and not h.extracted:
 			teams[h.team] = true
-	if teams.size() <= 1:
-		for p in portals:
-			if not p["open"]:
-				p["open_at"] = minf(p["open_at"], time)
+	if teams.size() <= 1 and exits:
+		exits.on_last_team()
 
 func on_fell(e: Ent) -> void:
 	if e is Hunter and opts.get("autoplay", false):
@@ -1757,6 +1757,9 @@ func on_mob_dead(mb: Mob, by: Ent, _o: Dictionary) -> void:
 			if credit is Hunter: add_feed("%s caught the Glimmerkin's treasure" % credit.pname)
 		if rng.randf() < (0.35 if mb.mkind == "brute" else 0.12):
 			drop("seed", mb.pos + Vector3(0, 0.6, 0), 1, Data.pick_seed())
+		# a Rift Key: always from the Warden, sometimes from an elite (one that can be staggered, or a rare one)
+		if exits and not exits.list.is_empty() and (mb.mkind == "warden" or ((mb.md.get("stag", false) or mb.rarity >= 3) and mb.mkind != "glimmer" and rng.randf() < 0.06)):
+			exits.drop_key(mb.pos)
 	# the big ones are worth a perk to whoever brought them down
 	if mb.mkind in ["warden", "brute"] and credit is Hunter and not (credit as Hunter).remote and (mb.mkind == "warden" or rng.randf() < 0.5):
 		offer_perks(credit as Hunter, "boss" if mb.mkind == "warden" else "brute")
@@ -2161,6 +2164,7 @@ func drop(kind_s: String, at: Vector3, v: int, key := "", pid := "", vel0 = null
 		"seed": n = Models.seed_bag(Data.CROPS[key]["color"])
 		"tonic": n = Models.tonic()
 		"armor": n = Models.armor_shard()
+		"key": n = ExitModels.rift_key()
 		_: n = Models.gem()
 	add_child(n)
 	n.position = at
@@ -2223,6 +2227,11 @@ func _collect(h: Hunter, p: Dictionary) -> void:
 		"armor":
 			h.armor_kits = mini(3, h.armor_kits + 1)
 			if h == player: hud.toast_small("+1 armor kit", Color("dfe9f7"))
+		"key":
+			h.rift_keys += 1
+			if h == player:
+				hud.toast("+1 Rift Key: opens any rift hatch, quietly, any time", ExitModels.HATCH)
+				sfx("unlock", null, -6.0, 1.2)
 	if h == player:
 		sfx("pickup", null, -8.0, 1.0 + minf(0.4, h.gems * 0.004))
 		if p["kind"] == "seed":
@@ -3042,6 +3051,10 @@ func step(dt: float) -> void:
 	if opts.get("ring_demo", false) and player and player.gliding:
 		player.inp["glide"] = true
 		player.inp["move"] = Vector2(player.vel.x, player.vel.z).normalized()
+	if opts.get("truce_demo", false) and truce:
+		truce.demo()
+	if opts.has("exit_demo") and exits and player and not player.dropping:
+		exits.demo(String(opts["exit_demo"]))
 	if opts.get("glide_demo", false) and player:
 		if time < 0.05:
 			player.teleport(player.pos + Vector3(0, 6, 0)); player.grounded = false
@@ -3099,7 +3112,8 @@ func step(dt: float) -> void:
 		Life.tick_beacons(self, dt)
 		_watch_death()
 	_update_dex(dt)
-	_update_portals(dt)
+	if exits: exits.tick(dt)
+	if truce: truce.tick(dt)
 	_update_events()
 	_update_zones(dt)
 	fields.tick(dt)
@@ -3294,6 +3308,11 @@ func _update_interact(dt: float) -> void:
 				if not sh["used"] and h.flat_dist(sh["pos"]) < 1.8:
 					best = {"kind": "shrine", "shrine": sh, "label": "Hold " + Settings.key_cap("interact") + " to pray: heal, a blessing and a perk"}
 					break
+		# 5. the exits: call a skiff, unlock a hatch, start an uplink
+		if exits:
+			# (using an exit beats picking up a weapon or opening a chest that happens to be there)
+			var ex := exits.interact_for(h)
+			if best.is_empty() or (ex.has("act") and String(best.get("kind", "")) in ["weapon", "chest", "shrine"]): best = ex
 		if h == player:
 			interact = best
 		if best.is_empty() or not want:
@@ -3355,6 +3374,8 @@ func _update_interact(dt: float) -> void:
 				sh["prog"] += dt / 1.2
 				if sh["prog"] >= 1.0:
 					_use_shrine(h, sh)
+			"exit":
+				exits.hold(h, best, dt)
 
 func _catch(h: Hunter, k: Kin) -> void:
 	if opts.get("training", false):
@@ -3444,6 +3465,9 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 	if not from_net and randf() < [0.35, 0.65, 1.0][t]:
 		var a2 := randf() * TAU
 		spawn_gear(Gear.roll(rng), Data.roll_rarity(rng, t), c["pos"] + Vector3(cos(a2) * 1.2, 0, sin(a2) * 1.2))
+	# vaults sometimes hold a Rift Key
+	if not from_net and exits and not exits.list.is_empty() and t == 2 and rng.randf() < 0.35:
+		exits.drop_key(c["pos"])
 	if h and not h.remote and h.tonics < 5 and randf() < [0.35, 0.7, 1.0][t]:
 		h.tonics += 1
 		if h == player: hud.toast("+1 tonic", Color("8ff0a0"))
@@ -3530,10 +3554,12 @@ const TUT := [
 	["kin1", "Press %K: %s uses %A"],
 	["throw", "Press %K to throw %s at the monster"],
 	["chest", "Walk to the chest and hold %K to open it"],
-	["goexit", "Follow the marker to the exit"],
-	["extract", "Stand in the circle until it fills to head home"]]
+	["goexit", "Follow the marker to the outpost: its uplink calls you a way home"],
+	["uplink", "Hold %K at the uplink mast to start it"],
+	["defend", "Hold the outpost: stay in the yard while the uplink charges"],
+	["extract", "The lift is open. Step into the light to head home"]]
 const TUT_KEYS := {"land": "move", "move": "move", "dash": "dash", "glide": "jump", "exdash": "dash", "utility": "secondary",
-	"kin1": "signature", "throw": "throw", "chest": "interact"}
+	"kin1": "signature", "throw": "throw", "chest": "interact", "uplink": "interact"}
 var tut_target := Vector3.INF    # where the HUD points (a world marker, an edge arrow and the distance)
 var tut_label := ""
 var tut_used0 := {}
@@ -3676,9 +3702,14 @@ func _update_tutorial(dt: float) -> void:
 			_tut_keep_foe("spitter")
 		"chest": done = tut_flag
 		"goexit":
-			if portals.size() > 0:
-				var pp: Dictionary = portals[portals.size() - 1]
-				done = player.flat_dist(pp["pos"]) < Models.EXTRACT_R
+			var o := _tut_outpost()
+			done = not o.is_empty() and exits.in_yard(o, player)
+		"uplink":
+			var o2 := _tut_outpost()
+			done = o2.is_empty() or o2["state"] != "idle"
+		"defend":
+			var o3 := _tut_outpost()
+			done = o3.is_empty() or o3["state"] == "open"
 		"extract": done = false
 	# the marker follows whatever this step is about
 	_tut_point(id)
@@ -3740,9 +3771,11 @@ func _tut_point(id: String) -> void:
 			for c in chests:
 				if not c["open"] and c.get("tut", false):
 					tut_target = c["pos"]; tut_label = "Chest"
-		"goexit", "extract":
-			if portals.size() > 0:
-				tut_target = portals[portals.size() - 1]["pos"]; tut_label = "Exit"
+		"goexit", "uplink", "defend", "extract":
+			var o := _tut_outpost()
+			if not o.is_empty():
+				tut_target = o["pos"]
+				tut_label = {"goexit": "Outpost", "uplink": "Uplink", "defend": "Outpost", "extract": "Lift"}[id]
 
 ## Keeps exactly one monster around for a step that needs a target (if it fell off, another comes).
 func _tut_keep_foe(kind: String) -> void:
@@ -3785,39 +3818,33 @@ func _tut_enter(step_i: int) -> void:
 				chests.append({"pos": at, "open": false, "prog": 0.0, "node": n, "tier": 1, "tut": true})
 				ping(at, Color("dfe8f2"))
 		"goexit":
-			# an exit a short walk away, so there's something to follow
-			# best: one of the map's exits on this island a short walk away; then open ground here;
-			# then an exit on a nearby island (you glide across, as you just learned)
-			var at := Vector3.INF
-			var here := world.island_of(player.pos.x, player.pos.z)
-			for same in [true, false]:
-				var bd := 1e9
-				for ps in world.portal_spots:
-					var dd := Vector2(ps.x - player.pos.x, ps.z - player.pos.z).length()
-					if (world.island_of(ps.x, ps.z) == here) == same and dd > 10.0 and dd < 34.0 and dd < bd: bd = dd; at = ps
-				if at != Vector3.INF: break
-				if same:
-					var o := _tut_spot(14.0, -1.0)
-					if o != Vector3.INF and player.flat_dist(o) > 8.0: at = o; break
-			if at == Vector3.INF: at = _tut_spot(10.0, -1.0)
-			if at == Vector3.INF: at = player.pos + Vector3(3, 0, 0)
-			var had: Dictionary = {}
-			for pd in portals:
-				if (pd["pos"] as Vector3).distance_to(at) < 0.5: had = pd
-			if not had.is_empty():
-				# one of the map's own exits: open it, and make it the one the marker follows
-				portals.erase(had)
-				had["open_at"] = time
-				portals.append(had)
-			else:
-				var n := Models.portal(Color("8fe3c8"))
-				n.position = at
-				add_child(n)
-				portals.append({"pos": at, "open_at": time, "open": false, "node": n})
-			ping(at, Color("8fe3c8"))
-			if hud: hud.toast("An exit opened. Follow the marker", Color("8fe3c8"))
+			# the map's outpost (one is made close by if the map has none): the marker leads there
+			var o := _tut_outpost()
+			if not o.is_empty():
+				ping(o["pos"], ExitModels.UPLINK)
+			if hud: hud.toast("Time to head home. Follow the marker to the outpost", ExitModels.UPLINK)
+		"uplink":
+			if hud: hud.toast("Starting the uplink draws monsters to the outpost", ExitModels.UPLINK)
+		"defend":
+			if hud: hud.toast("Stay inside the walls. A rival hunter in the yard would stall it", ExitModels.UPLINK)
 		"extract":
-			if hud: hud.toast("Stay inside. Getting hit would reset it", Color("8fe3c8"))
+			if hud: hud.toast("The lift is open!", ExitModels.UPLINK)
+
+## The tutorial's way out: the map's outpost, or (on a map without one) one made a short walk away.
+func _tut_outpost() -> Dictionary:
+	if exits == null:
+		return {}
+	var outs := exits.of_kind("outpost")
+	if not outs.is_empty():
+		return outs[0]
+	if player == null:
+		return {}
+	var at := _tut_spot(14.0, -1.0)
+	if at == Vector3.INF: at = _tut_spot(8.0, -1.0)
+	if at == Vector3.INF: return {}
+	exits._add_outpost({"pos": at, "walled": false}, true)
+	exits.list[-1]["i"] = exits.list.size() - 1
+	return exits.list[-1]
 
 var _tut_last := -1
 ## Test driver: plays the tutorial by itself so the whole flow can be checked headless.
@@ -3866,8 +3893,40 @@ func _tut_drive() -> void:
 			for c in chests:
 				if not c["open"] and c.get("tut", false):
 					goto.call(c["pos"]); p.inp["interact"] = true; break
-		"goexit", "extract":
-			if portals.size() > 0: goto.call(portals[portals.size() - 1]["pos"])
+		"goexit", "uplink", "defend", "extract":
+			var o := _tut_outpost()
+			if o.is_empty():
+				return
+			var c: Vector3 = o["pos"]
+			match tut_id():
+				"goexit":
+					# go there the way a bot would: over the bridges, or jump and glide across a gap
+					var mv := bot_brain._path_dir(self, p, c)
+					if p.ai.has("cross"):
+						var L: Dictionary = p.ai["cross"]
+						var land: Vector3 = L["land"]
+						var tol := Vector2(land.x - p.pos.x, land.z - p.pos.z)
+						if p.grounded and world.island_of(p.pos.x, p.pos.z) == int(L["to"]):
+							p.ai.erase("cross")
+						elif not p.grounded:
+							mv = tol.normalized()
+							p.inp["glide"] = tol.length() > 1.6 or world.is_void(p.pos.x, p.pos.z)
+						elif p.flat_dist(L["take"]) < 1.3:
+							mv = tol.normalized()
+							p.inp["jump"] = true
+					p.inp["move"] = mv
+					p.inp["aim"] = p.pos + Vector3(mv.x, 0.9, mv.y) * 3.0
+				"uplink":
+					goto.call(c)
+					p.inp["interact"] = p.flat_dist(c) < 1.4
+				"defend":
+					goto.call(c + Vector3(1.2, 0, 1.2))
+					var best: Ent = near_mob.call()
+					if best and p.flat_dist(best) < 8.0:
+						p.inp["aim"] = best.pos + Vector3(0, 0.9, 0)
+						p.inp["fire"] = true
+				"extract":
+					goto.call(c)
 
 ## Test hook (--train-demo): ride the sky train from a stop; "--train-demo=track" stands you on the
 ## track ahead of the engine instead, "--train-demo=view" watches it from a pier.
@@ -4093,74 +4152,30 @@ func on_mob_escaped(mb: Mob) -> void:
 	if player and player.flat_dist(mb) < 25.0:
 		add_feed("The Glimmerkin got away")
 
-func _update_portals(dt: float) -> void:
-	for p in portals:
-		var n: Node3D = p["node"]
-		if not p["open"] and time >= p["open_at"]:
-			p["open"] = true
-			n.get_node("Disc").visible = true
-			n.get_node("Beam").emitting = true
-			sfx("portal", p["pos"], 0.0)
-			if player and not player.out:
-				add_feed("An exit opened %s" % direction_word(player.pos, p["pos"]))
-				ping(p["pos"], Color("8fe3c8"))
-		if p["open"]:
-			n.get_node("Disc").rotation.y += dt * 2.0
-	var shown := {}     # portal index -> progress to show on its circle
-	for h in hunters:
-		if h.out or h.extracted or h.downed:
-			continue
-		var inside := -1
-		for pi in portals.size():
-			var p: Dictionary = portals[pi]
-			if p["open"] and h.flat_dist(p["pos"]) < Models.EXTRACT_R and absf(h.pos.y - p["pos"].y) < 1.2:
-				inside = pi
-				break
-		if inside >= 0:
-			if h.extract_prog <= 0.0 and h == player:
-				sfx("glide", h.pos, -6.0, 0.7)
-			h.extract_prog += dt / Data.MATCH["extract_time"]
-			# your own progress wins the circle you're standing in; otherwise whoever is furthest along
-			if h == player:
-				shown[inside] = h.extract_prog
-				shown["mine"] = inside
-			elif shown.get("mine", -1) != inside and float(shown.get(inside, 0.0)) < h.extract_prog:
-				shown[inside] = h.extract_prog
-			if h.extract_prog >= 1.0:
-				_extract(h)
-		else:
-			h.extract_prog = 0.0
-	for pi in portals.size():
-		var n: Node3D = portals[pi]["node"]
-		var zf := n.get_node_or_null("ZoneFill") as MeshInstance3D
-		var zr := n.get_node_or_null("Zone") as MeshInstance3D
-		if zf == null: continue
-		var want := float(shown.get(pi, 0.0))
-		var cur := float(zf.get_meta("p", 0.0))
-		cur = want if want < cur else lerpf(cur, want, 1.0 - exp(-20.0 * dt))
-		zf.set_meta("p", cur)
-		(zf.material_override as ShaderMaterial).set_shader_parameter("arc", clampf(cur, 0.0, 1.0))
-		zf.visible = portals[pi]["open"] and cur > 0.001
-		zr.visible = portals[pi]["open"]
-		# the circle lights up while someone is inside
-		var zm := zr.material_override as ShaderMaterial
-		zm.set_shader_parameter("fill", 0.08 + 0.06 * sin(time * 6.0) if shown.has(pi) else 0.0)
-
-func _extract(h: Hunter) -> void:
+## Out: how (skiff, hatch, uplink) and where, for the results screen.
+func _extract(h: Hunter, how := "", where := "") -> void:
+	if h.extracted:
+		return
 	h.extracted = true
+	h.downed = false
+	if not h.stomp.is_empty(): Life.end_stomp(self, h, "extract")
 	cancel_abilities(h)
 	if net_on and not h.remote:
 		net_event(["ext", h.nid])
-	sfx("portal", h.pos, 0.0, 1.3)
-	fx.burst(h.pos + Vector3(0, 1.0, 0), Color("8fe3c8"), 30, 5.0, 0.8, -4.0)
+	var col: Color = {"skiff": ExitModels.DOCK, "hatch": ExitModels.HATCH, "uplink": ExitModels.UPLINK}.get(how, Color("8fe3c8"))
+	sfx("portal", h.pos, -4.0 if how == "hatch" else 0.0, 1.3)
+	fx.burst(h.pos + Vector3(0, 1.0, 0), col, 30, 5.0, 0.8, -4.0)
 	add_feed("%s extracted" % h.pname)
 	if h.kin:
 		h.kin.visible = false
 	if h == player:
 		if h.kin and h.kin.state != "fainted":
 			h.kin.bark("extract")
-		result = {"extracted": true, "why": "extracted"}
+		result = {"extracted": true, "why": "extracted", "how": how, "where": where}
 		_end_soon(1.6)
+		if opts.get("tut_test", false):
+			print("TUT DONE extracted by %s at %s, t=%.1f" % [how, where, time])
+			get_tree().create_timer(0.5).timeout.connect(func(): get_tree().quit())
 	_check_last()
 
 func _update_rules(_dt: float) -> void:
@@ -4176,11 +4191,6 @@ func _update_rules(_dt: float) -> void:
 		if not over and result.is_empty():
 			result = {"extracted": false, "why": "abyss"}
 			_end_soon(1.5)
-	if player and player.extracted == false and player.out == false:
-		var alive := hunters.filter(func(x): return not x.out and not x.extracted)
-		var rival := alive.any(func(x): return x.team != player.team)
-		if not rival and portals.all(func(p): return p["open"]) and hud:
-			pass
 
 ## You're dead but your team's still in it: you wait (and watch) for a box or beacon revive.
 ## Once nobody's left to bring you back, the expedition's over for you.
@@ -4258,6 +4268,8 @@ func _finish() -> void:
 		r["revives"] = player.revives
 		r["armor_tier"] = player.armor_tier
 		r["tonics"] = maxi(0, player.tonics - player.free_tonics)
+		if not opts.get("tutorial", false):
+			r["rift_keys"] = player.rift_keys if result.get("extracted", false) else 0
 		r["stats"] = player.stats.duplicate()
 		# weapons, gloves and treasure: home to the armory if you made it out, else what stayed behind
 		if result.get("extracted", false):
@@ -4597,6 +4609,11 @@ func _net_ev(x, from: String) -> void:
 				who.revive = 0.0
 				sfx("revive", who.pos, 0.0)
 				_rev_out.erase(who.nid)
+		"xc":
+			if exits: exits.net_in(x)
+		"emo":
+			var eh: Hunter = ents_by_id.get(String(x[1]), null) as Hunter
+			if truce and eh: truce.emote(eh, String(x[2]), true)
 		"ext":
 			who = ents_by_id.get(String(x[1]), null)
 			if who is Hunter and not who.extracted:
@@ -4760,8 +4777,11 @@ func _tips() -> void:
 		_tip("skill", "%s uses %s's %s. Stun or root a foe with your kin, then shoot it for a combo. %s throws it, and again calls it back to your shoulder." % [Settings.key_cap("signature"), k.rec.get("name", "your kin"), a1.display_name if a1 else "ability", Settings.key_cap("throw")])
 	if not interact.is_empty() and interact["kind"] == "catch":
 		_tip("catch", "Hold " + Settings.key_cap("interact") + " to catch it. Caught kin only come home if you extract.")
-	if portals.any(func(p): return p["open"]):
-		_tip("exit", "Exits are open. Stand in one for 3 seconds to leave with everything you carry.")
+	if exits and not interact.is_empty() and interact["kind"] == "exit":
+		match String(interact["x"]["kind"]):
+			"dock": _tip("exit_dock", "Skiff docks: call the skiff at the horn beacon, survive the monsters it draws until it ties up, then stand on its deck before it leaves.")
+			"hatch": _tip("exit_hatch", "Rift hatches open instantly and quietly with a Rift Key. Keys are rare loot (vaults, bosses, elites) and drop in your deathbox if you go down.")
+			"outpost": _tip("exit_uplink", "Outposts: start the uplink and hold the yard while it charges. A rival standing in it stalls the charge. When it's done, step into the lift.")
 	if player.downed:
 		_tip("down", "You're down. Your kin will try to pick you up if it trusts you enough.")
 

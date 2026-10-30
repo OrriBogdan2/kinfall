@@ -540,8 +540,8 @@ func open_admin() -> void:
 		add.call("Defeat every monster", func():
 			for mb in m.mobs:
 				if not mb.dead: mb.hurt(99999.0, m.player, {}))
-		add.call("Open the exits now", func():
-			for p in m.portals: p["open_at"] = minf(p["open_at"], m.time))
+		add.call("Exits ready now", func():
+			if m.exits: m.exits.admin_ready())
 		add.call("Extract now", func():
 			if m.player and not m.player.out:
 				close()

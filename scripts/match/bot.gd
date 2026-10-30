@@ -1,6 +1,8 @@
 class_name Bot
 extends RefCounted
-## Bot hunters. They fight, farm monsters, open chests, catch kin, revive teammates and head for exits.
+## Bot hunters. They fight, farm monsters, open chests, catch kin, revive teammates and head for exits
+## (call a skiff and hold the dock, charge an uplink, or slip through a hatch with a key), and the
+## scrappier ones go and crash a rival's loud exit.
 
 func new_mind(rng: RandomNumberGenerator, skill: float, diff := {}) -> Dictionary:
 	return {"skill": clampf(skill + rng.randf_range(-0.1, 0.1), 0.15, 1.0), "diff": diff, "react_t": 0.0, "seen": null, "think": 0.0, "tgt": null, "goal": Vector3.INF,
@@ -173,10 +175,10 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 			move = _path_dir(m, h, goal)
 			inp["aim"] = Vector3(h.pos.x + move.x * 3.0, h.pos.y + 0.9, h.pos.z + move.y * 3.0)
 			inp["aim_y"] = h.pos.y
-			if h.flat_dist(goal) < 1.2 and a["goal_kind"] in ["chest", "catch", "revive", "box"]:
+			if h.flat_dist(goal) < 1.2 and a["goal_kind"] in ["chest", "catch", "revive", "box", "dock", "uplink", "hatch"]:
 				inp["interact"] = true
 				move = Vector2.ZERO
-			elif h.flat_dist(goal) < 1.0 and a["goal_kind"] == "beacon":
+			elif h.flat_dist(goal) < 1.0 and a["goal_kind"] in ["beacon", "board", "yard"]:
 				move = Vector2.ZERO
 		if h.kin and h.kin.state == "active" and h.kin.flat_dist(h) > 6.0:
 			h.kin.recall()
@@ -233,6 +235,15 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 	# unstick
 	if Vector2(h.pos.x - a["last_pos"].x, h.pos.z - a["last_pos"].z).length() < 0.03 and move.length() > 0.5:
 		a["stuck"] += dt
+		# wedged for good (landed in a gap between rocks, say): hop to the nearest open ground,
+		# like a player using "I'm stuck" in the menu
+		a["frozen"] = float(a.get("frozen", 0.0)) + dt
+		if float(a["frozen"]) > 4.0 and not h.downed and not m.world.is_void(h.pos.x, h.pos.z):
+			a["frozen"] = 0.0
+			var q := m.world.free_spot_near(h.pos + Vector3(move.x, 0, move.y) * 1.5, [h.pos], 0.8, 0.5, 5.0)
+			if Vector2(q.x - h.pos.x, q.z - h.pos.z).length() > 0.3:
+				h.teleport(Vector3(q.x, m.world.ground_at(q.x, q.z), q.z))
+				h.vel = Vector3.ZERO
 		if a["stuck"] > 0.6:
 			if _safe(m, h, move, 2.0) and randf() < 0.5:
 				inp["jump"] = true
@@ -242,6 +253,7 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 			a["stuck"] = 0.0
 	else:
 		a["stuck"] = 0.0
+		if Vector2(h.pos.x - a["last_pos"].x, h.pos.z - a["last_pos"].z).length() > 0.05: a["frozen"] = 0.0
 	a["last_pos"] = h.pos
 
 func _nearest_ground(m: Match, h: Hunter) -> Vector2:
@@ -389,6 +401,8 @@ func _choose(m: Match, h: Hunter) -> void:
 	for o in m.hunters:
 		if o.team == h.team or not o.targetable():
 			continue
+		if m.truce and m.truce.holds(h, o):
+			continue
 		if o is Hunter and not m.can_see(h.team, o):
 			continue
 		var d := h.flat_dist(o)
@@ -413,7 +427,7 @@ func _choose(m: Match, h: Hunter) -> void:
 	# finish off downed rivals before their kin or team picks them up
 	if best == null:
 		for o in m.hunters:
-			if o.team != h.team and o.downed and not o.out and h.flat_dist(o) < 11.0 and m.world.los(h.pos, o.pos, h.pos.y + 0.95):
+			if o.team != h.team and o.downed and not o.out and h.flat_dist(o) < 11.0 and m.world.los(h.pos, o.pos, h.pos.y + 0.95) and not (m.truce and m.truce.holds(h, o)):
 				best = o; break
 	# angry wild kin also count
 	if best == null:
@@ -446,18 +460,29 @@ func _choose(m: Match, h: Hunter) -> void:
 		for b in m.boxes:
 			if not b["empty"] and h.flat_dist(b["pos"]) < 14.0 and not (b["owner"].team == h.team and Life.soul_here(m, b)):
 				goal = b["pos"]; gk = "box"; break
-	if goal == Vector3.INF:
-		var open_portals := m.portals.filter(func(p): return p["open"])
-		if open_portals.size() > 0 and (time_left < 110.0 or h.gems > 40 or randf() < 0.002):
-			var bp = null; var bd := 1e9
-			for p in open_portals:
-				if _banned(m, a, p["pos"]) and open_portals.size() > 1:
-					continue
-				var d := h.flat_dist(p["pos"])
-				if d < bd: bd = d; bp = p
-			if bp == null:
-				bp = open_portals.pick_random()
-			goal = bp["pos"]; gk = "portal"
+	# someone asked us to follow them (a Follow me emote from a teammate or truce partner)
+	if goal == Vector3.INF and a.has("follow"):
+		var fw: Dictionary = a["follow"]
+		var fh: Hunter = fw["h"]
+		if m.time < float(fw["until"]) and is_instance_valid(fh) and not fh.out and not fh.extracted:
+			if h.flat_dist(fh) > 3.0: goal = fh.pos; gk = "follow"
+		else:
+			a.erase("follow")
+	if goal == Vector3.INF and m.exits and not m.exits.list.is_empty():
+		# heading home: late in the match, with a good haul, or just because
+		if not a.get("leave", false) and randf() < 0.0015:
+			a["leave"] = true
+		# (not in the first stretch of the match: everyone heading straight home empties the map)
+		var leaving: bool = time_left < 170.0 or (m.time > m.length * 0.3 and (h.gems > 40 or a.get("leave", false)))
+		var g: Array = m.exits.bot_goal(h, leaving)
+		if not g.is_empty() and _banned(m, a, g[0]) and String(g[1]) in ["dock", "uplink"]:
+			g = []
+		if g.is_empty() and not leaving:
+			# some bots go and crash a rival's skiff call or uplink
+			if not a.has("contest"): a["contest"] = randf() < 0.35
+			if a["contest"]: g = m.exits.bot_contest(h, 40.0)
+		if not g.is_empty():
+			goal = g[0]; gk = String(g[1])
 	if goal == Vector3.INF:
 		for k in m.kins:
 			if k.state == "dazed" and not k.dead and h.flat_dist(k) < 14.0:
@@ -490,6 +515,8 @@ func _choose(m: Match, h: Hunter) -> void:
 		a["goal_since"] = m.time
 	elif goal != Vector3.INF:
 		var d := h.flat_dist(goal)
+		if d < 2.0 and String(a.get("goal_kind", "")) in ["board", "yard", "beacon"]:
+			a["goal_since"] = m.time      # there and waiting (holding a dock, charging an uplink) is fine
 		if d < float(a.get("goal_best", 1e9)) - 0.5:
 			a["goal_best"] = d
 			a["goal_since"] = m.time

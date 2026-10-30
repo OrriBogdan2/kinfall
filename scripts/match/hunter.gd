@@ -110,6 +110,7 @@ var box_t := 0.0               # holding interact at a deathbox
 var hurt_at := -9.0            # last time a hit landed (channels like a box revive break on it)
 var extracted := false
 var extract_prog := 0.0
+var rift_keys := 0               # Rift Keys carried: each opens a rift hatch once (see Exits); they go in your deathbox
 var kin: Ent = null             # the active kin: its abilities are on Q and V, its ultimate on R
 var kin2: Ent = null            # the benched kin, swapped in with X
 var swap_cd := 0.0

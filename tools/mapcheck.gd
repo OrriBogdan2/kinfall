@@ -87,7 +87,9 @@ func run_authored(id: String, seeds: Array) -> void:
 					if not seen2.has(nx) and w.inb(nx.x, nx.y) and w.kind[w.idx(nx.x, nx.y)] == World.T_GROUND and w.island[w.idx(nx.x, nx.y)] == ii:
 						seen2[nx] = true; q2.append(nx)
 			if ground.size() - seen2.size() > 2: probs.append("%s: %d tiles walled off" % [w.islands[ii].get("id", ii), ground.size() - seen2.size()])
-		if w.portal_spots.size() != (L.get("portals", []) as Array).size(): probs.append("portals %d" % w.portal_spots.size())
+		var n_ex := 0
+		for ek in ["portals", "docks", "outposts", "hatches"]: n_ex += (L.get(ek, []) as Array).size()
+		if w.portal_spots.size() != n_ex: probs.append("exits %d of %d" % [w.portal_spots.size(), n_ex])
 		# spawn fairness: how far the nearest other spawn island is, for each spawn island
 		var by := {}
 		for sp in w.spawns: by[w.island_of(sp.x, sp.z)] = sp

@@ -89,6 +89,7 @@ func _setup_input() -> void:
 	_key("details", [KEY_C])                  # at home: a kin's details
 	_key("whistle", [KEY_H])                  # at home: whistle, and your kin come running
 	_key("inventory", [KEY_I])                # your things
+	_key("emote", [KEY_T])                    # in a match: hold for the emote wheel (truce, deal, no...); T talks to kin at home
 
 func goto(screen: String, opts := {}) -> void:
 	match_opts = opts
@@ -157,6 +158,8 @@ func apply_result(r: Dictionary) -> Dictionary:
 			if nk.get("shimmer", false): Care.dex_mark(nk["species"], "shimmer")
 			out["caught"].append(nk)
 	d["items"]["tonic"] = int(r.get("tonics", d["items"].get("tonic", 0)))
+	if r.has("rift_keys"):
+		d["items"]["rift_key"] = int(r["rift_keys"])     # carried keys come home with you, or stay in your deathbox
 	var treat: String = d.get("treat", "")
 	d["treat"] = ""
 	# every kin you brought remembers the match

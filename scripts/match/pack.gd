@@ -185,7 +185,7 @@ static func haul(h) -> Array:
 static func smart_loot(m, h, b: Dictionary) -> int:
 	var n := 0
 	for it in Life.box_items(m, h, b):
-		if String(it["key"]) in ["gems", "seeds", "tonics", "kits"]:
+		if String(it["key"]) in ["keys", "gems", "seeds", "tonics", "kits"]:
 			Life.take_item(m, h, b, it)
 			n += 1
 	# kin one at a time from the front (taking one shifts the rest down)
