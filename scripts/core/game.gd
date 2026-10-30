@@ -157,6 +157,8 @@ func apply_result(r: Dictionary) -> Dictionary:
 			if nk.get("shimmer", false): Care.dex_mark(nk["species"], "shimmer")
 			out["caught"].append(nk)
 	d["items"]["tonic"] = int(r.get("tonics", d["items"].get("tonic", 0)))
+	if r.has("rift_keys"):
+		d["items"]["rift_key"] = int(r["rift_keys"])     # carried keys come home with you, or stay in your deathbox
 	var treat: String = d.get("treat", "")
 	d["treat"] = ""
 	# every kin you brought remembers the match

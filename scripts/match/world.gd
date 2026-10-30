@@ -39,6 +39,9 @@ var lip := {}            # tile index -> true: a rim with a stone lip you can gr
 var labels: Array = []   # {name, pos: Vector3, kind: "poi" | "choke"} for the map and minimap
 var layout_id := ""      # "" for a generated map, else the authored layout's id
 var authored_portals: Array = []   # Vector2 tile spots from an authored layout, in opening order
+## The ways out an authored layout places (see Exits): {kind: "dock" | "hatch" | "outpost", pos: Vector3,
+## out: Vector2 (a dock's way out over the abyss, optional), walled: bool}. Empty: Exits works them out.
+var exit_defs: Array = []
 ## The sky train's track, when the layout has one: {pts: PackedVector3Array (x, deck height, z) every
 ## TRAIN_STEP tiles round the loop, len, stations: [arc length], names: [String], spec: the layout's train}
 var train_route: Dictionary = {}
@@ -213,7 +216,7 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 	depth.resize(w * h); depth.fill(0.0)
 	islands.clear(); pads.clear(); spawns.clear(); portal_spots.clear(); chest_spots.clear(); camp_spots.clear(); wild_spots.clear()
 	links.clear(); rings.clear(); winds.clear(); updrafts.clear()
-	sheer.clear(); lip.clear(); labels.clear(); layout_id = ""; authored_portals.clear(); train_route = {}; props.clear()
+	sheer.clear(); lip.clear(); labels.clear(); layout_id = ""; authored_portals.clear(); train_route = {}; props.clear(); exit_defs.clear()
 	var shape := FastNoiseLite.new(); shape.seed = seed_val; shape.frequency = 0.09
 	var terr := FastNoiseLite.new(); terr.seed = seed_val + 7; terr.frequency = 0.07
 	# island centres: a big heart island in the middle and a ring of outer islands around it,
@@ -1942,7 +1945,16 @@ func generate_authored(L: Dictionary, seed_val: int) -> void:
 		links.append({"from": a, "to": b, "take": pa, "land": _inward(b, pb, pa), "glide": true})
 	for ap in L.get("portals", []):
 		authored_portals.append(_v2(ap))
+	exit_defs.clear()
+	for ek in [["docks", "dock"], ["outposts", "outpost"], ["hatches", "hatch"]]:
+		for ap in L.get(ek[0], []):
+			authored_portals.append(_v2(ap))
+			exit_defs.append({"kind": ek[1], "at": _v2(ap), "out": Vector2(float(ap[2]), float(ap[3])) if (ap as Array).size() >= 4 else Vector2.ZERO,
+				"walled": (ap as Array).size() >= 3 and ek[1] == "outpost" and bool(ap[2])})
 	_place_spots()
+	for ed in exit_defs:
+		var ea: Vector2 = ed["at"]
+		ed["pos"] = Vector3(floor(ea.x) + 0.5, ground_at(ea.x, ea.y), floor(ea.y) + 0.5)
 	# loot placed by hand: the perches' chests and weapons
 	for ii in defs.size():
 		var D2: Dictionary = defs[ii]
