@@ -79,6 +79,14 @@ func fresh() -> Dictionary:
 		"rivals": {},         # rival hunters you've dealt with: how greedy they are, how they feel about you
 		"offers": [],         # rivals asking to buy back kin you took from them
 		"ransom_log": [],     # what happened at the Ransom House, newest last
+		"armory": [],         # weapons and gloves brought home (Loot items); see Econ
+		"arm_lvl": 0, "pack_lvl": 0, "scrap": 0,
+		"loadout": {},        # what you take on the next expedition: slot -> armory uid
+		"valuables": {},      # treasure to sell, and Soul Embers
+		"raid_out": [],       # loadout pieces out on an expedition right now
+		"feeders": [],        # troughs on the farm: {id, kind, x, z, food: [keys], auto}
+		"feeder_inv": {},     # feeders bought but not set down yet
+		"graves": [],         # kin that died, with their memories (Econ.kin_dies)
 	}
 
 func _empty_plots(n: int) -> Array:
@@ -118,7 +126,11 @@ func load_game() -> void:
 			d[k] = parsed[k]
 		# JSON numbers come back as floats; plots and roster are fine with that.
 
+var no_write := false         # headless checks play with a save without touching the real file
+
 func save_game() -> void:
+	if no_write:
+		return
 	var f := FileAccess.open(path_for(slot), FileAccess.WRITE)
 	if f:
 		f.store_string(JSON.stringify(d))

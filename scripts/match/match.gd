@@ -425,6 +425,7 @@ func _spawn_hunters() -> void:
 				player.teleport(at)
 				player.tonics = int(Save.d["items"].get("tonic", 0)) + 2; player.free_tonics = 2     # everyone sets out with a couple
 				_apply_home_perks(player)
+				_apply_armory_kit(player)
 				if player.kin:
 					_apply_treat(player.kin)
 				_start_drop(player, at)
@@ -444,6 +445,9 @@ func _spawn_hunters() -> void:
 				tracked.append({"kin": h.kin, "holder": h})
 			h.ai = bot_brain.new_mind(rng, float(opts.get("bot_skill", bot_cfg["skill"])), bot_cfg)
 			h.tonics = 3
+			# rivals carry a little treasure: worth taking from their box
+			if rng.randf() < 0.35 + 0.15 * tier:
+				h.pack.append(Loot.valuable(Loot.roll_valuable(rng, mini(tier, 2))))
 			_start_drop(h, at)
 
 ## Every match starts in the sky. Hunters glide down from above their squad's side of the map
@@ -569,6 +573,20 @@ func _apply_home_perks(h: Hunter) -> void:
 	if gp.has("forge"):
 		h.tonics += 1
 		h.free_tonics += 1
+
+## What you took from the armory: the weapon in your hands and the gloves you wear (at risk: die and
+## they're in your deathbox like everything else), and your backpack's size.
+func _apply_armory_kit(h: Hunter) -> void:
+	if opts.get("training", false) or opts.get("tutorial", false) or opts.get("duel", false):
+		return
+	h.pack_cap = Econ.pack_cap()
+	for it in opts.get("kit_items", []):
+		match String(it.get("t", "")):
+			"weapon": Loot.equip(h, it)
+			"glove":
+				if Gear.ALL.has(String(it["id"])):
+					h.gear[Gear.slot_of(String(it["id"]))] = {"id": it["id"], "rar": int(it["rar"])}
+	h.refresh_gear()
 
 func _apply_treat(k: Kin) -> void:
 	match String(Save.d.get("treat", "")):
@@ -725,7 +743,10 @@ func _spawn_breakables() -> void:
 	var wr := RandomNumberGenerator.new(); wr.seed = seed_val * 31 + 7
 	var keys: Array = Data.weapon_ids()
 	for i in world.weapon_spots.size():
-		spawn_weapon(String(keys[wr.randi() % keys.size()]), Data.roll_rarity(wr, 1 if tier >= 2 else 0), world.weapon_spots[i], "ws%d" % i, false)
+		var wk0 := String(keys[wr.randi() % keys.size()])
+		var wr0 := Data.roll_rarity(wr, 1 if tier >= 2 else 0)
+		var wsp: Vector3 = world.weapon_spots[i]
+		spawn_weapon(wk0, wr0, wsp, "ws%d" % i, false, -1, Loot.weapon(wk0, wr0, Loot.roll_element(wr, world.biome_at(wsp.x, wsp.z))))
 
 func _add_break(kind_s: String, at: Vector3) -> void:
 	var n := Models.breakable(kind_s)
@@ -734,16 +755,55 @@ func _add_break(kind_s: String, at: Vector3) -> void:
 	add_child(n)
 	breaks.append({"i": breaks.size(), "pos": at, "kind": kind_s, "hp": BREAK_HP[kind_s], "node": n, "dead": false})
 
-func spawn_weapon(w: String, rar: int, at: Vector3, id := "", send := true, ammo := -1) -> void:
+func spawn_weapon(w: String, rar: int, at: Vector3, id := "", send := true, ammo := -1, item := {}) -> void:
 	if id == "":
 		wdrop_n += 1
 		id = "w%s_%d" % [player.nid if player else "x", wdrop_n]
 	var n := Models.weapon_drop(w, rar)
 	n.position = at
 	add_child(n)
-	wpicks.append({"id": id, "pos": at, "wid": w, "rar": rar, "node": n, "ammo": ammo})
+	var wp := {"id": id, "pos": at, "wid": w, "rar": rar, "node": n, "ammo": ammo}
+	if not item.is_empty():
+		wp["item"] = item
+		if String(item.get("el", "")) != "":
+			_element_motes(n, Loot.ELEMENTS[String(item["el"])]["col"], String(item.get("uq", "")) != "")
+	wpicks.append(wp)
 	if net_on and send:
-		net_event(["wdrop", id, w, rar, _r(at.x), _r(at.y), _r(at.z), ammo])
+		net_event(["wdrop", id, w, rar, _r(at.x), _r(at.y), _r(at.z), ammo, String(item.get("el", "")), String(item.get("uq", ""))])
+
+## A found weapon with an element (or a named one) glows its colour, so you can spot it from afar.
+func _element_motes(n: Node3D, col: Color, unique: bool) -> void:
+	var p := CPUParticles3D.new()
+	p.amount = 18 if unique else 10
+	p.lifetime = 1.2
+	p.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE
+	p.emission_sphere_radius = 0.45
+	p.direction = Vector3.UP; p.spread = 25.0
+	p.initial_velocity_min = 0.4; p.initial_velocity_max = 1.1
+	p.gravity = Vector3.ZERO
+	p.scale_amount_min = 0.05; p.scale_amount_max = 0.11
+	var sm := SphereMesh.new(); sm.radius = 0.5; sm.height = 1.0; sm.radial_segments = 6; sm.rings = 3
+	p.mesh = sm
+	p.material_override = Models.glow_mat(Color(col, 0.9))
+	p.position = Vector3(0, 0.7, 0)
+	n.add_child(p)
+
+## Treasure on the ground: a valuable for the backpack.
+func spawn_val(item: Dictionary, at: Vector3) -> void:
+	wdrop_n += 1
+	var vd: Dictionary = Loot.VALUABLES.get(String(item.get("id", "")), {})
+	var n := Models.gear_drop(vd.get("col", Color("ffd36a")), int(vd.get("rar", 1)))
+	n.position = at
+	add_child(n)
+	if String(item.get("id", "")) == "soul_ember":
+		_element_motes(n, Color("9ff0e0"), true)
+	wpicks.append({"id": "v%d" % wdrop_n, "pos": at, "val": String(item.get("id", "")), "item": item, "rar": int(vd.get("rar", 1)), "node": n, "wid": "", "ammo": -1})
+
+## A weapon found at a spot: the region's element sometimes, and now and then a named unique.
+func found_weapon(at: Vector3, wid: String, rar: int, unique_chance := 0.0) -> Dictionary:
+	if unique_chance > 0.0 and rng.randf() < unique_chance:
+		return Loot.weapon("", 0, "", Loot.roll_unique(rng))
+	return Loot.weapon(wid, rar, Loot.roll_element(rng, world.biome_at(at.x, at.z)))
 
 # ------------------------------------------------------------------ gear
 var gpads: Array = []        # pocket jump pads {pos, t, node}
@@ -938,9 +998,11 @@ func in_smoke(p: Vector3) -> bool:
 			return true
 	return false
 
-func _take_weapon(h: Hunter, wp: Dictionary, from_net := false) -> void:
+func _take_weapon(h: Hunter, wp: Dictionary, from_net := false, keep_old := false) -> void:
 	if wp.has("gear"):
 		_take_gear(h, wp)
+		return
+	if wp.has("val"):
 		return
 	wpicks.erase(wp)
 	(wp["node"] as Node3D).queue_free()
@@ -948,12 +1010,14 @@ func _take_weapon(h: Hunter, wp: Dictionary, from_net := false) -> void:
 		return
 	if net_on:
 		net_event(["wtake", wp["id"], h.nid, wp["wid"], wp["rar"]])
-	var old_w := h.wid; var old_r := h.wrar
+	var old_it := Loot.of_hand(h)
 	var old_ammo := h.ammo if h.reload_t <= 0.0 else 0
-	h.equip(String(wp["wid"]), int(wp["rar"]), int(wp.get("ammo", -1)))
-	var ba := randf() * TAU
-	var back := Vector3(cos(ba), 0, sin(ba)) * 0.9
-	spawn_weapon(old_w, old_r, Vector3(h.pos.x + back.x, h.ground(), h.pos.z + back.z), "", true, old_ammo)
+	Loot.equip(h, Pack.ground_item(wp), int(wp.get("ammo", -1)))
+	if not keep_old:
+		# the old one is put down where you stand (with the backpack, the player's goes in it instead)
+		var ba := randf() * TAU
+		var back := Vector3(cos(ba), 0, sin(ba)) * 0.9
+		spawn_weapon(String(old_it["wid"]), int(old_it["rar"]), Vector3(h.pos.x + back.x, h.ground(), h.pos.z + back.z), "", true, old_ammo, old_it if Loot.keepable(old_it) else {})
 	var col: Color = Data.RARITY[int(wp["rar"])]["color"]
 	sfx("reload", h.pos, 0.0, 0.8)
 	fx.ring(h.pos, 1.4, col, 0.35)
@@ -962,6 +1026,28 @@ func _take_weapon(h: Hunter, wp: Dictionary, from_net := false) -> void:
 		train["_weapon"] = true
 		var r: Dictionary = Data.RARITY[int(wp["rar"])]
 		hud.toast("%s  ·  +%d%% damage" % [h.wpn["name"], int(round((float(r["dmg"]) - 1.0) * 100.0))] if int(wp["rar"]) > 0 else String(h.wpn["name"]), col)
+
+## What pressing interact on a ground item will do, for the prompt.
+func _pickup_label(h: Hunter, wp: Dictionary) -> String:
+	var it := Pack.ground_item(wp)
+	var k := Settings.key_cap("interact")
+	var nm := Loot.name_of(it)
+	var fill := "%d/%d" % [h.pack.size(), h.pack_cap]
+	var into_hand := false
+	match String(it.get("t", "")):
+		"weapon": into_hand = Loot.value(it) > Loot.value(Loot.of_hand(h)) or not Pack.wants(h, it)
+		"glove":
+			var cur: Dictionary = h.gear[Gear.slot_of(String(it["id"]))]
+			into_hand = cur.is_empty() or Loot.value(it) > Loot.value({"t": "glove", "id": cur["id"], "rar": cur["rar"]}) or not Pack.wants(h, it)
+	if opts.get("training", false):
+		return "Press %s to take %s  ·  %s" % [k, nm, Loot.sub_of(it)]
+	if into_hand:
+		var old := Loot.of_hand(h) if String(it["t"]) == "weapon" else {}
+		var to_pack := ("  ·  yours goes in your pack (%s)" % fill) if Loot.keepable(old) else ""
+		return "Press %s to equip %s  ·  %s%s" % [k, nm, Loot.sub_of(it), to_pack]
+	if Pack.room(h):
+		return "Press %s to pack %s  (%s)  ·  %s" % [k, nm, fill, Loot.sub_of(it)]
+	return "Backpack full (%s)  ·  %s to swap something out for %s" % [fill, k, nm]
 
 func _update_wpicks(dt: float) -> void:
 	for wp in wpicks:
@@ -974,6 +1060,8 @@ func _update_wpicks(dt: float) -> void:
 		if h.ctrl != "bot" or h.out or h.downed or h.dropping or h.riding or h.remote:
 			continue
 		for wp in wpicks:
+			if wp.has("val"):
+				continue
 			if wp.has("gear"):
 				if (h.gear[0].is_empty() or h.gear[1].is_empty()) and h.flat_dist(wp["pos"]) < 1.4 and absf(h.pos.y - float(wp["pos"].y)) < 1.0:
 					_take_gear(h, wp)
@@ -1270,6 +1358,8 @@ func on_damage(target: Ent, by: Ent, d: float, o: Dictionary) -> void:
 		(target as Hunter).dmg_taken += d
 	if credit is Hunter and target != credit:
 		credit.dmg_done += d
+		if o.has("leech") and target.team != credit.team and not credit.remote:
+			credit.heal(d * float(o["leech"]))     # a Void weapon drains what it deals
 		if not credit.remote and target.team != credit.team and src != "burn":
 			credit.ult = minf(1.0, credit.ult + d / 320.0 * (1.3 if credit.perk_n("overcharge") > 0 else 1.0))
 		if not credit.remote and target.team != credit.team and not (target is Hunter and (target as Hunter).downed):
@@ -1628,9 +1718,20 @@ func on_mob_dead(mb: Mob, by: Ent, _o: Dictionary) -> void:
 			drop("armor", mb.pos + Vector3(0, 0.6, 0), 25)
 		if mb.mkind in ["brute", "warden", "sentinel"] and rng.randf() < (1.0 if mb.mkind == "warden" else 0.4):
 			spawn_gear(Gear.roll(rng), Data.roll_rarity(rng, 2 if mb.mkind == "warden" else 0), mb.pos + Vector3(0.8, 0, 0.4))
+		if mb.mkind == "warden":
+			# the Warden guards the best things: a weapon (sometimes a named one), treasure, maybe a Soul Ember
+			var wkeys: Array = Data.weapon_ids()
+			var wit := found_weapon(mb.pos, String(wkeys[randi() % wkeys.size()]), Data.roll_rarity(rng, 2), 0.2)
+			spawn_weapon(String(wit["wid"]), int(wit["rar"]), mb.pos + Vector3(-0.8, 0, 0.4), "", true, -1, wit)
+			spawn_val(Loot.valuable(Loot.roll_valuable(rng, 2)), mb.pos + Vector3(0, 0, -0.9))
+			if rng.randf() < 0.5:
+				spawn_val(Loot.valuable("soul_ember"), mb.pos + Vector3(0.9, 0, -0.6))
+		elif mb.mkind == "brute" and rng.randf() < 0.25:
+			spawn_val(Loot.valuable(Loot.roll_valuable(rng, 0 if tier == 0 else 1)), mb.pos + Vector3(0, 0, -0.8))
 		if mb.mkind == "glimmer":
 			var keys: Array = Data.weapon_ids()
-			spawn_weapon(String(keys[randi() % keys.size()]), Data.roll_rarity(rng, 1), mb.pos)
+			var git := found_weapon(mb.pos, String(keys[randi() % keys.size()]), Data.roll_rarity(rng, 1))
+			spawn_weapon(String(git["wid"]), int(git["rar"]), mb.pos, "", true, -1, git)
 			if credit is Hunter: add_feed("%s caught the Glimmerkin's treasure" % credit.pname)
 		if rng.randf() < (0.35 if mb.mkind == "brute" else 0.12):
 			drop("seed", mb.pos + Vector3(0, 0.6, 0), 1, Data.pick_seed())
@@ -2313,6 +2414,7 @@ func _shot_end(s: Dictionary, at: Vector3, e: Ent) -> void:
 	if x.has("slow"): o["slow"] = x["slow"]
 	if x.has("root"): o["root"] = x["root"]
 	if x.has("stun"): o["stun"] = x["stun"]
+	if x.has("leech"): o["leech"] = x["leech"]
 	if x.has("kbi"): o["kbi"] = x["kbi"]
 	if x.has("ab"): o["ab"] = x["ab"]
 	if x.get("hook", false) and by:
@@ -2551,8 +2653,14 @@ func _gather_input() -> void:
 			pending_input[a[1]] = true
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("menu") and hud and (hud.swap_open() or hud.pack_open()):
+		hud.close_swap(); hud.close_pack()
+		get_viewport().set_input_as_handled()
+		return
 	if event.is_action_pressed("menu") and not over and not result.get("ending", false) and not Overlay.is_open():
 		Overlay.open_pause("match")
+	elif event.is_action_pressed("inventory") and hud and player and not player.out and not opts.get("training", false):
+		hud.toggle_pack()
 
 ## Called by the Overlay whenever one of its menus opens over this match.
 func on_menu_opened() -> void:
@@ -2601,6 +2709,24 @@ func step(dt: float) -> void:
 				x.ctrl = "idle"
 				eliminate(x, null, "knocked out")
 				break
+	if (opts.get("pack_demo", false) or opts.get("bag_demo", false)) and player and time > 1.0 and not has_meta("pack_demo_done") and hud:
+		# test: a full backpack. pack_demo picks up treasure (the swap window); bag_demo opens the backpack
+		set_meta("pack_demo_done", true)
+		player.pack_cap = 6
+		var gk: Array = Gear.ALL.keys()
+		player.pack = [Loot.weapon("smg", 2, "venom"), Loot.valuable("sky_pearl"), Loot.glove(String(gk[1 % gk.size()]), 2), Loot.weapon("shotgun", 1), Loot.valuable("old_coin"), Loot.valuable("kin_idol")]
+		Loot.equip(player, Loot.weapon("", 0, "", "thunderclap"))
+		player.gear[Gear.slot_of(String(gk[0]))] = {"id": String(gk[0]), "rar": 3}
+		player.refresh_gear()
+		var pat := world.free_spot_near(player.pos + Vector3(1.0, 0, 0.6), [player.pos], 0.6)
+		spawn_val(Loot.valuable("crown_shard"), Vector3(pat.x, world.ground_at(pat.x, pat.z), pat.z))
+		var pat2 := world.free_spot_near(player.pos + Vector3(-1.4, 0, 1.0), [player.pos, pat], 0.6)
+		var fw := Loot.weapon("sniper", 3, "frost")
+		spawn_weapon("sniper", 3, Vector3(pat2.x, world.ground_at(pat2.x, pat2.z), pat2.z), "", false, -1, fw)
+		if opts.get("pack_demo", false):
+			Pack.take_ground(self, player, wpicks[wpicks.size() - 2])
+		else:
+			hud.toggle_pack()
 	if opts.get("mates_demo", false) and player:
 		# test: the squad UI. One teammate gets knocked, one dies into a deathbox, and the first is
 		# picked back up a few seconds later (frames under the minimap and the ally alerts up top)
@@ -2634,7 +2760,9 @@ func step(dt: float) -> void:
 					if ids.size() > 1:
 						(lb["gear"] as Array).append({"id": String(ids[0]), "rar": 3})
 						(lb["gear"] as Array).append({"id": String(ids[1]), "rar": 1})
-					lb["weapon"] = {"wid": "sniper", "rar": 2}
+					lb["weapon"] = Loot.weapon("sniper", 2, "frost")
+					lb["pack"] = [Loot.valuable("crown_shard"), Loot.weapon("smg", 3, "venom"), Loot.valuable("old_coin"), Loot.valuable("soul_ember")]
+					player.pack = [Loot.valuable("sky_pearl"), Loot.weapon("shotgun", 1), Loot.valuable("kin_idol"), Loot.weapon("rifle", 2), Loot.valuable("old_coin")]
 					lb["gems"] = int(lb.get("gems", 0)) + 25
 					lb["empty"] = false
 					player.teleport(lb["pos"] + Vector3(0.8, 0, 0.6))
@@ -2944,7 +3072,13 @@ func _update_interact(dt: float) -> void:
 			var bd := 1.5
 			for wp in wpicks:
 				var d: float = h.flat_dist(wp["pos"])
-				if d < bd and absf(h.pos.y - float(wp["pos"].y)) < 1.2 and wp.has("gear"):
+				if d < bd and absf(h.pos.y - float(wp["pos"].y)) < 1.2 and h == player:
+					# the player: equip it if it's better, else into the backpack (full: choose what to drop)
+					bd = d
+					best = {"kind": "weapon", "wp": wp, "label": _pickup_label(h, wp), "col": Loot.col_of(Pack.ground_item(wp))}
+				elif d < bd and absf(h.pos.y - float(wp["pos"].y)) < 1.2 and wp.has("val"):
+					continue
+				elif d < bd and absf(h.pos.y - float(wp["pos"].y)) < 1.2 and wp.has("gear"):
 					bd = d
 					var gd: Dictionary = Gear.ALL[wp["gear"]]
 					var rn: String = String(Data.RARITY[int(wp["rar"])]["name"]) + " " if int(wp["rar"]) > 1 else ""
@@ -2978,7 +3112,10 @@ func _update_interact(dt: float) -> void:
 			"weapon":
 				if not h.swap_hold:
 					h.swap_hold = true
-					_take_weapon(h, best["wp"])
+					if h == player and not opts.get("training", false):
+						Pack.take_ground(self, h, best["wp"])
+					else:
+						_take_weapon(h, best["wp"])
 			"finish":
 				# a short hold commits you to the stomp (Life.start_stomp): no cancelling after that
 				var o: Hunter = best["ent"]
@@ -3105,7 +3242,15 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 		var keys: Array = Data.weapon_ids()
 		var a := randf() * TAU
 		var wk: String = biomes.weapon_at(c["pos"], keys) if biomes else String(keys[randi() % keys.size()])
-		spawn_weapon(wk, mini(Data.RARITY.size() - 1, Data.roll_rarity(rng, maxi(0, t - 1) + (biomes.rarity_bonus_at(c["pos"]) if biomes else 0))), c["pos"] + Vector3(cos(a) * 1.1, 0, sin(a) * 1.1))
+		var wrc := mini(Data.RARITY.size() - 1, Data.roll_rarity(rng, maxi(0, t - 1) + (biomes.rarity_bonus_at(c["pos"]) if biomes else 0)))
+		var wit := found_weapon(c["pos"], wk, wrc, [0.0, 0.02, 0.08][t])
+		spawn_weapon(String(wit["wid"]), int(wit["rar"]), c["pos"] + Vector3(cos(a) * 1.1, 0, sin(a) * 1.1), "", true, -1, wit)
+	if not from_net and randf() < [0.3, 0.7, 1.0][t]:
+		# treasure for the backpack; the vault sometimes holds a Soul Ember
+		var a3 := randf() * TAU
+		spawn_val(Loot.valuable(Loot.roll_valuable(rng, t)), c["pos"] + Vector3(cos(a3) * 1.0, 0, sin(a3) * 1.0))
+		if t == 2 and rng.randf() < 0.3:
+			spawn_val(Loot.valuable("soul_ember"), c["pos"] + Vector3(-cos(a3) * 1.0, 0, -sin(a3) * 1.0))
 	if not from_net and randf() < [0.35, 0.65, 1.0][t]:
 		var a2 := randf() * TAU
 		spawn_gear(Gear.roll(rng), Data.roll_rarity(rng, t), c["pos"] + Vector3(cos(a2) * 1.2, 0, sin(a2) * 1.2))
@@ -3924,6 +4069,12 @@ func _finish() -> void:
 		r["armor_tier"] = player.armor_tier
 		r["tonics"] = maxi(0, player.tonics - player.free_tonics)
 		r["stats"] = player.stats.duplicate()
+		# weapons, gloves and treasure: home to the armory if you made it out, else what stayed behind
+		if result.get("extracted", false):
+			r["haul"] = Pack.haul(player)
+		else:
+			var lb := Life.box_of(self, player)
+			r["lost_items"] = Pack._box_things(lb).map(func(c): return c["it"]) if not lb.is_empty() else Pack.haul(player)
 		# what each kin you brought did, for its memories and growth
 		r["kin_runs"] = []
 		for kk in [player.kin, player.kin2]:
@@ -4318,7 +4469,10 @@ func _net_ev(x, from: String) -> void:
 			for wp in wpicks:
 				if wp["id"] == String(x[1]): seen = true
 			if not seen:
-				spawn_weapon(String(x[2]), int(x[3]), Vector3(x[4], x[5], x[6]), String(x[1]), false, int(x[7]) if x.size() > 7 else -1)
+				var nit := {}
+				if x.size() > 9 and (String(x[8]) != "" or String(x[9]) != ""):
+					nit = Loot.weapon(String(x[2]), int(x[3]), String(x[8]), String(x[9]))
+				spawn_weapon(String(x[2]), int(x[3]), Vector3(x[4], x[5], x[6]), String(x[1]), false, int(x[7]) if x.size() > 7 else -1, nit)
 		"wtake":
 			for wp in wpicks:
 				if wp["id"] == String(x[1]):

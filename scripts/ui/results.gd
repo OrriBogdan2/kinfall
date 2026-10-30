@@ -84,6 +84,22 @@ func show_result(r: Dictionary) -> void:
 			for i in chips.size():
 				flow.add_child(_chip(chips[i][0], chips[i][1], chips[i][2], 0.75 + i * 0.14))
 			v.add_child(flow)
+	# weapons, gloves and treasure: into the armory, or left behind in your deathbox
+	var haul: Array = s.get("haul", [])
+	if won and not haul.is_empty():
+		v.add_child(UI.section("Into your armory" if Save.has_building("armory") else "Into your armory (build it on the farm to use them)"))
+		var hf := HFlowContainer.new()
+		hf.add_theme_constant_override("h_separation", 8); hf.add_theme_constant_override("v_separation", 8)
+		for i in haul.size():
+			var it: Dictionary = haul[i]
+			hf.add_child(_chip(Loot.icon_of(it), Loot.name_of(it) + ("  (sold)" if it.get("sold", false) else ""), Loot.el_col(it), 0.9 + i * 0.1))
+		v.add_child(hf)
+		if int(s.get("arm_sold", 0)) > 0:
+			v.add_child(_note("Your armory was full: what didn't fit sold for %d gems." % int(s["arm_sold"]), UI.GOLD))
+	var lost_it: Array = s.get("lost_items", [])
+	if not won and not lost_it.is_empty():
+		var names: Array = lost_it.map(func(it): return Loot.name_of(it))
+		v.add_child(_note("Left in your deathbox: %s." % ", ".join(names), Color("ffb0a0")))
 	if s.has("kin"):
 		v.add_child(_kin_card(s))
 	for back in s.get("rescued", []):

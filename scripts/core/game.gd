@@ -213,6 +213,8 @@ func apply_result(r: Dictionary) -> Dictionary:
 		if Save.kin(str(d.get("active2", ""))).is_empty() and str(d.get("active2", "")) != "none":
 			d["active2"] = ""
 	out["lost_news"] = lost_news
+	# weapons, gloves and treasure: into the armory, or lost with you
+	Econ.after_raid(r, out)
 	if not brought.is_empty():
 		out["kin"] = brought[0]
 	# the vault keeps a third of what you were carrying when you go down
