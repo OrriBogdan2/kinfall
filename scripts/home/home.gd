@@ -785,8 +785,8 @@ func _move_kin(d: float) -> void:
 			elif Vector2(tpos.x - pos.x, tpos.z + 1.0 - pos.z).length() < 0.6:
 				k.erase("task")
 				var pd: Dictionary = Save.d[tk[0]][tk[1]]
-				if pd["crop"] != "" and float(pd.get("wt", 0.0)) <= 0.0:
-					_water(tk[0], tk[1])
+				if pd["crop"] != "" and (float(pd.get("wt", 0.0)) <= 0.0 or int(pd.get("wet", 2)) < 2):
+					_water(tk[0], tk[1], "kin")
 					_emote(k, "♪")
 					rec["trust"] = minf(100.0, float(rec["trust"]) + (0.07 if int(rec.get("pining", 0)) > 0 else 0.2))
 				k["t"] = randf_range(1.0, 2.0)
@@ -1337,6 +1337,7 @@ func _label_for(it: Dictionary) -> String:
 			var cd: Dictionary = Data.CROPS[d["crop"]]
 			if int(d["stage"]) >= int(cd["grow"]): return "Harvest the %s" % cd["name"]
 			if float(d.get("wt", 0.0)) <= 0.0: return "Water the %s" % cd["name"]
+			if int(d.get("wet", 2)) < 2: return "Water the %s (the rain only soaked it)" % cd["name"]
 			return "%s: watered, growing (%s)" % [cd["name"], _grow_left(it["arr"], d)]
 		"pot": return "Cook"
 		"rack": return "Glider skins"
@@ -1602,12 +1603,15 @@ func _farm_tick() -> void:
 				continue
 			var wt := float(d.get("wt", 0.0))
 			if wt <= 0.0 and raining:
-				_water(arr, i, false)
+				_water(arr, i, "rain")
 				continue
 			if wt > 0.0 and now - wt >= Data.WATER_TIME * (0.5 if arr == "gh_plots" else 1.0):
 				d["stage"] = int(d["stage"]) + 1
-				d["care"] = int(d.get("care", 0)) + 1
+				# rain only makes it wet; watering it yourself (or a farmhand kin) is what counts as tending
+				if int(d.get("wet", 2)) >= 2:
+					d["care"] = int(d.get("care", 0)) + 1
 				d["wt"] = 0.0
+				d["wet"] = 0
 				var pn: Node3D = nodes[i]
 				fx.burst(pn.position + Vector3(0, 0.5, 0), Color("8fd16a"), 8, 1.6)
 				_refresh_plot(arr, i)
@@ -1621,19 +1625,29 @@ func _dry_plot() -> Array:
 		var nodes: Array = plots if arr == "plots" else gh_plots
 		for i in mini(nodes.size(), Save.d[arr].size()):
 			var d: Dictionary = Save.d[arr][i]
-			if d["crop"] != "" and float(d.get("wt", 0.0)) <= 0.0 and int(d["stage"]) < int(Data.CROPS[d["crop"]]["grow"]):
+			if d["crop"] != "" and (float(d.get("wt", 0.0)) <= 0.0 or int(d.get("wet", 2)) < 2) and int(d["stage"]) < int(Data.CROPS[d["crop"]]["grow"]):
 				if arr == "plots" or _isle_open("orchard"):
 					return [arr, i]
 	return []
 
-func _water(arr: String, i: int, by_hand := true) -> void:
+## Watering. who: "you" (by hand), "kin" (a farmhand) or "rain". Rain makes a plant wet so it
+## grows; by hand (or a farmhand) it's also tended, which is what earns the bigger harvest. A plant
+## the rain already soaked can still be watered by hand to tend it, without restarting its growth.
+func _water(arr: String, i: int, who = "you") -> void:
+	if typeof(who) == TYPE_BOOL: who = "you" if who else "rain"
 	var d: Dictionary = Save.d[arr][i]
-	d["wt"] = Time.get_unix_time_from_system()
+	var already := float(d.get("wt", 0.0)) > 0.0
+	if not already:
+		d["wt"] = Time.get_unix_time_from_system()
+	d["wet"] = 1 if who == "rain" else 2
 	var pn: Node3D = _plot_node(arr, i)
-	if by_hand:
+	if who == "you":
 		_day1("water")
 		Sfx.play("plant", null, -6.0, 0.1, 1.4)
 		fx.burst(pn.position + Vector3(0, 0.8, 0), Color("7ac8ff"), 14, 2.0)
+		if already:
+			fx.burst(pn.position + Vector3(0, 0.9, 0), Color("bfefff"), 10, 2.4)
+			_toast("Tended! Rain only soaks it; your watering counts toward a bigger harvest.")
 	_refresh_plot(arr, i)
 	Save.save_game()
 
@@ -1657,12 +1671,12 @@ func _open_plot(arr: String, i: int) -> void:
 			fx.burst(pn.position + Vector3(0, 0.6, 0), cd["color"], 18 + n * 4, 3.0)
 			Sfx.play("harvest")
 			_toast("%d %s%s%s" % [n, cd["name"], "" if n == 1 else "s", extra])
-			d["crop"] = ""; d["stage"] = 0; d["care"] = 0; d["wt"] = 0.0
+			d["crop"] = ""; d["stage"] = 0; d["care"] = 0; d["wt"] = 0.0; d["wet"] = 0
 			_refresh_plot(arr, i)
 			Save.save_game()
 			_refresh_top()
 			return
-		if float(d.get("wt", 0.0)) <= 0.0:
+		if float(d.get("wt", 0.0)) <= 0.0 or int(d.get("wet", 2)) < 2:
 			_water(arr, i)
 			return
 		var v := _new_panel(cd["name"], 440)
