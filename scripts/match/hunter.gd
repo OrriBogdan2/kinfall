@@ -227,7 +227,8 @@ func max_dashes() -> float:
 	return base + (1.0 if shoulder() == "updraft" else 0.0) + float(perk_n("secondwind"))
 
 func dash_regen() -> float:
-	return dodge_def.cooldown if dodge_def else DASH_REGEN
+	# each rank past the first recharges dashes faster
+	return (dodge_def.cooldown if dodge_def else DASH_REGEN) * (1.0 - 0.15 * float(maxi(0, int(slot_lv.get("dash", 1)) - 1)))
 
 ## Right click is always your weapon's ability, as left click is its attack.
 func _kit_from_weapon() -> void:
@@ -1248,6 +1249,10 @@ func sim(dt: float) -> void:
 			inp[kk] = false
 		inp["move"] = Vector2.ZERO
 	# inputs
+	for gk in [["dash", "dash", "dash"], ["sec", "sec", "sec"], ["gear1", "gear", "gear0"], ["sig", "kin", "k1"], ["ult", "ult", "r"]]:
+		_gate(gk[0], gk[1], gk[2])
+	if not downed and not dropping and not out:
+		gain_xp(dt * 1.2)       # a slow trickle, so a careful run still levels
 	_tick_base(dt)
 	if base_t > 0.0:
 		inp["fire"] = false        # channeling: no attacks while you base
@@ -1788,6 +1793,88 @@ var dodge_def: AbilityDef     # the class's dodge
 var stats := {}                # this match's counts for challenges (the local player's)
 var gear: Array = [{}, {}]     # two slots of found gear: {id, rar}
 var gear_cd: Array = [0.0, 0.0]
+
+# ---- run levels: like Supervive, you start each run at level 1 with one skill point and every
+# ability locked. XP comes from fighting (damage, knocks) and a slow trickle; each level gives a
+# point to unlock or strengthen an ability. The ultimate opens at level 6 (rank 2 at 9).
+const XP_TO := [0.0, 70.0, 170.0, 300.0, 460.0, 650.0, 870.0, 1120.0, 1400.0, 1710.0]   # total XP to reach level i+1
+const SLOTS := ["sec", "gear", "dash", "kin", "ult"]
+const SLOT_MAX := {"sec": 3, "gear": 3, "dash": 3, "kin": 3, "ult": 2}
+const ULT_AT := [6, 9]
+var lvl := 1
+var xp := 0.0
+var skill_pts := 1
+var slot_lv := {"sec": 0, "gear": 0, "dash": 0, "kin": 0, "ult": 0}
+
+func gain_xp(x: float) -> void:
+	if lvl >= XP_TO.size() or x <= 0.0:
+		return
+	xp += x
+	while lvl < XP_TO.size() and xp >= float(XP_TO[lvl]):
+		lvl += 1
+		skill_pts += 1
+		if is_local() and m and m.hud:
+			m.hud.toast("Level %d  ·  skill point ready" % lvl, Color("ffd27a"))
+			m.sfx("unlock", null, -6.0)
+			m.fx.ring(pos, 2.0, Color("ffd27a"), 0.4)
+	if not is_local():
+		_bot_spend()
+
+func xp_frac() -> float:
+	if lvl >= XP_TO.size():
+		return 1.0
+	var a := float(XP_TO[lvl - 1]); var b := float(XP_TO[lvl])
+	return clampf((xp - a) / (b - a), 0.0, 1.0)
+
+func can_level(slot: String) -> bool:
+	if skill_pts <= 0 or int(slot_lv.get(slot, 0)) >= int(SLOT_MAX.get(slot, 3)):
+		return false
+	if slot == "ult":
+		return lvl >= int(ULT_AT[mini(int(slot_lv["ult"]), ULT_AT.size() - 1)])
+	return true
+
+func level_slot(slot: String) -> bool:
+	if not can_level(slot):
+		return false
+	slot_lv[slot] = int(slot_lv[slot]) + 1
+	skill_pts -= 1
+	if is_local() and m and m.hud:
+		m.hud.ability_feedback({"sec": "sec", "gear": "gear0", "dash": "dash", "kin": "k1", "ult": "r"}[slot], "cast")
+		m.sfx("unlock", null, -8.0, 1.0 + 0.1 * float(slot_lv[slot]))
+	return true
+
+## Bots (and anyone skipping the choice) spend points in a sensible order.
+func _bot_spend() -> void:
+	var order := ["sec", "dash", "kin", "gear", "sec", "kin", "dash", "gear", "sec", "kin", "dash", "gear"]
+	while skill_pts > 0:
+		if can_level("ult"):
+			level_slot("ult"); continue
+		var done := false
+		for s in order:
+			if int(slot_lv[s]) < int(SLOT_MAX[s]) and can_level(s) and (int(slot_lv[s]) == 0 or order.find(s) >= 0):
+				level_slot(s); done = true; break
+		if not done: break
+
+## Everything open at rank 1, for practice modes.
+func unlock_all() -> void:
+	for s in SLOTS:
+		slot_lv[s] = maxi(int(slot_lv[s]), 1)
+	skill_pts = 0
+
+## Pressing a locked ability: spend a point on it if you have one, otherwise say it's locked.
+func _gate(key: String, slot: String, fb: String) -> void:
+	if not inp.get(key, false) or int(slot_lv[slot]) > 0:
+		return
+	inp[key] = false
+	if key == "dash": dash_buf = 0.0
+	if is_local() and level_slot(slot):
+		return
+	_ab_feedback(fb, "deny")
+	if is_local() and m.hud:
+		if slot == "ult" and skill_pts > 0:
+			m.hud.toast("Ultimate unlocks at level %d" % int(ULT_AT[0]), Color("a2a8bb"))
+		else:
+			m.hud.toast("Locked  ·  earn a skill point to unlock it", Color("a2a8bb"))
 
 var base_armor := 50.0
 ## Armor evolves through a run, like Supervive's: damage you deal to rival hunters fills it (monsters
