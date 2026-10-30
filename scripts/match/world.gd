@@ -754,6 +754,51 @@ func _near(p: Vector3, dist: float, ang: float, isl: int, taken: Dictionary) -> 
 			return Vector3(x + 0.5, level[i] * LEVEL, z + 0.5)
 	return Vector3.INF
 
+## What a point of interest holds, by its role (chests, camps, wild kin, a shrine).
+func _dress_poi(ii: int, role: String, poi: Vector3, toward_mid: float, taken: Dictionary) -> void:
+	match role:
+		"heart":
+			# the vault: the best chest in the middle, ringed by rocks, two guard camps
+			heart_spot = poi
+			chest_spots.append({"pos": poi, "tier": 2})
+			_pillars(poi, [Vector2(3.2, 3.2), Vector2(-3.2, 3.2), Vector2(3.2, -3.2), Vector2(-3.2, -3.2)])
+			for k in 2:
+				var cp := _near(poi, 4.5, a0_of(ii) + PI * k, ii, taken)
+				if cp != Vector3.INF: camp_spots.append({"pos": cp, "island": ii, "kind": "heavy"})
+			var side := _near(poi, 6.0, a0_of(ii) + PI * 0.5, ii, taken)
+			if side != Vector3.INF: chest_spots.append({"pos": side, "tier": 1})
+		"camp":
+			# a rare chest with the monsters standing between it and the middle of the map
+			chest_spots.append({"pos": poi, "tier": 1})
+			var cp := _near(poi, 2.6, toward_mid, ii, taken)
+			if cp != Vector3.INF: camp_spots.append({"pos": cp, "island": ii, "kind": "normal"})
+			_pillars(poi, [Vector2(cos(toward_mid + 1.3), sin(toward_mid + 1.3)) * 2.2, Vector2(cos(toward_mid - 1.3), sin(toward_mid - 1.3)) * 2.2])
+		"nest":
+			# wild kin around a nest, a small guard, a plain chest off to the side
+			for k in 2:
+				var wp := _near(poi, 1.8, toward_mid + PI * k, ii, taken)
+				if wp != Vector3.INF: wild_spots.append(wp)
+			var cp := _near(poi, 3.5, toward_mid + PI * 0.5, ii, taken)
+			if cp != Vector3.INF: camp_spots.append({"pos": cp, "island": ii, "kind": "light"})
+			var ch := _near(poi, 3.5, toward_mid - PI * 0.5, ii, taken)
+			if ch != Vector3.INF: chest_spots.append({"pos": ch, "tier": 0})
+			islands[ii]["nest"] = poi
+		"grove":
+			# quiet: two plain chests and a light camp
+			for k in 2:
+				var ch := _near(poi, 2.8, toward_mid + PI * (0.5 + k), ii, taken)
+				if ch != Vector3.INF: chest_spots.append({"pos": ch, "tier": 0})
+			var cp := _near(poi, 1.0, toward_mid, ii, taken)
+			if cp != Vector3.INF: camp_spots.append({"pos": cp, "island": ii, "kind": "light"})
+			if rng.randf() < 0.5:
+				var wp := _near(poi, 3.5, toward_mid + PI, ii, taken)
+				if wp != Vector3.INF: wild_spots.append(wp)
+		"shrine":
+			shrine_spots.append(poi)
+			_pillars(poi, [Vector2(2.2, 0), Vector2(-2.2, 0), Vector2(0, 2.2), Vector2(0, -2.2)])
+			var ch := _near(poi, 3.6, toward_mid + PI, ii, taken)
+			if ch != Vector3.INF: chest_spots.append({"pos": ch, "tier": 0})
+
 func _place_spots() -> void:
 	shrine_spots.clear()
 	heart_spot = Vector3.INF
@@ -788,48 +833,18 @@ func _place_spots() -> void:
 		var toward_mid := atan2(mid.y - poi.z, mid.x - poi.x)
 		_clear_around(poi, 2.4)
 		taken[Vector2i(int(poi.x), int(poi.z))] = true
-		match role:
-			"heart":
-				# the vault: the best chest in the middle, ringed by rocks, two guard camps
-				heart_spot = poi
-				chest_spots.append({"pos": poi, "tier": 2})
-				_pillars(poi, [Vector2(3.2, 3.2), Vector2(-3.2, 3.2), Vector2(3.2, -3.2), Vector2(-3.2, -3.2)])
-				for k in 2:
-					var cp := _near(poi, 4.5, a0_of(ii) + PI * k, ii, taken)
-					if cp != Vector3.INF: camp_spots.append({"pos": cp, "island": ii, "kind": "heavy"})
-				var side := _near(poi, 6.0, a0_of(ii) + PI * 0.5, ii, taken)
-				if side != Vector3.INF: chest_spots.append({"pos": side, "tier": 1})
-			"camp":
-				# a rare chest with the monsters standing between it and the middle of the map
-				chest_spots.append({"pos": poi, "tier": 1})
-				var cp := _near(poi, 2.6, toward_mid, ii, taken)
-				if cp != Vector3.INF: camp_spots.append({"pos": cp, "island": ii, "kind": "normal"})
-				_pillars(poi, [Vector2(cos(toward_mid + 1.3), sin(toward_mid + 1.3)) * 2.2, Vector2(cos(toward_mid - 1.3), sin(toward_mid - 1.3)) * 2.2])
-			"nest":
-				# wild kin around a nest, a small guard, a plain chest off to the side
-				for k in 2:
-					var wp := _near(poi, 1.8, toward_mid + PI * k, ii, taken)
-					if wp != Vector3.INF: wild_spots.append(wp)
-				var cp := _near(poi, 3.5, toward_mid + PI * 0.5, ii, taken)
-				if cp != Vector3.INF: camp_spots.append({"pos": cp, "island": ii, "kind": "light"})
-				var ch := _near(poi, 3.5, toward_mid - PI * 0.5, ii, taken)
-				if ch != Vector3.INF: chest_spots.append({"pos": ch, "tier": 0})
-				islands[ii]["nest"] = poi
-			"grove":
-				# quiet: two plain chests and a light camp
-				for k in 2:
-					var ch := _near(poi, 2.8, toward_mid + PI * (0.5 + k), ii, taken)
-					if ch != Vector3.INF: chest_spots.append({"pos": ch, "tier": 0})
-				var cp := _near(poi, 1.0, toward_mid, ii, taken)
-				if cp != Vector3.INF: camp_spots.append({"pos": cp, "island": ii, "kind": "light"})
-				if rng.randf() < 0.5:
-					var wp := _near(poi, 3.5, toward_mid + PI, ii, taken)
-					if wp != Vector3.INF: wild_spots.append(wp)
-			"shrine":
-				shrine_spots.append(poi)
-				_pillars(poi, [Vector2(2.2, 0), Vector2(-2.2, 0), Vector2(0, 2.2), Vector2(0, -2.2)])
-				var ch := _near(poi, 3.6, toward_mid + PI, ii, taken)
-				if ch != Vector3.INF: chest_spots.append({"pos": ch, "tier": 0})
+		_dress_poi(ii, role, poi, toward_mid, taken)
+		# authored islands can hold more places than their main one: big regions get several
+		for ex in islands[ii].get("extras", []):
+			var ep := Vector3(float(ex[0]) + 0.5, 0, float(ex[1]) + 0.5)
+			if is_void(ep.x, ep.z):
+				continue
+			ep.y = ground_at(ep.x, ep.z)
+			_clear_around(ep, 2.0)
+			taken[Vector2i(int(ep.x), int(ep.z))] = true
+			_dress_poi(ii, String(ex[2]), ep, atan2(mid.y - ep.z, mid.x - ep.x), taken)
+			if (ex as Array).size() > 3:
+				labels.append({"name": String(ex[3]), "pos": ep, "kind": "poi", "role": String(ex[2]), "height": ep.y})
 	# big islands get a second, smaller find on their far side so the extra ground isn't empty
 	if w >= 180:
 		for ii in range(1, islands.size()):
@@ -1613,7 +1628,7 @@ func generate_authored(L: Dictionary, seed_val: int) -> void:
 		islands.append({"c": cen, "r": sqrt(cells.size() / PI), "base": 0, "cells": cells, "role": String(D.get("role", "grove")),
 			"form": "authored", "fdir": Vector2.RIGHT, "name": String(D.get("name", "")), "id": String(D["id"]),
 			"region_fixed": int(D.get("region", 0)), "poi_at": poi, "drop": bool(D.get("drop", false)), "sheer_arcs": D.get("sheer", []),
-			"biome": String(D.get("biome", "")), "danger": int(D.get("danger", 0)), "perch": bool(D.get("perch", false))})
+			"biome": String(D.get("biome", "")), "danger": int(D.get("danger", 0)), "perch": bool(D.get("perch", false)), "extras": D.get("extras", [])})
 		if String(D.get("biome", "")) != "":
 			var bj := load_biome(String(D["biome"]))
 			if bj.has("colors"):
