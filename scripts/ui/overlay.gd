@@ -424,13 +424,20 @@ func open_saves() -> void:
 				h.add_child(UI.label("Playing", 14, UI.GOLD))
 			else:
 				h.add_child(UI.button("Play", func(): _play_slot(sn), 90))
-			if n == Save.slot:
-				pass
-			elif delete_armed == n:
-				h.add_child(UI.button("Really delete?", func():
+			if delete_armed == n:
+				var playing: bool = n == Save.slot
+				h.add_child(UI.button("Yes, delete it" if playing else "Really delete?", func():
 					delete_armed = -1
 					Save.delete_slot(sn)
-					open_saves(), 150))
+					if playing:
+						# that was the save in play: start over from the title, on this now-empty slot
+						Save.save_game()
+						close()
+						Game.goto("title")
+					else:
+						open_saves(), 150))
+				if playing:
+					col.add_child(UI.label("This is the save you're playing. Deleting it takes you back to the title.", 13, UI.BAD))
 			else:
 				h.add_child(UI.button("Delete", func():
 					delete_armed = sn
