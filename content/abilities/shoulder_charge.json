@@ -9,8 +9,8 @@
 	"effects": [
 		{
 			"type": "dash",
-			"speed": 17.8,
-			"time": 0.18,
+			"speed": 18,
+			"time": 0.17,
 			"invuln": 0.08,
 			"shove": true,
 			"shove_kb": 9,

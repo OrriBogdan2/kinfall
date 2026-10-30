@@ -29,10 +29,12 @@ const MANTLE_REACH := 1.5        # near a jump's apex, ledges this far above you
 const MANTLE_REACH_ABYSS := 12.0 # [footage] falling players spring back onto an island even from a second deep
 const MANTLE_RISE := 14.0        # [footage] a deep mantle returns to the top in ~0.8s
 const EX_DASH_CD := 12.5         # the long dash: in the air, or with the short one on cooldown
-const DASH_CARRY_GROUND := 0.35
-const DASH_CARRY_AIR := 0.75
-const DASH_SPEED := 19.0
-const DASH_TIME := 0.17
+const DASH_CARRY_GROUND := 0.15   # (was 0.35) out of a dash you stop almost dead: snappy, no slide
+const DASH_CARRY_AIR := 0.3      # (was 0.75, which slid you ~15m+ in the air)
+const SPIKE_STUN := 0.7         # [wiki] stun when a spiked glider hits the ground (docs/EXPEDITION_SPEC.md)
+const SPIKE_DMG := 8.0
+const DASH_SPEED := 23.0
+const DASH_TIME := 0.15
 const DASH_REGEN := 2.2
 const LEDGE_REACH := 2.8
 const LEDGE_CD := 0.45
@@ -1386,9 +1388,13 @@ func _physics(dt: float) -> void:
 				diving = false
 				m.on_drop_landed(self)
 			if shot_down:
+				# spiked onto the ground [wiki]: a 0.7s stun and a little extra damage
 				shot_down = false
-				stun_t = maxf(stun_t, 0.5)
-				m.fx.dust(pos, 8)
+				stun_t = maxf(stun_t, SPIKE_STUN)
+				hurt(SPIKE_DMG, last_hit_by, {"src": "fall"})
+				m.fx.dust(pos, 12)
+				m.fx.ring(pos + Vector3(0, 0.05, 0), 1.6, Color(1.0, 0.6, 0.4, 0.6), 0.3)
+				if is_local(): m.shake(0.25, pos)
 			if fv < -11.0 or cur > spd * 1.3:
 				m.fx.dust(pos, 6)
 				squash = 0.15

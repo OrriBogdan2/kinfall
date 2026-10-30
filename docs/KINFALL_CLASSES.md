@@ -16,8 +16,8 @@ These are Kinfall's own numbers, set inside the ranges Supervive's roster used (
 | HP at level 15 | 1,656 | 1,932 | 2,576 | +~6%/level |
 | Run speed | 4.85 m/s | 4.65 m/s | 4.40 m/s | 4.15–4.9 |
 | Hitbox radius | 0.35m | 0.40m | 0.50m | — |
-| Dash | 4.5m, every 6.5s | 3.8m, every 9s | 3.2m, 2 charges, 12s each | 6.5–15s |
-| Air dash (ex) | 7m, 12s | 6m, 13s | 5m, 15s | Jin: 12.5s |
+| Dash | 3.6m, every 6.5s (was 4.5m + slide) | 3.45m, every 9s (was 3.8m + slide) | 3.1m, 2 charges, 12s each (was 3.2m + slide) | 6.5–15s |
+| Air dash (ex) | 5m, 12s (was 7m) | 4.6m, 13s (was 6m) | 4.2m, 15s (was 5m) | Jin: 12.5s |
 | Knockback taken | ×1.18 (weight 0.85) | ×1.0 | ×0.74 (weight 1.35) | Beebo is "10% lighter" |
 | Glide before overheat | ~17s (heat ×1.2) | ~14s | ~12s (heat ×0.85) | ~14s; Glide Boots +40% |
 | Knock heal | 250 | 250 | 250 | 250 (1.0) |

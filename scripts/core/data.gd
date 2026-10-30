@@ -11,19 +11,19 @@ const MATCH_PLAYERS := 20
 const CLASSES := {
 	"light": {
 		"name": "Light", "color": Color("c9bcff"), "hp": 124, "speed": 5.2, "dashes": 1, "mass": 0.85, "scale": 0.9, "hit_r": 0.35,
-		"ex_dist": 7.0, "ex_time": 0.22, "ex_cd": 12.0, "glide_cap": 1.2,
+		"ex_dist": 5.0, "ex_time": 0.2, "ex_cd": 12.0, "glide_cap": 1.2,
 		"weapon": "smg", "weapons": ["smg", "sniper", "twin_blades"],
 		"desc": "Fast and fragile. The fastest dash, the longest glide, and hits throw you furthest.",
 	},
 	"medium": {
 		"name": "Medium", "color": Color("9ee2a0"), "hp": 145, "speed": 5.0, "dashes": 1, "mass": 1.0, "scale": 1.0, "hit_r": 0.40,
-		"ex_dist": 6.0, "ex_time": 0.22, "ex_cd": 13.0, "glide_cap": 1.0,
+		"ex_dist": 4.6, "ex_time": 0.2, "ex_cd": 13.0, "glide_cap": 1.0,
 		"weapon": "rifle", "weapons": ["rifle", "burst_rifle", "longsword"],
 		"desc": "The all-rounder: middle health, speed, dash and glide.",
 	},
 	"heavy": {
 		"name": "Heavy", "color": Color("e6dbc4"), "hp": 193, "speed": 4.73, "dashes": 2, "mass": 1.35, "scale": 1.14, "hit_r": 0.50,
-		"ex_dist": 5.0, "ex_time": 0.24, "ex_cd": 15.0, "glide_cap": 0.85,
+		"ex_dist": 4.2, "ex_time": 0.21, "ex_cd": 15.0, "glide_cap": 0.85,
 		"weapon": "shotgun", "weapons": ["shotgun", "minigun", "greatsword"],
 		"desc": "Slow and tough. Two short dashes, the most health, and very hard to push off a ledge.",
 	},
