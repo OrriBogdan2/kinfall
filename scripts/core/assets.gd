@@ -307,3 +307,107 @@ static func prop(id: String, size: float, by_height := false, cfg := {}) -> Node
 	root.add_child(mi)
 	root.set_meta("mats", [mi.material_override])
 	return root
+
+# ------------------------------------------------------------------ monsters
+## Monsters dressed in the Skeletons pack: model, height (m), weapons in the hands and the clips it
+## plays. "hit" is how far into the attack clip the blow lands: the windup scrubs up to it, the
+## strike plays on from there. Kinds not listed keep their primitive models (the Puffbomb, the
+## Glimmerkin); the Sentinel keeps its crystal on a pack pillar.
+const MOBS := {
+	"skitter": {"m": "skeletons/Skeleton_Minion", "h": 1.05, "r": "Skeleton_Blade",
+		"idle": "Idle", "walk": "Walking_D_Skeletons", "run": "Running_A", "attack": "1H_Melee_Attack_Stab", "hit": 0.42},
+	"spitter": {"m": "skeletons/Skeleton_Mage", "h": 1.3, "r": "Skeleton_Staff",
+		"idle": "Idle", "walk": "Walking_D_Skeletons", "run": "Walking_D_Skeletons", "attack": "Spellcast_Shoot", "hit": 0.45},
+	"brute": {"m": "skeletons/Skeleton_Warrior", "h": 1.75, "wide": 1.25, "r": "Skeleton_Axe", "l": "Skeleton_Shield_Large_A",
+		"idle": "2H_Melee_Idle", "walk": "Walking_D_Skeletons", "run": "Running_A", "attack": "2H_Melee_Attack_Chop", "hit": 0.5},
+	"warden": {"m": "skeletons/Skeleton_Warrior", "h": 1.75, "wide": 1.3, "r": "Skeleton_Axe", "l": "Skeleton_Shield_Large_A",
+		"idle": "2H_Melee_Idle", "walk": "Walking_D_Skeletons", "run": "Running_A", "attack": "2H_Melee_Attack_Chop", "hit": 0.5},
+}
+const CLOTH_PARTS := ["Cloak", "Hat", "Hood", "Cape", "Body"]
+
+## A monster built from a pack character: root > Body > the rigged model (turned to face -z like our
+## models), its weapons on the hand slots. Every material is its own (hits flash one monster), and
+## tagged so BiomeRun can repaint the cloth and tint the bones. null if the model isn't there.
+static func mob(kind: String, base: Color) -> Node3D:
+	if not MOBS.has(kind):
+		return null
+	var spec: Dictionary = MOBS[kind]
+	var ps := scene(String(spec["m"]))
+	if ps == null:
+		return null
+	var model := ps.instantiate() as Node3D
+	var root := Node3D.new()
+	var body := Node3D.new(); body.name = "Body"; root.add_child(body)
+	var rig := Node3D.new(); rig.name = "Rig"; rig.rotation.y = PI; body.add_child(rig)
+	rig.add_child(model)
+	var pal := "skeletons"
+	var m_bone := material(pal, {"tint": Color.WHITE, "rim": 0.35, "cache": false, "bright": 1.05})
+	m_bone.set_meta("pack_part", "bone")
+	var cloth_band := {"hue": 0.95, "width": 0.07, "min_sat": 0.45, "ref": 0.5}
+	if kind == "skitter":
+		cloth_band = {"hue": 0.05, "width": 0.04, "min_sat": 0.42, "ref": 0.7}
+	if kind == "spitter":
+		cloth_band["min_sat"] = 0.5
+	var m_cloth := material(pal, {"band": cloth_band, "paint": base, "rim": 0.35, "cache": false})
+	m_cloth.set_meta("pack_part", "cloth")
+	var m_eye := Models.toon(Color("ffe25a"), false, 1.4)
+	var mats: Array = [m_bone, m_cloth, m_eye]
+	var sk: Skeleton3D = null
+	for mi in _mesh_nodes(model):
+		var nm := String(mi.name)
+		var mat: Material = m_bone
+		if nm.ends_with("Eyes"):
+			mat = m_eye
+		else:
+			for c in CLOTH_PARTS:
+				if nm.ends_with("_" + c): mat = m_cloth
+		(mi as MeshInstance3D).material_override = mat
+		(mi as MeshInstance3D).cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	sk = model.find_child("Skeleton3D", true, false) as Skeleton3D
+	if sk == null:
+		for c in model.find_children("*", "Skeleton3D", true, false):
+			sk = c; break
+	# size: the model's rest height to the spec, a little broader for the hulking kinds
+	var ab := _rest_aabb(model)
+	var s := float(spec["h"]) / maxf(0.01, ab.size.y)
+	model.scale = Vector3(s * float(spec.get("wide", 1.0)), s, s * float(spec.get("wide", 1.0)))
+	model.position.y = -ab.position.y * s
+	if sk:
+		for side in ["r", "l"]:
+			if not spec.has(side): continue
+			var wid := "skeletons/" + String(spec[side])
+			var wm := mesh(wid)
+			if wm == null: continue
+			var ba := BoneAttachment3D.new()
+			ba.bone_name = "handslot." + side
+			sk.add_child(ba)
+			var wmi := MeshInstance3D.new()
+			wmi.mesh = wm
+			var m_w := material(pal, {"rim": 0.4, "cache": false})
+			mats.append(m_w)
+			wmi.material_override = m_w
+			ba.add_child(wmi)
+	var ap := model.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if ap:
+		for clip in [spec["idle"], spec["walk"], spec["run"]]:
+			if ap.has_animation(clip):
+				ap.get_animation(clip).loop_mode = Animation.LOOP_LINEAR
+		if ap.has_animation(spec["idle"]):
+			ap.play(spec["idle"])
+			ap.seek(randf() * ap.get_animation(spec["idle"]).length, true)
+		root.set_meta("anim", ap)
+		root.set_meta("clips", spec)
+	root.set_meta("mats", mats)
+	root.set_meta("pack", true)
+	return root
+
+static func _rest_aabb(n: Node) -> AABB:
+	var out := AABB()
+	var first := true
+	for mi in _mesh_nodes(n):
+		var ab := (mi as MeshInstance3D).get_aabb()
+		var tr := _rel(mi, n as Node3D)
+		ab = tr * ab
+		out = ab if first else out.merge(ab)
+		first = false
+	return out

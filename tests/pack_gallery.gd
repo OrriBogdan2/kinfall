@@ -81,14 +81,14 @@ func _mobs() -> void:
 	for i in ids.size():
 		var n := Models.mob(String(ids[i]))
 		n.position = Vector3((i - (ids.size() - 1) * 0.5) * 2.4, 0, 0)
-		n.rotation.y = 0.4
+		n.rotation.y = PI + 0.4
 		add_child(n)
 	var hu := Models.hunter("medium", Data.TEAM_COLORS[0], "rifle")
 	hu.position = Vector3(-(ids.size() + 1) * 1.2, 0, 0)
 	add_child(hu)
 	var cam := Camera3D.new()
 	cam.fov = 40
-	cam.position = Vector3(0, 7.5, 11.0)
-	cam.rotation = Vector3(-0.55, 0, 0)
+	cam.position = Vector3(0, 5.0, 9.5)
+	cam.rotation = Vector3(-0.45, 0, 0)
 	add_child(cam)
 	cam.make_current()

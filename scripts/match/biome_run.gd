@@ -173,6 +173,11 @@ static func recolor_mats(mats: Array, mkind: String, col: Color) -> void:
 	for mat in mats:
 		var sm := mat as ShaderMaterial
 		if sm == null: continue
+		if sm.has_meta("pack_part"):
+			# a pack model: its cloth takes the region's colour, its bones a hint of it
+			if sm.get_meta("pack_part") == "cloth": sm.set_shader_parameter("recolor_to", col)
+			else: sm.set_shader_parameter("albedo", Color.WHITE.lerp(col, 0.22).lightened(0.05))
+			continue
 		var a = sm.get_shader_parameter("albedo")
 		if typeof(a) != TYPE_COLOR: continue
 		var c: Color = a

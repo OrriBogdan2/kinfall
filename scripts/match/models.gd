@@ -1308,6 +1308,20 @@ static func nest_egg(c: Color, spot: Color) -> Node3D:
 # ---------------------------------------------------------------- monsters
 static func mob(kind: String) -> Node3D:
 	var md: Dictionary = Data.MOBS[kind]
+	var pk := Assets.mob(kind, md["color"]) if Assets.on() else null
+	if pk:
+		if kind == "warden":
+			# the boss: half again as big, a gold crown and a violet heart-gem
+			pk.scale = Vector3.ONE * 1.5
+			var gold := toon(Color("f2c84a"), true, 0.5)
+			var crown := Node3D.new(); crown.position = Vector3(0, 1.78, 0); pk.get_node("Body").add_child(crown)
+			for i in 5:
+				var a := TAU * i / 5.0
+				part(crown, cyl(0.0, 0.07, 0.24, 6), gold, Vector3(cos(a) * 0.2, 0.12, sin(a) * 0.2))
+			part(crown, cyl(0.24, 0.24, 0.08, 14), gold, Vector3.ZERO)
+			part(pk.get_node("Body"), sphere(0.11, 8), toon(Color("c9a0ff"), false, 1.2), Vector3(0, 1.15, -0.22))
+			(pk.get_meta("mats") as Array).append(gold)
+		return pk
 	var root := Node3D.new()
 	var mats: Array = []
 	var m := toon(md["color"]); mats.append(m)
@@ -1363,8 +1377,15 @@ static func mob(kind: String) -> Node3D:
 				part(body, pm, toon(Color("fff4c0"), false, 1.4), Vector3(cos(a) * 0.55, 0.9, sin(a) * 0.55))
 		"sentinel":
 			var stone := toon(Color("6a7080")); mats.append(stone)
-			part(body, cyl(0.42, 0.55, 0.35, 8), stone, Vector3(0, 0.18, 0))
-			part(body, cyl(0.22, 0.32, 0.6, 8), stone, Vector3(0, 0.6, 0))
+			var plinth := Assets.prop("halloween/pillar", 0.95, true, {"bright": 1.15, "cache": false}) if Assets.on() else null
+			if plinth:
+				# a carved stone plinth (pack model) holding the crystal
+				plinth.scale = Vector3(1.45, 1.0, 1.45)
+				body.add_child(plinth)
+				mats.append_array(plinth.get_meta("mats"))
+			else:
+				part(body, cyl(0.42, 0.55, 0.35, 8), stone, Vector3(0, 0.18, 0))
+				part(body, cyl(0.22, 0.32, 0.6, 8), stone, Vector3(0, 0.6, 0))
 			var cr := Node3D.new(); cr.name = "Crystal"; cr.position = Vector3(0, 1.25, 0); body.add_child(cr)
 			var pm := PrismMesh.new(); pm.size = Vector3(0.42, 0.5, 0.42)
 			var cm := toon(md["color"], false, 0.9); mats.append(cm)

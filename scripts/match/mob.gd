@@ -372,6 +372,11 @@ func render(delta: float, alpha: float) -> void:
 	body.rotation.x = lerpf(body.rotation.x, lean, 1.0 - exp(-16.0 * delta))
 	body.rotation.z = shiver + (sin(m.time * 2.5) * 0.12 if stagger_t > 0.0 else 0.0)
 	var gather := wind * 0.12
+	if model.has_meta("anim"):
+		_pack_anim(delta, moving, spd, wind)
+		var sq0 := squash
+		body.scale = Vector3(1.0 + sq0 * 0.3 + gather * 0.5, 1.0 - sq0 * 0.35 - gather * 0.5, 1.0 + sq0 * 0.3 + gather * 0.5)
+		return
 	match mkind:
 		"skitter":
 			body.position.y = absf(sin(anim)) * 0.05 * float(moving) - gather * 0.3
@@ -428,6 +433,38 @@ func render(delta: float, alpha: float) -> void:
 				tor.rotation.x = -0.12 * mv + wind * 0.15
 	var sq := squash
 	body.scale = Vector3(1.0 + sq * 0.3 + gather, 1.0 - sq * 0.35 - gather, 1.0 + sq * 0.3 + gather)
+
+## Monsters dressed in pack models play the model's own clips: idle, walk or run by speed; while
+## winding up, the attack clip is scrubbed up to the frame its blow lands on, then plays on from
+## there as the attack goes off. Off-screen ones stop animating.
+func _pack_anim(delta: float, moving: bool, spd: float, wind: float) -> void:
+	var ap: AnimationPlayer = model.get_meta("anim")
+	var C: Dictionary = model.get_meta("clips")
+	var cam = m.get("cam")
+	var far := cam != null and Vector2(pos.x - cam.focus.x, pos.z - cam.focus.z).length() > 30.0
+	ap.active = not far
+	if far:
+		return
+	var atk := String(C["attack"])
+	if st == "windup":
+		if ap.current_animation != atk:
+			ap.play(atk, 0.12)
+		ap.speed_scale = 0.0
+		ap.seek(ap.get_animation(atk).length * float(C["hit"]) * clampf(wind, 0.0, 1.0), true)
+		return
+	if ap.current_animation == atk and ap.is_playing() and ap.current_animation_position < ap.current_animation_length - 0.05:
+		ap.speed_scale = 1.4      # the blow and the follow-through
+		return
+	var want := String(C["idle"])
+	var rate := 1.0
+	if stagger_t > 0.0:
+		rate = 0.35
+	elif moving:
+		want = String(C["run"]) if spd > 3.6 else String(C["walk"])
+		rate = clampf(spd / (4.5 if spd > 3.6 else 2.2), 0.6, 1.7)
+	if ap.current_animation != want:
+		ap.play(want, 0.2)
+	ap.speed_scale = rate
 
 ## Telegraphs on proxies follow the host's attack state.
 func _net_telegraph() -> void:
