@@ -425,20 +425,20 @@ func _jingle() -> AudioStreamWAV:
 		for i in len:
 			var ti := float(i) / RATE
 			var env := minf(1.0, ti / 0.008) * exp(-ti * (3.0 if float(nt[2]) > 0.3 else 9.0))
-			# a soft square (odd harmonics) with a little vibrato on the long notes
+			# a rounded tone (a sine with a hint of odd harmonics) with a little vibrato on the long notes
 			var ph := TAU * f * ti + (sin(TAU * 6.0 * ti) * 0.04 * minf(1.0, ti * 4.0) if float(nt[2]) > 0.3 else 0.0)
-			var v := sin(ph) + sin(ph * 3.0) / 3.0 * 0.6 + sin(ph * 5.0) / 5.0 * 0.3
+			var v := sin(ph) + sin(ph * 3.0) / 3.0 * 0.3 + sin(ph * 2.0) * 0.12
 			var j := s0 + i
 			if j < buf.size(): buf[j] += v * env * 0.22
-	# a sparkle of high blips over the chord
+	# a soft sparkle of little bells over the chord (an octave lower than a glint, and faded in)
 	var rng := RandomNumberGenerator.new(); rng.seed = species.hash()
 	for k in 7:
-		var f2 := 440.0 * pow(2.0, (float(96 + [0, 4, 7, 12][k % 4] + shift) - 69.0) / 12.0)
+		var f2 := 440.0 * pow(2.0, (float(84 + [0, 4, 7, 12][k % 4] + shift) - 69.0) / 12.0)
 		var s1 := int((0.55 + k * 0.07 + rng.randf() * 0.02) * RATE)
-		for i in int(0.06 * RATE):
+		for i in int(0.12 * RATE):
 			var ti := float(i) / RATE
 			var j := s1 + i
-			if j < buf.size(): buf[j] += sin(TAU * f2 * ti) * exp(-ti * 40.0) * 0.06
+			if j < buf.size(): buf[j] += sin(TAU * f2 * ti) * minf(1.0, ti / 0.004) * exp(-ti * 25.0) * 0.04
 	return _wav(buf)
 
 ## The kin's own little cry: two chirpy syllables, pitched and shaped by its species.

@@ -1,39 +1,43 @@
 """Synthesizes the sky train's sounds into audio/: a two-tone horn and a rail clatter.
-Kept apart from gen_sfx.py so rerunning it doesn't reshuffle every other sound."""
+Kept apart from gen_sfx.py so rerunning it doesn't reshuffle every other sound.
+Same soft palette as gen_sfx.py: slow fades in, rounded tones, levelled under the music."""
 import numpy as np, wave, os
+from scipy.signal import butter, sosfilt
 SR = 22050
 OUT = os.path.join(os.path.dirname(__file__), '..', 'audio')
 rng = np.random.default_rng(11)
 def t(d): return np.arange(int(SR * d)) / SR
-def env(n, a=0.002, d=0.1, curve=4.0):
-    x = np.arange(n) / SR; return np.minimum(1, x / max(a, 1e-4)) * np.exp(-np.maximum(0, x - a) * curve / max(d, 1e-4))
-def lp(x, k):
-    y = np.zeros_like(x); acc = 0.0
-    for i, v in enumerate(x): acc += k * (v - acc); y[i] = acc
-    return y
-def save(name, x, gain=0.9):
-    x = np.asarray(x, dtype=float); pk = np.max(np.abs(x)) or 1; x = x / pk * gain
-    fade = min(len(x), 256); x[-fade:] *= np.linspace(1, 0, fade); x[:64] *= np.linspace(0, 1, 64)
+def lpf(x, hz): return sosfilt(butter(2, hz / (SR / 2), 'low', output='sos'), x)
+def bpf(x, lo, hi): return sosfilt(butter(2, [lo / (SR / 2), hi / (SR / 2)], 'band', output='sos'), x)
+def rc(n): return 0.5 - 0.5 * np.cos(np.pi * np.arange(n) / max(1, n))   # a raised-cosine fade-in, n samples
+def save(name, x, rms_db=-20.0):
+    x = np.asarray(x, dtype=float)
+    x[:64] *= rc(64); fo = int(SR * 0.03); x[-fo:] *= rc(fo)[::-1]
+    pk = np.max(np.abs(x)) or 1; act = np.abs(x) > pk * 0.01
+    x *= 10 ** (rms_db / 20) / np.sqrt(np.mean(x[act] ** 2))
+    x = np.where(np.abs(x) > 0.5, np.sign(x) * (0.5 + 0.2 * np.tanh((np.abs(x) - 0.5) / 0.2)), x)   # soft ceiling at about -3 dB
     with wave.open(os.path.join(OUT, name + '.wav'), 'wb') as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(SR); w.writeframes((x * 32767).astype(np.int16).tobytes())
 
-def saw(f, d):
-    ph = np.cumsum(np.full(int(SR * d), f)) / SR
+def saw(f, d, vib=0.0):
+    tt = t(d)
+    ph = np.cumsum(f * (1 + vib * np.sin(2 * np.pi * 5.0 * tt))) / SR
     return (ph % 1) * 2 - 1
 
-# horn: a minor-third chord of reedy saws, held, with a slight droop at the end
-d = 1.3; n = int(SR * d); tt = t(d)
-shape = np.minimum(1, tt / .06) * np.where(tt > d - .25, (d - tt) / .25, 1)
+# horn: a mellow minor-third chord, swelling in and out, rounded off so it reads as distant brass
+d = 1.4; n = int(SR * d); tt = t(d)
+shape = rc(int(SR * 0.16)).tolist() + [1.0] * (n - int(SR * 0.16)); shape = np.array(shape) * np.where(tt > d - 0.35, 0.5 + 0.5 * np.cos(np.pi * (tt - (d - 0.35)) / 0.35), 1)
 droop = 1 - .02 * np.maximum(0, tt - (d - .3)) / .3
-horn = sum(lp(saw(f, d) * droop, .25) * a for f, a in ((220, 1), (261.6, .8), (330, .5)))
-save('horn', horn * shape)
+horn = sum(lpf(saw(f * droop, d, 0.004), 650) * a for f, a in ((220, 1), (261.6, .8), (330, .45)))
+save('horn', lpf(horn, 900) * shape, -19)
 
-# rail: wheels clacking over joints with a low rumble underneath
+# rail: wheels rolling over the joints (muted knocks) with a low rumble underneath
 d = 1.0; n = int(SR * d)
-rum = lp(rng.uniform(-1, 1, n), .03) * 2.5
+rum = bpf(rng.uniform(-1, 1, n), 50, 260) * 3.0
 clack = np.zeros(n)
 for at in (0.0, .12, .5, .62):
-    i = int(at * SR); seg = min(n - i, int(.08 * SR))
-    clack[i:i + seg] += lp(rng.uniform(-1, 1, seg), .5) * env(seg, .001, .03, 5)
-save('rail', rum * .6 + clack, .7)
+    i = int(at * SR); seg = min(n - i, int(.09 * SR)); tt2 = np.arange(seg) / SR
+    e = np.minimum(1, tt2 / 0.004) * np.exp(-tt2 / 0.025)
+    clack[i:i + seg] += bpf(rng.uniform(-1, 1, seg), 200, 1100) * e
+save('rail', rum * .7 + clack, -21)
 print('train sounds written')
