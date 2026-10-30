@@ -1053,10 +1053,10 @@ func _draw_perk_offer(sz: Vector2) -> void:
 	if off.is_empty():
 		return
 	var ids: Array = off["ids"]
-	var cw := 200.0; var ch := 96.0; var gap := 12.0
+	var cw := 196.0; var ch := 70.0; var gap := 10.0
 	var total := ids.size() * cw + (ids.size() - 1) * gap
 	var x := sz.x * 0.5 - total * 0.5
-	var y := sz.y - 330.0
+	var y := sz.y - 290.0         # below your hunter, above your perk badges and bars
 	var head: String = {"shrine": "THE SHRINE OFFERS A PERK", "chest": "SOMETHING ELSE IN THE CHEST", "boss": "THE WARDEN'S POWER", "brute": "SPOILS OF THE BRUTE"}.get(String(off.get("src", "")), "PICK A PERK")
 	_ctext(Vector2(sz.x * 0.5, y - 12), String(head) + "  ·  lasts this expedition", 13, Color(GOLD, 0.95), big)
 	var pulse := 0.5 + 0.5 * sin(m.time * 4.0)
@@ -1065,9 +1065,9 @@ func _draw_perk_offer(sz: Vector2) -> void:
 		var col: Color = pd["col"]
 		var r := Rect2(Vector2(x, y), Vector2(cw, ch))
 		_rounded(r, Color(0.05, 0.06, 0.1, 0.94), 12, Color(col, 0.55 + 0.35 * pulse), 2)
-		Icons.draw(c, String(pd["icon"]), r.position + Vector2(26, 30), 13.0, col)
-		_text(r.position + Vector2(48, 36), String(pd["name"]), 17, INK, big)
-		c.draw_multiline_string(body, r.position + Vector2(14, 60), String(pd["desc"]), HORIZONTAL_ALIGNMENT_LEFT, cw - 28, 13, 2, MUTED)
+		Icons.draw(c, String(pd["icon"]), r.position + Vector2(22, 22), 11.0, col)
+		_text(r.position + Vector2(40, 28), String(pd["name"]), 16, INK, big)
+		c.draw_multiline_string(body, r.position + Vector2(12, 47), String(pd["desc"]), HORIZONTAL_ALIGNMENT_LEFT, cw - 24, 12, 2, MUTED)
 		_keycap(Vector2(r.get_center().x, r.end.y), str(i + 1), col)
 		var n: int = m.player.perk_n(String(ids[i])) if m.player else 0
 		if n > 0:

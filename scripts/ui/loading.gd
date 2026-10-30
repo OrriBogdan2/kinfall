@@ -5,7 +5,7 @@ extends CanvasLayer
 signal shown
 
 const TIPS := [
-	"Hold Space in the air to glide. You can open your glider off any booster too.",
+	"Hold Space or Mouse 4 in the air to glide. You can open your glider off any booster too.",
 	"Knocked off an edge? Touch the island's side and you float back up onto it.",
 	"Exits open partway through. Stand inside one to fly home with everything you carry.",
 	"C throws your kin. It stuns whatever it hits, and C again calls it back.",
@@ -27,7 +27,7 @@ const TIPS := [
 	"A rival took your kin? You'll sense it when they're nearby. Take it back.",
 	"Wild kin with a ring under them can be caught. Weaken them first.",
 	"Jump off the skyship over an island nobody else picked. Space opens your glider early for a longer, slower last stretch.",
-	"Falling all the way into the abyss is death. Glide (hold Space) below the edge to catch an updraft back up, or touch the cliff to mantle onto it.",
+	"Falling all the way into the abyss is death. Glide (hold Space or Mouse 4) below the edge to catch an updraft back up, or touch the cliff to mantle onto it.",
 	"A teammate is down? Stand on their wisp to bring them back. Stand on an enemy's to stomp it, or hold F to finish them.",
 	"Dash through a shot at the last moment and you take nothing.",
 	"Shrines on the islands give a short power-up. Stand by one and hold F.",

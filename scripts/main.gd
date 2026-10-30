@@ -75,6 +75,7 @@ func _ready() -> void:
 		if a.begins_with("--tier="): opts["tier"] = int(a.substr(7))
 		if a.begins_with("--squad="): opts["squad"] = int(a.substr(8))
 		if a.begins_with("--bot-diff="): opts["bot_diff"] = a.substr(11)
+		if a == "--perk-demo": opts["perk_demo"] = true
 	if "--check" in args:
 		var CheckT = load("res://tools/check.gd")
 		var bad := 0
@@ -125,6 +126,9 @@ func _ready() -> void:
 		return
 	if "--life-check" in args:
 		_life_check()
+		return
+	if "--mantle-check" in args:
+		_mantle_check()
 		return
 	if Array(args).any(func(a): return String(a).begins_with("--weapon-check")):
 		_weapon_check()
@@ -215,7 +219,7 @@ func _ready() -> void:
 	elif "--match" in args:
 		show_screen("match", opts)
 	elif "--training" in args:
-		show_screen("match", {"training": true, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242, "no_drop": "--no-drop" in args})
+		show_screen("match", {"training": true, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242, "no_drop": "--no-drop" in args, "perk_demo": "--perk-demo" in args})
 	elif "--tutorial" in args:
 		show_screen("match", {"tutorial": true, "teams": 1, "squad": 1, "tier": 0, "length": 1500.0, "tut_test": "--tut-test" in args})
 	elif args.is_empty() or "--title" in args:
@@ -332,6 +336,62 @@ func show_screen(screen: String, opts: Dictionary) -> void:
 
 ## Headless check: a whole match with the player on autopilot, stepped as fast as possible.
 ## Test: the down / death / revive rules, step by step, with idle hunters placed by hand.
+## Headless: drops a hunter (and a wisp) just off island edges, holds toward the cliff, and checks
+## every mantle: it happens, it ends on top, and the body never sinks into the cliff on the way.
+func _mantle_check() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.start({"teams": 2, "squad": 1, "tier": 0, "length": 1e9, "seed": 77, "no_drop": true, "autoplay": true})
+	m.set_process(false)
+	for mb in m.mobs: mb.queue_free()
+	m.mobs.clear()
+	var h: Hunter = m.hunters[0]
+	for o in m.hunters:
+		o.ctrl = "idle"
+		if o != h: o.teleport(m.world.random_ground())
+	h.ctrl = "local"      # players mantle on a jump/fall, not by walking into walls
+	var w: World = m.world
+	var tried := 0; var ok := 0; var clip := 0; var worst := 0.0; var durs: Array = []
+	for downed_case in [false, true]:
+		for trial in 12:
+			# find an edge: a ground tile next to the void
+			var at := Vector3.INF; var dir := Vector2.ZERO
+			for k in 400:
+				var g := w.random_ground()
+				for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+					if w.is_void(g.x + d.x * 1.6, g.z + d.y * 1.6) and not w.is_void(g.x, g.z) and k % 12 == trial:
+						at = g; dir = d; break
+				if at != Vector3.INF: break
+			if at == Vector3.INF: continue
+			tried += 1
+			var top := w.ground_at(at.x, at.z)
+			# hanging in the air just off the edge, 3m below the lip, pushing back toward the island
+			var edge_x := at.x; var edge_z := at.z
+			while not w.is_void(edge_x + dir.x * 0.25, edge_z + dir.y * 0.25):
+				edge_x += dir.x * 0.25; edge_z += dir.y * 0.25
+			h.downed = downed_case
+			h.down_hp = 100.0
+			h.teleport(Vector3(edge_x + dir.x * (h.r + 0.6), top - 3.0, edge_z + dir.y * (h.r + 0.6)))
+			h.grounded = false; h.vel = Vector3(0, -2.0, 0); h.pad = {}; h.grap_cd = 0.0; h.last_gy = top
+			var t := 0.0; var mantled := false; var landed := false; var t_m := 0.0
+			while t < 3.0:
+				h.inp["move"] = -dir
+				m.step(Match.DT); t += Match.DT
+				if not h.pad.is_empty() and h.pad.has("face"):
+					if not mantled: t_m = t
+					mantled = true
+					# inside the cliff: standing below solid ground that's under you
+					var gh := w.ground_at(h.pos.x, h.pos.z)
+					if not w.is_void(h.pos.x, h.pos.z) and gh > h.pos.y + 0.06:
+						clip += 1; worst = maxf(worst, gh - h.pos.y)
+				if mantled and h.pad.is_empty() and h.grounded:
+					landed = absf(h.pos.y - top) < 0.6
+					durs.append(snappedf(t - t_m, 0.01))
+					break
+			if mantled and landed: ok += 1
+	print("MCHECK mantles ok %d of %d, clipping frames %d (worst %.2fm), climb times %s" % [ok, tried, clip, worst, str(durs)])
+	get_tree().quit()
+
 func _life_check() -> void:
 	var m := Match.new()
 	add_child(m)

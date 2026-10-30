@@ -2312,7 +2312,8 @@ func _gather_input() -> void:
 	if paused:
 		player.inp["move"] = Vector2.ZERO
 	player.inp["interact"] = Input.is_action_pressed("interact")
-	player.inp["glide"] = Input.is_action_pressed("jump") and not paused
+	# hold Space, or the back side mouse button (Mouse 4), in the air to glide; Mouse 4 never jumps
+	player.inp["glide"] = (Input.is_action_pressed("jump") or Input.is_action_pressed("glide")) and not paused
 	player.inp["dash_hold"] = Input.is_action_pressed("dash") and bool(Settings.get_v("dash_hold"))
 	var quick: bool = Settings.get_v("cast_on_press")
 	player.inp["sec_hold"] = Input.is_action_pressed("secondary") and not paused
@@ -2525,6 +2526,11 @@ func step(dt: float) -> void:
 	if not ship.is_empty() and not ship.get("gone", false):
 		_update_ship(dt)
 	_update_interact(dt)
+	if opts.get("perk_demo", false) and player and time > 0.5 and time - dt <= 0.5:
+		# test: a couple of perks already taken and a choice open
+		player.add_perk("keen"); player.add_perk("keen"); player.add_perk("toughskin")
+		offer_perks(player, "shrine")
+		if hud: hud.ability_feedback("sec", "deny")
 	Life.tick_wisps(self, dt)
 	Life.tick_stomps(self, dt)
 	_tick_chase()
@@ -2893,7 +2899,7 @@ const TUT := [
 	["land", "Steer with %K to choose where you land"],
 	["move", "Walk around with %K"],
 	["dash", "Press %K to dash"],
-	["glide", "Press %K to jump. Hold it in the air to glide"],
+	["glide", "Press %K to jump. Hold it (or Mouse 4) in the air to glide"],
 	["exdash", "Jump, then press %K in the air for a long dash"],
 	["shoot", "%W"],
 	["utility", "Press %K: %A"],
@@ -2910,7 +2916,7 @@ var tut_used0 := {}
 
 # ---- training area
 ## [id, what to do, the action whose key it uses ("" for none)]
-const TRAIN := [["move", "Walk around", "up"], ["dash", "Dash", "dash"], ["glide", "Jump, then hold it in the air to glide", "jump"],
+const TRAIN := [["move", "Walk around", "up"], ["dash", "Dash", "dash"], ["glide", "Jump, then hold it (or Mouse 4) in the air to glide", "jump"],
 	["shoot", "Shoot a target dummy", "fire"], ["ability", "Use your kin's first ability", "signature"], ["ult", "Fill the bond meter and use your bond ultimate", "ultimate"],
 	["secondary", "Use your right-click utility", "secondary"], ["swap", "Swap to your other kin", "swap_kin"],
 	["crouch", "Crouch: slower, steadier aim, harder to spot", "crouch"],

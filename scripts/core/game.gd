@@ -76,6 +76,7 @@ func _setup_input() -> void:
 	_key("swap_kin", [KEY_X])                 # swap which of your two kin is active
 	_key("dash", [KEY_SHIFT])
 	_key("jump", [KEY_SPACE])
+	_key("glide", [], MOUSE_BUTTON_XBUTTON1)  # hold the back side mouse button (Mouse 4) to glide, like holding Space in the air
 	_key("reload", [])                        # reloading is automatic
 	_key("ultimate", [KEY_R])                 # bond ultimate, when the bond meter is full
 	_key("tonic", [KEY_1])

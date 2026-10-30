@@ -21,7 +21,7 @@ const DEFAULTS := {
 ## Rebindable actions, in the order the controls list shows them.
 const ACTIONS := [
 	["up", "Move up"], ["down", "Move down"], ["left", "Move left"], ["right", "Move right"],
-	["fire", "Fire"], ["secondary", "Weapon utility (right click)"], ["dash", "Dodge"], ["jump", "Jump (hold to glide)"], ["crouch", "Crouch"], ["signature", "Kin ability 1"],
+	["fire", "Fire"], ["secondary", "Weapon utility (right click)"], ["dash", "Dodge"], ["jump", "Jump (hold to glide)"], ["glide", "Glide (hold in the air)"], ["crouch", "Crouch"], ["signature", "Kin ability 1"],
 	["kin_skill", "Kin ability 2"], ["ultimate", "Bond ultimate"], ["throw", "Throw / recall kin"], ["swap_kin", "Swap kin"], ["gear1", "Gear active 1"], ["gear2", "Gear active 2"],
 	["interact", "Use, catch, revive, pet"], ["tonic", "Drink a tonic"], ["scores", "Scoreboard"],
 	["play", "Play fetch with a kin"], ["talk", "Talk to a kin"], ["details", "A kin's details"], ["inventory", "Inventory"],
@@ -198,7 +198,7 @@ func binding_text(action: String) -> String:
 		if e is InputEventKey:
 			names.append(OS.get_keycode_string((e as InputEventKey).physical_keycode))
 		elif e is InputEventMouseButton:
-			names.append({1: "LMB", 2: "RMB", 3: "MMB", 4: "Wheel up", 5: "Wheel down"}.get((e as InputEventMouseButton).button_index, "Mouse %d" % (e as InputEventMouseButton).button_index))
+			names.append({1: "LMB", 2: "RMB", 3: "MMB", 4: "Wheel up", 5: "Wheel down", 8: "Mouse 4", 9: "Mouse 5"}.get((e as InputEventMouseButton).button_index, "Mouse %d" % (e as InputEventMouseButton).button_index))
 	return " / ".join(names) if names.size() > 0 else "unbound"
 
 ## The first binding of an action, short, for HUD key caps ("E", "LMB").
@@ -210,5 +210,5 @@ func key_cap(action: String) -> String:
 	if e is InputEventKey:
 		return OS.get_keycode_string((e as InputEventKey).physical_keycode).to_upper()
 	if e is InputEventMouseButton:
-		return {1: "LMB", 2: "RMB", 3: "MMB"}.get((e as InputEventMouseButton).button_index, "M%d" % (e as InputEventMouseButton).button_index)
+		return {1: "LMB", 2: "RMB", 3: "MMB", 8: "M4", 9: "M5"}.get((e as InputEventMouseButton).button_index, "M%d" % (e as InputEventMouseButton).button_index)
 	return "?"
