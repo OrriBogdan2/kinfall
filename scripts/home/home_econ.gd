@@ -1002,7 +1002,7 @@ func loadout_rows(parent: VBoxContainer, reopen: Callable) -> void:
 		var card := UI.card(UI.CARD, 6, 10)
 		var row := UI.hbox(8); card.add_child(row)
 		var what := String({"weapon": "Weapon", "glove0": "Active glove", "glove1": "Passive glove"}[slot])
-		var nm := UI.label("%s:  %s%s" % [what, Loot.name_of(cur) if not cur.is_empty() else ("the one above" if slot == "weapon" else "none"), "  (instead of the one above)" if slot == "weapon" and not cur.is_empty() else ""], 14, Loot.col_of(cur) if not cur.is_empty() else UI.MUTED, UI.semi)
+		var nm := UI.label("%s:  %s" % [what, Loot.name_of(cur) if not cur.is_empty() else ("the one above" if slot == "weapon" else "none")], 14, Loot.col_of(cur) if not cur.is_empty() else UI.MUTED, UI.semi)
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		nm.clip_text = true
 		nm.tooltip_text = Loot.sub_of(cur) if not cur.is_empty() else ""
@@ -1018,6 +1018,6 @@ func loadout_rows(parent: VBoxContainer, reopen: Callable) -> void:
 			b.disabled = ids.size() <= 1
 			row.add_child(b)
 		parent.add_child(card)
-	var pl := UI.label("Backpack: %d slots  ·  what you take can be lost if you go down" % Econ.pack_cap(), 12, UI.MUTED)
+	var pl := UI.label("%sBackpack: %d slots  ·  what you take can be lost if you go down" % ["An armory weapon replaces the one above  ·  " if not Econ.loadout("weapon").is_empty() else "", Econ.pack_cap()], 12, UI.MUTED)
 	pl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	parent.add_child(pl)
