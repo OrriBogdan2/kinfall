@@ -903,7 +903,12 @@ func _extract_check() -> void:
 	var flare: bool = (d["node"] as Node3D).get_node("Beacon/Flare").visible
 	print("EXCHECK skiff: state=%s after holding %.1fs, arrives in %.0fs; loud: map pings +%d, flare=%s" % [d["state"], m.time - t0, float(d["t"]), m.pings.size() - pings_before, flare])
 	if d["state"] != "called" or m.pings.size() <= pings_before or not flare: ok = false; print("EXCHECK FAIL skiff not called (or not loud)")
-	run.call(m, 30.0)
+	# the waves come in: hold everyone where they are (a brute could knock the idle test hunters
+	# off the landing) but leave the monsters be, to count them
+	P.set_meta("pin", P.pos); mate.set_meta("pin", mate.pos); R.set_meta("pin", R.pos)
+	run.call(m, 30.0, func():
+		for h in [P, mate, R]:
+			if not h.out: h.teleport(h.get_meta("pin")); h.vel = Vector3.ZERO; h.hp = h.max_hp)
 	var waves := m.mobs.filter(func(x): return not x.dead and int(x.get_meta("exit", -1)) == int(d["i"])).size()
 	print("EXCHECK skiff: waves=%d monsters alive from them=%d t left=%.0f" % [int(d["waves"]), waves, float(d["t"])])
 	if int(d["waves"]) < 2 or waves <= 0: ok = false; print("EXCHECK FAIL no monster waves")
