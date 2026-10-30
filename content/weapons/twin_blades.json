@@ -27,7 +27,7 @@
   "charged_kb": 3.0,
   "size": 0.2,
   "color": "#c8f0ff",
-  "sfx": "dash",
+  "sfx": "swipe",
   "desc": "Tap for a quick 3-hit combo. Hold 0.5s for a spinning double slash all around you. Right click to lunge in.",
   "charged_reach": 2.7,
   "charged_arc": 360.0

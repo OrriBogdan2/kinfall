@@ -1002,7 +1002,8 @@ func _open_rack() -> void:
 func _rack_sound(id: String) -> void:
 	var ap := AudioStreamPlayer.new()
 	ap.stream = Gliders.sound(id, "open")
-	ap.volume_db = -4.0
+	ap.bus = "SFX"
+	ap.volume_db = -3.0
 	add_child(ap)
 	ap.play()
 	ap.finished.connect(ap.queue_free)
@@ -1071,35 +1072,15 @@ func _whistle() -> void:
 	if not inside.is_empty():
 		_house_alert(inside)
 
-## The whistle itself: a bright two-note rising whistle, made in code.
+## The whistle itself: a soft, breathy two-note whistle (made in code by Synth.whistle).
 func _whistle_sound() -> void:
 	if whistle_player == null:
 		whistle_player = AudioStreamPlayer.new()
-		whistle_player.bus = "Master"
+		whistle_player.bus = "SFX"
 		add_child(whistle_player)
-		var rate := 22050
-		var notes := [[1350.0, 1750.0, 0.13], [0.0, 0.0, 0.04], [1600.0, 2350.0, 0.22]]
-		var data := PackedByteArray()
-		var ph := 0.0
-		for nt in notes:
-			var cnt := int(rate * float(nt[2]))
-			for j in cnt:
-				var u := float(j) / cnt
-				var f := lerpf(float(nt[0]), float(nt[1]), u * u)
-				var env := minf(1.0, u * 12.0) * minf(1.0, (1.0 - u) * 6.0)
-				var v := 0.0
-				if f > 0.0:
-					ph += TAU * f * (1.0 + 0.012 * sin(j * 0.02)) / rate
-					v = (sin(ph) * 0.8 + sin(ph * 2.0) * 0.12) * env * 0.55
-				var sv := int(clampf(v, -1.0, 1.0) * 32767.0)
-				data.append(sv & 0xff); data.append((sv >> 8) & 0xff)
-		var w := AudioStreamWAV.new()
-		w.format = AudioStreamWAV.FORMAT_16_BITS
-		w.mix_rate = rate
-		w.data = data
-		whistle_player.stream = w
+		whistle_player.stream = Synth.whistle()
 	whistle_player.pitch_scale = randf_range(0.97, 1.03)
-	whistle_player.volume_db = -6.0
+	whistle_player.volume_db = -4.0
 	whistle_player.play()
 
 ## A soft ring spreading out from you, and a little note over your head.

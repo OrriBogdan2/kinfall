@@ -3,7 +3,7 @@ class_name Gliders
 ## Bought with gems at the glider rack by the portal, or earned. Purely cosmetic.
 ##   cloth / stripe / edge: colours ("team" and "hero" mean the hunter's own colours)
 ##   shape: wing | leaf | bat | kite | moth      trail: "" | leaves | embers | sparkle | dust | sparks
-##   sound: cloth | rustle | leather | chime | flame | flutter | zap
+##   sound: cloth | rustle | leather | chime | flame | flutter | zap  (gentle whooshes, see Synth.glider)
 ##   cost: gems; unlock: "stat:n" earned instead (Progress.stat), e.g. "extracts:10"
 
 const LIST := [
@@ -195,60 +195,6 @@ static func sound(id: String, which := "open") -> AudioStreamWAV:
 		_cache[key] = _make(set, which == "close")
 	return _cache[key]
 
+## Made in code by Synth.glider: a soft airy whoosh flavoured by the set, never a snap.
 static func _make(set: String, close: bool) -> AudioStreamWAV:
-	var rate := 22050
-	var dur := 0.38 if not close else 0.22
-	var n := int(rate * dur)
-	var data := PackedByteArray()
-	var rng := RandomNumberGenerator.new(); rng.seed = hash(set) + (7 if close else 0)
-	var lp := 0.0
-	var ph := 0.0
-	var ph2 := 0.0
-	for i in n:
-		var t := float(i) / rate
-		var u := float(i) / n
-		var env := minf(1.0, u * 30.0) * pow(1.0 - u, 1.6)
-		var noise := rng.randf_range(-1.0, 1.0)
-		var v := 0.0
-		match set:
-			"cloth":
-				# a sharp cloth snap, then a soft rush of air
-				var snap := exp(-t * 60.0) * noise
-				lp += (noise - lp) * 0.08
-				v = snap * 0.9 + lp * 1.6 * env
-			"rustle":
-				var crackle := noise * (1.0 if rng.randf() < 0.25 else 0.15)
-				lp += (crackle - lp) * 0.35
-				v = lp * env * 1.4
-			"leather":
-				ph += TAU * lerpf(140.0, 70.0, u) / rate
-				v = sin(ph) * exp(-t * 18.0) * 0.9 + noise * exp(-t * 45.0) * 0.6
-			"chime":
-				for nt in [[1320.0, 0.0], [1760.0, 0.06], [2217.0, 0.12]]:
-					var f: float = nt[0]
-					var start: float = nt[1]
-					if t >= start:
-						var tt := t - start
-						v += sin(TAU * f * tt) * exp(-tt * 9.0) * 0.28 + sin(TAU * f * 2.01 * tt) * exp(-tt * 14.0) * 0.08
-				v *= minf(1.0, u * 60.0)
-			"flame":
-				lp += (noise - lp) * 0.05
-				var crack := noise * (0.8 if rng.randf() < 0.04 else 0.0)
-				v = lp * 2.2 * env + crack * exp(-t * 4.0)
-			"flutter":
-				var beat := 0.5 + 0.5 * sin(TAU * 26.0 * t)
-				lp += (noise - lp) * 0.12
-				v = lp * beat * env * 1.8
-			"zap":
-				ph += TAU * lerpf(900.0, 300.0, u) / rate
-				ph2 += TAU * 60.0 / rate
-				v = (signf(sin(ph)) * 0.25 + noise * 0.35) * (0.6 + 0.4 * sin(ph2 * 3.0)) * env
-		if close:
-			v *= 0.6
-		var sv := int(clampf(v * 0.7, -1.0, 1.0) * 32767.0)
-		data.append(sv & 0xff); data.append((sv >> 8) & 0xff)
-	var w := AudioStreamWAV.new()
-	w.format = AudioStreamWAV.FORMAT_16_BITS
-	w.mix_rate = rate
-	w.data = data
-	return w
+	return Synth.glider(set, close)
