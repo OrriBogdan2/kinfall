@@ -11,7 +11,7 @@ const DEFAULTS := {
 	# video
 	"fullscreen": false, "vsync": true, "max_fps": 0, "msaa": 2, "shadows": true, "ui_scale": 1.0, "show_fps": false,
 	# gameplay
-	"shake": 1.0, "cam_lead": 1.0, "cam_style": "supervive", "cam_follow": "standard", "dash_hold": false, "damage_numbers": true, "tips": true, "cast_on_press": true, "crouch_toggle": false, "mod_mode": false, "kin_auto": false, "bot_diff": "auto",
+	"shake": 1.0, "cam_lead": 1.0, "cam_style": "supervive", "cam_follow": "supervive", "dash_hold": false, "damage_numbers": true, "tips": true, "cast_on_press": true, "crouch_toggle": false, "mod_mode": false, "kin_auto": false, "bot_diff": "auto",
 	# accessibility
 	"reduce_flashes": false, "hud_opacity": 1.0,
 	# controls: action -> list of "key:<physical keycode>" / "mouse:<button>"
@@ -47,6 +47,8 @@ func _ready() -> void:
 		var old: Dictionary = Save.d.get("settings", {})
 		for pair in [["volume", "master"], ["music", "music"], ["shake", "shake"], ["cam_lead", "cam_lead"]]:
 			if old.has(pair[0]): v[pair[1]] = float(old[pair[0]])
+	if not cf.has_section_key("s", "keys_v") and String(v.get("cam_follow", "")) == "standard":
+		v["cam_follow"] = "supervive"     # the new Supervive-style cursor lean becomes everyone's default once
 	if int(v.get("keys_v", 1)) < KEYS_V or not cf.has_section_key("s", "keys_v"):
 		v["keys"] = {}          # the kit changed (Q/E gloves, C kin, G throw): start from the new defaults
 		v["keys_v"] = KEYS_V

@@ -95,6 +95,28 @@ Notes on the table:
 - Sinking below island level darkens the screen from the edges, more near the kill depth and with an
   empty glider, pulsing red with a heartbeat at the very bottom.
 
+## Movement chains (Oct 2026)
+
+- **Dash buffer:** Shift pressed during a dash or a ledge climb (or the first beat of a jump-pad
+  launch) is held for 0.18s and fires the moment that movement ends.
+- **Rush -> dash:** Shift during a glove or ability rush (Grapple, a charge) cancels it into the dash.
+  A glove fired mid-dash (Blink, Grapple) takes over from the dash.
+- **Pad -> dash:** after the first 0.12s of a jump-pad flight, Shift breaks out of it into a dash.
+- **Dash -> jump:** Space during a ground dash ends it and keeps 55% of its speed into the jump.
+- **Glide -> dash -> glide:** dashing in the air closes the glider for the dash (the long air dash);
+  keep holding Space / Mouse 5 and it opens again as the dash ends.
+- **Carry:** out of a dash you keep 15% of its speed on the ground and 30% in the air (no long slide).
+
+## Camera and aim (Oct 2026)
+
+- Default follow is **Supervive**: the view leans toward the cursor in proportion to how far the
+  cursor is from your character (1.4m deadzone, 42% of the distance, capped at 7.5m), eased at 6/s,
+  so you see more where you aim and you never leave the screen. The old presets stay in Settings.
+- Sneaking (Ctrl) zooms the camera out to 1.45x, eased; the cursor lean works the same.
+- Ground-targeted effects land at the cursor, clamped to 10m for hunters (gloves) or the ability's
+  reach for kin. When your kin is out with its ability ready, a faint ring shows where it would land.
+- Weapon autos fire toward the cursor; the aim line shows the weapon's range.
+
 ## Hooks for the combat code
 - `notify_damaged(amount)`: returns true if the hit spiked a glider (credit the attacker).
 - `knockback(impulse)`: divided by the target's class weight.

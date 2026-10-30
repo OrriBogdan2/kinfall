@@ -2324,7 +2324,8 @@ func _process(delta: float) -> void:
 		else:
 			# high in the air or out over the abyss the camera pulls back so you can see where you'll land
 			# the camera only eases back while gliding, so jumps and falls never change the framing
-			cam.zoom_to = 1.25 if player.gliding else 1.0
+			# sneaking (Ctrl) pulls the camera well back for a wide look around [Supervive]
+			cam.zoom_to = 1.25 if player.gliding else (1.45 if player.crouch and player.grounded else 1.0)
 			cam.top_to = 0.0
 		cam.follow(player.prev.lerp(player.pos, alpha), delta, not player.dropping)
 	elif player and (player.downed or player.out):
@@ -4354,6 +4355,27 @@ func _update_aim(alpha: float) -> void:
 			aim_ring.global_position = Vector3(at.x + t.x, g + 0.06, at.z + t.y)
 			var col: Color = Data.KIN[k.species]["color"]
 			aim_ring.material_override.set_shader_parameter("color", Color(col, 0.6))
+	elif k and k.state == "active" and k.runner.is_ready("k1") and k.ready_to_fight():
+		# your kin's ability lands at the cursor, as far as it can reach from the kin: a faint ring
+		# shows where it would go (clamped to its reach) so cursor distance reads as range
+		var kd: AbilityDef = k.runner.def_of("k1")
+		if kd:
+			var spec: Array = kd.aim_spec()
+			if String(spec[0]) == "area":
+				var from_p: Vector3 = k.pos if kd.from == "kin" else at
+				var t2 := Vector2(aim.x - from_p.x, aim.z - from_p.z)
+				var reach := float(spec[1])
+				var clamped := t2.length() > reach
+				if clamped:
+					t2 = t2.normalized() * reach
+				var g2 := world.ground_at(from_p.x + t2.x, from_p.z + t2.y)
+				if g2 > World.VOID + 1.0:
+					aim_ring.visible = true
+					aim_ring.global_position = Vector3(from_p.x + t2.x, g2 + 0.06, from_p.z + t2.y)
+					aim_ring.scale = Vector3.ONE * maxf(0.6, float(spec[2]) / 0.6)
+					aim_ring.material_override.set_shader_parameter("color", Color(kd.color, 0.35 if clamped else 0.22))
+	if not (k and k.state == "active"):
+		aim_ring.scale = Vector3.ONE
 	if p.muzzle_t > 0.0:
 		var dir2 := p.aim_dir()
 		muzzle_light.global_position = Vector3(at.x + dir2.x * 0.8, at.y + 1.0, at.z + dir2.y * 0.8)

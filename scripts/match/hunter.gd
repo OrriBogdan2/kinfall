@@ -439,6 +439,11 @@ func do_jump() -> void:
 			vel.y = minf(vel.y, 2.0)
 			_open_glider()
 		return
+	if roll_t > 0.0 and grounded and move_kind == "dash":
+		# jump out of a dash: the dash ends and you keep about half its speed into the jump
+		var keep := roll_dir * roll_speed * DASH_JUMP_CARRY
+		roll_t = 0.0
+		vel.x = keep.x; vel.z = keep.y
 	if grounded or coyote > 0.0:
 		vel.y = JUMP_V
 		grounded = false
@@ -516,8 +521,24 @@ var hit_heat_t := 0.0           # a moment after being hit while gliding, the gl
 var ex_next := false
 var dash_is_ex := false
 var dash_held := 0.0
+## Movement chains (Supervive): Shift during a glove rush cancels it into the dash; during a dash
+## or a ledge climb it's buffered and fires the moment that ends; off a jump pad (after the first
+## beat of the launch) it breaks the pad flight into a dash. Jump out of a ground dash keeps half
+## its speed. Dash in the air and keep holding glide and the glider opens again as the dash ends.
+var dash_buf := 0.0
+var move_kind := "dash"          # what the current roll is: "dash" (Shift) or "rush" (an ability or glove)
+const DASH_BUFFER := 0.18
+const DASH_JUMP_CARRY := 0.55
+
 func do_dash() -> void:
-	if downed or stun_t > 0.0 or root_t > 0.0 or out or roll_t > 0.0 or grap.size() > 0 or pad.size() > 0:
+	if downed or stun_t > 0.0 or root_t > 0.0 or out:
+		return
+	if roll_t > 0.0 and move_kind == "rush":
+		roll_t = 0.0            # a glove/ability rush cancels straight into the dash
+	elif pad.size() > 0 and not pad.get("ledge", false) and float(pad.get("t", 0.0)) > 0.12:
+		pad = {}                # break out of a jump pad's flight
+	elif roll_t > 0.0 or grap.size() > 0 or pad.size() > 0:
+		dash_buf = DASH_BUFFER  # pressed a hair early: fire it as soon as this movement ends
 		return
 	var use_ex := not grounded or dashes < 1.0
 	if use_ex:
@@ -552,6 +573,7 @@ func dash_with(e: Dictionary) -> void:
 	roll_dir = d.normalized()
 	roll_speed = float(e.get("speed", DASH_SPEED))
 	roll_t = float(e.get("time", DASH_TIME))
+	move_kind = String(e.get("kind", "dash"))
 	dash_is_ex = ex_next
 	dash_held = 0.0
 	if ex_next:
@@ -1083,7 +1105,7 @@ func sim(dt: float) -> void:
 				inp[k] = false
 		return
 	tick_status(dt)
-	for k in ["hit_heat_t", "ex_cd", "reveal_t", "inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t", "sick_t"]:
+	for k in ["dash_buf", "hit_heat_t", "ex_cd", "reveal_t", "inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t", "sick_t"]:
 		set(k, maxf(0.0, get(k) - dt))
 	if shield_t > 0.0:
 		shield_t -= dt
@@ -1132,6 +1154,9 @@ func sim(dt: float) -> void:
 		inp["move"] = Vector2.ZERO
 	# inputs
 	if inp["dash"]: do_dash()
+	if dash_buf > 0.0 and roll_t <= 0.0 and grap.is_empty() and pad.is_empty() and not inp["dash"]:
+		dash_buf = 0.0
+		do_dash()
 	if inp["jump"]: do_jump()
 	if runner:
 		runner.rate = 1.0 + gear_stat("cdr")

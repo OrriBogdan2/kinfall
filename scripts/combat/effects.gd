@@ -74,11 +74,21 @@ static func _aim_dir(caster: Node, ctx: Dictionary) -> Vector2:
 		return (caster as Hunter).aim_dir()
 	return Vector2(-sin(caster.face), -cos(caster.face))
 
+## Ground-targeted effects land at the cursor, clamped to a hunter's reach (10m by default, or the
+## effect's own "range"), so how far the mouse is sets how far the effect goes.
+const HUNTER_REACH := 10.0
+
 static func _aim_point(caster: Node, ctx: Dictionary) -> Vector3:
 	if ctx.has("aim"):
 		return ctx["aim"]
 	if caster is Hunter:
-		return (caster as Hunter).inp.get("aim", caster.pos)
+		var a: Vector3 = (caster as Hunter).inp.get("aim", caster.pos)
+		var d := Vector2(a.x - caster.pos.x, a.z - caster.pos.z)
+		var reach := float(ctx.get("reach", HUNTER_REACH))
+		if d.length() > reach:
+			d = d.normalized() * reach
+			a = Vector3(caster.pos.x + d.x, a.y, caster.pos.z + d.y)
+		return a
 	return caster.pos
 
 static func _where(e: Dictionary, caster: Node, ctx: Dictionary, default := "self") -> Vector3:
@@ -229,7 +239,7 @@ static func _one(e: Dictionary, caster: Node, ctx: Dictionary) -> void:
 			if caster is Kin:
 				(caster as Kin).start_rush(_aim_dir(caster, ctx), e, ctx)
 			elif caster is Hunter:
-				(caster as Hunter).dash_with({"speed": float(e.get("speed", 20.0)), "time": float(e.get("distance", 6.0)) / float(e.get("speed", 20.0)), "shove": true, "shove_kb": float(e.get("kb", 6.0)), "shove_dmg": float(e.get("dmg", 8.0))})
+				(caster as Hunter).dash_with({"speed": float(e.get("speed", 20.0)), "time": float(e.get("distance", 6.0)) / float(e.get("speed", 20.0)), "shove": true, "shove_kb": float(e.get("kb", 6.0)), "shove_dmg": float(e.get("dmg", 8.0)), "kind": "rush"})
 		"leap":
 			var to := _where(e, caster, ctx, "aim")
 			if caster is Kin:

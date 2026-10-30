@@ -32,11 +32,15 @@ var chase_to := 0.0
 ## Cursor panning, from Supervive's three camera presets: [deadzone, maxzone, pan distance,
 ## camera speed, quadratic easing]. Locked stays centred on you.
 const FOLLOW := {
+	# Supervive (the default): the view leans toward the cursor in proportion to how far the cursor
+	# is from YOU (not from the screen centre), after a small deadzone, eased, and capped so you
+	# never leave the screen. [deadzone m, share of the distance, cap m, ease speed]
+	"supervive": [1.4, 0.42, 7.5, 6.0, false],
 	"standard": [0.2, 0.8, 6.0, 7.0, true],
 	"dynamic": [0.1, 0.9, 10.0, 10.0, false],
 	"locked": [0.0, 0.0, 0.0, 0.0, false],
 }
-var follow_mode := "standard"
+var follow_mode := "supervive"
 var pan := Vector3.ZERO
 var base := Vector3.ZERO      # the followed point, before the cursor pan
 
@@ -67,8 +71,18 @@ func add_trauma(a: float) -> void:
 
 func follow(p: Vector3, delta: float, mouse_lead := true) -> void:
 	var want_pan := Vector3.ZERO
-	var fm: Array = FOLLOW.get(follow_mode, FOLLOW["standard"])
-	if mouse_lead and float(fm[2]) > 0.0:
+	var fm: Array = FOLLOW.get(follow_mode, FOLLOW["supervive"])
+	if follow_mode == "supervive" and mouse_lead:
+		# where the cursor points on the ground at your height, relative to you
+		var cur := mouse_on_plane(p.y)
+		var rel3 := Vector3(cur.x - p.x, 0, cur.z - p.z)
+		var l3 := rel3.length()
+		var dz := float(fm[0])
+		if l3 > dz:
+			var amt := minf((l3 - dz) * float(fm[1]), float(fm[2]) * maxf(1.0, zoom)) * lead
+			want_pan = rel3 / l3 * amt
+		pan = pan.lerp(want_pan, 1.0 - exp(-float(fm[3]) * delta))
+	elif mouse_lead and float(fm[2]) > 0.0:
 		var vp := get_viewport()
 		var sz := vp.get_visible_rect().size
 		var half := sz * 0.5
@@ -78,7 +92,9 @@ func follow(p: Vector3, delta: float, mouse_lead := true) -> void:
 			var f := clampf((l - float(fm[0])) / (float(fm[1]) - float(fm[0])), 0.0, 1.0)
 			if fm[4]: f *= f
 			want_pan = Vector3(rel.x / l, 0, rel.y / l).rotated(Vector3.UP, yaw) * f * float(fm[2]) * lead
-	if not mouse_lead or float(fm[3]) <= 0.0:
+	if follow_mode == "supervive" and mouse_lead:
+		pass        # (eased above)
+	elif not mouse_lead or float(fm[3]) <= 0.0:
 		pan = want_pan if mouse_lead else pan.lerp(Vector3.ZERO, minf(1.0, delta * 6.0))
 	else:
 		pan = pan.lerp(want_pan, 1.0 - exp(-float(fm[3]) * delta))
