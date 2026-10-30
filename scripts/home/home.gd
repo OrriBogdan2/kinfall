@@ -198,6 +198,8 @@ func _ready() -> void:
 		ppos = lots[spawn]["door"]
 	player.position = ppos
 	cam.snap(ppos)
+	if "--expedition-test" in dbg:
+		get_tree().create_timer(0.5).timeout.connect(_open_expedition)
 	for a in dbg:
 		if a.begins_with("--rack-test"):
 			# test: open the glider rack (optionally on a skin: --rack-test=ember)
@@ -597,7 +599,7 @@ func _update_music(d: float) -> void:
 func _on_new_track(name: String) -> void:
 	if not is_inside_tree() or root_ui == null:
 		return
-	_toast("New track: %s" % Data.MUSIC.get(name, {}).get("name", name))
+	pass     # tracks join the music list in the house quietly; no popup every time a new one plays
 
 func _update_sky(d: float) -> void:
 	_update_music(d)
@@ -1498,10 +1500,10 @@ func _treat_name(t: String) -> String:
 		if Data.CROPS[k]["use"] == t: return Data.CROPS[k]["name"]
 	return t
 
-func _new_panel(title_txt: String, width := 520.0) -> VBoxContainer:
+func _new_panel(title_txt: String, width := 520.0, scroll := false) -> VBoxContainer:
 	var prev := panel_open
 	_close_panel()
-	var pb := UI.scroll_panel(title_txt, width, _close_panel)
+	var pb := UI.scroll_panel(title_txt, width, _close_panel, "Close", scroll)
 	var p: PanelContainer = pb[0]
 	var v: VBoxContainer = pb[1]
 	panel_host.add_child(p)
@@ -1548,8 +1550,13 @@ func _refresh_day1() -> void:
 		return
 	day1_box = Progress.day1_box()
 	root_ui.add_child(day1_box)
+	if is_instance_valid(panel_host):
+		root_ui.move_child(day1_box, panel_host.get_index())     # menus open on top of it
 
 func _open_welcome() -> void:
+	# shown once: marked seen as soon as it opens, however it's closed
+	Save.d["tutorial"]["home"] = true
+	Save.save_game()
 	var kn: String = Save.active_kin().get("name", "your kin")
 	var v := _new_panel("Welcome home", 560)
 	v.add_child(UI.label("This little island is yours. %s lives here with you now, and it remembers everything you do together." % kn, 17))
@@ -2372,34 +2379,72 @@ func _weapon() -> String:
 
 func _open_expedition() -> void:
 	_day1("portal")
-	var v := _new_panel("Expedition", 720)
-	var cd: Dictionary = Data.CLASSES[Data.class_of_save()]
-	var w := _weapon()
-	var hc := UI.card(UI.CARD, 12, 14)
-	var hrow := UI.hbox(12); hc.add_child(hrow)
-	var hv := UI.vbox(4); hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hv.add_child(UI.title("%s class  ·  %s" % [cd["name"], Data.weapon_stats(w)["name"]], 24, cd["color"]))
-	hv.add_child(UI.label("%d health  ·  right click %s  ·  %s" % [int(cd["hp"]), (Content.ability(Content.weapon(w).utility).display_name if Content.weapon(w) and Content.weapon(w).utility != "" and Content.ability(Content.weapon(w).utility) else "weapon utility"),
-		"perks found on the run"], 14, UI.MUTED))
-	hrow.add_child(hv)
-	hrow.add_child(UI.button("Class and loadout", _open_loadout, 200))
-	v.add_child(hc)
+	var v := _new_panel("Expedition", 900, true)
+	var cur_c := Data.class_of_save()
+	var cols := UI.hbox(18)
+	v.add_child(cols)
+	# left: who you are (class, weapon, kin)
+	var left := UI.vbox(8); left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(left)
+	left.add_child(UI.section("Class"))
+	var crow := UI.hbox(6)
+	for c in ["light", "medium", "heavy"]:
+		var cd: Dictionary = Data.CLASSES[c]
+		var ck: String = c
+		var cb := UI.choice(String(cd["name"]), c == cur_c, func():
+			Save.d["cls"] = ck
+			Save.d["weapon"] = Data.CLASSES[ck]["weapon"]
+			Save.save_game()
+			_refresh_player_model()
+			_open_expedition(), 120)
+		cb.tooltip_text = "%d health  ·  %d dash%s\n%s" % [cd["hp"], cd["dashes"], "es" if cd["dashes"] > 1 else "", cd["desc"]]
+		crow.add_child(cb)
+	left.add_child(crow)
+	var ccd: Dictionary = Data.CLASSES[cur_c]
+	var cl := UI.label("%d health  ·  %d dash%s  ·  %s" % [ccd["hp"], ccd["dashes"], "es" if ccd["dashes"] > 1 else "", "light frame" if cur_c == "light" else ("hard to push" if cur_c == "heavy" else "all-rounder")], 13, ccd["color"])
+	cl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	left.add_child(cl)
+	left.add_child(UI.section("Weapon"))
+	var wr := UI.hbox(6)
+	var cur_w := _weapon()
+	for w in ccd["weapons"]:
+		var wd: Dictionary = Data.weapon_stats(w)
+		var wk: String = w
+		var wb := UI.choice(String(wd["name"]), w == cur_w, func():
+			Save.d["weapon"] = wk
+			Save.save_game()
+			_refresh_player_model()
+			_open_expedition(), 120)
+		var wu := Content.weapon(w)
+		var un: String = Content.ability(wu.utility).display_name if wu and wu.utility != "" and Content.ability(wu.utility) else ""
+		var stat_s := ("Melee: %s damage per hit, reach %.1f" % [str(snappedf(float(wd["dmg"]), 0.1)), float(wd["range"])]) if wd.get("melee", false) else ("%s damage%s, %d per mag, range %d" % [str(snappedf(float(wd["dmg"]), 0.1)), (" x%d" % int(wd["pellets"])) if wd.has("pellets") else "", int(wd["mag"]), int(wd["range"])])
+		wb.tooltip_text = (String(wd.get("desc", "")) + "\n" if wd.has("desc") else "") + stat_s + ("\nRight click: " + un if un != "" else "")
+		wr.add_child(wb)
+	left.add_child(wr)
+	var wdef := Content.weapon(cur_w)
+	var ud: AbilityDef = Content.ability(wdef.utility) if wdef and wdef.utility != "" else null
+	if ud:
+		var ul := UI.label("Right click: %s" % ud.display_name, 13, UI.MUTED)
+		ul.tooltip_text = ud.desc
+		ul.mouse_filter = Control.MOUSE_FILTER_PASS
+		left.add_child(ul)
 	var ak := Save.active_kin()
 	if not ak.is_empty():
-		v.add_child(UI.section("Kin you bring"))
-		v.add_child(_kin_pick_row("Partner", ak, "active"))
-		var k2 := Save.second_kin()
+		left.add_child(UI.section("Kin you bring"))
+		left.add_child(_kin_pick_row("Partner", ak, "active"))
 		if Save.d["roster"].size() > 1:
-			v.add_child(_kin_pick_row("Second", k2, "active2"))
+			left.add_child(_kin_pick_row("Second", Save.second_kin(), "active2"))
 		if float(ak["trust"]) < 30.0:
-			v.add_child(UI.label("%s doesn't trust you much yet and may refuse risky throws. Spend time with it, or feed it a Mindmint treat." % ak["name"], 13, UI.BAD))
-		var risk := UI.label("If you go down for good, the kin you bring are left behind. Unclaimed ones end up at the Ransom House; rivals may take the rest. Very trusting kin sometimes find their own way home.", 13, UI.MUTED)
-		risk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		v.add_child(risk)
+			var tl := UI.label("%s doesn't trust you much yet and may refuse risky throws." % ak["name"], 13, UI.BAD)
+			tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			left.add_child(tl)
 	if Save.d.get("treat", "") != "":
-		v.add_child(UI.label("Treat: " + _treat_name(Save.d["treat"]), 14, UI.GOLD))
-	v.add_child(UI.section("Where"))
-	var tiers := UI.hbox(8)
+		left.add_child(UI.label("Treat: " + _treat_name(Save.d["treat"]), 13, UI.GOLD))
+	# right: where you're going and how
+	var right := UI.vbox(8); right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(right)
+	right.add_child(UI.section("Where"))
+	var tiers := UI.vbox(6)
 	var ex := int(Save.d.get("extracts", 0))
 	for i in Data.TIERS.size():
 		var td: Dictionary = Data.TIERS[i]
@@ -2407,26 +2452,41 @@ func _open_expedition() -> void:
 		var ti := i
 		var label_t: String = td["name"]
 		if locked:
-			label_t = "%s (make it out %d more time%s)" % [td["name"], int(td["unlock"]) - ex, "" if int(td["unlock"]) - ex == 1 else "s"]
+			label_t = "%s  ·  make it out %d more time%s" % [td["name"], int(td["unlock"]) - ex, "" if int(td["unlock"]) - ex == 1 else "s"]
 		var b := UI.choice(label_t, exp_tier == i and not locked, func(): exp_tier = ti; _open_expedition())
 		b.disabled = locked
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		tiers.add_child(b)
-	v.add_child(tiers)
+	right.add_child(tiers)
 	var tsel: Dictionary = Data.TIERS[exp_tier]
-	v.add_child(UI.label(tsel["desc"], 14, UI.BAD if tsel["risk_kin"] else UI.MUTED))
-	v.add_child(UI.section("Match"))
-	var modes := UI.hbox(8)
-	for m in [["solo", "Solo · 20 hunters"], ["duo", "Duos · 10 squads"], ["trio", "Trios · 7 squads"]]:
+	var tdl := UI.label(tsel["desc"], 13, UI.BAD if tsel["risk_kin"] else UI.MUTED)
+	tdl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	right.add_child(tdl)
+	right.add_child(UI.section("Match"))
+	var modes := UI.hbox(6)
+	for m in [["solo", "Solo"], ["duo", "Duos"], ["trio", "Trios"]]:
 		var mk: String = m[0]
-		var b := UI.choice(m[1], exp_mode == mk, func(): exp_mode = mk; _open_expedition())
+		var b := UI.choice(m[1], exp_mode == mk, func(): exp_mode = mk; _open_expedition(), 90)
+		b.tooltip_text = {"solo": "20 hunters, every one for themselves", "duo": "10 squads of two", "trio": "7 squads of three"}[mk]
 		modes.add_child(b)
-	v.add_child(modes)
+	right.add_child(modes)
+	if not ak.is_empty():
+		var risk := UI.label("Go down for good and the kin you bring are left behind (the Ransom House holds the unclaimed ones).", 12, UI.MUTED)
+		risk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		right.add_child(risk)
+	# bottom: go
 	var go := UI.hbox(10)
-	go.add_child(UI.primary("Start expedition", _confirm_start, 220))
-	go.add_child(UI.button("Training area", _start_training, 180))
+	var start_b := UI.primary("Start expedition", _confirm_start, 240)
+	go.add_child(start_b)
+	go.add_child(UI.button("Training area", _start_training, 170))
 	if Bridge.net_available():
 		go.add_child(UI.button("Play online with friends", func(): Game.goto("lobby", {"cls": Data.class_of_save(), "tier": exp_tier}), 240))
 	v.add_child(go)
+	start_b.grab_focus.call_deferred()
+
+## The old separate loadout page now lives inside the expedition panel.
+func _open_loadout() -> void:
+	_open_expedition()
 
 ## One row of the expedition loadout: which kin, with ‹ › to change it.
 func _kin_pick_row(label_t: String, rec: Dictionary, key: String) -> Control:
@@ -2450,14 +2510,25 @@ func _kin_pick_row(label_t: String, rec: Dictionary, key: String) -> Control:
 		info.add_child(UI.label("Bring only your partner. Nothing else at risk.", 12, UI.MUTED))
 	else:
 		var sp: Dictionary = Data.KIN[rec["species"]]
-		info.add_child(UI.label("%s: %s the %s  ·  level %d  ·  trust %d" % [label_t, rec["name"], sp["name"], int(rec.get("level", 1)), int(rec["trust"])], 16, sp["color"], UI.big))
+		var nl := UI.label("%s the %s" % [rec["name"], sp["name"]], 16, sp["color"], UI.big)
+		nl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		nl.clip_text = true
+		info.add_child(nl)
+		var sl := UI.label("%s  ·  level %d  ·  trust %d" % [label_t, int(rec.get("level", 1)), int(rec["trust"])], 12, UI.MUTED)
+		sl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		info.add_child(sl)
 		var names: Array = []
 		for aid in sp.get("abilities", []):
 			var ad := Content.ability(String(aid))
 			if ad: names.append(ad.display_name)
 		var ud := Content.ultimate(String(sp.get("ultimate", "")))
 		var keys := ("%s / %s / %s" % [Settings.key_cap("signature"), Settings.key_cap("kin_skill"), Settings.key_cap("ultimate")]) if key == "active" else ("swap in with %s" % Settings.key_cap("swap_kin"))
-		info.add_child(UI.label("%s  ·  %s  ·  bond: %s" % [keys, ", ".join(names), ud.display_name if ud else "-"], 12, UI.MUTED))
+		var al := UI.label("%s  ·  %s  ·  bond: %s" % [keys, ", ".join(names), ud.display_name if ud else "-"], 12, UI.MUTED)
+		al.autowrap_mode = TextServer.AUTOWRAP_OFF
+		al.clip_text = true
+		al.tooltip_text = al.text
+		al.mouse_filter = Control.MOUSE_FILTER_PASS
+		info.add_child(al)
 	row.add_child(info)
 	row.add_child(UI.button("›", func(): cycle.call(1), 40))
 	return card
@@ -2873,62 +2944,6 @@ func _open_hall() -> void:
 	v.add_child(kr)
 
 # ---- class and loadout
-func _open_loadout() -> void:
-	var v := _new_panel("Class and loadout", 780)
-	var cur_c := Data.class_of_save()
-	var cols := UI.hbox(10)
-	for c in ["light", "medium", "heavy"]:
-		var cd: Dictionary = Data.CLASSES[c]
-		var ck: String = c
-		var col := UI.vbox(6); col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var b := UI.choice(String(cd["name"]), c == cur_c, func():
-			Save.d["cls"] = ck
-			Save.d["weapon"] = Data.CLASSES[ck]["weapon"]
-			Save.save_game()
-			_refresh_player_model()
-			_open_loadout())
-		col.add_child(b)
-		var hl := UI.label("%d health  ·  %d dash%s  ·  %s" % [cd["hp"], cd["dashes"], "es" if cd["dashes"] > 1 else "", "light frame" if c == "light" else ("hard to push" if c == "heavy" else "all-rounder")], 13, UI.MUTED)
-		hl.autowrap_mode = TextServer.AUTOWRAP_OFF
-		col.add_child(hl)
-		var dl := UI.label(String(cd["desc"]), 13, cd["color"] if c == cur_c else UI.MUTED)
-		dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		col.add_child(dl)
-		cols.add_child(col)
-	v.add_child(cols)
-	var hd: Dictionary = Data.CLASSES[cur_c]
-	var det := UI.card(UI.CARD, 12, 14)
-	var dv := UI.vbox(5); det.add_child(dv)
-	var cw0 := _weapon()
-	var wdef := Content.weapon(cw0)
-	var ud: AbilityDef = Content.ability(wdef.utility) if wdef and wdef.utility != "" else null
-	if ud:
-		dv.add_child(UI.label("Right click (from your weapon)  %s: %s" % [ud.display_name, ud.desc], 14))
-	var kn := UI.label("Left and right click come from your weapon; Q, E and R come from the kin you bring, so the same class plays differently with every pair of kin.", 13, UI.MUTED)
-	kn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	dv.add_child(kn)
-	v.add_child(det)
-	v.add_child(UI.section("Weapon"))
-	var wr := UI.hbox(8)
-	var cur_w := _weapon()
-	for w in hd["weapons"]:
-		var wd: Dictionary = Data.weapon_stats(w)
-		var wk: String = w
-		var wb := UI.choice(String(wd["name"]), w == cur_w, func():
-			Save.d["weapon"] = wk
-			Save.save_game()
-			_refresh_player_model()
-			_open_loadout())
-		var wu := Content.weapon(w)
-		var un: String = Content.ability(wu.utility).display_name if wu and wu.utility != "" and Content.ability(wu.utility) else ""
-		var stat_s := ("Melee: %s damage per hit, reach %.1f" % [str(snappedf(float(wd["dmg"]), 0.1)), float(wd["range"])]) if wd.get("melee", false) else ("%s damage%s, %d per mag, range %d" % [str(snappedf(float(wd["dmg"]), 0.1)), (" x%d" % int(wd["pellets"])) if wd.has("pellets") else "", int(wd["mag"]), int(wd["range"])])
-		wb.tooltip_text = (String(wd.get("desc", "")) + "\n" if wd.has("desc") else "") + stat_s + ("\nRight click: " + un if un != "" else "")
-		wr.add_child(wb)
-	v.add_child(wr)
-	v.add_child(UI.section("Perks"))
-	v.add_child(UI.label("Perks aren't brought from home any more. You find them out there: pray at a shrine, open a rare chest or bring down a big monster and choose one of three. They stack, and they last until the expedition ends.", 14, UI.MUTED))
-	v.add_child(UI.button("Back to the expedition", _open_expedition, 240))
-
 func _refresh_player_model() -> void:
 	var at := player.position
 	var rot := player.rotation

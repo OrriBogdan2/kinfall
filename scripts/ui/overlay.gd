@@ -96,7 +96,7 @@ func ctx_now() -> String:
 	return "title"
 
 # ------------------------------------------------------------------ pages
-func _page(name: String, title_txt: String, width := 620.0) -> VBoxContainer:
+func _page(name: String, title_txt: String, width := 620.0, scroll := false) -> VBoxContainer:
 	for ch in host.get_children():
 		ch.queue_free()
 	if page != "" and page != name and not stack.has(page):
@@ -109,7 +109,7 @@ func _page(name: String, title_txt: String, width := 620.0) -> VBoxContainer:
 		var s = Game.main.screen_node()
 		if s and s.has_method("on_menu_opened"):
 			s.on_menu_opened()
-	var pb := UI.scroll_panel(title_txt, width, back, "Back" if stack.size() > 0 else "Close")
+	var pb := UI.scroll_panel(title_txt, width, back, "Back" if stack.size() > 0 else "Close", scroll)
 	host.add_child(pb[0])
 	return pb[1]
 
@@ -186,7 +186,7 @@ func open_settings() -> void:
 	_show_settings()
 
 func _show_settings() -> void:
-	var v := _page("settings", "Settings", 680)
+	var v := _page("settings", "Settings", 680, true)
 	var tabs := UI.hbox(6)
 	for t in ["Audio", "Video", "Controls", "Gameplay", "Accessibility"]:
 		var tn: String = t

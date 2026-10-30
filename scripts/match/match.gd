@@ -938,8 +938,7 @@ func _update_rings(dt: float) -> void:
 				_tip("rings", "Glowing rings in the air between islands: jump off the edge, glide (hold %s) and fly through them for a burst of speed. Fast gliders barely sink." % Settings.key_cap("jump"))
 				break
 	for rg in air_rings:
-		var n: Node3D = rg["node"]
-		(n.get_node("Ring") as Node3D).rotation.z += dt * 0.8
+		# rings stand straight up facing along the route; they don't spin
 		for h in hunters:
 			if h.remote or h.grounded or h.out or h.downed or h.riding or not h.pad.is_empty():
 				continue
