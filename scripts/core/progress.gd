@@ -76,21 +76,69 @@ static func day1_mark(step: String) -> String:
 ## The little checklist card shown in the top right.
 static func day1_box() -> PanelContainer:
 	var dd := day1_steps()
-	var box := UI.card(Color(0.06, 0.07, 0.1, 0.84), 12, 14)
+	var box := UI.card(Color(0.06, 0.07, 0.11, 0.86), 14, 14)
+	UI.set_card_border(box, Color(1, 1, 1, 0.07), 1)
 	box.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	box.offset_left = -300; box.offset_right = -16; box.offset_top = 14
+	box.offset_left = -316; box.offset_right = -16; box.offset_top = 14
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var v := UI.vbox(5); box.add_child(v)
-	v.add_child(UI.section("Your first day"))
+	var v := UI.vbox(7); box.add_child(v)
+	# header: what this is and how far along you are
+	var head := UI.hbox(8); v.add_child(head)
+	var t := UI.section("Your first day")
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	head.add_child(UI.label("%d / %d" % [dd.size(), DAY1.size()], 12, UI.MUTED, UI.caps))
+	v.add_child(UI.bar(float(dd.size()) / maxf(1.0, DAY1.size()), UI.GOOD, 270.0, 5.0))
+	v.add_child(UI.spacer(2))
 	var kname: String = Save.active_kin().get("name", "your kin")
+	var next_found := false
 	for st in DAY1:
 		var done: bool = dd.has(st[0])
+		var is_next := not done and not next_found
+		if is_next: next_found = true
 		var txt: String = (String(st[1]) % kname) if String(st[1]).contains("%s") else String(st[1])
-		if DAY1_KEYS.has(st[0]): txt += "  (%s)" % Settings.key_cap(DAY1_KEYS[st[0]])
-		v.add_child(UI.label(("✓  " if done else "○  ") + txt, 14, UI.GOOD if done else UI.INK))
-	v.add_child(UI.label("+5 gems each, +30 for all of them", 12, UI.MUTED))
+		var row := UI.hbox(9)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(CheckDot.new(done, is_next))
+		var l := UI.label(txt, 15 if is_next else 14, UI.GOLD if is_next else (Color(UI.INK, 0.42) if done else UI.INK), UI.semi if is_next else null)
+		l.autowrap_mode = TextServer.AUTOWRAP_OFF
+		l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		row.add_child(l)
+		if DAY1_KEYS.has(st[0]) and not done:
+			row.add_child(UI.keycap(Settings.key_cap(DAY1_KEYS[st[0]]), 11))
+		v.add_child(row)
+	v.add_child(UI.spacer(2))
+	var foot := UI.hbox(6); v.add_child(foot)
+	foot.add_child(Icons.Glyph.new("gem", UI.GOLD, 14.0))
+	foot.add_child(UI.label("+5 each, +30 for finishing them all", 12, UI.MUTED))
 	box.set_meta("n", dd.size())
 	return box
+
+## A round checkbox: a filled green tick when done, a glowing ring for the step to do next.
+class CheckDot extends Control:
+	var done := false
+	var next := false
+	var t := 0.0
+	func _init(d: bool, n: bool) -> void:
+		done = d; next = n
+		custom_minimum_size = Vector2(18, 18)
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		set_process(n)
+	func _process(dt: float) -> void:
+		t += dt
+		queue_redraw()
+	func _draw() -> void:
+		var c := size * 0.5
+		if done:
+			draw_circle(c, 8.0, UI.GOOD)
+			draw_polyline(PackedVector2Array([c + Vector2(-4, 0), c + Vector2(-1, 3.5), c + Vector2(4.5, -3.5)]), Color(0.06, 0.12, 0.08), 2.2, true)
+		elif next:
+			var p := 0.5 + 0.5 * sin(t * 4.0)
+			draw_circle(c, 8.0 + p * 2.0, Color(UI.GOLD, 0.18 * (1.0 - p)))
+			draw_arc(c, 7.0, 0, TAU, 28, UI.GOLD, 2.0, true)
+		else:
+			draw_arc(c, 7.0, 0, TAU, 28, Color(1, 1, 1, 0.35), 1.6, true)
 
 static func stat(k: String) -> int:
 	match k:

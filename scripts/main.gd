@@ -2,9 +2,23 @@ extends Node
 ## Holds whichever screen is showing: home, a match, or the results.
 
 var current: Node = null
+var fade: ScreenFade
+
+## Real play gets ink-wipe transitions between screens. Tooling that screenshots by frame count,
+## headless checks and autoplay skip them so their timing stays exact (--show-fade forces them on).
+func _fades_on() -> bool:
+	if DisplayServer.get_name() == "headless":
+		return false
+	if _has_arg("--show-fade"):
+		return true
+	return not (_has_arg("--shot=") or _has_arg("--autoplay") or _has_arg("--simtest"))
 
 func _ready() -> void:
 	Game.main = self
+	fade = ScreenFade.new()
+	add_child(fade)
+	if _fades_on():
+		fade.boot()     # carry on from the boot splash: covered, logo showing, until the first screen is up
 	var args := OS.get_cmdline_user_args()
 	var opts := {}
 	for a in args:
@@ -234,12 +248,20 @@ var _gen := 0
 func show_screen(screen: String, opts: Dictionary) -> void:
 	_gen += 1
 	var gen := _gen
+	var fx := _fades_on()
+	if fx and current:
+		await fade.cover()
+		if gen != _gen:
+			return
 	if current:
 		current.queue_free()
 		current = null
 	await get_tree().process_frame
 	if gen != _gen:
 		return    # another screen was asked for while this one was still on its way
+	if fx:
+		# the next screen builds this frame (often a heavy one); reveal once it has actually drawn
+		fade.reveal_after(3, 0.55)
 	match screen:
 		"match":
 			# a loading screen covers building the world; tests that screenshot by frame count skip it

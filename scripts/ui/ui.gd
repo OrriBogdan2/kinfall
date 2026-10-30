@@ -108,6 +108,50 @@ static func theme() -> Theme:
 	var dark_ink := Color(0.12, 0.08, 0.05)
 	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color"]:
 		t.set_color(c, "Primary", dark_ink)
+	# big front-menu entries (title screen): just words until you point at one, then a soft lit
+	# pill with an amber edge slides under it and the word steps right
+	t.add_type("MenuItem"); t.set_type_variation("MenuItem", "Button")
+	var mi_n := StyleBoxFlat.new(); mi_n.bg_color = Color(0, 0, 0, 0)
+	mi_n.content_margin_left = 20; mi_n.content_margin_right = 20; mi_n.content_margin_top = 7; mi_n.content_margin_bottom = 7
+	var mi_h := _box(Color(1, 1, 1, 0.09), 10)
+	mi_h.border_width_left = 4; mi_h.border_color = ACCENT
+	mi_h.content_margin_left = 30; mi_h.content_margin_right = 20; mi_h.content_margin_top = 7; mi_h.content_margin_bottom = 7
+	var mi_p := mi_h.duplicate(); mi_p.bg_color = Color(ACCENT, 0.2)
+	t.set_stylebox("normal", "MenuItem", mi_n)
+	t.set_stylebox("hover", "MenuItem", mi_h)
+	t.set_stylebox("pressed", "MenuItem", mi_p)
+	t.set_stylebox("hover_pressed", "MenuItem", mi_p)
+	t.set_stylebox("focus", "MenuItem", StyleBoxEmpty.new())
+	t.set_stylebox("disabled", "MenuItem", mi_n)
+	t.set_font("font", "MenuItem", big)
+	t.set_font_size("font_size", "MenuItem", 26)
+	t.set_color("font_color", "MenuItem", Color(INK, 0.82))
+	t.set_color("font_hover_color", "MenuItem", Color.WHITE)
+	t.set_color("font_focus_color", "MenuItem", Color.WHITE)
+	t.set_color("font_pressed_color", "MenuItem", Color("ffd79a"))
+	t.set_color("font_hover_pressed_color", "MenuItem", Color("ffd79a"))
+	t.set_color("font_disabled_color", "MenuItem", Color(INK, 0.3))
+	t.set_constant("outline_size", "MenuItem", 6)
+	t.set_color("font_outline_color", "MenuItem", Color(0.05, 0.03, 0.1, 0.55))
+	# the one big call to action on the front menu
+	t.add_type("MenuMain"); t.set_type_variation("MenuMain", "Button")
+	var mm_n := _box(ACCENT, 14)
+	mm_n.border_width_bottom = 5; mm_n.border_color = ACCENT.darkened(0.42); mm_n.border_blend = false
+	mm_n.content_margin_left = 30; mm_n.content_margin_right = 34; mm_n.content_margin_top = 10; mm_n.content_margin_bottom = 9
+	mm_n.shadow_color = Color(1.0, 0.55, 0.2, 0.28); mm_n.shadow_size = 18
+	var mm_h := mm_n.duplicate(); mm_h.bg_color = ACCENT.lightened(0.12); mm_h.shadow_color = Color(1.0, 0.6, 0.25, 0.45); mm_h.shadow_size = 26
+	var mm_p := mm_n.duplicate(); mm_p.bg_color = ACCENT.darkened(0.06); mm_p.border_width_bottom = 2; mm_p.border_width_top = 3
+	t.set_stylebox("normal", "MenuMain", mm_n)
+	t.set_stylebox("hover", "MenuMain", mm_h)
+	t.set_stylebox("pressed", "MenuMain", mm_p)
+	t.set_stylebox("hover_pressed", "MenuMain", mm_p)
+	var mm_f := _box(Color(0, 0, 0, 0), 16, Color(1, 0.95, 0.85, 0.9), 3)
+	mm_f.expand_margin_left = 4; mm_f.expand_margin_right = 4; mm_f.expand_margin_top = 4; mm_f.expand_margin_bottom = 4
+	t.set_stylebox("focus", "MenuMain", mm_f)
+	t.set_font("font", "MenuMain", big)
+	t.set_font_size("font_size", "MenuMain", 28)
+	for c in ["font_color", "font_hover_color", "font_pressed_color", "font_focus_color", "font_hover_pressed_color"]:
+		t.set_color(c, "MenuMain", Color(0.16, 0.08, 0.06))
 	# the picked option in a row of choices
 	t.add_type("Chosen"); t.set_type_variation("Chosen", "Button")
 	var cf := Color(0.27, 0.24, 0.2); var cl := ACCENT.darkened(0.3)
@@ -184,6 +228,49 @@ static func theme() -> Theme:
 	t.set_constant("separation", "HSeparator", 6)
 	_theme = t
 	return t
+
+## A key drawn as a little keycap ("F", "Space", "Esc"), so prompts read at a glance instead of as
+## letters in brackets.
+static func keycap(key: String, size := 13) -> PanelContainer:
+	var p := PanelContainer.new()
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.93, 0.9, 0.84, 0.95)
+	sb.set_corner_radius_all(5)
+	sb.border_width_bottom = 3; sb.border_color = Color(0.55, 0.5, 0.45, 0.95)
+	sb.content_margin_left = 6 if key.length() <= 1 else 8
+	sb.content_margin_right = sb.content_margin_left
+	sb.content_margin_top = 1; sb.content_margin_bottom = 0
+	sb.anti_aliasing = true
+	p.add_theme_stylebox_override("panel", sb)
+	p.custom_minimum_size = Vector2(size + 9, size + 8)
+	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var l := Label.new()
+	l.text = key
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.add_theme_font_override("font", caps if caps else body)
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", Color(0.16, 0.12, 0.14))
+	p.add_child(l)
+	return p
+
+## A row of "[key] what it does" hints. pairs: [["F", "use"], ["Space", "jump"], ...]; a key string
+## with spaces in it ("W S") draws one cap per key.
+static func key_hints(pairs: Array, size := 13, col := Color(1, 1, 1, 0.75)) -> HBoxContainer:
+	var row := hbox(16)
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for pr in pairs:
+		var one := hbox(5)
+		one.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		for k in String(pr[0]).split(" "):
+			if k != "": one.add_child(keycap(k, size))
+		var l := label(String(pr[1]), size + 1, col)
+		l.autowrap_mode = TextServer.AUTOWRAP_OFF
+		l.add_theme_constant_override("outline_size", 4)
+		l.add_theme_color_override("font_outline_color", Color(0.04, 0.03, 0.08, 0.6))
+		one.add_child(l)
+		row.add_child(one)
+	return row
 
 ## The main button of a screen (orange, dark text).
 static func primary(text: String, cb: Callable, minw := 0.0) -> Button:

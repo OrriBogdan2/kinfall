@@ -19,6 +19,37 @@ static func draw(c: Control, id: String, at: Vector2, s: float, col: Color) -> v
 		c.draw_circle(P.call(x, y), r * s, cc)
 	match id:
 		# ---- movement and items
+		"gem":
+			F.call([[-0.55, -0.25], [-0.25, -0.65], [0.25, -0.65], [0.55, -0.25], [0.0, 0.7]])
+			F.call([[-0.25, -0.65], [0.0, -0.25], [0.25, -0.65]], Color(1, 1, 1, 0.35 * col.a))
+			F.call([[-0.55, -0.25], [0.55, -0.25], [0.0, 0.7]], Color(0, 0, 0, 0.12 * col.a))
+		"seed":
+			F.call([[0.0, -0.7], [0.45, -0.1], [0.35, 0.45], [0.0, 0.7], [-0.35, 0.45], [-0.45, -0.1]])
+			L.call([[0.0, -0.3], [0.0, 0.45]], maxf(1.5, s * 0.08))
+		"egg":
+			var pts: Array = []
+			for i in 24:
+				var a := TAU * i / 24.0
+				pts.append([sin(a) * 0.52 * (1.0 - 0.12 * cos(a)), -cos(a) * 0.72])
+			F.call(pts)
+		"paw":
+			O.call(0.0, 0.25, 0.32)
+			O.call(-0.42, -0.2, 0.15); O.call(-0.15, -0.45, 0.15); O.call(0.15, -0.45, 0.15); O.call(0.42, -0.2, 0.15)
+		"clock":
+			A.call(0.0, 0.0, 0.62, 0.0, TAU)
+			L.call([[0.0, -0.4], [0.0, 0.0], [0.3, 0.2]])
+		"knock":
+			F.call([[-0.5, -0.3], [0.3, -0.55], [0.6, -0.1], [0.45, 0.45], [-0.3, 0.6], [-0.6, 0.15]])
+			L.call([[-0.15, -0.42], [-0.05, 0.05]], maxf(1.5, s * 0.07)); L.call([[0.15, -0.5], [0.22, 0.0]], maxf(1.5, s * 0.07))
+		"burst":
+			var st: Array = []
+			for i in 16:
+				var a := TAU * i / 16.0 - PI / 2
+				var r := 0.75 if i % 2 == 0 else 0.32
+				st.append([cos(a) * r, sin(a) * r])
+			F.call(st)
+		"heart":
+			F.call([[0.0, 0.7], [-0.65, 0.0], [-0.6, -0.45], [-0.3, -0.62], [0.0, -0.38], [0.3, -0.62], [0.6, -0.45], [0.65, 0.0]])
 		"dash":
 			L.call([[-0.7, -0.6], [-0.1, 0.0], [-0.7, 0.6]]); L.call([[0.0, -0.6], [0.6, 0.0], [0.0, 0.6]])
 		"jump":
@@ -224,3 +255,16 @@ static func draw(c: Control, id: String, at: Vector2, s: float, col: Color) -> v
 				L.call([[cos(a) * 0.35, sin(a) * 0.35], [cos(a) * 0.8, sin(a) * 0.8]])
 		_:
 			O.call(0.0, 0.0, 0.4)
+
+## A Control that just shows one icon, for rows of chips and stat tiles.
+class Glyph extends Control:
+	var id := ""
+	var col := Color.WHITE
+	func _init(icon_id := "", c := Color.WHITE, px := 18.0) -> void:
+		id = icon_id; col = c
+		custom_minimum_size = Vector2(px, px)
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	func _draw() -> void:
+		Icons.draw(self, id, size * 0.5, minf(size.x, size.y) * 0.5, col)
+

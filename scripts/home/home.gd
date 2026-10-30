@@ -11,6 +11,7 @@ var ui: CanvasLayer
 var root_ui: Control
 var panel_host: Control
 var topbar: Label
+var top_chips: HBoxContainer
 var prompt_box: PanelContainer
 var prompt_lbl: Label
 var hint: Label
@@ -849,11 +850,31 @@ func _find_interact() -> void:
 		prompt_box.visible = false
 		return
 	prompt_box.visible = true
+	var pairs: Array = []
 	if best["kind"] == "kin" and visit.is_empty():
 		var nm: String = best["k"]["rec"]["name"]
-		prompt_lbl.text = "%s  Pet %s     %s  Play fetch     %s  Talk     %s  Details" % [Settings.key_cap("interact"), nm, Settings.key_cap("play"), Settings.key_cap("talk"), Settings.key_cap("details")]
+		pairs = [[Settings.key_cap("interact"), "Pet " + nm], [Settings.key_cap("play"), "Play fetch"], [Settings.key_cap("talk"), "Talk"], [Settings.key_cap("details"), "Details"]]
 	else:
-		prompt_lbl.text = Settings.key_cap("interact") + "  " + _label_for(best)
+		pairs = [[Settings.key_cap("interact"), _label_for(best)]]
+	# the prompt is keycaps and words, rebuilt only when what it says changes
+	var sig := str(pairs)
+	if String(prompt_box.get_meta("sig", "")) != sig:
+		prompt_box.set_meta("sig", sig)
+		prompt_lbl.visible = false
+		var old_row := prompt_box.get_node_or_null("Keys")
+		if old_row: old_row.free()
+		var row := UI.key_hints(pairs, 14, UI.INK)
+		row.name = "Keys"
+		row.add_theme_constant_override("separation", 22)
+		for one in row.get_children():
+			var l: Label = one.get_child(one.get_child_count() - 1)
+			l.add_theme_font_override("font", UI.big)
+			l.add_theme_font_size_override("font_size", 18)
+			l.add_theme_color_override("font_color", UI.GOLD if one.get_index() == 0 else UI.INK)
+		prompt_box.add_child(row)
+		prompt_box.reset_size()
+		prompt_box.modulate.a = 0.0
+		create_tween().tween_property(prompt_box, "modulate:a", 1.0, 0.12)
 	prompt_box.reset_size()
 	var vp := get_viewport().get_visible_rect().size
 	prompt_box.position = Vector2((vp.x - prompt_box.size.x) * 0.5, vp.y - 110.0)
@@ -1008,13 +1029,17 @@ func _build_ui() -> void:
 	root_ui = Control.new(); root_ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root_ui.theme = UI.theme()
 	root_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(root_ui)
-	var top := UI.card(Color(0.06, 0.07, 0.1, 0.78), 12, 12)
+	var top := UI.card(Color(0.06, 0.07, 0.11, 0.82), 10, 14)
+	UI.set_card_border(top, Color(1, 1, 1, 0.07), 1)
 	top.position = Vector2(16, 14)
-	var th := UI.hbox(14); top.add_child(th)
-	th.add_child(UI.title("Kinfall", 26, UI.ACCENT))
+	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var th := UI.hbox(10); top.add_child(th)
+	top_chips = UI.hbox(6)
+	th.add_child(top_chips)
 	topbar = UI.label("", 15, UI.INK)
 	topbar.autowrap_mode = TextServer.AUTOWRAP_OFF
 	topbar.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	topbar.visible = false
 	th.add_child(topbar)
 	root_ui.add_child(top)
 	prompt_box = UI.card(Color(0.06, 0.07, 0.1, 0.85), 12, 12)
@@ -1022,10 +1047,13 @@ func _build_ui() -> void:
 	prompt_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
 	prompt_box.add_child(prompt_lbl)
 	root_ui.add_child(prompt_box)
-	var hint_box := UI.card(Color(0.06, 0.07, 0.1, 0.7), 8, 10)
-	hint = UI.label("WASD walk   ·   Space jump   ·   " + Settings.key_cap("interact") + " use   ·   I inventory   ·   Scroll to zoom   ·   Esc menu", 14, UI.INK)
-	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
-	hint_box.add_child(hint)
+	var hint_box := UI.card(Color(0.06, 0.07, 0.11, 0.66), 8, 12)
+	hint_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var keys := UI.key_hints([["W A S D", "walk"], ["Space", "jump"], [Settings.key_cap("interact"), "use"], ["I", "inventory"], ["Esc", "menu"]], 12, Color(1, 1, 1, 0.8))
+	hint_box.add_child(keys)
+	hint = UI.label("", 14, UI.INK)     # kept for code that still sets hint text; the key row replaces it
+	hint.visible = false
+	keys.add_child(hint)
 	root_ui.add_child(hint_box)
 	hint_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 12)
 	hint_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
@@ -1038,13 +1066,37 @@ func _build_ui() -> void:
 func _refresh_top() -> void:
 	if not visit.is_empty():
 		topbar.text = "Visiting %s's island   ·   Pet their kin, leave a gift at the house   ·   The portal takes you home" % String(visit.get("name", "a friend")).substr(0, 16)
+		topbar.visible = true
 		return
+	topbar.visible = false
 	var crops := 0
 	for k in Save.d["crops"]: crops += int(Save.d["crops"][k])
 	var ak := Save.active_kin()
 	var treat: String = Save.d.get("treat", "")
-	topbar.text = "%d gems   ·   %d tonics   ·   %d crops   ·   Partner: %s%s" % [int(Save.d["gems"]), int(Save.d["items"].get("tonic", 0)), crops,
-		ak.get("name", "none"), ("   ·   Treat ready: " + _treat_name(treat)) if treat != "" else ""]
+	for ch in top_chips.get_children():
+		ch.queue_free()
+	if not ak.is_empty():
+		var kc: Color = Data.KIN.get(String(ak.get("species", "")), {}).get("color", UI.ACCENT)
+		top_chips.add_child(_top_chip("paw", String(ak.get("name", "")), kc, "Your partner: the kin that comes on expeditions with you"))
+	top_chips.add_child(_top_chip("gem", str(int(Save.d["gems"])), UI.GOLD, "Gems: spend them on buildings, seeds and treats"))
+	top_chips.add_child(_top_chip("tonic", str(int(Save.d["items"].get("tonic", 0))), Color("ff8a9a"), "Tonics: drink one (1) on an expedition to heal"))
+	top_chips.add_child(_top_chip("seed", str(crops), UI.GOOD, "Crops you've harvested"))
+	if treat != "":
+		top_chips.add_child(_top_chip("heart", "Treat: " + _treat_name(treat), Color("ffb0d0"), "A treat is ready to give to a kin"))
+
+## One number on the top bar: an icon, the value, and a tooltip saying what it is.
+func _top_chip(icon: String, txt: String, col: Color, tip := "") -> Control:
+	var c := UI.card(Color(col, 0.13), 6, 999)
+	c.tooltip_text = tip
+	c.mouse_filter = Control.MOUSE_FILTER_PASS if tip != "" else Control.MOUSE_FILTER_IGNORE
+	var h := UI.hbox(6); c.add_child(h)
+	h.add_child(Icons.Glyph.new(icon, col, 16.0))
+	var l := UI.label(txt, 15, UI.INK, UI.semi)
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	h.add_child(l)
+	var m := MarginContainer.new(); m.add_theme_constant_override("margin_right", 4)
+	h.add_child(m)
+	return c
 
 func _treat_name(t: String) -> String:
 	for k in Data.CROPS:
@@ -1071,7 +1123,7 @@ func _close_panel() -> void:
 	panel_open = ""
 	chat_input = null
 	_refresh_top()
-	if was.ends_with(" evolved") or was.ends_with(" is changing") or was == "Welcome to your island":
+	if was.ends_with(" evolved") or was.ends_with(" is changing") or was == "Welcome home":
 		_play_evolutions.call_deferred()
 
 # ---- your first day: the checklist lives in Progress so the house rooms can show and tick it too
@@ -1103,14 +1155,22 @@ func _refresh_day1() -> void:
 	root_ui.add_child(day1_box)
 
 func _open_welcome() -> void:
-	var v := _new_panel("Welcome to your island", 560)
-	v.add_child(UI.label("Your kin live here with you. Each one has its own personality, remembers what you do together, and decides how far it trusts you.", 16))
-	v.add_child(UI.label("Grow crops between expeditions, then step through the portal to hunt in the floating islands. Bring treasure, seeds and new kin home before the islands fall. If you go down, everything you carried is lost.", 16, UI.MUTED))
-	v.add_child(UI.label("Walk up to anything and press " + Settings.key_cap("interact") + ". Start by saying hi to %s." % Save.active_kin().get("name", "your kin"), 16, UI.GOLD))
-	v.add_child(UI.button("Let's go", func():
+	var kn: String = Save.active_kin().get("name", "your kin")
+	var v := _new_panel("Welcome home", 560)
+	v.add_child(UI.label("This little island is yours. %s lives here with you now, and it remembers everything you do together." % kn, 17))
+	v.add_child(UI.label("Between expeditions you grow crops, build up your island and look after your kin. When you're ready, the portal takes you out to the wild isles to hunt for treasure, seeds and new kin.", 16, UI.MUTED))
+	v.add_child(UI.label("Just remember: what you find out there is only yours once you make it back.", 16, Color("ffc9a0")))
+	var go := UI.hbox(8)
+	go.add_child(UI.label("Walk up to anything and press", 16, UI.GOLD))
+	go.add_child(UI.keycap(Settings.key_cap("interact"), 14))
+	go.add_child(UI.label("Start by saying hi to %s." % kn, 16, UI.GOLD))
+	v.add_child(go)
+	var b := UI.primary("Let's go", func():
 		Save.d["tutorial"]["home"] = true
 		Save.save_game()
-		_close_panel(), 200))
+		_close_panel(), 200)
+	v.add_child(b)
+	b.grab_focus.call_deferred()
 
 # ---- farm
 ## How long until the next stage, for a watered plant.

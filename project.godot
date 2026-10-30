@@ -7,6 +7,12 @@ config/description="Raise kin on your farm, then take them into PvPvE extraction
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.6", "GL Compatibility")
 run/max_fps=0
+boot_splash/bg_color=Color(0.02, 0.015, 0.035, 1)
+boot_splash/image="res://art/splash.png"
+boot_splash/fullsize=false
+boot_splash/use_filter=true
+boot_splash/show_image=true
+boot_splash/minimum_display_time=0
 
 [autoload]
 Data="*res://scripts/core/data.gd"

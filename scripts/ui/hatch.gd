@@ -20,9 +20,9 @@ static func starter_eggs() -> Array:
 	return out
 
 const STORY := [
-	"Long ago the world broke apart.\nWhat was left drifts above the clouds as islands.",
-	"Out here live the kin: small creatures who choose a hunter,\nand remember every single thing you do together.",
-	"Last night a storm passed over your little island.\nThis morning there were three eggs by the door.",
+	"The night after the storm, the old shrine on your island\nstarted to glow.",
+	"When you went to look, there were eggs waiting in the light.\nThree of them, still warm.",
+	"Kin choose their hunters.\nToday, one of them is going to choose you.",
 ]
 
 var cam: Camera3D
@@ -274,8 +274,12 @@ func _build_ui() -> void:
 	top.position.y = 36
 	title = UI.title("Choose your first kin", 40, UI.ACCENT)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_constant_override("outline_size", 12)
+	title.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.09, 0.85))
 	top.add_child(title)
-	var sub := UI.label("Every kin is different. It will remember how you treat it.", 16, UI.MUTED)
+	var sub := UI.label("Every kin is different. It will remember how you treat it.", 16, Color(1, 0.95, 0.88, 0.9))
+	sub.add_theme_constant_override("outline_size", 6)
+	sub.add_theme_color_override("font_outline_color", Color(0.05, 0.03, 0.09, 0.8))
 	sub_lbl = sub
 	sub.autowrap_mode = TextServer.AUTOWRAP_OFF
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -310,13 +314,14 @@ func _show_story() -> void:
 	story_lbl.add_theme_constant_override("outline_size", 10)
 	story_lbl.add_theme_color_override("font_outline_color", Color(0.04, 0.03, 0.07))
 	story_box.add_child(story_lbl)
-	var hint := UI.label("Click or press Space to continue", 14, UI.MUTED)
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	var hint := UI.key_hints([["Space", "continue"]], 12, Color(1, 1, 1, 0.55))
+	hint.alignment = BoxContainer.ALIGNMENT_CENTER
 	story_box.add_child(hint)
 	root_ui.add_child(story_box)
-	var skip := UI.button("Skip", _end_intro, 100)
+	var skip := HoldSkip.new()
 	skip.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	skip.offset_left = -124; skip.offset_right = -24; skip.offset_top = 20; skip.offset_bottom = 64
+	skip.offset_left = -196; skip.offset_right = -24; skip.offset_top = 18; skip.offset_bottom = 62
+	skip.skipped.connect(_end_intro)
 	skip.name = "SkipIntro"
 	root_ui.add_child(skip)
 	_story_line()
@@ -669,19 +674,30 @@ func _show_name() -> void:
 	var card := UI.card(UI.CARD, 16, 18)
 	card.custom_minimum_size = Vector2(520, 0)
 	var v := UI.vbox(10); card.add_child(v)
-	v.add_child(UI.label("\"%s\"" % KinSpeak.babble(sp_id, "happy"), 26, sp["color"]))
-	v.add_child(UI.label("Your %s is %s. It can only say its own name for now. Give it a name." % [sp["name"], String(sp["voice"]).split(",")[0]], 16))
+	v.add_child(UI.section("A new kin", sp["color"]))
+	v.add_child(UI.title("Name your %s" % sp["name"], 34))
+	v.add_child(UI.label("\"%s\"" % KinSpeak.babble(sp_id, "happy"), 22, sp["color"]))
+	v.add_child(UI.label("It's %s, and it can only babble for now. Whatever you call it, it'll answer to." % String(sp["voice"]).split(",")[0], 16, UI.MUTED))
 	var name_row := UI.hbox(8)
 	var nl := UI.label("Its name", 15, UI.MUTED); nl.custom_minimum_size.x = 120
 	name_row.add_child(nl)
 	var ne := LineEdit.new(); ne.text = Data.KIN_NAMES.pick_random(); ne.max_length = 14; ne.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	name_row.add_child(ne)
 	v.add_child(name_row)
+	# a few ideas, and a button for a fresh handful
 	var picks := UI.hbox(6)
-	var pool: Array = Data.KIN_NAMES.duplicate(); pool.shuffle()
-	for nm in pool.slice(0, 4):
-		var n2: String = nm
-		picks.add_child(UI.button(n2, func(): ne.text = n2))
+	var fill_picks := func(self_ref: Callable) -> void:
+		for ch in picks.get_children(): ch.queue_free()
+		var il := UI.label("Ideas", 13, UI.MUTED); il.custom_minimum_size.x = 120; il.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		picks.add_child(il)
+		var pool: Array = Data.KIN_NAMES.duplicate(); pool.shuffle()
+		for nm in pool.slice(0, 4):
+			var n2: String = nm
+			picks.add_child(UI.button(n2, func(): ne.text = n2; ne.caret_column = n2.length()))
+		var more := UI.button("More", func(): self_ref.call(self_ref))
+		more.flat = true
+		picks.add_child(more)
+	fill_picks.call(fill_picks)
 	v.add_child(picks)
 	var you_row := UI.hbox(8)
 	var yl := UI.label("Your name", 15, UI.MUTED); yl.custom_minimum_size.x = 120
@@ -689,6 +705,8 @@ func _show_name() -> void:
 	var ye := LineEdit.new(); ye.text = Save.d.get("name", "Hunter"); ye.max_length = 16; ye.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	you_row.add_child(ye)
 	v.add_child(you_row)
+	# you already told us your name in the hunter creator; don't ask twice
+	you_row.visible = not Save.d.has("look")
 	var btns := UI.hbox(10)
 	btns.add_child(UI.primary("Head out together", func(): _finish(sp_id, ne.text, ye.text, true), 240))
 	var skip := UI.button("Skip the tutorial", func(): _finish(sp_id, ne.text, ye.text, false), 180)
@@ -696,6 +714,10 @@ func _show_name() -> void:
 	btns.add_child(skip)
 	v.add_child(btns)
 	bottom.add_child(card)
+	UI.pop_in(card)
+	# Enter in either box is the same as "Head out together"
+	ne.text_submitted.connect(func(_t): _finish(sp_id, ne.text, ye.text, true))
+	ye.text_submitted.connect(func(_t): _finish(sp_id, ne.text, ye.text, true))
 	ne.grab_focus()
 	ne.select_all()
 
