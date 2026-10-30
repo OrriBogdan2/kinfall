@@ -84,6 +84,8 @@ var length := 360.0
 var net_on := false
 var tier := 0
 var T: Dictionary = {}
+var bot_diff := "medium"         # how good the bot hunters are this run (Data.BOT_DIFF)
+var bot_cfg: Dictionary = {}
 var is_host := true
 var drop_n := 0
 var ents_by_id := {}
@@ -105,6 +107,10 @@ func start(o: Dictionary) -> void:
 	length = float(o.get("length", Data.MATCH["length"] * (1.7 if big else 1.0)))
 	tier = clampi(int(o.get("tier", 0)), 0, Data.TIERS.size() - 1)
 	T = Data.TIERS[tier]
+	bot_diff = String(o.get("bot_diff", Settings.get_v("bot_diff")))
+	if not Data.BOT_DIFF.has(bot_diff):
+		bot_diff = Data.auto_bot_diff(tier, int(Save.d.get("extracts", 0)), o.get("tutorial", false) or o.get("training", false))
+	bot_cfg = Data.BOT_DIFF[bot_diff]
 	_build_env()
 	Sfx.play_music("hollow" if tier >= 2 else "match")
 	Sfx.play_ambience("match")
@@ -380,7 +386,7 @@ func _spawn_hunters() -> void:
 				(h.kin as Kin).lost_uid = String(brec.get("uid", ""))
 				(h.kin as Kin).lost_from = "you"
 				tracked.append({"kin": h.kin, "holder": h})
-			h.ai = bot_brain.new_mind(rng, float(opts.get("bot_skill", 0.6)))
+			h.ai = bot_brain.new_mind(rng, float(opts.get("bot_skill", bot_cfg["skill"])), bot_cfg)
 			h.tonics = 3
 			_start_drop(h, at)
 
@@ -1074,7 +1080,8 @@ func foes_of(team: int) -> Array:
 
 func dmg_mult(h: Hunter) -> float:
 	if h == null: return 1.0
-	return (1.25 if h.bless_t > 0.0 else 1.0) * (1.0 + h.gear_stat("dmg")) * h.fuse_mod("dmg") * (Life.R["sickness_dmg"] if h.sick_t > 0.0 else 1.0)
+	var bot_k := float((h.ai.get("diff", {}) as Dictionary).get("dmg", 1.0)) if h.ctrl == "bot" and h != player else 1.0
+	return bot_k * (1.25 if h.bless_t > 0.0 else 1.0) * (1.0 + h.gear_stat("dmg")) * h.fuse_mod("dmg") * (Life.R["sickness_dmg"] if h.sick_t > 0.0 else 1.0)
 
 func sfx(n: String, p = null, vol := 0.0, pitch := 1.0) -> void:
 	Sfx.play(n, p, vol, 0.07, pitch)
@@ -2304,7 +2311,7 @@ func _gather_input() -> void:
 	player.inp["interact"] = Input.is_action_pressed("interact")
 	player.inp["glide"] = Input.is_action_pressed("jump") and not paused
 	player.inp["dash_hold"] = Input.is_action_pressed("dash") and bool(Settings.get_v("dash_hold"))
-	var quick: bool = Settings.get_v("quick_cast")
+	var quick: bool = Settings.get_v("cast_on_press")
 	player.inp["sec_hold"] = Input.is_action_pressed("secondary") and not paused
 	# crouch: hold by default, or tap to toggle (the web version defaults to toggle, so you never
 	# hold Ctrl while pressing W, which closes the browser tab)
@@ -2507,6 +2514,7 @@ func step(dt: float) -> void:
 		_update_ship(dt)
 	_update_interact(dt)
 	Life.tick_wisps(self, dt)
+	Life.tick_stomps(self, dt)
 	_tick_chase()
 	if not net_on:
 		Life.tick_beacons(self, dt)
@@ -2614,6 +2622,11 @@ func _update_interact(dt: float) -> void:
 	for h in hunters:
 		if h.out or h.extracted or h.downed or h.dropping:
 			continue
+		if not h.stomp.is_empty():
+			if h == player:
+				var so: Hunter = h.stomp["o"]
+				interact = {"kind": "stomping", "label": "Stomping %s  ·  locked in" % so.pname, "col": Color("ff8a6a")}
+			continue
 		var want: bool = h.inp.get("interact", false)
 		if not want:
 			h.swap_hold = false
@@ -2628,7 +2641,7 @@ func _update_interact(dt: float) -> void:
 					_rev_out[o.nid] = float(_rev_out.get(o.nid, 0.0)) + dt / Life.R["revive_time"]
 					o.revive += dt / Life.R["revive_time"]
 			elif not o.remote:
-				best = {"kind": "finish", "ent": o, "label": "Hold %s to execute %s" % [Settings.key_cap("interact"), o.pname]}
+				best = {"kind": "finish", "ent": o, "label": "Hold %s to stomp %s  (you'll be locked in)" % [Settings.key_cap("interact"), o.pname], "col": Color("ff8a6a")}
 		if not want or best.get("kind", "") != "finish":
 			h.finish_t = 0.0
 		# 1b. deathboxes: bring a teammate back while their soul is there, or take everything
@@ -2689,15 +2702,11 @@ func _update_interact(dt: float) -> void:
 					h.swap_hold = true
 					_take_weapon(h, best["wp"])
 			"finish":
-				# the execute: you're locked in place for it
+				# a short hold commits you to the stomp (Life.start_stomp): no cancelling after that
 				var o: Hunter = best["ent"]
 				h.finish_t += dt
-				h.root_t = maxf(h.root_t, 0.1)
-				if h.finish_t >= Life.R["execute_time"]:
-					h.finish_t = 0.0
-					eliminate(o, h, "executed")
-					fx.burst(o.pos + Vector3(0, 0.8, 0), Color("ff6a5a"), 20, 4.0, 0.5, -3.0)
-					sfx("crit", o.pos, -2.0, 0.7)
+				if h.finish_t >= Life.R["stomp_commit"]:
+					Life.start_stomp(self, h, o)
 			"boxrev", "loot":
 				var b: Dictionary = best["box"]
 				# taking a hit breaks the channel
@@ -2890,7 +2899,7 @@ func _update_training(dt: float) -> void:
 		"throw": player.kin != null and player.kin.st_throws > 0,
 		"kinskill": player.kin != null and (player.kin as Kin).runner.has_slot("k2") and not (player.kin as Kin).runner.is_ready("k2"),
 		"tonic": player.tonics < int(train.get("_tonics", player.tonics)),
-		"ledge": player.grap.size() > 0,
+		"ledge": player.grap.size() > 0 or player.mantle_k() > 0.0,
 		"smash": train.get("_smash", false),
 		"stagger": train.get("_stagger", false),
 		"weapon": train.get("_weapon", false),
@@ -3606,7 +3615,7 @@ func _spawn_net_hunters(spots: Array, names: Array) -> void:
 				at = base
 			at.y = world.ground_at(at.x, at.z)
 			var h := make_hunter(next_id("b"), t, "", names.pop_back() if names.size() > 0 else "Bot", "bot", bot_kin_record(), at, bot_kit())
-			h.ai = bot_brain.new_mind(rng, float(opts.get("bot_skill", 0.6)))
+			h.ai = bot_brain.new_mind(rng, float(opts.get("bot_skill", bot_cfg["skill"])), bot_cfg)
 			h.tonics = 3
 			_start_drop(h, at)
 

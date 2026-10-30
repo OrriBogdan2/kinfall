@@ -38,6 +38,7 @@ var crouch_k := 0.0
 var roll_k := 0.0
 var down_k := 0.0
 var ledge_k := 0.0
+var stomp_k := 0.0       # a committed stomp on a wisp: weight 0..1
 var lean_f := 0.0
 var lean_s := 0.0
 var head_look := 0.0
@@ -86,6 +87,8 @@ func update(dt: float, s: Dictionary) -> void:
 	roll_k = _ease(roll_k, 1.0 if s.get("rolling", false) else 0.0, 25.0, dt)
 	down_k = _ease(down_k, 1.0 if s.get("downed", false) else 0.0, 7.0, dt)
 	ledge_k = _ease(ledge_k, 1.0 if s.get("ledge", false) else 0.0, 14.0, dt)
+	var st_ph := float(s.get("stomp", -1.0))
+	stomp_k = _ease(stomp_k, 1.0 if st_ph >= 0.0 else 0.0, 16.0, dt)
 	lean_f = _ease(lean_f, clampf(mf / 14.0, -0.25, 0.25), 8.0, dt)
 	lean_s = _ease(lean_s, clampf(ms / 14.0, -0.22, 0.22), 8.0, dt)
 	# landing: a dip proportional to how hard you came down
@@ -139,6 +142,11 @@ func update(dt: float, s: Dictionary) -> void:
 	hr = lerpf(hr, 0.6, roll_k); kr = lerpf(kr, -0.2, roll_k)
 	# pulling up a ledge: one knee up
 	hl = lerpf(hl, 1.1, ledge_k); kl = lerpf(kl, -1.4, ledge_k)
+	# stomping a wisp: the right foot lifts high, then slams down, over and over
+	if stomp_k > 0.01:
+		var up := sin(clampf(st_ph, 0.0, 1.0) * PI) if st_ph < 0.7 else 0.0
+		hr = lerpf(hr, 1.25 * up, stomp_k); kr = lerpf(kr, -1.5 * up, stomp_k)
+		hl = lerpf(hl, -0.1, stomp_k); kl = lerpf(kl, -0.25, stomp_k)
 	# downed: limp
 	hl = lerpf(hl, 0.15, down_k); kl = lerpf(kl, -0.35, down_k)
 	hr = lerpf(hr, -0.05, down_k); kr = lerpf(kr, -0.1, down_k)
@@ -152,7 +160,7 @@ func update(dt: float, s: Dictionary) -> void:
 	var breath := sin(t * 2.3) * idle
 	torso.position.y = 0.42 + bob - bend * 0.12 + breath * 0.006 + glide_k * 0.02
 	torso.scale = Vector3(1.0 - breath * 0.006, 1.0 + breath * 0.012, 1.0 - breath * 0.006)
-	var pitch := -lean_f - r1 * 0.12 - crouch_k * 0.32 - land_k * 0.25 + rising * 0.08 * ak - roll_k * 0.65 - glide_k * 0.2 - ledge_k * 0.2
+	var pitch := -lean_f - r1 * 0.12 - crouch_k * 0.32 - land_k * 0.25 + rising * 0.08 * ak - roll_k * 0.65 - glide_k * 0.2 - ledge_k * 0.2 - stomp_k * 0.18
 	pitch += float(s.get("flash", 0.0)) * 0.6
 	pitch -= float(s.get("recoil", 0.0)) * 0.05
 	torso.rotation.x = pitch

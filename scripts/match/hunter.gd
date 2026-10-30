@@ -511,6 +511,7 @@ func do_dash() -> void:
 	var use_ex := not grounded or dashes < 1.0
 	if use_ex:
 		if ex_cd > 0.0:
+			_ab_feedback("dash", "deny")
 			return
 		ex_cd = float(cdat.get("ex_cd", EX_DASH_CD))
 		ex_next = true
@@ -911,16 +912,40 @@ func use_kin_ability(slot: String) -> void:
 	if k == null or downed or dropping or riding:
 		return
 	if not k.ready_to_fight():
+		_ab_feedback(slot, "deny")
 		if is_local() and m.hud:
 			m.hud.toast("%s is resting%s" % [k.rec.get("name", "Your kin"), ("  ·  %s swaps in %s" % [Settings.key_cap("swap_kin"), (kin2 as Kin).rec.get("name", "your other kin")]) if kin2 and (kin2 as Kin).hp > 0.0 else ""], Color("a2a8bb"))
 		return
 	if k.use_ability(slot, _ground_aim()) or k.pend_slot == slot:
 		used[slot] = int(used.get(slot, 0)) + 1
+		_ab_feedback(slot, "cast")
+		if is_local():
+			# tie the button to what happened: a flash line from you to the kin doing it, if it's away
+			if k.flat_dist(self) > 2.5 and k.state != "shoulder":
+				m.fx.bolt(pos + Vector3(0, 1.2, 0), k.pos + Vector3(0, 0.6, 0), Color(k.runner.def_of(slot).color, 0.8))
+			m.fx.ring(k.pos, 1.3, k.runner.def_of(slot).color, 0.3)
+	else:
+		_ab_feedback(slot, "deny")
 
 ## R: the bond ultimate, once fighting together has filled the meter.
 func use_ultimate() -> void:
-	if not Ultimate.cast(self) and is_local() and m.hud and ult >= 1.0 and kin and not (kin as Kin).ready_to_fight():
+	if Ultimate.cast(self):
+		_ab_feedback("r", "cast")
+		return
+	_ab_feedback("r", "deny")
+	if is_local() and m.hud and ult >= 1.0 and kin and not (kin as Kin).ready_to_fight():
 		m.hud.toast("Your kin has to be with you", Color("a2a8bb"))
+
+## Tells the HUD a button press landed ("cast": the slot pops) or didn't ("deny": it shakes red
+## with a soft buzz), so a press on cooldown never just silently does nothing.
+func _ab_feedback(slot: String, kind: String) -> void:
+	if not is_local() or m.hud == null or not m.hud.has_method("ability_feedback"):
+		return
+	m.hud.ability_feedback(slot, kind)
+	if kind == "deny":
+		m.sfx("warn", null, -16.0, 1.6)
+	else:
+		m.sfx("skill", null, -9.0, 1.15)
 
 ## X: swap which of your two kin is out. The benched one rests in your satchel.
 func swap_kin(force := false) -> void:
@@ -966,7 +991,8 @@ func use_tonic() -> void:
 
 ## Repairing armor with a kit (2): the same kind of short channel as a tonic.
 var armor_kits := 1
-var finish_t := 0.0             # holding interact over a downed enemy
+var finish_t := 0.0             # holding interact over a downed enemy (until the stomp commits)
+var stomp: Dictionary = {}      # committed stomp on an enemy wisp: {o, t, hits} (see Life)
 var kit_t := 0.0
 func use_kit() -> void:
 	if armor_kits <= 0 or downed or armor >= max_armor - 0.5 or kit_t > 0.0 or drink_t > 0.0 or gliding or not grounded:
@@ -1073,6 +1099,11 @@ func sim(dt: float) -> void:
 		if down_hp <= 0.0:
 			m.eliminate(self, last_hit_by, "finished")
 			return
+	# mid-stomp you're committed: none of your own buttons do anything until it ends
+	if not stomp.is_empty():
+		for kk in ["dash", "jump", "sig", "skill", "sec", "ult", "swap", "reload", "tonic", "kit", "gear1", "gear2", "fire", "throw"]:
+			inp[kk] = false
+		inp["move"] = Vector2.ZERO
 	# inputs
 	if inp["dash"]: do_dash()
 	if inp["jump"]: do_jump()
@@ -1090,7 +1121,11 @@ func sim(dt: float) -> void:
 	if inp["skill"]: use_kin_ability("k2")
 	if inp["swap"]: swap_kin()
 	if inp["sec"] and runner and runner.has_slot("utility"):
-		if runner.use("utility"): used["utility"] = int(used.get("utility", 0)) + 1
+		if runner.use("utility"):
+			used["utility"] = int(used.get("utility", 0)) + 1
+			_ab_feedback("sec", "cast")
+		else:
+			_ab_feedback("sec", "deny")
 	if inp["reload"]: start_reload()
 	if inp["tonic"]: use_tonic()
 	if inp.get("kit", false): use_kit()
@@ -1121,8 +1156,12 @@ func _pad_fly(dt: float) -> void:
 	pad["t"] += dt
 	var k := clampf(pad["t"] / pad["dur"], 0.0, 1.0)
 	var a: Vector3 = pad["from"]; var b: Vector3 = pad["to"]
-	var y := lerpf(a.y, b.y, k) + 4.0 * float(pad["h"]) * k * (1.0 - k)
-	var np := Vector3(lerpf(a.x, b.x, k), y, lerpf(a.z, b.z, k))
+	var np: Vector3
+	if pad.has("face"):
+		np = _mantle_point(k)
+	else:
+		var y := lerpf(a.y, b.y, k) + 4.0 * float(pad["h"]) * k * (1.0 - k)
+		np = Vector3(lerpf(a.x, b.x, k), y, lerpf(a.z, b.z, k))
 	vel = (np - pos) / maxf(dt, 0.0001)
 	pos = np
 	if k >= 1.0:
@@ -1138,6 +1177,29 @@ func _pad_fly(dt: float) -> void:
 		squash = 0.12 if ledge else 0.3
 		m.fx.dust(pos, 3 if ledge else 8)
 		m.sfx("land", pos, -12.0 if ledge else -8.0)
+
+## Where a mantle has you at progress k (0..1): up the face with an ease-out (a quick pull that
+## slows near the top), then over the lip with a small hop and an ease-in-out onto the top. The
+## height never drops below the lip while you're over the cliff, so you can't sink into it.
+func _mantle_point(k: float) -> Vector3:
+	var a: Vector3 = pad["from"]; var f: Vector3 = pad["face"]; var b: Vector3 = pad["to"]
+	var lip: float = pad["lip"]
+	var sp: float = pad["split"]
+	if k < sp:
+		var u := k / maxf(0.001, sp)
+		var e := 1.0 - (1.0 - u) * (1.0 - u)
+		var hz := clampf(u * 3.0, 0.0, 1.0)          # snap against the wall in the first third
+		return Vector3(lerpf(a.x, f.x, hz), lerpf(a.y, lip, e), lerpf(a.z, f.z, hz))
+	var u2 := (k - sp) / maxf(0.001, 1.0 - sp)
+	var e2 := u2 * u2 * (3.0 - 2.0 * u2)
+	return Vector3(lerpf(f.x, b.x, e2), lerpf(lip, b.y, e2) + 0.22 * sin(u2 * PI), lerpf(f.z, b.z, e2))
+
+## How far through the climbing part of a mantle you are (0 when not mantling), for the animation.
+func mantle_k() -> float:
+	if pad.is_empty() or not pad.has("face"):
+		return 0.0
+	var k := clampf(float(pad["t"]) / float(pad["dur"]), 0.0, 1.0)
+	return 1.0 if k < float(pad["split"]) + 0.15 else 0.0
 
 func _physics(dt: float) -> void:
 	if pad.size() > 0:
@@ -1233,7 +1295,9 @@ func _physics(dt: float) -> void:
 	elif not grounded:
 		vel.y -= H_GRAV * (FALL_MULT if vel.y < 0.0 and fly_t <= 0.0 else 1.0) * dt
 		vel.y = maxf(vel.y, -TERMINAL)
-	var guard := grounded and roll_t <= 0.0 and hv.length() <= spd * 1.25
+	# walking can't take you off an edge, except as a wisp: a downed player can drift off a ledge on
+	# purpose to escape a stomp, and catch the cliff on the way down (see _try_ledge_grab)
+	var guard := grounded and roll_t <= 0.0 and hv.length() <= spd * 1.25 and not (downed and ctrl == "local")
 	# horizontal with walls; mantle onto ledges you run or fall into
 	var x0 := pos.x; var z0 := pos.z
 	var pre_v := Vector2(vel.x, vel.z)
@@ -1419,7 +1483,7 @@ func _update_glide(dt: float) -> void:
 # back up onto it, the way Supervive does it. Walking into a step up a few terraces high does
 # the same after a short push. Getting launched hard still carries you past the edge.
 func _try_ledge_grab(dt: float) -> void:
-	if grap.size() > 0 or pad.size() > 0 or fly_t > 0.0 or downed or charge.size() > 0 or dropping or shot_down or pos.y < last_gy - 14.0 or (grounded and stun_t > 0.0):
+	if grap.size() > 0 or pad.size() > 0 or fly_t > 0.0 or charge.size() > 0 or dropping or shot_down or pos.y < last_gy - 14.0 or (grounded and stun_t > 0.0):
 		push_t = 0.0
 		return
 	var w: World = m.world
@@ -1498,7 +1562,15 @@ func _try_ledge_grab(dt: float) -> void:
 	var over := Vector3(land.x + dir_in.x * carry * 0.12, land.y, land.z + dir_in.y * carry * 0.12)
 	if not w.is_block(over.x, over.z) and absf(w.ground_at(over.x, over.z) - land.y) < 0.1:
 		land = over
-	pad = {"from": pos, "to": land, "t": 0.0, "dur": clampf(rise / MANTLE_RISE, 0.25, 1.0), "h": 0.55, "ledge": true, "carry": maxf(carry, base_speed * 0.8)}
+	# the climb goes in two parts so the body never cuts through the cliff's corner: first straight
+	# up the face (held just outside the wall), then forward over the lip once you're above it
+	var face := Vector3(float(best["ex"]) - dir_in.x * (r + 0.05), pos.y, float(best["ez"]) - dir_in.y * (r + 0.05))
+	if w.is_block(face.x, face.z) or w.ground_at(face.x, face.z) > pos.y + 0.05:
+		face = Vector3(pos.x, pos.y, pos.z)
+	var up_t := clampf(rise / MANTLE_RISE, 0.16, 0.85) * (1.35 if downed else 1.0)
+	var over_t := 0.2 * (1.3 if downed else 1.0)
+	pad = {"from": pos, "face": face, "lip": float(best["gz"]) + 0.14, "to": land, "t": 0.0, "dur": up_t + over_t, "split": up_t / (up_t + over_t),
+		"ledge": true, "carry": maxf(carry, base_speed * 0.8)}
 	grap = {}
 	grap_cd = LEDGE_CD
 	push_t = 0.0
@@ -1605,7 +1677,7 @@ func render(delta: float, alpha: float) -> void:
 	var spd := hv.length()
 	crouch_k = move_toward(crouch_k, 1.0 if crouch else 0.0, delta * 8.0)
 	anim.update(delta, {"vel": vel, "face": face, "grounded": grounded and pad.is_empty(), "gliding": gliding and not diving, "rolling": roll_t > 0.0,
-		"crouch": crouch_k, "downed": downed, "ledge": grap.size() > 0, "reload": (1.0 - reload_t / maxf(0.1, float(wpn["reload"]))) if reload_t > 0.0 else -1.0, "drink": (1.0 - drink_t / DRINK_TIME) if drink_t > 0.0 else -1.0,
+		"crouch": crouch_k, "downed": downed, "ledge": grap.size() > 0 or mantle_k() > 0.0, "stomp": (fmod(float(stomp["t"]), Life.R["stomp_cycle"]) / Life.R["stomp_cycle"]) if not stomp.is_empty() else -1.0, "reload": (1.0 - reload_t / maxf(0.1, float(wpn["reload"]))) if reload_t > 0.0 else -1.0, "drink": (1.0 - drink_t / DRINK_TIME) if drink_t > 0.0 else -1.0,
 		"recoil": recoil, "flash": clampf(flash_t / 0.12, 0.0, 1.0), "fired": idle_fire})
 	if anim.stepped and not downed and not crouch:
 		Sfx.step(pos, -14.0 if is_local() else -20.0)

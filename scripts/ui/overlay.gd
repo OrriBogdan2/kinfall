@@ -242,10 +242,11 @@ func _show_settings() -> void:
 			_toggle(v, "Hold Shift for the long dash (tap for the short one)", "dash_hold")
 			_toggle(v, "Damage numbers", "damage_numbers")
 			_toggle(v, "Tips during matches", "tips")
-			_toggle(v, "Quick cast (abilities fire on press, no aiming preview)", "quick_cast")
+			_toggle(v, "Abilities fire the moment you press them (off: hold to aim, release to cast)", "cast_on_press")
 			_toggle(v, "Tap to crouch (instead of holding the crouch key)", "crouch_toggle")
-			_toggle(v, "Kin use their abilities on their own", "kin_autocast")
+			_toggle(v, "Kin use their abilities on their own (they can spend cooldowns you wanted)", "kin_auto")
 			if admin_allowed():
+				_choice(v, "Bot difficulty (admin)", "bot_diff", [["auto", "Auto (by tier)"]] + Data.BOT_ORDER.map(func(k): return [k, Data.BOT_DIFF[k]["name"]]))
 				_toggle(v, "Mod mode: everything unlocked, free building and bridges, god mode, spawn kin (F1)", "mod_mode")
 		"Accessibility":
 			_slider(v, "Interface size", "ui_scale", 0.75, 1.5, 0.05)
@@ -457,6 +458,23 @@ func open_admin() -> void:
 	god.button_pressed = Game.god
 	god.toggled.connect(func(on): Game.god = on)
 	v.add_child(god)
+	# bot difficulty: Auto follows the run tier (and your experience); the rest force one
+	v.add_child(UI.section("Bot difficulty"))
+	var drow := HFlowContainer.new()
+	drow.add_theme_constant_override("h_separation", 8); drow.add_theme_constant_override("v_separation", 8)
+	var cur_d := String(Settings.get_v("bot_diff"))
+	for dk in ["auto"] + Data.BOT_ORDER:
+		var dkey: String = dk
+		drow.add_child(UI.choice("Auto" if dkey == "auto" else String(Data.BOT_DIFF[dkey]["name"]), dkey == cur_d, func():
+			Settings.set_v("bot_diff", dkey)
+			Sfx.play("pickup")
+			open_admin(), 104))
+	v.add_child(drow)
+	var dnote := "Auto: Meadow bots are Easy, Dusk Isles Medium, the Hollow Hard, one step up once you've extracted a lot."
+	if c == "match":
+		var mm = Game.main.screen_node()
+		dnote += "  This run: %s. Changes apply from the next expedition." % String(Data.BOT_DIFF[mm.bot_diff]["name"])
+	v.add_child(UI.label(dnote, 13, UI.MUTED))
 	var grid := GridContainer.new(); grid.columns = 2
 	grid.add_theme_constant_override("h_separation", 8); grid.add_theme_constant_override("v_separation", 8)
 	v.add_child(grid)

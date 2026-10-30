@@ -60,6 +60,7 @@ func _ready() -> void:
 		if a.begins_with("--teams="): opts["teams"] = int(a.substr(8))
 		if a.begins_with("--tier="): opts["tier"] = int(a.substr(7))
 		if a.begins_with("--squad="): opts["squad"] = int(a.substr(8))
+		if a.begins_with("--bot-diff="): opts["bot_diff"] = a.substr(11)
 	if "--check" in args:
 		var CheckT = load("res://tools/check.gd")
 		var bad := 0
@@ -385,6 +386,26 @@ func _life_check() -> void:
 		foe.inp["interact"] = true
 		run.call(Match.DT)
 	print("LCHECK execute: dead=%s after %.1fs (stomp drains too)" % [B.out, m.time - t0])
+	# 6b. a committed stomp can't be cancelled by its owner, but a knockback breaks it
+	var W2: Hunter = C
+	for kk in [W2.kin, W2.kin2]:
+		if kk: kk.dead = true
+	spot.call(W2, home + Vector3(2, 0, 3))
+	m.knock(W2, foe, {})
+	spot.call(foe, W2.pos + Vector3(0.5, 0, 0))
+	t0 = m.time
+	while foe.stomp.is_empty() and m.time - t0 < 2.0:
+		foe.inp["interact"] = true
+		run.call(Match.DT)
+	var committed := not foe.stomp.is_empty()
+	for i in 30:
+		foe.inp["interact"] = false      # letting go does nothing once committed
+		foe.inp["move"] = Vector2(1, 0)
+		run.call(Match.DT)
+	var still := not foe.stomp.is_empty()
+	foe.kb_t = m.time
+	run.call(Match.DT)
+	print("LCHECK stomp lock: committed=%s still after letting go=%s broken by knock=%s wisp alive=%s" % [committed, still, foe.stomp.is_empty(), not W2.out])
 	print("LCHECK beacons=%d boxes=%d" % [m.beacons.size(), m.boxes.size()])
 	# 7. Dusk Isles rules: the kin on you go into the box; an enemy looting it takes them
 	m.T = Data.TIERS[1]

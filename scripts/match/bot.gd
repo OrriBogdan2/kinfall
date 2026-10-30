@@ -2,8 +2,8 @@ class_name Bot
 extends RefCounted
 ## Bot hunters. They fight, farm monsters, open chests, catch kin, revive teammates and head for exits.
 
-func new_mind(rng: RandomNumberGenerator, skill: float) -> Dictionary:
-	return {"skill": clampf(skill + rng.randf_range(-0.15, 0.15), 0.2, 1.0), "think": 0.0, "tgt": null, "goal": Vector3.INF,
+func new_mind(rng: RandomNumberGenerator, skill: float, diff := {}) -> Dictionary:
+	return {"skill": clampf(skill + rng.randf_range(-0.1, 0.1), 0.15, 1.0), "diff": diff, "react_t": 0.0, "seen": null, "think": 0.0, "tgt": null, "goal": Vector3.INF,
 		"goal_kind": "", "strafe": 1.0 if rng.randf() < 0.5 else -1.0, "strafe_t": 0.0, "dash_cd": rng.randf_range(1, 3),
 		"jump_cd": rng.randf_range(2, 5), "throw_cd": rng.randf_range(1.5, 4), "aim_err": Vector2.ZERO, "hurt_hp": 0.0,
 		"wander": Vector3.INF, "stuck": 0.0, "last_pos": Vector3.ZERO}
@@ -64,6 +64,12 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 			a["cross_go"] = false
 	var tgt: Ent = a["tgt"]
 	var move := Vector2.ZERO
+	var df: Dictionary = a.get("diff", {})
+	# a new target takes a beat to react to (much longer on easy), so you get the first shot
+	if tgt != a.get("seen"):
+		a["seen"] = tgt
+		a["react_t"] = float(df.get("react", 0.3)) * randf_range(0.8, 1.3) * (1.6 if tgt is Hunter else 1.0)
+	a["react_t"] = float(a.get("react_t", 0.0)) - dt
 	# ---- combat
 	var finishing: bool = tgt is Hunter and tgt.downed and not tgt.out
 	if tgt and not tgt.dead and tgt.hittable() and (finishing or not (tgt is Hunter and not tgt.targetable())):
@@ -99,15 +105,21 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 		var los: bool = m.world.los(h.pos, tgt.pos, h.pos.y + 0.95)
 		# fast guns fire in bursts with a beat between them (to reposition); slow ones on cooldown
 		a["burst"] = float(a.get("burst", 0.0)) - dt
-		if a["burst"] < -randf_range(0.35, 0.6):
-			a["burst"] = randf_range(0.7, 1.3)
-		if los and d < float(h.wpn["range"]) + 0.5 and (a["burst"] > 0.0 or float(h.wpn["rate"]) > 0.4 or h.wpn.has("spin_up")):
+		# fast guns fire in bursts; on easier bots the pauses between them are longer
+		var duty := float(df.get("fire", 0.8))
+		if a["burst"] < -randf_range(0.35, 0.6) / maxf(0.25, duty) * (1.0 if duty >= 0.99 else 1.4):
+			a["burst"] = randf_range(0.7, 1.3) * (0.6 + 0.4 * duty)
+		var trig_ok: bool = float(a["react_t"]) <= 0.0 and (a["burst"] > 0.0 or ((float(h.wpn["rate"]) > 0.4 or h.wpn.has("spin_up")) and randf() < duty * dt * 8.0 + (0.0 if duty < 0.99 else 1.0)))
+		if los and d < float(h.wpn["range"]) + 0.5 and trig_ok:
 			inp["fire"] = true
 		elif not los:
 			move = to
 		# kin
 		var k: Kin = h.kin
-		if k and a["throw_cd"] <= 0.0:
+		var abil := float(df.get("abil", 0.7))
+		if k and a["throw_cd"] <= 0.0 and randf() > abil:
+			a["throw_cd"] = randf_range(1.5, 3.5)       # easier bots hold their kin back more
+		elif k and a["throw_cd"] <= 0.0:
 			if k.state == "shoulder" and d < 8.0 and (tgt is Hunter or (tgt is Mob and tgt.mkind == "brute") or randf() < 0.3):
 				k.throw_to(Vector3(tgt.pos.x, tgt.pos.y, tgt.pos.z))
 				a["throw_cd"] = randf_range(4, 8)
@@ -119,15 +131,19 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 				k.recall()
 				a["throw_cd"] = 2.0
 		# defensive moves
-		if h.hp < a["hurt_hp"] - 12.0 and a["dash_cd"] <= 0.0:
+		if h.hp < a["hurt_hp"] - 12.0 and a["dash_cd"] <= 0.0 and randf() < 0.35 + abil * 0.65:
 			a["dash_cd"] = randf_range(1.2, 3.0) / (0.5 + a["skill"])
 			var side: Vector2 = Vector2(-to.y, to.x) * a["strafe"]
 			if _safe(m, h, side, 3.5) and _safe(m, h, side, 5.0):
 				a["dash_dir"] = side
 				inp["dash"] = true
 		a["hurt_hp"] = h.hp
-		_use_sig(m, h, tgt)
-		_use_sec(m, h, tgt)
+		# abilities: easier bots only look for a chance every so often
+		a["abil_t"] = float(a.get("abil_t", 0.0)) - dt
+		if a["abil_t"] <= 0.0 and a["react_t"] <= 0.0:
+			a["abil_t"] = randf_range(0.4, 1.0) * (1.0 + (1.0 - abil) * 4.0)
+			_use_sig(m, h, tgt)
+			_use_sec(m, h, tgt)
 	else:
 		a["tgt"] = null
 		var goal: Vector3 = a["goal"]
@@ -293,7 +309,9 @@ func _choose(m: Match, h: Hunter) -> void:
 			continue
 		var d := h.flat_dist(o)
 		# early on bots farm monsters and only fight hunters who come close or shoot them
-		var reach := 13.0 if m.time > 100.0 or h.last_hit_by == o or (o is Hunter and h.last_hit_by == o.kin) else 8.0
+		var provoked: bool = h.last_hit_by == o or (o is Hunter and h.last_hit_by == o.kin)
+		var reach := (13.0 if m.time > 100.0 or provoked else 8.0) * float((a.get("diff", {}) as Dictionary).get("aggro", 1.0))
+		if provoked: reach = maxf(reach, 10.0)
 		if d > reach or absf(o.pos.y - h.pos.y) > 3.0:
 			continue
 		if not m.world.los(h.pos, o.pos, h.pos.y + 0.95) and d > 4.0:

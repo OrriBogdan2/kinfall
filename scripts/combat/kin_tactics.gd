@@ -88,7 +88,7 @@ func think_abilities(dt: float) -> void:
 	think_t = 0.35 + randf() * 0.25
 	if k.runner == null or k.owner_h == null or k.owner_h.out or k.owner_h.downed:
 		return
-	if k.owner_h.is_local() and not Settings.get_v("kin_autocast"):
+	if k.owner_h.is_local() and not Settings.get_v("kin_auto"):
 		return
 	for slot in ["k1", "k2"]:
 		if not k.runner.is_ready(slot):

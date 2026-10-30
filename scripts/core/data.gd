@@ -118,6 +118,29 @@ const PERKS := {
 	"overcharge": {"name": "Overcharge", "desc": "Your ultimate charges 30% faster."},
 }
 
+## Bot hunter difficulty. "auto" (the default) picks one from the run tier and how experienced you
+## are; admins can force one in Settings > Gameplay or the admin panel (F1).
+##   skill: aim lead/accuracy and how often they think   react: seconds before they fire on a new target
+##   dmg: their damage   fire: how much of the time they keep the trigger down
+##   abil: how readily they use abilities and kin   aggro: how far they chase and how hard they press
+const BOT_DIFF := {
+	"easy": {"name": "Easy", "skill": 0.28, "react": 0.75, "dmg": 0.65, "fire": 0.5, "abil": 0.3, "aggro": 0.6},
+	"medium": {"name": "Medium", "skill": 0.5, "react": 0.45, "dmg": 0.82, "fire": 0.7, "abil": 0.55, "aggro": 0.8},
+	"hard": {"name": "Hard", "skill": 0.72, "react": 0.28, "dmg": 0.95, "fire": 0.85, "abil": 0.8, "aggro": 0.95},
+	"expert": {"name": "Expert", "skill": 0.92, "react": 0.16, "dmg": 1.05, "fire": 1.0, "abil": 1.0, "aggro": 1.1},
+}
+const BOT_ORDER := ["easy", "medium", "hard", "expert"]
+
+## Which difficulty "auto" means for a run: the tier sets the base (Meadow easy, Dusk Isles medium,
+## the Hollow hard) and lots of successful extractions push it up one step. The tutorial is always easy.
+static func auto_bot_diff(tier: int, extracts: int, tutorial := false) -> String:
+	if tutorial:
+		return "easy"
+	var i := clampi(tier, 0, 2)
+	if extracts >= 12 * (i + 1):
+		i += 1
+	return BOT_ORDER[clampi(i, 0, BOT_ORDER.size() - 1)]
+
 const SIGS := {
 	"cloak": {"name": "Cloak", "cd": 14.0, "desc": "Vanish for 3s and move 35% faster. Firing reveals you."},
 	"mend": {"name": "Mend", "cd": 16.0, "desc": "Heal 35 to you, nearby teammates and kin. Nearby revives jump halfway."},

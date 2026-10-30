@@ -535,6 +535,11 @@ const HP_LOW := Color("ff6a5a")
 var armor_lerp := 1.0
 var ready_was := {}        # slot id -> was it ready last frame, for the "ready" flash
 var ready_flash := {}      # slot id -> time left on its flash
+var slot_fx := {}          # slot id -> {kind: "cast"|"deny", t}: a pop when a press lands, a red shake when it can't
+
+## A press on an ability slot: "cast" pops it, "deny" (on cooldown, not ready) shakes it red.
+func ability_feedback(id: String, kind: String) -> void:
+	slot_fx[id] = {"kind": kind, "t": 0.0}
 var hurt_dirs: Array = []  # {ang, t}
 var small_toasts: Array = []
 
@@ -621,6 +626,17 @@ func _keycap(center: Vector2, key: String, col: Color) -> void:
 
 ## One ability slot: icon, cooldown sweep and seconds, charges, key, and a flash when it's ready.
 func _ab_slot(id: String, rect: Rect2, icon: String, key: String, col: Color, cd_frac: float, cd_secs: float, ready: bool, charges := -1, max_ch := 0, label := "") -> void:
+	var sfx_d: Dictionary = slot_fx.get(id, {})
+	var deny := 0.0
+	var pop := 0.0
+	if not sfx_d.is_empty():
+		var ft := float(sfx_d["t"])
+		if sfx_d["kind"] == "deny":
+			deny = clampf(1.0 - ft / 0.35, 0.0, 1.0)
+			rect.position.x += sin(ft * 70.0) * 5.0 * deny
+		else:
+			pop = clampf(1.0 - ft / 0.3, 0.0, 1.0)
+			rect = rect.grow(-rect.size.x * 0.08 * sin(pop * PI))
 	var ctr := rect.get_center()
 	hover_spots.append([rect, id])
 	var was: bool = ready_was.get(id, true)
@@ -643,12 +659,19 @@ func _ab_slot(id: String, rect: Rect2, icon: String, key: String, col: Color, cd
 	if label != "":
 		_ctext(Vector2(ctr.x, rect.position.y - 6), label, 11, Color(INK, 0.85))
 	_keycap(Vector2(ctr.x, rect.end.y), key, col if ready else MUTED)
+	if deny > 0.0:
+		_rounded(rect, Color(0.9, 0.15, 0.1, 0.22 * deny), 12, Color(1.0, 0.35, 0.3, deny), 3)
+	if pop > 0.0:
+		_rounded(rect.grow((1.0 - pop) * 14.0), Color(1, 1, 1, 0.12 * pop), 14, Color(col.lerp(Color.WHITE, 0.5), pop), 3)
 	var fl := float(ready_flash.get(id, 0.0))
 	if fl > 0.0:
 		var k := 1.0 - fl / 0.35
 		_rounded(rect.grow(2.0 + k * 8.0), Color(0, 0, 0, 0), 14, Color(col, 1.0 - k), 3)
 
 func _hud_tick(delta: float) -> void:
+	for id in slot_fx.keys():
+		slot_fx[id]["t"] = float(slot_fx[id]["t"]) + delta
+		if float(slot_fx[id]["t"]) > 0.4: slot_fx.erase(id)
 	for id in ready_flash.keys():
 		ready_flash[id] = float(ready_flash[id]) - delta
 		if float(ready_flash[id]) <= 0.0: ready_flash.erase(id)
@@ -1008,7 +1031,8 @@ func _draw_prompt(sz: Vector2, p: Hunter) -> void:
 		var prog := 0.0
 		match it["kind"]:
 			"revive": prog = it["ent"].revive
-			"finish": prog = p.finish_t / Life.R["execute_time"]
+			"finish": prog = p.finish_t / Life.R["stomp_commit"]
+			"stomping": prog = float(p.stomp.get("t", 0.0)) / Life.R["stomp_time"]
 			"boxrev": prog = p.box_t / Life.R["box_revive_time"]
 			"loot": prog = p.box_t / Life.R["loot_time"]
 			"catch": prog = it["ent"].catch_prog

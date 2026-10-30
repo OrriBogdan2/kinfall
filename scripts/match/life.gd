@@ -15,7 +15,10 @@ const R := {
 	"revive_hp": 0.33,          # [est]
 	"extra_reviver": 0.5,       # each extra teammate on you: +50% speed [design]
 	"stomp_mult": 4.0,          # [wiki] an enemy on a wisp drains it this much faster and blocks the revive
-	"execute_time": 3.0,        # [footage] hold interact on an enemy wisp
+	"execute_time": 3.0,        # [footage] (old: hold interact on an enemy wisp; now the stomp below)
+	"stomp_commit": 0.2,        # [design] hold interact this long on an enemy wisp to start the stomp...
+	"stomp_time": 2.4,          # [footage] ...then you're locked in for this long, three stomps and done
+	"stomp_cycle": 0.7,         # one foot-lift-and-slam
 	"kin_revive_time": 8.0,     # [design] your kin pulling you up (as long as Supervive's Guardian Angel self-revive)
 	"box_revive_time": 5.0,     # [est] teammate holds interact at your deathbox
 	"box_revive_hp": 0.5,       # [design]
@@ -90,6 +93,68 @@ static func tick_wisps(m: Match, dt: float) -> void:
 		if o.down_hp <= 0.0:
 			trace(m, "%s %s" % [o.pname, "bled out" if foes == 0 else "stomped out"])
 			m.eliminate(o, o.last_hit_by, "bled out" if foes == 0 else "finished")
+
+# ------------------------------------------------------------------ the stomp
+## Holding interact on an enemy wisp commits you to stomping it out: a fixed animation you can't
+## cancel or move out of. You can still be shot, and a stun or a knockback breaks it (the wisp
+## lives), and if the wisp drifts away (off a ledge, say) your stomps miss and it gets away.
+static func start_stomp(m: Match, h: Hunter, o: Hunter) -> void:
+	h.stomp = {"o": o, "t": 0.0, "hits": 0}
+	h.finish_t = 0.0
+	trace(m, "stomp start %s on %s" % [h.pname, o.pname])
+	m.fx.word(h.pos + Vector3(0, 2.3, 0), "STOMP", Color("ff8a6a"), false)
+	if o == m.player and m.hud:
+		m.hud.toast("%s is stomping you! Drift away or get help" % h.pname, Color("ff6a5a"))
+
+static func end_stomp(m: Match, h: Hunter, why: String) -> void:
+	if h.stomp.is_empty():
+		return
+	trace(m, "stomp end %s (%s)" % [h.pname, why])
+	h.stomp = {}
+	if why == "broken":
+		m.fx.word(h.pos + Vector3(0, 2.3, 0), "INTERRUPTED", Color("cfeaff"), false)
+		m.sfx("whoosh", h.pos, -6.0, 1.3)
+
+static func tick_stomps(m: Match, dt: float) -> void:
+	for h in m.hunters:
+		if h.stomp.is_empty() or h.remote:
+			continue
+		var o: Hunter = h.stomp["o"]
+		# a hit that stuns or knocks you breaks it; your own input never does
+		if h.downed or h.out or h.stun_t > 0.0 or m.time - h.kb_t < 0.08:
+			end_stomp(m, h, "broken")
+			continue
+		if o == null or o.out or not o.downed:
+			end_stomp(m, h, "gone")
+			continue
+		h.root_t = maxf(h.root_t, 0.12)
+		var face := Vector2(o.pos.x - h.pos.x, o.pos.z - h.pos.z)
+		if face.length() > 0.05: h.inp["aim"] = Vector3(o.pos.x, o.pos.y, o.pos.z)
+		var t0 := float(h.stomp["t"])
+		var t1 := t0 + dt
+		h.stomp["t"] = t1
+		var cyc: float = R["stomp_cycle"]
+		var hit_at := cyc * 0.7
+		var near: bool = h.flat_dist(o) <= float(R["revive_radius"]) + 0.5 and absf(h.pos.y - o.pos.y) < 1.6
+		if fmod(t0, cyc) < hit_at and fmod(t1, cyc) >= hit_at:
+			# a foot comes down
+			h.stomp["hits"] = int(h.stomp["hits"]) + 1
+			m.fx.dust(h.pos, 10)
+			m.fx.ring(h.pos + Vector3(0, 0.05, 0), 1.2, Color(1, 0.8, 0.7, 0.6), 0.25)
+			m.sfx("thump", h.pos, -2.0, 0.85)
+			if near:
+				m.fx.burst(o.pos + Vector3(0, 0.5, 0), Color("ff6a5a"), 10, 3.0, 0.35, -4.0)
+				o.down_hp -= Data.MATCH["down_hp"] * 0.12
+			if h.is_local() or o == m.player:
+				m.shake(0.12, h.pos)
+		if t1 >= float(R["stomp_time"]):
+			if near:
+				end_stomp(m, h, "done")
+				m.eliminate(o, h, "executed")
+				m.fx.burst(o.pos + Vector3(0, 0.8, 0), Color("ff6a5a"), 20, 4.0, 0.5, -3.0)
+				m.sfx("crit", o.pos, -2.0, 0.7)
+			else:
+				end_stomp(m, h, "missed")
 
 # ------------------------------------------------------------------ deathboxes
 ## Where a box goes: where you fell, or the last solid ground before the abyss.
@@ -209,7 +274,7 @@ static func bring_back(m: Match, o: Hunter, at: Vector3, hp_frac: float, sick: b
 			k.state = "bench" if k == o.kin2 else "shoulder"
 			if k == o.kin: k._hop_on()
 	if o.ctrl == "bot":
-		o.ai = m.bot_brain.new_mind(m.rng, float(m.opts.get("bot_skill", 0.6)))
+		o.ai = m.bot_brain.new_mind(m.rng, float(m.opts.get("bot_skill", m.bot_cfg.get("skill", 0.6))), m.bot_cfg)
 	m.sfx("revive", o.pos, 0.0)
 	m.fx.ring(o.pos, 2.2, Color("9ee2a0"), 0.5)
 	m.fx.burst(o.pos + Vector3(0, 1.0, 0), Color("cff6e0"), 26, 5.0, 0.6, -2.0)
