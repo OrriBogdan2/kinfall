@@ -114,6 +114,13 @@ func _ready() -> void:
 			w.free()
 		get_tree().quit()
 		return
+	if "--map-overview" in args:
+		add_child(load("res://tests/map_overview.gd").new())
+		return
+	if "--mapcheck-authored" in args:
+		load("res://tools/mapcheck.gd").new().run_authored("skyreach", range(1, 21))
+		get_tree().quit()
+		return
 	if "--mapcheck" in args:
 		var MC = load("res://tools/mapcheck.gd")
 		if not "--big" in args: MC.new().run(range(1, 201))
@@ -367,7 +374,9 @@ func _mantle_check() -> void:
 			for k in 400:
 				var g := w.random_ground()
 				for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
-					if w.is_void(g.x + d.x * 1.6, g.z + d.y * 1.6) and not w.is_void(g.x, g.z) and k % 12 == trial:
+					# on an authored map only rims with a lip can be grabbed; sheer ones are checked below
+					var rim_ok := w.lip.is_empty() or w.lip.has(w.idx(int(floor(g.x + d.x * 0.9)), int(floor(g.z + d.y * 0.9)))) or w.lip.has(w.idx(int(floor(g.x)), int(floor(g.z))))
+					if w.is_void(g.x + d.x * 1.6, g.z + d.y * 1.6) and not w.is_void(g.x, g.z) and k % 12 == trial and rim_ok:
 						at = g; dir = d; break
 				if at != Vector3.INF: break
 			if at == Vector3.INF: continue
@@ -398,6 +407,32 @@ func _mantle_check() -> void:
 					break
 			if mantled and landed: ok += 1
 	print("MCHECK mantles ok %d of %d, clipping frames %d (worst %.2fm), climb times %s" % [ok, tried, clip, worst, str(durs)])
+	# sheer cliffs: falling past one while pushing into it must never catch you
+	if not w.sheer.is_empty():
+		var s_tried := 0; var s_caught := 0
+		var sheer_keys: Array = w.sheer.keys()
+		for trial in 12:
+			var i: int = sheer_keys[(trial * 37) % sheer_keys.size()]
+			var gx := float(i % w.w) + 0.5; var gz := float(i / w.w) + 0.5
+			var dir := Vector2.ZERO
+			for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+				if w.is_void(gx + d.x, gz + d.y): dir = d; break
+			if dir == Vector2.ZERO: continue
+			s_tried += 1
+			var top := w.ground_at(gx, gz)
+			h.downed = false
+			h.teleport(Vector3(gx + dir.x * (0.5 + h.r + 0.6), top - 3.0, gz + dir.y * (0.5 + h.r + 0.6)))
+			h.grounded = false; h.vel = Vector3(0, -2.0, 0); h.pad = {}; h.grap_cd = 0.0; h.last_gy = top
+			var t := 0.0
+			while t < 1.5:
+				h.inp["move"] = -dir
+				m.step(Match.DT); t += Match.DT
+				if not h.pad.is_empty() and h.pad.has("face"):
+					# caught: fine only if it was a neighbouring lip tile, not the sheer one
+					var lx := int(floor((h.pad["to"] as Vector3).x)); var lz := int(floor((h.pad["to"] as Vector3).z))
+					if w.sheer.has(w.idx(lx, lz)) or Vector2(lx + 0.5 - gx, lz + 0.5 - gz).length() < 1.2: s_caught += 1
+					break
+		print("MCHECK sheer cliffs caught %d of %d (should be 0)" % [s_caught, s_tried])
 	get_tree().quit()
 
 func _life_check() -> void:

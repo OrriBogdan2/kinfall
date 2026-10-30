@@ -34,6 +34,11 @@ var wild_spots: Array = []
 var no_deco := {}
 var paint := {}          # tile index -> colour for paths and soil, blended at the corners
 var clouds: Array = []
+var sheer := {}          # tile index -> true: a smooth cliff rim you can't grab (authored maps)
+var lip := {}            # tile index -> true: a rim with a stone lip you can grab (authored maps)
+var labels: Array = []   # {name, pos: Vector3, kind: "poi" | "choke"} for the map and minimap
+var layout_id := ""      # "" for a generated map, else the authored layout's id
+var authored_portals: Array = []   # Vector2 tile spots from an authored layout, in opening order
 var biome := {"top": Color("5f8d45"), "top2": Color("4a7538"), "side": Color("8b6d52"), "deep": Color("3a3140"), "leaf": Color("5a9a4f")}
 
 func idx(x: int, z: int) -> int:
@@ -203,6 +208,7 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 	depth.resize(w * h); depth.fill(0.0)
 	islands.clear(); pads.clear(); spawns.clear(); portal_spots.clear(); chest_spots.clear(); camp_spots.clear(); wild_spots.clear()
 	links.clear(); rings.clear(); winds.clear(); updrafts.clear()
+	sheer.clear(); lip.clear(); labels.clear(); layout_id = ""; authored_portals.clear()
 	var shape := FastNoiseLite.new(); shape.seed = seed_val; shape.frequency = 0.09
 	var terr := FastNoiseLite.new(); terr.seed = seed_val + 7; terr.frequency = 0.07
 	# island centres: a big heart island in the middle and a ring of outer islands around it,
@@ -692,6 +698,12 @@ var heart_spot := Vector3.INF
 
 ## The island's point of interest: the open ground cell nearest its middle.
 func _poi(isl: int) -> Vector3:
+	if islands[isl].has("poi_at"):
+		# authored maps say exactly where the point of interest is
+		var pa: Vector2 = islands[isl]["poi_at"]
+		var ix := int(floor(pa.x)); var iz := int(floor(pa.y))
+		if inb(ix, iz) and kind[idx(ix, iz)] != T_VOID and island[idx(ix, iz)] == isl:
+			return Vector3(ix + 0.5, level[idx(ix, iz)] * LEVEL, iz + 0.5)
 	var c: Vector2 = islands[isl]["c"]
 	var best := Vector2i(-1, -1); var bd := 1e9
 	for cell in islands[isl]["cells"]:
@@ -821,6 +833,14 @@ func _place_spots() -> void:
 			chest_spots.append({"pos": p2, "tier": 0})
 			var cp2 := _near(p2, 2.6, away + PI * 0.5, ii, taken)
 			if cp2 != Vector3.INF: camp_spots.append({"pos": cp2, "island": ii, "kind": "light"})
+	# authored maps put their exits exactly where the layout says, in the order they open
+	if not authored_portals.is_empty():
+		for ap in authored_portals:
+			var ax := int(floor((ap as Vector2).x)); var az := int(floor((ap as Vector2).y))
+			if inb(ax, az) and kind[idx(ax, az)] != T_VOID:
+				if kind[idx(ax, az)] == T_BLOCK: kind[idx(ax, az)] = T_GROUND
+				portal_spots.append(Vector3(ax + 0.5, level[idx(ax, az)] * LEVEL, az + 0.5))
+				taken[Vector2i(ax, az)] = true
 	# exits on three outer islands spread around the ring
 	var outer: Array = range(1, islands.size())
 	outer.sort_custom(func(x, y): return a0_of(x) < a0_of(y))
@@ -834,7 +854,7 @@ func _place_spots() -> void:
 	for ii in outer:
 		if not order.has(ii): order.append(ii)
 	for ii in order:
-		if portal_spots.size() >= n_exits:
+		if portal_spots.size() >= n_exits or not authored_portals.is_empty():
 			break
 		var p: Vector3 = pick.call(ii, 2, 7)
 		if p != Vector3.INF:
@@ -1102,13 +1122,30 @@ func _side(st: SurfaceTool, x: int, z: int, dir: Vector2i, top: float, lo: float
 		Vector2i(-1, 0): p0 = Vector3(x, 0, z) + _corner(x, z); p1 = Vector3(x, 0, z + 1) + _corner(x, z + 1)
 		Vector2i(0, 1): p0 = Vector3(x, 0, z + 1) + _corner(x, z + 1); p1 = Vector3(x + 1, 0, z + 1) + _corner(x + 1, z + 1)
 		_: p0 = Vector3(x + 1, 0, z) + _corner(x + 1, z); p1 = Vector3(x, 0, z) + _corner(x, z)
+	var ti := idx(x, z)
+	if to_void and sheer.has(ti):
+		# a sheer cliff: smooth dark slate from top to bottom, no lip, nothing to hold on to
+		var slate := Color("3e3852").lerp(Color(cur_bio["deep"]), 0.25)
+		_band(st, p0, p1, top, top - 0.06, n, Color("57506e"), Color("57506e"))
+		_band(st, p0, p1, top - 0.06, lo, n, slate, Color(cur_bio["deep"]).darkened(0.35))
+		return
+	if to_void and lip.has(ti):
+		# a ledge you can grab: a pale stone lip under the grass, then the usual rock
+		var stone := Color("e6d6ae")
+		_band(st, p0, p1, top, top - 0.08, n, Color(cur_bio["top2"]).darkened(0.05), Color(cur_bio["top2"]).darkened(0.05))
+		_band(st, p0, p1, top - 0.08, top - 0.42, n, stone, stone.darkened(0.12))
+		var mid2 := maxf(lo, top - 1.6)
+		_band(st, p0, p1, top - 0.42, mid2, n, Color(cur_bio["side"]), Color(cur_bio["side"]).darkened(0.15))
+		if mid2 > lo:
+			_band(st, p0, p1, mid2, lo, n, Color(cur_bio["side"]).darkened(0.15), cur_bio["deep"])
+		return
 	# a grassy lip, then dirt fading into dark rock toward the bottom
-	var lip := minf(0.18, top - lo)
+	var lip_h := minf(0.18, top - lo)
 	var grass: Color = Color(cur_bio["top2"]).darkened(0.12)
 	var dirt: Color = cur_bio["side"]
-	_band(st, p0, p1, top, top - lip, n, grass, grass)
-	var mid := maxf(lo, top - lip - 1.2)
-	_band(st, p0, p1, top - lip, mid, n, dirt, dirt.darkened(0.15))
+	_band(st, p0, p1, top, top - lip_h, n, grass, grass)
+	var mid := maxf(lo, top - lip_h - 1.2)
+	_band(st, p0, p1, top - lip_h, mid, n, dirt, dirt.darkened(0.15))
 	if mid > lo:
 		_band(st, p0, p1, mid, lo, n, dirt.darkened(0.15), cur_bio["deep"] if to_void else dirt.darkened(0.3))
 
@@ -1144,7 +1181,9 @@ func _assign_regions() -> void:
 	for ii in islands.size():
 		var c: Vector2 = islands[ii]["c"]
 		var reg := 0
-		if w >= 120 and ii > 0:
+		if islands[ii].has("region_fixed"):
+			reg = int(islands[ii]["region_fixed"]) % REGIONS.size()
+		elif w >= 120 and ii > 0:
 			var a := fposmod(atan2(c.y - center.y, c.x - center.x) + off, TAU)
 			reg = int(a / TAU * REGIONS.size()) % REGIONS.size()
 		var b: Dictionary = biome.duplicate()
@@ -1419,3 +1458,321 @@ func paint_path(a: Vector2i, b: Vector2i, col: Color, wide := true) -> void:
 			paint_tile(x, z + 1, col)
 		else:
 			paint_tile(x + 1, z, col)
+
+
+# ------------------------------------------------------------------ authored maps
+## Hand-made expedition maps (content/maps/<id>.json). The islands, the land bridges between them
+## (the chokepoints), wind roads, jump pads, updrafts, walls, cover and exits are all placed by hand,
+## and so is which cliffs you can grab: a rim with a pale stone lip can be caught and climbed, a
+## smooth dark slate cliff can't. Only the loot, camps, breakables and spawn picks are dealt out per
+## match around each island's point of interest, so every expedition plays out differently on the
+## same ground.
+static func load_layout(id: String) -> Dictionary:
+	var path := "res://content/maps/%s.json" % id
+	if not FileAccess.file_exists(path):
+		return {}
+	var d = JSON.parse_string(FileAccess.get_file_as_string(path))
+	return d if typeof(d) == TYPE_DICTIONARY else {}
+
+## Which authored map an expedition of this tier uses (all tiers share Skyreach for now, each with
+## its own palette and monsters).
+static func layout_for_tier(_tier: int) -> String:
+	return "skyreach"
+
+func is_sheer(x: int, z: int) -> bool:
+	return inb(x, z) and sheer.has(idx(x, z))
+
+static func _v2(a) -> Vector2:
+	return Vector2(float(a[0]), float(a[1]))
+
+## Normalised distance of a point from a shape: below 1 is inside.
+static func _shape_d(S: Dictionary, pt: Vector2) -> float:
+	if S.has("circle"):
+		return pt.distance_to(_v2(S["circle"])) / maxf(0.5, float(S["r"]))
+	if S.has("ellipse"):
+		var c := _v2(S["ellipse"])
+		var q := (pt - c).rotated(-deg_to_rad(float(S.get("rot", 0.0))))
+		return Vector2(q.x / float(S["rx"]), q.y / float(S["rz"])).length()
+	if S.has("rect"):
+		var r: Array = S["rect"]
+		var c2 := Vector2((float(r[0]) + float(r[2])) * 0.5, (float(r[1]) + float(r[3])) * 0.5)
+		var hx := maxf(0.5, (float(r[2]) - float(r[0])) * 0.5); var hz := maxf(0.5, (float(r[3]) - float(r[1])) * 0.5)
+		return maxf(absf(pt.x - c2.x) / hx, absf(pt.y - c2.y) / hz)
+	if S.has("capsule"):
+		var cp: Array = S["capsule"]
+		var a := Vector2(float(cp[0]), float(cp[1])); var b := Vector2(float(cp[2]), float(cp[3]))
+		return Geometry2D.get_closest_point_to_segment(pt, a, b).distance_to(pt) / maxf(0.5, float(S["r"]))
+	return 99.0
+
+static func _shape_box(S: Dictionary) -> Rect2:
+	if S.has("circle"):
+		var c := _v2(S["circle"]); var r := float(S["r"]) + 3.0
+		return Rect2(c - Vector2(r, r), Vector2(r, r) * 2.0)
+	if S.has("ellipse"):
+		var c2 := _v2(S["ellipse"]); var r2 := maxf(float(S["rx"]), float(S["rz"])) + 3.0
+		return Rect2(c2 - Vector2(r2, r2), Vector2(r2, r2) * 2.0)
+	if S.has("rect"):
+		var r: Array = S["rect"]
+		return Rect2(Vector2(float(r[0]), float(r[1])) - Vector2(2, 2), Vector2(float(r[2]) - float(r[0]), float(r[3]) - float(r[1])) + Vector2(4, 4))
+	if S.has("capsule"):
+		var cp: Array = S["capsule"]; var rr := float(S["r"]) + 2.0
+		var a := Vector2(float(cp[0]), float(cp[1])); var b := Vector2(float(cp[2]), float(cp[3]))
+		return Rect2(Vector2(minf(a.x, b.x), minf(a.y, b.y)) - Vector2(rr, rr), (b - a).abs() + Vector2(rr, rr) * 2.0)
+	return Rect2()
+
+func generate_authored(L: Dictionary, seed_val: int) -> void:
+	rng.seed = seed_val
+	w = int(L.get("size", BIG_SIZE)); h = w
+	kind.resize(w * h); kind.fill(T_VOID)
+	level.resize(w * h); level.fill(0)
+	island.resize(w * h); island.fill(-1)
+	depth.resize(w * h); depth.fill(0.0)
+	islands.clear(); pads.clear(); spawns.clear(); portal_spots.clear(); chest_spots.clear(); camp_spots.clear(); wild_spots.clear()
+	links.clear(); rings.clear(); winds.clear(); updrafts.clear()
+	sheer.clear(); lip.clear(); labels.clear(); walls.clear(); bush.clear(); paint.clear(); authored_portals.clear()
+	layout_id = String(L.get("id", "authored"))
+	# the ground is the same every match: its noise and depths come from the layout, not the match
+	var lr := RandomNumberGenerator.new(); lr.seed = int(L.get("seed", 1))
+	var nz := FastNoiseLite.new(); nz.seed = int(L.get("seed", 1)); nz.frequency = 0.11
+	var defs: Array = L.get("islands", [])
+	var ids := {}
+	for ii in defs.size():
+		ids[String(defs[ii]["id"])] = ii
+	for ii in defs.size():
+		var D: Dictionary = defs[ii]
+		var shapes: Array = D.get("shapes", [])
+		if shapes.is_empty():
+			continue
+		var nk := float(D.get("noise", 0.12))
+		var box := _shape_box(shapes[0])
+		for S in shapes:
+			box = box.merge(_shape_box(S))
+		var cells: Array = []
+		for z in range(maxi(1, int(box.position.y)), mini(h - 1, int(box.end.y) + 1)):
+			for x in range(maxi(1, int(box.position.x)), mini(w - 1, int(box.end.x) + 1)):
+				var i := idx(x, z)
+				if kind[i] != T_VOID:
+					continue
+				var pt := Vector2(x + 0.5, z + 0.5)
+				var lv := -1
+				var d0 := 99.0
+				for si in shapes.size():
+					var S: Dictionary = shapes[si]
+					var sd := _shape_d(S, pt)
+					# the outline gets the full ragged edge; terraces inside it only a little
+					var n := nz.get_noise_2d(x, z) * nk * (1.0 if si == 0 else 0.45)
+					if si == 0: d0 = sd
+					if sd + n < 1.0:
+						if S.get("cut", false):
+							lv = -1; break
+						lv = maxi(lv, int(S.get("lv", 0)))
+				if lv < 0:
+					continue
+				kind[i] = T_GROUND
+				island[i] = ii
+				level[i] = clampi(lv, 0, 4)
+				depth[i] = -(2.2 + (1.0 - clampf(d0, 0.0, 1.0)) * 4.5 + lr.randf() * 1.5)
+				cells.append(Vector2i(x, z))
+		var c0: Dictionary = shapes[0]
+		var cen := _shape_box(c0).get_center() if not (c0.has("circle") or c0.has("ellipse")) else _v2(c0.get("circle", c0.get("ellipse", [0, 0])))
+		var poi := _v2(D.get("poi", [cen.x, cen.y]))
+		islands.append({"c": cen, "r": sqrt(cells.size() / PI), "base": 0, "cells": cells, "role": String(D.get("role", "grove")),
+			"form": "authored", "fdir": Vector2.RIGHT, "name": String(D.get("name", "")), "id": String(D["id"]),
+			"region_fixed": int(D.get("region", 0)), "poi_at": poi, "drop": bool(D.get("drop", false)), "sheer_arcs": D.get("sheer", [])})
+		if String(D.get("name", "")) != "":
+			labels.append({"name": String(D["name"]), "pos": Vector3(poi.x, 0, poi.y), "kind": "poi", "role": String(D.get("role", ""))})
+	# land bridges: narrow, sheer-sided necks of ground between two islands. The whole bridge
+	# belongs to the first island, so walking along it never changes which island you're on.
+	var neck := {}
+	for B in L.get("bridges", []):
+		var a: int = ids.get(String(B["a"]), -1); var b: int = ids.get(String(B["b"]), -1)
+		if a < 0 or b < 0:
+			continue
+		var p0 := _v2(B["from"]); var p1 := _v2(B["to"])
+		var rr := float(B.get("r", 1.4))
+		var lv0 := int(level[idx(int(p0.x), int(p0.y))]) if kind[idx(int(p0.x), int(p0.y))] != T_VOID else 0
+		var lv1 := int(level[idx(int(p1.x), int(p1.y))]) if kind[idx(int(p1.x), int(p1.y))] != T_VOID else 0
+		for z in range(int(minf(p0.y, p1.y) - rr - 1), int(maxf(p0.y, p1.y) + rr + 2)):
+			for x in range(int(minf(p0.x, p1.x) - rr - 1), int(maxf(p0.x, p1.x) + rr + 2)):
+				if not inb(x, z):
+					continue
+				var pt := Vector2(x + 0.5, z + 0.5)
+				var q := Geometry2D.get_closest_point_to_segment(pt, p0, p1)
+				if q.distance_to(pt) > rr:
+					continue
+				var i := idx(x, z)
+				if kind[i] != T_VOID:
+					continue
+				kind[i] = T_GROUND
+				island[i] = a
+				var t := clampf(p0.distance_to(q) / maxf(0.01, p0.distance_to(p1)), 0.0, 1.0)
+				level[i] = mini(lv0, lv1) if t > 0.15 and t < 0.85 else (lv0 if t <= 0.15 else lv1)
+				depth[i] = -1.6
+				neck[i] = true
+				islands[a]["cells"].append(Vector2i(x, z))
+		var mid := p0.lerp(p1, 0.5)
+		if String(B.get("name", "")) != "":
+			labels.append({"name": String(B["name"]), "pos": Vector3(mid.x, 0, mid.y), "kind": "choke"})
+		# for bots: walk the bridge (it's island a), then a short hop onto island b, and back
+		var dirn := (p1 - p0).normalized()
+		var P0 := Vector3(p0.x, 0, p0.y); var P1 := Vector3(p1.x, 0, p1.y)
+		var on_b := _inward(b, P1, P0)
+		on_b.y = ground_at(on_b.x, on_b.z)
+		var on_bridge := Vector3(floor(p1.x - dirn.x * 2.5) + 0.5, 0, floor(p1.y - dirn.y * 2.5) + 0.5)
+		on_bridge.y = ground_at(on_bridge.x, on_bridge.z) if not is_void(on_bridge.x, on_bridge.z) else on_b.y
+		links.append({"from": a, "to": b, "take": on_bridge, "land": on_b, "bridge": true})
+		links.append({"from": b, "to": a, "take": on_b, "land": on_bridge, "bridge": true})
+	_authored_blockers(defs, neck)
+	# which rims can be caught: bridges and the authored arcs are sheer, the rest have a stone lip
+	for ii in islands.size():
+		var arcs: Array = islands[ii].get("sheer_arcs", [])
+		var cen2: Vector2 = islands[ii]["c"]
+		for cell in islands[ii]["cells"]:
+			var i := idx(cell.x, cell.y)
+			if neck.has(i) and kind[i] != T_VOID and edge_dist(cell.x, cell.y, 1) != 1:
+				paint[i] = Color("958f8a")      # the middle of a bridge: the same stone path
+				continue
+			if kind[i] == T_VOID or edge_dist(cell.x, cell.y, 1) != 1:
+				continue
+			var sh := neck.has(i)
+			if not sh:
+				var ang := fposmod(rad_to_deg(atan2(cell.y + 0.5 - cen2.y, cell.x + 0.5 - cen2.x)), 360.0)
+				for arc in arcs:
+					var a0 := float(arc[0]); var span := fposmod(float(arc[1]) - a0, 360.0)
+					if span == 0.0: span = 360.0
+					if fposmod(ang - a0, 360.0) <= span:
+						sh = true; break
+			if sh:
+				sheer[i] = true
+				# bridges get a worn stone path on top; other sheer rims a cold slate border
+				paint[i] = Color("958f8a") if neck.has(i) else Color("7d7896")
+			else:
+				lip[i] = true
+				paint[i] = Color("dccb9c")
+	# wind roads, jump pads and updrafts, all where the layout puts them
+	var edges_of := {}
+	for ii in islands.size():
+		var e: Array = []
+		for cell in islands[ii]["cells"]:
+			if kind[idx(cell.x, cell.y)] != T_VOID and edge_dist(cell.x, cell.y, 1) == 1 and not neck.has(idx(cell.x, cell.y)):
+				e.append(cell)
+		edges_of[ii] = e
+	for W in L.get("winds", []):
+		var a: int = ids.get(String(W[0]), -1); var b: int = ids.get(String(W[1]), -1)
+		if a < 0 or b < 0:
+			continue
+		var g := _gap(a, b, edges_of)
+		_wind_link(a, b, g)
+		if (W as Array).size() > 2:
+			var ga: Vector2i = g[1]; var gb: Vector2i = g[2]
+			labels.append({"name": String(W[2]), "pos": Vector3((ga.x + gb.x) * 0.5 + 0.5, 0, (ga.y + gb.y) * 0.5 + 0.5), "kind": "choke"})
+	var used: Array = []
+	for P in L.get("pads", []):
+		var a: int = ids.get(String(P[0]), -1); var b: int = ids.get(String(P[1]), -1)
+		if a < 0 or b < 0:
+			continue
+		for dir in [[a, b], [b, a]]:
+			var from: int = dir[0]; var to: int = dir[1]
+			var c_from := _edge_cell_toward(from, islands[to]["c"], used)
+			if c_from.x < 0: c_from = _edge_cell_toward(from, islands[to]["c"], used, 3.0)
+			if c_from.x < 0: continue
+			used.append(Vector2(c_from.x + 0.5, c_from.y + 0.5))
+			pads.append({"pos": Vector3(c_from.x + 0.5, level[idx(c_from.x, c_from.y)] * LEVEL, c_from.y + 0.5), "land": Vector3.INF, "from": from, "to": to, "cd": 0.0})
+	for pd in pads:
+		var to: int = pd["to"]
+		var src := Vector2(pd["pos"].x, pd["pos"].z)
+		var best := Vector3.INF; var bs := -1e9
+		for cell in islands[to]["cells"]:
+			var i := idx(cell.x, cell.y)
+			if kind[i] != T_GROUND or _near_block(cell.x, cell.y) or neck.has(i):
+				continue
+			var cp := Vector2(cell.x + 0.5, cell.y + 0.5)
+			var clear := true
+			for other in pads:
+				if Vector2(other["pos"].x, other["pos"].z).distance_to(cp) < 3.0:
+					clear = false; break
+			if not clear: continue
+			var score := -cp.distance_to(src) - (6.0 if edge_dist(cell.x, cell.y, 5) < 3 else 0.0)
+			if score > bs: bs = score; best = Vector3(cp.x, level[i] * LEVEL, cp.y)
+		pd["land"] = best
+	pads = pads.filter(func(pd): return pd["land"] != Vector3.INF)
+	for U in L.get("updrafts", []):
+		var at := _v2(U["at"])
+		updrafts.append({"pos": Vector3(at.x, 0.0, at.y), "r": 1.7, "top": float(U.get("top", 2)) * LEVEL + 1.6})
+	for ap in L.get("portals", []):
+		authored_portals.append(_v2(ap))
+	_place_spots()
+	_place_stairs()
+
+## Walls, pillars and tall grass from the layout, plus a light scatter of rocks for cover away from
+## the edges, the bridges and the points of interest.
+func _authored_blockers(defs: Array, neck: Dictionary) -> void:
+	for ii in defs.size():
+		if ii >= islands.size():
+			break
+		var D: Dictionary = defs[ii]
+		for Wd in D.get("walls", []):
+			for q in _wall_tiles(Wd):
+				_wall_at(q, ii)
+		for pp in D.get("pillars", []):
+			var px := int(pp[0]); var pz := int(pp[1])
+			if inb(px, pz) and kind[idx(px, pz)] == T_GROUND and island[idx(px, pz)] == ii:
+				kind[idx(px, pz)] = T_BLOCK
+		for bz in D.get("bush", []):
+			var bc := Vector2(float(bz[0]), float(bz[1])); var rad := float(bz[2])
+			for z in range(int(bc.y - rad - 1), int(bc.y + rad + 2)):
+				for x in range(int(bc.x - rad - 1), int(bc.x + rad + 2)):
+					if Vector2(x + 0.5, z + 0.5).distance_to(bc) > rad + rng.randf_range(-0.2, 0.3): continue
+					if inb(x, z) and kind[idx(x, z)] == T_GROUND and island[idx(x, z)] == ii and edge_dist(x, z, 2) >= 2:
+						bush[idx(x, z)] = true
+		# a light scatter of rocks for cover
+		var poi := _v2(D.get("poi", [0, 0]))
+		for cell in islands[ii]["cells"]:
+			var i := idx(cell.x, cell.y)
+			if kind[i] != T_GROUND or neck.has(i) or edge_dist(cell.x, cell.y, 3) <= 2:
+				continue
+			if Vector2(cell.x + 0.5, cell.y + 0.5).distance_to(poi) < 4.0:
+				continue
+			if rng.randf() < 0.018:
+				kind[i] = T_BLOCK
+
+func _wall_tiles(Wd: Dictionary) -> Array:
+	var out: Array = []
+	if Wd.has("line"):
+		var l: Array = Wd["line"]
+		var a := Vector2(float(l[0]), float(l[1])); var b := Vector2(float(l[2]), float(l[3]))
+		var n := int(maxf(absf(b.x - a.x), absf(b.y - a.y))) + 1
+		for k in n:
+			var p := a.lerp(b, float(k) / maxf(1.0, n - 1))
+			var q := Vector2i(int(floor(p.x)), int(floor(p.y)))
+			if not out.has(q): out.append(q)
+	elif Wd.has("ring"):
+		var c := _v2(Wd["ring"]); var r := float(Wd["r"])
+		var gates := int(Wd.get("gates", 4)); var gw := float(Wd.get("gate_w", 2))
+		for z in range(int(c.y - r - 2), int(c.y + r + 2)):
+			for x in range(int(c.x - r - 2), int(c.x + r + 2)):
+				var d := Vector2(x + 0.5, z + 0.5).distance_to(c)
+				if absf(d - r) > 0.55: continue
+				var ang := atan2(z + 0.5 - c.y, x + 0.5 - c.x)
+				var gate := false
+				for k in gates:
+					var ga := -PI / 2 + TAU * k / maxf(1, gates)
+					if absf(wrapf(ang - ga, -PI, PI)) * r < gw * 0.5 + 0.6: gate = true
+				if not gate: out.append(Vector2i(x, z))
+	elif Wd.has("box"):
+		var bx: Array = Wd["box"]
+		var x0 := int(bx[0]); var z0 := int(bx[1]); var x1 := int(bx[2]); var z1 := int(bx[3])
+		var gw2 := int(Wd.get("gate_w", 3))
+		var gs: Array = Wd.get("gates", [])
+		var mx := (x0 + x1) / 2; var mz := (z0 + z1) / 2
+		for x in range(x0, x1 + 1):
+			for zz in [z0, z1]:
+				var side := "n" if zz == z0 else "s"
+				if gs.has(side) and absi(x - mx) <= gw2 / 2: continue
+				out.append(Vector2i(x, zz))
+		for z in range(z0 + 1, z1):
+			for xx in [x0, x1]:
+				var side2 := "w" if xx == x0 else "e"
+				if gs.has(side2) and absi(z - mz) <= gw2 / 2: continue
+				out.append(Vector2i(xx, z))
+	return out

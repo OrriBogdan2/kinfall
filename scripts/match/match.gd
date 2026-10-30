@@ -119,7 +119,12 @@ func start(o: Dictionary) -> void:
 	world.biome = T["biome"].duplicate()
 	world.clouds = T["clouds"]
 	add_child(world)
-	world.generate(seed_val, World.BIG_SIZE if big else 64, World.BIG_ISLANDS if big else 7)
+	# real expeditions are on a hand-made map; the tutorial and training keep a small generated one
+	var layout := World.load_layout(String(o.get("map", World.layout_for_tier(tier)))) if big and not o.get("procedural", false) else {}
+	if not layout.is_empty():
+		world.generate_authored(layout, seed_val)
+	else:
+		world.generate(seed_val, World.BIG_SIZE if big else 64, World.BIG_ISLANDS if big else 7)
 	world.build_meshes()
 	fx = Fx.new(); fx.name = "Fx"; add_child(fx)
 	fields = Fields.new(self)
@@ -210,7 +215,8 @@ func _spawn_pads_and_portals() -> void:
 		# where it goes: a sign over the pad, and the flight path and landing ring when you're close
 		var to_role: String = world.islands[pd["to"]]["role"] if pd["to"] < world.islands.size() else ""
 		var lbl := Label3D.new()
-		lbl.text = "to " + String({"heart": "the Heart", "camp": "the monster camp", "nest": "the kin nest", "grove": "the grove", "shrine": "the shrine"}.get(to_role, "the next island"))
+		var to_name: String = String(world.islands[pd["to"]].get("name", "")) if pd["to"] < world.islands.size() else ""
+		lbl.text = "to " + (to_name if to_name != "" else String({"heart": "the Heart", "camp": "the monster camp", "nest": "the kin nest", "grove": "the grove", "shrine": "the shrine"}.get(to_role, "the next island")))
 		lbl.font = UI.big; lbl.font_size = 34; lbl.pixel_size = 0.01; lbl.outline_size = 10
 		lbl.modulate = Color("c9fff0"); lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED; lbl.no_depth_test = true
 		lbl.position = pd["pos"] + Vector3(0, 1.3, 0)

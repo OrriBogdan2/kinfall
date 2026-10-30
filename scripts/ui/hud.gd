@@ -80,6 +80,9 @@ func _build_minimap() -> void:
 			var col := Color(0, 0, 0, 0)
 			if w.kind[i] == World.T_GROUND:
 				col = Color(w.biome["top"]).lightened(0.12 + 0.08 * w.level[i])
+				# authored maps: grabbable rims pale, sheer cliffs dark, so the map shows where you can climb
+				if w.sheer.has(i): col = Color("6a6488")
+				elif w.lip.has(i): col = Color("e6d6ae")
 			elif w.kind[i] == World.T_BLOCK:
 				col = Color(w.biome["top2"]).darkened(0.2)
 			img.set_pixel(x, z, col)
@@ -416,6 +419,7 @@ func _draw_minimap(sz: Vector2) -> void:
 	if tex_view.size.x > 0.0 and tex_view.size.y > 0.0:
 		var dest := Rect2(inner.position + (tex_view.position - view.position) * k, tex_view.size * k)
 		c.draw_texture_rect_region(minimap, dest, tex_view)
+	_draw_map_labels(w, inner, view, k, riding)
 	# your view cone, faintly
 	if m.player and not riding:
 		var pp: Vector2 = to_map.call(m.player.pos)
@@ -1477,3 +1481,25 @@ func _draw_world_hover(sz: Vector2, p: Hunter) -> void:
 		var hh := _wrapped_h(String(lines[i][0]), w - 24, 13)
 		c.draw_multiline_string(body, Vector2(pos.x + 12, y + 13), String(lines[i][0]), HORIZONTAL_ALIGNMENT_LEFT, w - 24, 13, -1, lines[i][1])
 		y += hh + 3.0
+
+## Place names on the minimap (authored maps). Riding in or dropping you see the whole map with every
+## point of interest and chokepoint named; on the ground, the names of places near you.
+func _draw_map_labels(w: World, inner: Rect2, view: Rect2, k: float, overview: bool) -> void:
+	if w.labels.is_empty():
+		return
+	for lb in w.labels:
+		var p3: Vector3 = lb["pos"]
+		var pv := inner.position + (Vector2(p3.x, p3.z) - view.position) * k
+		if not inner.grow(-6.0).has_point(pv):
+			continue
+		var nm := String(lb["name"])
+		if String(lb["kind"]) == "choke":
+			# a chokepoint: a small orange diamond, named in the overview
+			c.draw_colored_polygon(PackedVector2Array([pv + Vector2(0, -5), pv + Vector2(5, 0), pv + Vector2(0, 5), pv + Vector2(-5, 0)]), Color(0, 0, 0, 0.55))
+			c.draw_colored_polygon(PackedVector2Array([pv + Vector2(0, -3.5), pv + Vector2(3.5, 0), pv + Vector2(0, 3.5), pv + Vector2(-3.5, 0)]), Color("ffb36a"))
+			if overview:
+				_ctext(pv + Vector2(0, 14), nm, 10, Color("ffd2a0"))
+		else:
+			var col := Color("ffd2f0") if String(lb.get("role", "")) == "heart" else INK
+			_ctext(pv + Vector2(0, 4), nm, 13 if overview else 11, col, big)
+

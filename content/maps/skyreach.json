@@ -1,0 +1,1093 @@
+{
+	"id": "skyreach",
+	"name": "Skyreach",
+	"size": 216,
+	"seed": 4242,
+	"notes": "Hand-made expedition map. The Heart sits in the middle, reached from three sides by narrow land bridges (the chokepoints) and from the east by a wind road. Four inner islands guard the bridges; eight outer islands make a safer ring joined by wind roads all the way round. Extraction gates open on the outer ring first and in the Heart last. Angles are in degrees around an island's centre: 0 = east, 90 = south, 180 = west, 270 = north. 'sheer' arcs are smooth cliffs you can't grab; every other rim has a stone lip you can.",
+	"islands": [
+		{
+			"id": "heart",
+			"name": "The Heart",
+			"role": "heart",
+			"region": 0,
+			"poi": [
+				108,
+				108
+			],
+			"noise": 0.2,
+			"shapes": [
+				{
+					"circle": [
+						108,
+						108
+					],
+					"r": 15,
+					"lv": 0
+				},
+				{
+					"circle": [
+						119,
+						97
+					],
+					"r": 7,
+					"lv": 0
+				},
+				{
+					"circle": [
+						97,
+						119
+					],
+					"r": 7,
+					"lv": 0
+				},
+				{
+					"circle": [
+						108,
+						108
+					],
+					"r": 10.5,
+					"lv": 1
+				},
+				{
+					"circle": [
+						108,
+						108
+					],
+					"r": 5,
+					"lv": 2
+				}
+			],
+			"sheer": [
+				[
+					20,
+					70
+				],
+				[
+					200,
+					250
+				]
+			],
+			"walls": [
+				{
+					"ring": [
+						108,
+						108
+					],
+					"r": 7.5,
+					"gates": 4,
+					"gate_w": 2
+				}
+			],
+			"pillars": [
+				[
+					99,
+					99
+				],
+				[
+					117,
+					99
+				],
+				[
+					99,
+					117
+				],
+				[
+					117,
+					117
+				],
+				[
+					104,
+					96
+				],
+				[
+					112,
+					96
+				],
+				[
+					96,
+					104
+				],
+				[
+					96,
+					112
+				],
+				[
+					104,
+					120
+				],
+				[
+					112,
+					120
+				]
+			],
+			"bush": [
+				[
+					121,
+					114,
+					1.8
+				],
+				[
+					96,
+					120,
+					1.6
+				]
+			]
+		},
+		{
+			"id": "keep",
+			"name": "Sunken Keep",
+			"role": "camp",
+			"region": 2,
+			"poi": [
+				108,
+				60
+			],
+			"noise": 0.08,
+			"shapes": [
+				{
+					"rect": [
+						96,
+						51,
+						120,
+						73
+					],
+					"lv": 0
+				},
+				{
+					"circle": [
+						108,
+						62
+					],
+					"r": 11,
+					"lv": 0
+				},
+				{
+					"rect": [
+						101,
+						55,
+						115,
+						66
+					],
+					"lv": 1
+				}
+			],
+			"sheer": [
+				[
+					235,
+					305
+				]
+			],
+			"walls": [
+				{
+					"box": [
+						102,
+						54,
+						114,
+						66
+					],
+					"gates": [
+						"s",
+						"n",
+						"e",
+						"w"
+					],
+					"gate_w": 3
+				}
+			],
+			"bush": [
+				[
+					98,
+					70,
+					1.6
+				],
+				[
+					119,
+					70,
+					1.6
+				]
+			]
+		},
+		{
+			"id": "quarry",
+			"name": "Old Quarry",
+			"role": "camp",
+			"region": 3,
+			"poi": [
+				63,
+				112
+			],
+			"noise": 0.2,
+			"shapes": [
+				{
+					"circle": [
+						60,
+						112
+					],
+					"r": 13,
+					"lv": 0
+				},
+				{
+					"circle": [
+						66,
+						124
+					],
+					"r": 5,
+					"lv": 0
+				},
+				{
+					"circle": [
+						48,
+						103
+					],
+					"r": 6,
+					"cut": true
+				},
+				{
+					"circle": [
+						56,
+						113
+					],
+					"r": 7.5,
+					"lv": 1
+				},
+				{
+					"circle": [
+						54,
+						114
+					],
+					"r": 3.8,
+					"lv": 2
+				}
+			],
+			"sheer": [
+				[
+					150,
+					215
+				]
+			],
+			"walls": [
+				{
+					"line": [
+						64,
+						103,
+						70,
+						103
+					]
+				},
+				{
+					"line": [
+						70,
+						103,
+						70,
+						107
+					]
+				},
+				{
+					"line": [
+						64,
+						121,
+						70,
+						121
+					]
+				},
+				{
+					"line": [
+						70,
+						117,
+						70,
+						121
+					]
+				}
+			],
+			"bush": [
+				[
+					52,
+					122,
+					1.7
+				]
+			]
+		},
+		{
+			"id": "shrine",
+			"name": "Windward Shrine",
+			"role": "shrine",
+			"region": 1,
+			"poi": [
+				156,
+				104
+			],
+			"noise": 0.2,
+			"shapes": [
+				{
+					"ellipse": [
+						156,
+						104
+					],
+					"rx": 12,
+					"rz": 8,
+					"rot": 20,
+					"lv": 0
+				},
+				{
+					"circle": [
+						158,
+						104
+					],
+					"r": 4.5,
+					"lv": 1
+				}
+			],
+			"sheer": [
+				[
+					325,
+					395
+				]
+			],
+			"bush": [
+				[
+					150,
+					112,
+					1.5
+				],
+				[
+					161,
+					96,
+					1.4
+				]
+			]
+		},
+		{
+			"id": "nest",
+			"name": "Bramble Nest",
+			"role": "nest",
+			"region": 4,
+			"poi": [
+				110,
+				157
+			],
+			"noise": 0.2,
+			"shapes": [
+				{
+					"circle": [
+						110,
+						156
+					],
+					"r": 11,
+					"lv": 0
+				},
+				{
+					"circle": [
+						100,
+						160
+					],
+					"r": 7,
+					"lv": 0
+				},
+				{
+					"circle": [
+						119,
+						161
+					],
+					"r": 6,
+					"lv": 0
+				},
+				{
+					"circle": [
+						102,
+						161
+					],
+					"r": 4.5,
+					"lv": 1
+				}
+			],
+			"sheer": [
+				[
+					55,
+					125
+				]
+			],
+			"bush": [
+				[
+					102,
+					150,
+					2.2
+				],
+				[
+					118,
+					151,
+					2.0
+				],
+				[
+					115,
+					163,
+					1.8
+				],
+				[
+					104,
+					163,
+					1.6
+				],
+				[
+					110,
+					147,
+					1.4
+				]
+			]
+		},
+		{
+			"id": "skyport",
+			"name": "Skyport",
+			"role": "grove",
+			"region": 2,
+			"poi": [
+				108,
+				21
+			],
+			"noise": 0.2,
+			"drop": true,
+			"shapes": [
+				{
+					"ellipse": [
+						108,
+						22
+					],
+					"rx": 13,
+					"rz": 8,
+					"lv": 0
+				}
+			],
+			"sheer": [
+				[
+					200,
+					340
+				]
+			],
+			"bush": [
+				[
+					100,
+					26,
+					1.5
+				]
+			]
+		},
+		{
+			"id": "lantern",
+			"name": "Lantern Grove",
+			"role": "grove",
+			"region": 1,
+			"poi": [
+				56,
+				58
+			],
+			"noise": 0.2,
+			"drop": true,
+			"shapes": [
+				{
+					"circle": [
+						56,
+						58
+					],
+					"r": 11,
+					"lv": 0
+				},
+				{
+					"circle": [
+						48,
+						66
+					],
+					"r": 7,
+					"lv": 0
+				},
+				{
+					"circle": [
+						64,
+						50
+					],
+					"r": 6,
+					"lv": 0
+				},
+				{
+					"circle": [
+						53,
+						56
+					],
+					"r": 5.5,
+					"lv": 1
+				}
+			],
+			"sheer": [
+				[
+					180,
+					260
+				]
+			],
+			"bush": [
+				[
+					60,
+					64,
+					2.0
+				],
+				[
+					48,
+					62,
+					1.8
+				],
+				[
+					62,
+					50,
+					1.6
+				]
+			]
+		},
+		{
+			"id": "gull",
+			"name": "Gull Rock",
+			"role": "camp",
+			"region": 2,
+			"poi": [
+				160,
+				54
+			],
+			"noise": 0.2,
+			"drop": true,
+			"shapes": [
+				{
+					"circle": [
+						160,
+						54
+					],
+					"r": 10,
+					"lv": 0
+				},
+				{
+					"ellipse": [
+						169,
+						47
+					],
+					"rx": 8,
+					"rz": 5,
+					"rot": -30,
+					"lv": 0
+				},
+				{
+					"circle": [
+						165,
+						50
+					],
+					"r": 5,
+					"lv": 1
+				}
+			],
+			"sheer": [
+				[
+					280,
+					350
+				]
+			],
+			"walls": [
+				{
+					"line": [
+						154,
+						60,
+						154,
+						64
+					]
+				},
+				{
+					"line": [
+						154,
+						64,
+						158,
+						64
+					]
+				}
+			]
+		},
+		{
+			"id": "fern",
+			"name": "Fernreach",
+			"role": "nest",
+			"region": 1,
+			"poi": [
+				196,
+				118
+			],
+			"noise": 0.2,
+			"drop": true,
+			"shapes": [
+				{
+					"ellipse": [
+						196,
+						118
+					],
+					"rx": 8,
+					"rz": 13,
+					"lv": 0
+				}
+			],
+			"sheer": [
+				[
+					-40,
+					40
+				]
+			],
+			"bush": [
+				[
+					192,
+					124,
+					1.8
+				],
+				[
+					199,
+					112,
+					1.6
+				]
+			]
+		},
+		{
+			"id": "still",
+			"name": "Stillwater",
+			"role": "shrine",
+			"region": 4,
+			"poi": [
+				160,
+				166
+			],
+			"noise": 0.2,
+			"drop": true,
+			"shapes": [
+				{
+					"circle": [
+						160,
+						166
+					],
+					"r": 11,
+					"lv": 0
+				},
+				{
+					"circle": [
+						170,
+						174
+					],
+					"r": 7,
+					"lv": 0
+				},
+				{
+					"circle": [
+						166,
+						171
+					],
+					"r": 5,
+					"lv": 1
+				}
+			],
+			"sheer": [
+				[
+					20,
+					100
+				]
+			],
+			"bush": [
+				[
+					154,
+					160,
+					1.8
+				],
+				[
+					168,
+					160,
+					1.4
+				]
+			]
+		},
+		{
+			"id": "dawn",
+			"name": "Dawn Ledge",
+			"role": "grove",
+			"region": 4,
+			"poi": [
+				108,
+				199
+			],
+			"noise": 0.2,
+			"drop": true,
+			"shapes": [
+				{
+					"ellipse": [
+						108,
+						198
+					],
+					"rx": 13,
+					"rz": 8,
+					"lv": 0
+				}
+			],
+			"sheer": [
+				[
+					30,
+					150
+				]
+			],
+			"bush": [
+				[
+					102,
+					202,
+					1.5
+				]
+			]
+		},
+		{
+			"id": "moss",
+			"name": "Mossfall",
+			"role": "grove",
+			"region": 0,
+			"poi": [
+				56,
+				164
+			],
+			"noise": 0.2,
+			"drop": true,
+			"shapes": [
+				{
+					"circle": [
+						56,
+						164
+					],
+					"r": 11,
+					"lv": 0
+				},
+				{
+					"circle": [
+						64,
+						172
+					],
+					"r": 6,
+					"lv": 0
+				},
+				{
+					"circle": [
+						48,
+						156
+					],
+					"r": 6,
+					"lv": 0
+				},
+				{
+					"circle": [
+						52,
+						166
+					],
+					"r": 5,
+					"lv": 1
+				}
+			],
+			"sheer": [
+				[
+					100,
+					190
+				]
+			],
+			"bush": [
+				[
+					60,
+					158,
+					2.0
+				],
+				[
+					50,
+					160,
+					1.6
+				],
+				[
+					62,
+					170,
+					1.6
+				]
+			]
+		},
+		{
+			"id": "iron",
+			"name": "Ironbark",
+			"role": "camp",
+			"region": 3,
+			"poi": [
+				21,
+				112
+			],
+			"noise": 0.2,
+			"drop": true,
+			"shapes": [
+				{
+					"ellipse": [
+						20,
+						112
+					],
+					"rx": 7,
+					"rz": 12,
+					"lv": 0
+				}
+			],
+			"sheer": [
+				[
+					140,
+					220
+				]
+			],
+			"walls": [
+				{
+					"line": [
+						24,
+						106,
+						24,
+						109
+					]
+				},
+				{
+					"line": [
+						24,
+						115,
+						24,
+						118
+					]
+				}
+			]
+		}
+	],
+	"bridges": [
+		{
+			"name": "North Span",
+			"a": "heart",
+			"b": "keep",
+			"from": [
+				108,
+				95
+			],
+			"to": [
+				108,
+				72
+			],
+			"r": 1.6
+		},
+		{
+			"name": "Quarry Causeway",
+			"a": "heart",
+			"b": "quarry",
+			"from": [
+				94.5,
+				108.5
+			],
+			"to": [
+				71.5,
+				111
+			],
+			"r": 1.5
+		},
+		{
+			"name": "Bramble Bridge",
+			"a": "heart",
+			"b": "nest",
+			"from": [
+				108.5,
+				122
+			],
+			"to": [
+				110,
+				146
+			],
+			"r": 1.1
+		},
+		{
+			"name": "Port Stair",
+			"a": "keep",
+			"b": "skyport",
+			"from": [
+				108,
+				52
+			],
+			"to": [
+				108,
+				29
+			],
+			"r": 1.3
+		},
+		{
+			"name": "Dawn Bridge",
+			"a": "nest",
+			"b": "dawn",
+			"from": [
+				110,
+				166
+			],
+			"to": [
+				108,
+				191
+			],
+			"r": 1.3
+		}
+	],
+	"winds": [
+		[
+			"heart",
+			"shrine",
+			"Wind Gap"
+		],
+		[
+			"lantern",
+			"keep"
+		],
+		[
+			"lantern",
+			"quarry"
+		],
+		[
+			"gull",
+			"keep"
+		],
+		[
+			"gull",
+			"shrine"
+		],
+		[
+			"still",
+			"nest"
+		],
+		[
+			"moss",
+			"nest"
+		],
+		[
+			"moss",
+			"quarry"
+		],
+		[
+			"lantern",
+			"skyport"
+		],
+		[
+			"skyport",
+			"gull"
+		],
+		[
+			"fern",
+			"still"
+		],
+		[
+			"still",
+			"dawn"
+		],
+		[
+			"dawn",
+			"moss"
+		],
+		[
+			"moss",
+			"iron"
+		],
+		[
+			"iron",
+			"lantern"
+		]
+	],
+	"pads": [
+		[
+			"fern",
+			"shrine"
+		],
+		[
+			"iron",
+			"quarry"
+		],
+		[
+			"gull",
+			"fern"
+		]
+	],
+	"updrafts": [
+		{
+			"at": [
+				124,
+				124
+			],
+			"top": 2
+		},
+		{
+			"at": [
+				92,
+				92
+			],
+			"top": 2
+		},
+		{
+			"at": [
+				146,
+				92
+			],
+			"top": 2
+		},
+		{
+			"at": [
+				168,
+				116
+			],
+			"top": 2
+		},
+		{
+			"at": [
+				46,
+				98
+			],
+			"top": 3
+		},
+		{
+			"at": [
+				124,
+				172
+			],
+			"top": 1
+		},
+		{
+			"at": [
+				176,
+				64
+			],
+			"top": 2
+		},
+		{
+			"at": [
+				40,
+				176
+			],
+			"top": 2
+		}
+	],
+	"portals": [
+		[
+			106,
+			17
+		],
+		[
+			110,
+			203
+		],
+		[
+			16,
+			111
+		],
+		[
+			200,
+			121
+		],
+		[
+			108,
+			98
+		]
+	],
+	"chokepoints": [
+		"North Span",
+		"Quarry Causeway",
+		"Bramble Bridge",
+		"Port Stair",
+		"Dawn Bridge",
+		"Wind Gap"
+	]
+}

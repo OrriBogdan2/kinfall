@@ -1530,6 +1530,9 @@ func _try_ledge_grab(dt: float) -> void:
 		for x in range(int(floor(pos.x - reach)), int(floor(pos.x + reach)) + 1):
 			if not w.inb(x, z) or w.kind[w.idx(x, z)] != World.T_GROUND:
 				continue
+			# a smooth sheer cliff (authored maps) has nothing to hold: you can't catch it from the air
+			if not grounded and w.sheer.has(w.idx(x, z)):
+				continue
 			var gz := w.level[w.idx(x, z)] * World.LEVEL
 			var dz := gz - pos.y
 			if dz < (0.05 if not grounded and over_void() else World.STEP + 0.05) or dz > max_rise:
