@@ -276,12 +276,11 @@ func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String
 	return h
 
 func my_kit() -> Dictionary:
-	return {"weapon": String(opts.get("weapon", Save.d.get("weapon", ""))), "perk": Save.d.get("perk", "")}
+	return {"weapon": String(opts.get("weapon", Save.d.get("weapon", ""))), "perk": ""}
 
 func bot_kit() -> Dictionary:
 	# the weapon is picked once the bot's class is known (see make_hunter): any of its class's
-	var perks: Array = Data.PERKS.keys()
-	return {"weapon": "?", "perk": perks[rng.randi_range(0, perks.size() - 1)]}
+	return {"weapon": "?", "perk": ""}
 
 func bot_kin_record() -> Dictionary:
 	var sp: String = Data.KIN.keys()[rng.randi_range(0, Data.KIN.size() - 1)]
@@ -1136,7 +1135,7 @@ func on_damage(target: Ent, by: Ent, d: float, o: Dictionary) -> void:
 	if credit is Hunter and target != credit:
 		credit.dmg_done += d
 		if not credit.remote and target.team != credit.team and src != "burn":
-			credit.ult = minf(1.0, credit.ult + d / 320.0 * (1.3 if credit.perk == "overcharge" else 1.0))
+			credit.ult = minf(1.0, credit.ult + d / 320.0 * (1.3 if credit.perk_n("overcharge") > 0 else 1.0))
 	var mine := credit == player or (target == player)
 	var armor_hit: bool = o.get("armor", false) or (target is Hunter and (target as Hunter).armor > 0.5)
 	var col := Color("fff4d6")
@@ -1466,6 +1465,9 @@ func on_mob_dead(mb: Mob, by: Ent, _o: Dictionary) -> void:
 			if credit is Hunter: add_feed("%s caught the Glimmerkin's treasure" % credit.pname)
 		if rng.randf() < (0.35 if mb.mkind == "brute" else 0.12):
 			drop("seed", mb.pos + Vector3(0, 0.6, 0), 1, Data.pick_seed())
+	# the big ones are worth a perk to whoever brought them down
+	if mb.mkind in ["warden", "brute"] and credit is Hunter and not (credit as Hunter).remote and (mb.mkind == "warden" or rng.randf() < 0.5):
+		offer_perks(credit as Hunter, "boss" if mb.mkind == "warden" else "brute")
 	if credit == player and player.kin and randf() < 0.15:
 		player.kin.bark("kill")
 
@@ -1797,6 +1799,7 @@ func sees(team_i: int, p: Vector3, crouched := false, revealed := false) -> bool
 
 var _vis_t := 0.0
 var crouch_on := false
+var _perk_keys_down := {}
 var _vis_tex_done := false
 func _update_vision() -> void:
 	# the dimming outside your view cone, drawn by the toon shaders
@@ -1903,7 +1906,7 @@ func _collect(h: Hunter, p: Dictionary) -> void:
 	if net_on:
 		net_event(["take", p["id"]])
 	match p["kind"]:
-		"gem": h.gems += int(round(float(p["v"]) * (1.25 if h.perk == "scavenger" else 1.0)))
+		"gem": h.gems += int(round(float(p["v"]) * (1.0 + 0.25 * h.perk_n("scavenger"))))
 		"seed": h.seeds[p["key"]] = int(h.seeds.get(p["key"], 0)) + int(p["v"])
 		"tonic":
 			h.tonics = mini(5, h.tonics + 1)
@@ -2323,7 +2326,16 @@ func _gather_input() -> void:
 	else:
 		crouch_on = Input.is_action_pressed("crouch") and not paused
 	player.inp["crouch"] = crouch_on
+	if not perk_offer.is_empty() and not paused:
+		for pi in 3:
+			if Input.is_physical_key_pressed(KEY_1 + pi) and not _perk_keys_down.has(pi):
+				_perk_keys_down[pi] = true
+				choose_perk(pi)
+			elif not Input.is_physical_key_pressed(KEY_1 + pi):
+				_perk_keys_down.erase(pi)
 	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["armor_kit", "kit"], ["throw", "throw"], ["kin_skill", "skill"], ["ultimate", "ult"], ["secondary", "sec"], ["gear1", "gear1"], ["gear2", "gear2"], ["swap_kin", "swap"]]:
+		if a[0] in ["tonic", "armor_kit"] and (not perk_offer.is_empty() or not _perk_keys_down.is_empty()):
+			continue       # 1 and 2 pick a perk while a choice is open
 		var aimable: bool = a[0] in ["signature", "ultimate", "kin_skill"] and not quick
 		if aimable:
 			# hold to see where it will land, let go to cast it
@@ -2690,7 +2702,7 @@ func _update_interact(dt: float) -> void:
 		if best.is_empty():
 			for sh in shrines:
 				if not sh["used"] and h.flat_dist(sh["pos"]) < 1.8:
-					best = {"kind": "shrine", "shrine": sh, "label": "Hold " + Settings.key_cap("interact") + " to pray: full heal and +25% damage"}
+					best = {"kind": "shrine", "shrine": sh, "label": "Hold " + Settings.key_cap("interact") + " to pray: heal, a blessing and a perk"}
 					break
 		if h == player:
 			interact = best
@@ -2796,6 +2808,8 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 	fx.burst(c["pos"] + Vector3(0, 0.6, 0), cc[1], 20 + t * 10, 4.0 + t, 0.6)
 	if t >= 1:
 		fx.ring(c["pos"], 2.0 + t, Color(cc[1], 0.9), 0.4)
+	if t >= 1 and h and not h.remote:
+		offer_perks(h, "chest")
 	var n_gems: int = [randi_range(4, 6), randi_range(7, 9), randi_range(11, 14)][t]
 	for i in n_gems:
 		drop("gem", c["pos"] + Vector3(0, 0.8, 0), int(round((3 + t) * float(T["loot"]))))
@@ -2813,6 +2827,44 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 		h.tonics += 1
 		if h == player: hud.toast("+1 tonic", Color("8ff0a0"))
 
+# ------------------------------------------------------------------ perks found on the run
+var perk_offer: Dictionary = {}    # the local player's open choice: {ids, src}
+var perk_queue: Array = []         # more offers waiting behind it
+
+## Three perks to choose one from (fewer if you've maxed most). Bots just take one.
+func offer_perks(h: Hunter, src: String) -> void:
+	var pool: Array = Data.PERKS.keys().filter(func(k): return h.perk_open(k))
+	if pool.is_empty():
+		return
+	for i in range(pool.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp = pool[i]; pool[i] = pool[j]; pool[j] = tmp
+	var picks: Array = pool.slice(0, mini(3, pool.size()))
+	if h != player:
+		h.add_perk(String(picks[0]))
+		return
+	if not perk_offer.is_empty():
+		perk_queue.append({"src": src})
+		return
+	perk_offer = {"ids": picks, "src": src}
+	sfx("unlock", null, -4.0, 1.1)
+	if hud: hud.toast("Pick a perk: %s" % " / ".join(PackedStringArray(["1", "2", "3"].slice(0, picks.size()))), Color("ffd23f"))
+
+## Takes perk i (0..2) of the open offer.
+func choose_perk(i: int) -> void:
+	if perk_offer.is_empty() or i < 0 or i >= (perk_offer["ids"] as Array).size():
+		return
+	var id: String = perk_offer["ids"][i]
+	player.add_perk(id)
+	var pd: Dictionary = Data.PERKS[id]
+	fx.word(player.pos + Vector3(0, 2.4, 0), String(pd["name"]).to_upper(), pd["col"], true)
+	fx.burst(player.pos + Vector3(0, 1.4, 0), pd["col"], 18, 3.5, 0.5, -2.0)
+	sfx("bond", null, -6.0, 1.2)
+	perk_offer = {}
+	if not perk_queue.is_empty():
+		var nx: Dictionary = perk_queue.pop_front()
+		offer_perks(player, String(nx["src"]))
+
 func _use_shrine(h: Hunter, sh: Dictionary, from_net := false) -> void:
 	if sh["used"]:
 		return
@@ -2827,11 +2879,12 @@ func _use_shrine(h: Hunter, sh: Dictionary, from_net := false) -> void:
 	fx.ring(sh["pos"], 4.0, Color("8fe3c8"), 0.5)
 	if h and not h.remote:
 		h.hp = h.max_hp
-		h.bless_t = 45.0
+		h.bless_t = 20.0
 		if h.kin and not h.kin.dead:
 			h.kin.hp = h.kin.max_hp
 		if h == player:
-			hud.toast("Blessed: +25% damage for 45s", Color("8fe3c8"))
+			hud.toast("Healed and blessed: +25% damage for 20s", Color("8fe3c8"))
+		offer_perks(h, "shrine")
 
 ## Midway through, the Warden wakes on the heart island and guards it until someone brings it down.
 ## The guided first match. [id, text]: %K is the key for that step, %s your kin's name, %A an

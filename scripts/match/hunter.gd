@@ -150,7 +150,8 @@ var glide_max := GLIDE_TIME
 var glide_cd := 0.0
 var glide_k := 0.0             # how far the glider is unfolded, for the model
 var wind_t := 0.0
-var perk := ""
+var perk := ""                  # (old single home perk; perks are now found in the run, see perks)
+var perks: Array = []           # perks picked up this expedition, one entry per stack
 var ult := 0.0                # the bond meter, 0..1: R calls your kin's bond ultimate at 1
 var crit_t := 0.0             # shots crit while this runs (Blink)
 var charge: Dictionary = {}   # Ram
@@ -175,15 +176,15 @@ func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, n
 	cdat = Data.CLASSES[cls]
 	wid = Data.weapon_for(cls, String(kit.get("weapon", "")))
 	wpn = Data.weapon_stats(wid, 0)
-	perk = String(kit.get("perk", ""))
+	perk = ""
 	pname = name_txt
 	ctrl = control
 	if control != "local":
 		bot_look = {"gender": randi() % 2, "body": randi() % 3, "detail": randi() % Models.LOOK_DETAILS.size(), "face": randi() % Models.LOOK_FACES.size(), "skin": randi() % Models.LOOK_SKIN.size(),
 			"hair": randi() % Models.LOOK_HAIRS.size(), "hair_col": randi() % 6, "outfit": randi() % Models.LOOK_OUTFITS.size()}
-	max_hp = cdat["hp"] + (15 if perk == "toughskin" else 0); hp = max_hp
+	max_hp = cdat["hp"]; hp = max_hp
 	max_armor = round(max_hp * ARMOR_DUR); armor = max_armor; base_armor = max_armor
-	glide_max = GLIDE_TIME * float(cdat.get("glide_cap", 1.0)) * (1.6 if perk == "featherfall" else 1.0)
+	glide_max = GLIDE_TIME * float(cdat.get("glide_cap", 1.0))
 	base_speed = cdat["speed"]
 	runner = AbilityRunner.new(self)
 	dodge_def = Content.class_dodge(cls)
@@ -222,7 +223,7 @@ func accent() -> Color:
 
 func max_dashes() -> float:
 	var base := float(dodge_def.charges) if dodge_def else float(cdat["dashes"])
-	return base + (1.0 if shoulder() == "updraft" else 0.0) + (1.0 if perk == "secondwind" else 0.0)
+	return base + (1.0 if shoulder() == "updraft" else 0.0) + float(perk_n("secondwind"))
 
 func dash_regen() -> float:
 	return dodge_def.cooldown if dodge_def else DASH_REGEN
@@ -893,7 +894,7 @@ func _emit_shot() -> void:
 func start_reload() -> void:
 	if reload_t > 0.0 or ammo >= int(wpn["mag"]) or downed or wpn.get("melee", false):
 		return
-	reload_t = float(wpn["reload"]) * (0.8 if shoulder() == "charge" else 1.0) * (0.7 if perk == "quickhands" else 1.0)
+	reload_t = float(wpn["reload"]) * (0.8 if shoulder() == "charge" else 1.0) * (0.7 if perk_n("quickhands") > 0 else 1.0)
 	m.sfx("reload", pos, -8.0)
 
 func use_signature() -> void:
@@ -1028,7 +1029,7 @@ func _tick_drink(dt: float) -> void:
 		if tonics > 0:
 			tonics -= 1
 			free_tonics = maxi(0, free_tonics - 1)
-			heal(max_hp * 0.4)
+			heal(max_hp * 0.4 * (1.4 if perk_n("remedy") > 0 else 1.0))
 			m.sfx("heal", pos, -2.0)
 			m.fx.burst(pos + Vector3(0, 1.2, 0), Color("8ff0a0"), 14, 2.5, 0.5, -3.0)
 
@@ -1628,7 +1629,32 @@ func gear_stat(k: String) -> float:
 	for g in gear:
 		if not g.is_empty():
 			t += float(Gear.ALL[g["id"]]["stats"].get(k, 0.0)) * Gear.mult(int(g["rar"]))
+	for pk in perks:
+		t += float((Data.PERKS.get(pk, {}).get("stats", {}) as Dictionary).get(k, 0.0))
 	return t
+
+## How many stacks of a perk you've picked up this run.
+func perk_n(id: String) -> int:
+	return perks.count(id)
+
+## Can this perk still be offered to you (not at its stack limit)?
+func perk_open(id: String) -> bool:
+	return perk_n(id) < int(Data.PERKS.get(id, {}).get("max", 1))
+
+## Takes a perk for the rest of the expedition. Stats that are worked out once (health, glider,
+## dash charges, armor) are updated on the spot.
+func add_perk(id: String) -> void:
+	if not Data.PERKS.has(id) or not perk_open(id):
+		return
+	perks.append(id)
+	match id:
+		"toughskin":
+			max_hp += 15.0; hp = minf(max_hp, hp + 15.0)
+		"featherfall":
+			glide_max *= 1.6
+		"secondwind":
+			dashes = minf(max_dashes(), dashes + 1.0)
+	refresh_gear()
 
 func add_stat(k: String, n := 1) -> void:
 	stats[k] = int(stats.get(k, 0)) + n

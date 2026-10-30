@@ -165,6 +165,8 @@ func _draw_all() -> void:
 			_draw_weapon(sz, p)
 			_draw_kin_card(sz, p)
 			_draw_squad(sz, p)
+			_draw_perks(sz, p)
+			_draw_perk_offer(sz)
 		if not p.riding:
 			_draw_kit(sz, p)
 		else:
@@ -1024,6 +1026,54 @@ func _draw_kit(sz: Vector2, p: Hunter) -> void:
 		c.draw_multiline_string(body, Vector2(box.position.x + 14, y + 38), String(l[2]), HORIZONTAL_ALIGNMENT_LEFT, w - 28, 12, -1, Color(MUTED, a))
 		y += float(hs[i])
 
+## Perks you've picked up this run: a row of little badges over your health bar, with stacks.
+func _draw_perks(sz: Vector2, p: Hunter) -> void:
+	if p.perks.is_empty():
+		return
+	var seen: Array = []
+	for pk in p.perks:
+		if not seen.has(pk): seen.append(pk)
+	var bs := 26.0
+	var x := sz.x * 0.5 - (seen.size() * (bs + 6.0)) * 0.5
+	var y := sz.y - 194.0
+	for pk in seen:
+		var pd: Dictionary = Data.PERKS[pk]
+		var r := Rect2(Vector2(x, y), Vector2(bs, bs))
+		hover_spots.append([r, "perk:" + String(pk)])
+		_rounded(r, Color(0.05, 0.06, 0.09, 0.9), 7, Color(pd["col"], 0.8), 1)
+		Icons.draw(c, String(pd["icon"]), r.get_center(), bs * 0.3, pd["col"])
+		var n := p.perk_n(pk)
+		if n > 1:
+			_text(r.position + Vector2(bs - 7, bs + 1), str(n), 11, INK, big)
+		x += bs + 6.0
+
+## An open perk choice: three cards over the ability bar, picked with 1, 2 or 3.
+func _draw_perk_offer(sz: Vector2) -> void:
+	var off: Dictionary = m.perk_offer
+	if off.is_empty():
+		return
+	var ids: Array = off["ids"]
+	var cw := 200.0; var ch := 96.0; var gap := 12.0
+	var total := ids.size() * cw + (ids.size() - 1) * gap
+	var x := sz.x * 0.5 - total * 0.5
+	var y := sz.y - 330.0
+	var head: String = {"shrine": "THE SHRINE OFFERS A PERK", "chest": "SOMETHING ELSE IN THE CHEST", "boss": "THE WARDEN'S POWER", "brute": "SPOILS OF THE BRUTE"}.get(String(off.get("src", "")), "PICK A PERK")
+	_ctext(Vector2(sz.x * 0.5, y - 12), String(head) + "  ·  lasts this expedition", 13, Color(GOLD, 0.95), big)
+	var pulse := 0.5 + 0.5 * sin(m.time * 4.0)
+	for i in ids.size():
+		var pd: Dictionary = Data.PERKS[ids[i]]
+		var col: Color = pd["col"]
+		var r := Rect2(Vector2(x, y), Vector2(cw, ch))
+		_rounded(r, Color(0.05, 0.06, 0.1, 0.94), 12, Color(col, 0.55 + 0.35 * pulse), 2)
+		Icons.draw(c, String(pd["icon"]), r.position + Vector2(26, 30), 13.0, col)
+		_text(r.position + Vector2(48, 36), String(pd["name"]), 17, INK, big)
+		c.draw_multiline_string(body, r.position + Vector2(14, 60), String(pd["desc"]), HORIZONTAL_ALIGNMENT_LEFT, cw - 28, 13, 2, MUTED)
+		_keycap(Vector2(r.get_center().x, r.end.y), str(i + 1), col)
+		var n: int = m.player.perk_n(String(ids[i])) if m.player else 0
+		if n > 0:
+			_text(r.position + Vector2(cw - 34, 22), "x%d" % (n + 1), 12, GOLD, big)
+		x += cw + gap
+
 func _draw_prompt(sz: Vector2, p: Hunter) -> void:
 	var it := m.interact
 	var y := sz.y - 128.0
@@ -1244,6 +1294,14 @@ func _secs(x: float) -> String:
 func _tip_lines(id: String, p: Hunter) -> Array:
 	var hc: Color = p.accent()
 	var out: Array = []
+	if id.begins_with("perk:"):
+		var pd: Dictionary = Data.PERKS.get(id.substr(5), {})
+		if not pd.is_empty():
+			var n := p.perk_n(id.substr(5))
+			out.append([String(pd["name"]) + ("  x%d" % n if n > 1 else ""), pd["col"]])
+			out.append([String(pd["desc"]), INK])
+			out.append(["Found this expedition. Gone when it ends.", MUTED])
+		return out
 	match id:
 		"sec" when p.runner and p.runner.def_of("utility") != null:
 			var u: AbilityDef = p.runner.def_of("utility")

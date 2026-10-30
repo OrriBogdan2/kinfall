@@ -1907,13 +1907,12 @@ func _open_expedition() -> void:
 	var v := _new_panel("Expedition", 720)
 	var cd: Dictionary = Data.CLASSES[Data.class_of_save()]
 	var w := _weapon()
-	var pk: String = Save.d.get("perk", "")
 	var hc := UI.card(UI.CARD, 12, 14)
 	var hrow := UI.hbox(12); hc.add_child(hrow)
 	var hv := UI.vbox(4); hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	hv.add_child(UI.title("%s class  ·  %s" % [cd["name"], Data.weapon_stats(w)["name"]], 24, cd["color"]))
 	hv.add_child(UI.label("%d health  ·  right click %s  ·  %s" % [int(cd["hp"]), (Content.ability(Content.weapon(w).utility).display_name if Content.weapon(w) and Content.weapon(w).utility != "" and Content.ability(Content.weapon(w).utility) else "weapon utility"),
-		Data.PERKS[pk]["name"] if Data.PERKS.has(pk) else "no perk"], 14, UI.MUTED))
+		"perks found on the run"], 14, UI.MUTED))
 	hrow.add_child(hv)
 	hrow.add_child(UI.button("Class and loadout", _open_loadout, 200))
 	v.add_child(hc)
@@ -2458,22 +2457,8 @@ func _open_loadout() -> void:
 		wb.tooltip_text = (String(wd.get("desc", "")) + "\n" if wd.has("desc") else "") + stat_s + ("\nRight click: " + un if un != "" else "")
 		wr.add_child(wb)
 	v.add_child(wr)
-	v.add_child(UI.section("Perk"))
-	var pr := HFlowContainer.new()
-	pr.add_theme_constant_override("h_separation", 8); pr.add_theme_constant_override("v_separation", 8)
-	var cur_p: String = Save.d.get("perk", "")
-	for pkey in Data.PERKS:
-		var pd: Dictionary = Data.PERKS[pkey]
-		var pk: String = pkey
-		var pb := UI.choice(String(pd["name"]), pkey == cur_p, func():
-			Save.d["perk"] = pk
-			Save.save_game()
-			_open_loadout())
-		pb.tooltip_text = pd["desc"]
-		pr.add_child(pb)
-	v.add_child(pr)
-	if Data.PERKS.has(cur_p):
-		v.add_child(UI.label(Data.PERKS[cur_p]["desc"], 14, UI.GOLD))
+	v.add_child(UI.section("Perks"))
+	v.add_child(UI.label("Perks aren't brought from home any more. You find them out there: pray at a shrine, open a rare chest or bring down a big monster and choose one of three. They stack, and they last until the expedition ends.", 14, UI.MUTED))
 	v.add_child(UI.button("Back to the expedition", _open_expedition, 240))
 
 func _refresh_player_model() -> void:

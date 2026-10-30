@@ -109,13 +109,23 @@ const MUSIC := {
 }
 
 ## One perk per loadout.
+## Perks are found during an expedition, never brought from home: a shrine, a rare chest or a
+## boss offers you three and you keep one (Match.offer_perks). They stack up to "max" and last
+## until the expedition ends, extracted or not. stats feed Hunter.gear_stat like gear does
+## (speed, dmg, armor, cdr, heat, glide_speed); the rest are read by name with Hunter.perk_n().
 const PERKS := {
-	"quickhands": {"name": "Quick Hands", "desc": "Reload 30% faster."},
-	"secondwind": {"name": "Second Wind", "desc": "One extra dash charge."},
-	"featherfall": {"name": "Featherfall", "desc": "Glide 60% longer."},
-	"scavenger": {"name": "Scavenger", "desc": "Gems you pick up are worth 25% more."},
-	"toughskin": {"name": "Tough Skin", "desc": "15 more health."},
-	"overcharge": {"name": "Overcharge", "desc": "Your ultimate charges 30% faster."},
+	"quickhands": {"name": "Quick Hands", "desc": "Reload 30% faster.", "icon": "medkit", "col": Color("ffd27a"), "max": 1},
+	"secondwind": {"name": "Second Wind", "desc": "One extra dash charge.", "icon": "dash", "col": Color("bfe6ff"), "max": 1},
+	"featherfall": {"name": "Featherfall", "desc": "Your glider lasts 60% longer.", "icon": "updraft", "col": Color("cfeaff"), "max": 1},
+	"scavenger": {"name": "Scavenger", "desc": "Gems you pick up are worth 25% more.", "icon": "gem", "col": Color("f2c84a"), "max": 2},
+	"toughskin": {"name": "Tough Skin", "desc": "+15 max health, healed right away.", "icon": "heart", "col": Color("8fe0a0"), "max": 3},
+	"overcharge": {"name": "Overcharge", "desc": "Your bond ultimate charges 30% faster.", "icon": "bond", "col": Color("ffd23f"), "max": 1},
+	"keen": {"name": "Keen Edge", "desc": "8% more damage.", "icon": "burst", "col": Color("ff8a6a"), "max": 3, "stats": {"dmg": 0.08}},
+	"fleet": {"name": "Fleet Foot", "desc": "6% faster on foot.", "icon": "jump", "col": Color("8fd16a"), "max": 2, "stats": {"speed": 0.06}},
+	"plating": {"name": "Plating", "desc": "+20 max armor.", "icon": "fortify", "col": Color("dfe9f7"), "max": 2, "stats": {"armor": 20.0}},
+	"focus": {"name": "Clear Mind", "desc": "Abilities recharge 12% faster.", "icon": "pulse", "col": Color("d07aff"), "max": 2, "stats": {"cdr": 0.12}},
+	"tailwind": {"name": "Tailwind", "desc": "Glide 15% faster.", "icon": "gust", "col": Color("9fe8ff"), "max": 1, "stats": {"glide_speed": 0.15}},
+	"remedy": {"name": "Remedy", "desc": "Tonics heal 40% more.", "icon": "tonic", "col": Color("8fe0a0"), "max": 1},
 }
 
 ## Bot hunter difficulty. "auto" (the default) picks one from the run tier and how experienced you

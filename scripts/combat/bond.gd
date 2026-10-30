@@ -10,7 +10,7 @@ static func add(h: Hunter, amount: float) -> void:
 	if h == null or h.out or amount <= 0.0:
 		return
 	var was := h.ult
-	h.ult = minf(1.0, h.ult + amount * (1.3 if h.perk == "overcharge" else 1.0))
+	h.ult = minf(1.0, h.ult + amount * (1.3 if h.perk_n("overcharge") > 0 else 1.0))
 	if was < 1.0 and h.ult >= 1.0:
 		h.m.on_bond_ready(h)
 
