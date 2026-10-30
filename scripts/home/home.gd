@@ -2458,7 +2458,7 @@ func _open_loadout() -> void:
 	var ud: AbilityDef = Content.ability(wdef.utility) if wdef and wdef.utility != "" else null
 	if ud:
 		dv.add_child(UI.label("Right click (from your weapon)  %s: %s" % [ud.display_name, ud.desc], 14))
-	var kn := UI.label("A hero is a preset: a class, a weapon and a look. Left and right click come from your weapon; Q, F and R come from the kin you bring, so the same hero plays differently with every pair of kin.", 13, UI.MUTED)
+	var kn := UI.label("A hero is a preset: a class, a weapon and a look. Left and right click come from your weapon; Q, E and R come from the kin you bring, so the same hero plays differently with every pair of kin.", 13, UI.MUTED)
 	kn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	dv.add_child(kn)
 	v.add_child(det)

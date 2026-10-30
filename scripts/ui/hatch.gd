@@ -348,7 +348,15 @@ func _end_intro() -> void:
 		cam_to = Vector3(0, 3.6, 6.4)
 		_show_pick()
 
+var turning := false
 func _unhandled_input(event: InputEvent) -> void:
+	if stage == "create" and preview:
+		# drag with the mouse (or hold A / D) to turn your hunter round
+		if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+			turning = event.pressed
+		elif event is InputEventMouseMotion and turning:
+			preview.rotation.y += event.relative.x * 0.012
+			return
 	if stage == "warm" and ((event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT) or event.is_action_pressed("jump")):
 		_tap_egg()
 		return
@@ -387,7 +395,7 @@ func _show_create() -> void:
 	if create_box: create_box.queue_free()
 	_rebuild_preview()
 	for e in eggs: (e["holder"] as Node3D).visible = false
-	if sub_lbl: sub_lbl.text = "How you look is just for show: every body has the same hitbox."
+	if sub_lbl: sub_lbl.text = "Drag your hunter (or hold A / D) to turn them round. Looks are just for show."
 	cam_to = Vector3(0, 1.5, 4.6)
 	look_at_t = Vector3(0.0, 0.9, 1.6)
 	var card := UI.card(UI.CARD, 14, 16)
@@ -451,13 +459,16 @@ func _step_look(key: String, d: int, n: int) -> void:
 	Sfx.play("hover", null, -6.0)
 	_show_create()
 
+var preview_yaw := PI
 func _rebuild_preview() -> void:
-	if preview: preview.queue_free()
+	if preview:
+		preview_yaw = preview.rotation.y
+		preview.queue_free()
 	var hero: String = Save.d.get("hero", "sage")
 	if not Data.HEROES.has(hero): hero = "sage"
 	preview = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], Data.HEROES[hero]["weapon"], hero, look)
 	preview.position = Vector3(0.8, 0, 1.6)
-	preview.rotation.y = PI
+	preview.rotation.y = preview_yaw
 	add_child(preview)
 
 func _show_pick() -> void:
@@ -592,7 +603,9 @@ func _process(delta: float) -> void:
 		if ship.position.x > 60.0: ship.position.x = -60.0
 	if stage == "create":
 		cam.look_at(look_at_t)
-		if preview: preview.rotation.y += delta * 0.6
+		if preview and not (get_viewport().gui_get_focus_owner() is LineEdit):
+			preview.rotation.y += (Input.get_axis("left", "right")) * delta * 2.5
+		pass   # the preview stands still; drag it to turn it (see _unhandled_input)
 	else:
 		cam.look_at(Vector3(0, (0.25 if stage != "pick" else 0.55) if stage != "name" else -0.55, 0.5))
 	if stage == "pick":

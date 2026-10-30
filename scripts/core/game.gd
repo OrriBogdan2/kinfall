@@ -66,8 +66,8 @@ func _setup_input() -> void:
 	# Shift dash, Space jump and glide, Ctrl sneak, F interact, C throw / recall your kin, X swap
 	# kin, 1 tonic, 2 and 3 your gear actives.
 	_key("signature", [KEY_Q])                # your active kin's first ability
-	_key("kin_skill", [KEY_F])                # your active kin's second ability (Supervive's F active slot)
-	_key("interact", [KEY_E])                 # catch, open, pick up, finish a downed enemy (Supervive: E)
+	_key("kin_skill", [KEY_E])                # your active kin's second ability (Supervive: E is an ability)
+	_key("interact", [KEY_F])                 # catch, open, pick up, finish a downed enemy (Supervive: F)
 	_key("armor_kit", [KEY_2])                # repair your armor (Supervive: 2)
 	_key("gear1", [KEY_3])                    # active on your first piece of gear
 	_key("gear2", [KEY_4])                    # active on your second piece of gear

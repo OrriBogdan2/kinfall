@@ -44,6 +44,8 @@ var towns: Array = []           # [island, local position] of each house and tow
 var burning := 0
 var debris: Array = []          # falling rocks: {node, vel, spin}
 var deep_eyes: Node3D
+var look_mat: ShaderMaterial    # the storybook screen effect
+var chapter_lbl: Label
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -85,19 +87,19 @@ func _ready() -> void:
 	var H: Vector3 = SETS["home"]; var D: Vector3 = SETS["drop"]
 	shots = [
 		{"a": W + Vector3(-46, 30, 62), "la": W + Vector3(0, 0, 0), "b": W + Vector3(-30, 22, 46), "lb": W + Vector3(0, 2, 0), "dur": 6.0,
-			"text": "Long ago, the world was whole, and its people lived in peace."},
+			"chapter": "THE WHOLE WORLD", "tint": Color("ffd27a"), "grade": 0.22, "text": "Long ago, the world was whole, and its people lived in peace."},
 		{"a": W + Vector3(-24, 5, 40), "la": W + Vector3(14, 6, -30), "b": W + Vector3(-30, 8, 44), "lb": W + Vector3(2, 12, 0), "dur": 8.0,
-			"text": "Then the Wyrm woke beneath the world.", "event": "wyrm"},
+			"chapter": "THE WAKING", "tint": Color("ff5a3a"), "grade": 0.38, "text": "Then the Wyrm woke beneath the world.", "event": "wyrm"},
 		{"a": W + Vector3(-30, 22, 46), "la": W + Vector3(0, 0, 0), "b": W + Vector3(-34, 34, 70), "lb": W + Vector3(0, -22, 0), "dur": 9.0,
-			"text": "It tore the land apart.\nThe cities burned, and fell into the clouds.", "event": "break"},
+			"chapter": "THE SUNDERING", "tint": Color("d0406a"), "grade": 0.42, "text": "It tore the land apart.\nThe cities burned, and fell into the clouds.", "event": "break"},
 		{"a": S + Vector3(-34, 6, 26), "la": S + Vector3(0, 2, -10), "b": S + Vector3(-8, 9, 30), "lb": S + Vector3(10, 4, -14), "dur": 8.0,
-			"text": "The few who survived fled into the sky,\nin ships patched together from the wreckage.", "event": "flee"},
+			"chapter": "THE FLIGHT", "tint": Color("ffa04a"), "grade": 0.3, "text": "The few who survived fled into the sky,\nin ships patched together from the wreckage.", "event": "flee"},
 		{"a": K + Vector3(0, 3.2, 9.5), "la": K + Vector3(0, 0.8, 0), "b": K + Vector3(-4.5, 2.4, 6.0), "lb": K + Vector3(0, 0.9, 0), "dur": 8.0,
-			"text": "They weren't alone up here. The kin, small bright creatures\nborn of the old world's light, began to choose hunters.", "event": "kin"},
+			"chapter": "THE KIN", "tint": Color("7ae8ff"), "grade": 0.22, "text": "They weren't alone up here. The kin, small bright creatures\nborn of the old world's light, began to choose hunters.", "event": "kin"},
 		{"a": H + Vector3(18, 16, 26), "la": H + Vector3(0, 0, 0), "b": H + Vector3(-10, 12, 24), "lb": H + Vector3(2, 0, -2), "dur": 7.0,
-			"text": "Now the Skylands are being rebuilt, one island at a time:\nfarms, bridges, homes."},
+			"chapter": "THE REBUILDING", "tint": Color("ffd88a"), "grade": 0.2, "text": "Now the Skylands are being rebuilt, one island at a time:\nfarms, bridges, homes."},
 		{"a": D + Vector3(-6, 30, 26), "la": D + Vector3(4, 8, -30), "b": D + Vector3(-2, 22, 10), "lb": D + Vector3(8, -6, -46), "dur": 8.0,
-			"text": "Now hunters fly out to the wild isles for what the fall left behind.\nAnd far below the clouds, the Wyrm sleeps.", "event": "drop"},
+			"chapter": "THE WILD ISLES", "tint": Color("b08aff"), "grade": 0.28, "text": "Now hunters fly out to the wild isles for what the fall left behind.\nAnd far below the clouds, the Wyrm sleeps.", "event": "drop"},
 	]
 	_next_shot()
 
@@ -231,7 +233,8 @@ func _set_wyrm() -> void:
 	wyrm_paths["wyrm"] = _curve([W + Vector3(70, -90, -90), W + Vector3(55, -20, -60), W + Vector3(32, 12, -30), W + Vector3(10, 10, -6),
 		W + Vector3(-10, 9, 10), W + Vector3(-34, 22, 22), W + Vector3(-70, 40, 30)])
 	# far off behind the fleeing ships, a dark shape moving through the clouds
-	wyrm_paths["flee"] = _curve([S + Vector3(-110, 2, -120), S + Vector3(-30, 12, -100), S + Vector3(60, 6, -115), S + Vector3(140, -6, -130)])
+	# chasing the fleeing ships, close behind them, fire raking across the last one
+	wyrm_paths["flee"] = _curve([S + Vector3(-90, 4, -60), S + Vector3(-40, 10, -30), S + Vector3(-6, 12, -22), S + Vector3(40, 16, -40), S + Vector3(120, 20, -90)])
 	# a pair of embers far down in the clouds, for the last shot
 	var D: Vector3 = SETS["drop"]
 	deep_eyes = Node3D.new()
@@ -308,6 +311,13 @@ func _wyrm_along(ev: String, k: float) -> void:
 
 # ---------------------------------------------------------------- ui
 func _build_ui() -> void:
+	# the storybook look over the 3D (ink lines, paint bands, a grade per scene, paper grain)
+	var sl := CanvasLayer.new(); sl.layer = 4; add_child(sl)
+	var lr := ColorRect.new(); lr.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); lr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	look_mat = ShaderMaterial.new(); look_mat.shader = load("res://shaders/storybook.gdshader")
+	look_mat.set_shader_parameter("tint", Color("ffd27a")); look_mat.set_shader_parameter("tint_amount", 0.22)
+	lr.material = look_mat
+	sl.add_child(lr)
 	ui = CanvasLayer.new(); ui.layer = 5; add_child(ui)
 	var root := Control.new(); root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root.theme = UI.theme()
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -335,10 +345,21 @@ func _build_ui() -> void:
 	caption.add_theme_constant_override("line_spacing", 4)
 	caption.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(caption)
+	chapter_lbl = Label.new()
+	chapter_lbl.set_anchors_and_offsets_preset(Control.PRESET_TOP_WIDE)
+	chapter_lbl.offset_top = 26.0; chapter_lbl.offset_bottom = 60.0
+	chapter_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	chapter_lbl.add_theme_font_override("font", UI.big)
+	chapter_lbl.add_theme_font_size_override("font_size", 20)
+	chapter_lbl.add_theme_color_override("font_color", Color("f2c46a"))
+	chapter_lbl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(chapter_lbl)
 	flash = ColorRect.new(); flash.color = Color(1, 0.95, 0.85, 0.0)
 	flash.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); flash.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(flash)
 	fade = ColorRect.new(); fade.color = Color(0.02, 0.02, 0.04, 1.0)
+	var wm := ShaderMaterial.new(); wm.shader = load("res://shaders/ink_wipe.gdshader")
+	fade.material = wm          # scenes change with a ragged ink wipe, not a plain fade
 	fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(fade)
 	var skip := UI.button("Skip", func(): _finish(), 100)
@@ -363,6 +384,7 @@ func _next_shot() -> void:
 		wyrm.teleport(c.sample_baked(0.0), c.sample_baked(1.0) - c.sample_baked(0.0))
 		wyrm.visible = true
 	elif ev0 == "flee":
+		wyrm.set_size(1.4)
 		var c2: Curve3D = wyrm_paths["flee"]
 		wyrm.teleport(c2.sample_baked(0.0), c2.sample_baked(1.0) - c2.sample_baked(0.0))
 		wyrm.breath.emitting = false
@@ -374,10 +396,19 @@ func _next_shot() -> void:
 		_sky_burn(0.0)
 	var s: Dictionary = shots[shot]
 	caption.text = String(s["text"])
-	caption.modulate.a = 0.0
+	caption.modulate.a = 1.0
+	caption.visible_ratio = 0.0
+	# the chapter name, spaced out, then the line types itself in
+	chapter_lbl.text = "  ".join(String(s.get("chapter", "")).split(""))
+	chapter_lbl.modulate.a = 0.0
 	var tw := create_tween()
-	tw.tween_property(fade, "color:a", 0.0, 0.7)
-	tw.parallel().tween_property(caption, "modulate:a", 1.0, 1.2).set_delay(0.5)
+	tw.tween_property(fade, "color:a", 0.0, 0.8).set_trans(Tween.TRANS_SINE)
+	tw.parallel().tween_property(chapter_lbl, "modulate:a", 1.0, 0.8).set_delay(0.3)
+	tw.parallel().tween_property(caption, "visible_ratio", 1.0, maxf(1.2, caption.text.length() * 0.035)).set_delay(0.6)
+	if look_mat:
+		var gt := create_tween().set_parallel()
+		gt.tween_method(func(c: Color): look_mat.set_shader_parameter("tint", c), look_mat.get_shader_parameter("tint"), s.get("tint", Color("ffd27a")), 1.0)
+		gt.tween_method(func(v: float): look_mat.set_shader_parameter("tint_amount", v), float(look_mat.get_shader_parameter("tint_amount")), float(s.get("grade", 0.25)), 1.0)
 	Sfx.play("whoosh", null, -14.0, 0.05, 0.8)
 
 ## Fade out and on to the next shot.
@@ -387,11 +418,13 @@ func _advance() -> void:
 	advancing = true      # don't trigger twice; the camera keeps gliding while it fades
 	var tw := create_tween()
 	tw.tween_property(caption, "modulate:a", 0.0, 0.35)
-	tw.parallel().tween_property(fade, "color:a", 1.0, 0.6)
+	tw.parallel().tween_property(chapter_lbl, "modulate:a", 0.0, 0.35)
+	tw.parallel().tween_property(fade, "color:a", 1.0, 0.7).set_trans(Tween.TRANS_SINE)
 	tw.tween_callback(_next_shot)
 
 func _title_card() -> void:
 	caption.text = ""
+	chapter_lbl.text = ""
 	card = Control.new(); card.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.get_child(0).add_child(card)
@@ -444,6 +477,7 @@ func _unhandled_input(event: InputEvent) -> void:
 func _process(delta: float) -> void:
 	t += delta
 	shot_t += delta
+	if look_mat: look_mat.set_shader_parameter("time_s", t)
 	if shot >= 0 and shot < shots.size():
 		var s: Dictionary = shots[shot]
 		# keeps going a little past the end while it fades out, so a click never snaps it back
@@ -553,6 +587,7 @@ func _events(ev: String, st: float, delta: float) -> void:
 					k.set_meta("happy", true)
 		"flee":
 			_wyrm_along("flee", st / 8.0)
+			wyrm.breath.emitting = st > 2.6 and st < 4.4
 			_sky_burn(maxf(0.0, 0.55 - st * 0.12))     # the fires fall behind them
 		"drop":
 			# the last thing you see: two embers opening far down in the clouds

@@ -20,7 +20,7 @@ const TIPS := [
 	"Weapons you find out here are stronger than your own, but only for this expedition.",
 	"Health and armor don't come back on their own. 1 drinks a tonic for health, 2 uses a kit to repair your armor. You take more damage while you do either.",
 	"Fight alongside your kin to fill the bond meter, then R calls its bond ultimate.",
-	"Q and F are your kin's abilities. Each kin you bring gives you a different kit.",
+	"Q and E are your kin's abilities. Each kin you bring gives you a different kit.",
 	"Your kin stuns or roots a foe? Shoot it right away for a combo.",
 	"Bring two kin and press X to swap between them mid-fight.",
 	"Go down for good and the kin you brought are left behind. Old Pell's Ransom House sells back the ones nobody collects.",
@@ -28,9 +28,9 @@ const TIPS := [
 	"Wild kin with a ring under them can be caught. Weaken them first.",
 	"Jump off the skyship over an island nobody else picked. Space opens your glider early for a longer, slower last stretch.",
 	"Falling all the way into the abyss is death. Glide (hold Space) below the edge to catch an updraft back up, or touch the cliff to mantle onto it.",
-	"A teammate is down? Stand on their wisp to bring them back. Stand on an enemy's to stomp it, or hold E to finish them.",
+	"A teammate is down? Stand on their wisp to bring them back. Stand on an enemy's to stomp it, or hold F to finish them.",
 	"Dash through a shot at the last moment and you take nothing.",
-	"Shrines on the islands give a short power-up. Stand by one and hold E.",
+	"Shrines on the islands give a short power-up. Stand by one and hold F.",
 ]
 const STAGES := ["Raising the islands", "Waking the monsters", "Hiding the loot", "Fueling the skyship", "Ready"]
 
