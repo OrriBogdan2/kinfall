@@ -6,6 +6,7 @@ signal shown
 
 const TIPS := [
 	"Hold Mouse 5 (or Space) in the air to glide. You can open your glider off any booster too.",
+	"Hits don't knock you out of a glide, but they drain your glider twice as fast. Run it dry and you're spiked: you drop like a stone.",
 	"Knocked off an edge? Touch the island's side and you float back up onto it.",
 	"Exits open partway through. Stand inside one to fly home with everything you carry.",
 	"C (or middle mouse) throws your kin. It stuns whatever it hits, and pressing it again calls it back.",

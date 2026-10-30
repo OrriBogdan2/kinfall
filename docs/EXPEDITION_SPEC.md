@@ -68,7 +68,8 @@ we want their vision tradeoff.
 
 Gliding is the identity mechanic: jump, hold to deploy the glider, and
 you trade height for horizontal distance while "Glider Fuel" / heat
-drains. Taking damage mid-glide stuns and smashes you to the ground;
+drains. Taking damage mid-glide does not knock you down by itself: it drains the glider at double
+rate (normal damage to you). Only when the glider hits 0 are you spiked (stun, smash to the ground);
 doing it over the abyss is instant death.
 
 | Param | Estimate | Notes |

@@ -77,12 +77,23 @@ Notes on the table:
 ## Also built in this update (1.0 glider rules)
 
 - Overheated gliders slow to 60% speed.
-- Damage while gliding adds heat (250 damage = 30 heat), and damage that pushes heat to 100% spikes instantly: 4 hits of 250 on a fresh glider.
+- Damage while gliding does not knock you out of the air and you take normal damage, but it adds heat at **double** rate (250 damage = 60 heat). Only damage that pushes heat to 100% spikes you (stun, plummet, 0.7s stun on landing; over the abyss that's a fall): 2 hits of 250 on a fresh glider. Monsters add heat but can't spike.
 - Wind rings cool the glider by 35 heat and add 4 m/s.
 - Jetstreams stop heat gain and speed you up ×1.4.
 - Abyss storm clouds double heat gain and slow you ×0.7.
 - Spiking someone cools your own glider by 50 (call `on_spiked_enemy()` on the attacker).
 - The test scene has one of each zone over the gap.
+
+## Falling and the glider catch (Oct 2026)
+
+- Falls ease into terminal speed instead of snapping to it: terminal 9 m/s (was 10), approached at
+  3.2/s. A 1s drop off an edge is ~6.3m (was ~8.3m reached at full speed in 0.33s); 90% of terminal
+  after ~0.7s. Jumps (rising) keep the same snappy gravity.
+- Opening the glider mid-fall brakes you to its sink rate at 16 m/s² (~0.5s from terminal) instead of
+  snapping; a slow start gets half the gap to glide speed up front and the rest from glide acceleration.
+- The camera follows height more softly (3.5/s vs 8/s across), so falls and glides don't jolt the view.
+- Sinking below island level darkens the screen from the edges, more near the kill depth and with an
+  empty glider, pulsing red with a heartbeat at the very bottom.
 
 ## Hooks for the combat code
 - `notify_damaged(amount)`: returns true if the hit spiked a glider (credit the attacker).

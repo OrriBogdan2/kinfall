@@ -8,7 +8,9 @@ extends Ent
 # momentum that carries in the air and in the glider.
 const H_GRAV := 30.0
 const FALL_MULT := 1.0
-const TERMINAL := 10.0          # [footage] 1s off an edge is ~8m deep; the glider recovers in ~1s
+const TERMINAL := 9.0           # (was 10, reached in 0.33s) falls now ease into this speed: ~6m in the first second
+const FALL_EASE := 3.2           # how quickly a fall approaches TERMINAL (1/s); rising still uses H_GRAV
+const GLIDE_CATCH := 16.0        # opening the glider mid-fall brakes you to its sink rate at this rate, no snap
 const JUMP_V := 9.0           # about 1.35 up: one terrace easily; higher ledges you mantle
 const GROUND_ACCEL := 70.0
 const GROUND_DECEL := 90.0
@@ -273,16 +275,21 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 	hurt_at = m.time
 	if opts.has("wallstun"):
 		wallstun = float(opts["wallstun"])
-	# Getting hit while gliding, as in Supervive: no extra damage, but every hit eats glider fuel
-	# (and fuel burns faster for a moment after). A hit that empties it, or any hit on an already
-	# overheated glider, stuns you and sends you plummeting.
+	# Getting hit while gliding, as in Supervive: a hit does NOT knock you out of the air by itself
+	# and you take normal damage. What it does is drain the glider at double the usual rate. Only
+	# when the glider runs dry are you spiked (stunned, plummeting, a 0.7s stun when you land; over
+	# the abyss that's a fall). Monsters drain it but can't spike you.
 	var spiked := false
 	if gliding and not dropping and dmg > 0.0 and opts.get("src", "") not in ["fall", "burn", "heat"]:
 		var was := glide_fuel
-		# Glider 1.0: a knock's worth of damage (250 of 1,050) burns 30% of the glider
-		glide_fuel = maxf(0.0, glide_fuel - dmg * (0.30 / 34.5) / float(cdat.get("glide_cap", 1.0)))
+		# a knock's worth of damage (250 of 1,050) would burn 30% of the glider; hits drain it 2x
+		glide_fuel = maxf(0.0, glide_fuel - 2.0 * dmg * (0.30 / 34.5) / float(cdat.get("glide_cap", 1.0)))
 		hit_heat_t = 1.0
-		if was <= 0.001 or glide_fuel <= 0.001:
+		if is_local() and m.hud and m.hud.has_method("glider_hit"):
+			m.hud.glider_hit(was - glide_fuel)
+		if opts.get("src", "") == "mob" or by is Mob:
+			glide_fuel = maxf(glide_fuel, 0.02)      # monsters can't spike
+		elif was <= 0.001 or glide_fuel <= 0.001:
 			spiked = true
 			_shot_down()
 			# spiking someone cools your own glider
@@ -491,11 +498,12 @@ func _open_glider() -> void:
 	# unfolding catches the air: a slow start gets carried up to cruising speed
 	var hv := Vector2(vel.x, vel.z)
 	if hv.length() < GLIDE_SPEED and not dropping:
+		# half the gap up front, the rest comes from the glide's own acceleration: no speed snap
 		var mvv: Vector2 = inp.get("move", Vector2.ZERO)
 		var dirv := mvv.normalized() if mvv.length() > 0.1 else (hv.normalized() if hv.length() > 0.3 else aim_dir())
-		hv = dirv * GLIDE_SPEED
+		hv = hv.lerp(dirv * GLIDE_SPEED, 0.5)
 		vel.x = hv.x; vel.z = hv.y
-	m.sfx("glide", pos, -4.0)
+	m.sfx("glider_open", pos, -3.0 if is_local() else -9.0, 1.0)
 	m.fx.burst(pos + Vector3(0, 1.7, 0), Color("f3eee2"), 8, 2.0, 0.35, 0.0)
 
 ## The class's dodge (Shift), as described by its ability data: a dash, plus anything else in its
@@ -747,7 +755,8 @@ func _swing() -> void:
 	combo_i += 1
 	swing_at = m.time
 	fire_cd = float(wpn["rate"]) * (1.35 if last else 1.0)
-	_lunge(float(wpn.get("lunge", 0.0)) * (1.3 if last else 1.0))
+	# a basic swing never moves you: you keep walking control (fire_slow), and gap-closers live on
+	# right click (and in a deliberate held charge where a weapon has one)
 	_strike(dmg, float(wpn["range"]), float(wpn.get("arc", 100.0)), float(wpn["kb"]) * (1.5 if last else 1.0), {"heavy": last})
 
 ## A step forward with the swing. Lunges close together get 25% shorter each time.
@@ -774,8 +783,8 @@ func _charged_attack() -> void:
 	combo_i = 0
 	swing_at = m.time
 	fire_cd = float(wpn["rate"]) * 1.8
-	var st := {"dmg": float(wpn.get("charged_dmg", float(wpn["dmg"]) * 2.5)), "reach": float(wpn["range"]) * (0.85 if wpn.has("charged_lunge") else 1.0),
-		"arc": float(wpn.get("arc", 100.0)) * (0.5 if wpn.has("charged_lunge") else 1.0), "kb": float(wpn.get("charged_kb", float(wpn["kb"]) * 2.0)),
+	var st := {"dmg": float(wpn.get("charged_dmg", float(wpn["dmg"]) * 2.5)), "reach": float(wpn.get("charged_reach", float(wpn["range"]) * (0.85 if wpn.has("charged_lunge") else 1.0))),
+		"arc": float(wpn.get("charged_arc", float(wpn.get("arc", 100.0)) * (0.5 if wpn.has("charged_lunge") else 1.0))), "kb": float(wpn.get("charged_kb", float(wpn["kb"]) * 2.0)),
 		"stun": float(wpn.get("charged_stun", 0.0)), "heavy": true, "charged": true}
 	if wpn.has("charged_lunge"):
 		# a lunging stab: you travel, and the hit lands where the lunge ends (charged lunges don't decay)
@@ -1304,7 +1313,10 @@ func _physics(dt: float) -> void:
 		if dropping:
 			vel.y = lerpf(vel.y, -sink, 1.0 - exp(-4.0 * dt))
 		else:
-			vel.y = maxf(vel.y - GLIDE_GRAV * dt, -sink)
+			if vel.y < -sink:
+				vel.y = move_toward(vel.y, -sink, GLIDE_CATCH * dt)    # the canopy catches you over a beat
+			else:
+				vel.y = maxf(vel.y - GLIDE_GRAV * dt, -sink)
 			# [footage] over the abyss a glider holds at island level instead of sinking below it,
 			# so you can cross until the heat runs out
 			if over_void() and glide_fuel > 0.001 and vel.y < 0.0 and pos.y + vel.y * dt < lip_y:
@@ -1312,8 +1324,13 @@ func _physics(dt: float) -> void:
 	elif roll_t > 0.0 and not grounded and not dropping:
 		vel.y = 0.0          # a dash in the air holds your height for its length
 	elif not grounded:
-		vel.y -= H_GRAV * (FALL_MULT if vel.y < 0.0 and fly_t <= 0.0 else 1.0) * dt
-		vel.y = maxf(vel.y, -TERMINAL)
+		if vel.y > 0.0 or fly_t > 0.0:
+			vel.y -= H_GRAV * dt          # rising: the same snappy jump arc
+			vel.y = maxf(vel.y, -TERMINAL)
+		else:
+			# falling: speed builds smoothly and eases into terminal instead of hitting it in a third
+			# of a second, so drops off edges and into the abyss read as one flowing motion
+			vel.y = lerpf(vel.y, -TERMINAL, 1.0 - exp(-FALL_EASE * dt))
 	# walking can't take you off an edge, except as a wisp: a downed player can drift off a ledge on
 	# purpose to escape a stomp, and catch the cliff on the way down (see _try_ledge_grab)
 	var guard := grounded and roll_t <= 0.0 and hv.length() <= spd * 1.25 and not (downed and ctrl == "local")
@@ -1484,6 +1501,7 @@ func _update_glide(dt: float) -> void:
 	if gliding:
 		if not want or not can:
 			gliding = false
+			m.sfx("glider_close", pos, -8.0 if is_local() else -14.0, 1.0)
 			if glide_fuel <= 0.0:
 				glide_cd = 0.5
 		elif not in_current:
@@ -1499,7 +1517,7 @@ func _update_glide(dt: float) -> void:
 			m.fx.burst(pos + Vector3(0, 1.2, 0), Color("cfeaff"), 12, 3.5, 0.4, -2.0, 0.8)
 			m.sfx("glide", pos, -2.0, 1.4)
 			add_stat("feathers")
-		m.sfx("glide", pos, -4.0)
+		m.sfx("glider_open", pos, -3.0 if is_local() else -9.0, 1.0)
 		m.fx.burst(pos + Vector3(0, 1.7, 0), Color("f3eee2"), 8, 2.0, 0.35, 0.0)
 
 # Ledge float: touch the side of any ground above you while you're still alive and you float

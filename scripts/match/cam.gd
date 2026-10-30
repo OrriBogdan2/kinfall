@@ -85,7 +85,10 @@ func follow(p: Vector3, delta: float, mouse_lead := true) -> void:
 	if follow_mode == "dynamic" and mouse_lead:
 		pan = want_pan
 	var want := Vector3(p.x, p.y * 0.6, p.z)
-	base = base.lerp(want, minf(1.0, delta * 8.0))
+	# across follows briskly; up and down follows softer, so falls and glides don't jolt the view
+	var kxz := 1.0 - exp(-8.0 * delta)
+	var ky := 1.0 - exp(-3.5 * delta)
+	base = Vector3(lerpf(base.x, want.x, kxz), lerpf(base.y, want.y, ky), lerpf(base.z, want.z, kxz))
 	focus = base + pan
 	zoom = lerpf(zoom, zoom_to, minf(1.0, delta * 2.5))
 	top = move_toward(top, top_to, delta * (0.9 if top_to < top else 2.0))
