@@ -152,17 +152,37 @@ func _ready() -> void:
 	if "--results-test" in args:
 		show_screen("results", {"extracted": true, "gems": 42, "seeds": {"sunroot": 1}, "caught": [Save.new_kin("zapple")], "knocks": 3, "damage": 512, "time": 201.0, "kin_events": [{"kind": "refused", "text": "refused to jump into a fight that looked too dangerous", "trust": -1.0}], "kin_trust": 57.0, "tonics": 1})
 		return
+	for a in args:
+		if a.begins_with("--reveal-test"):
+			# test: the hatch reveal on its own (--reveal-test=<species>)
+			var spr := a.substr(14) if a.length() > 14 else "cindle"
+			var holder := Node3D.new(); add_child(holder); current = holder
+			var rv := KinReveal.new(spr, {})
+			holder.add_child(rv)
+			rv.proceed.connect(func(): print("REVEAL proceed"))
+			return
 	if "--lobby-test" in args:
 		show_screen("lobby", {})
 		return
 	var town_arg := ""
 	for a in args:
 		if a.begins_with("--town="): town_arg = a.substr(7)
+	if "--test-roster" in args and Save.d["roster"].is_empty():
+		# test: a ready-made kin so home and the house rooms have someone to pet
+		var tk := Save.new_kin("zapple", "Pip")
+		Save.d["roster"].append(tk)
+		Save.d["active"] = tk["uid"]
+		Save.d["tutorial"]["home"] = true
 	var room_arg := ""
 	for a in args:
 		if a.begins_with("--interior="): room_arg = a.substr(11)
 	if room_arg != "":
 		show_screen("interior", {"room": room_arg})
+		if "--interior-pet" in args:
+			# test: pet a kin indoors and show that it counted
+			get_tree().create_timer(0.5).timeout.connect(func():
+				current._pet_kin(current.kins[0])
+				print("PET day1=", Save.d["tutorial"].get("day1"), " box=", is_instance_valid(current.day1_box), " gems=", Save.d["gems"]))
 		if "--decorate" in args:
 			get_tree().create_timer(0.5).timeout.connect(func():
 				current._toggle_decorate()

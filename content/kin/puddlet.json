@@ -39,5 +39,15 @@
 	},
 	"throw_hit": {
 		"slow": 1.5
+	},
+	"animals": [
+		"Axolotl"
+	],
+	"desc": "An axolotl whose frills grew into living crystal. It bends light into shields and dazzling beams.",
+	"egg": {
+		"name": "Prism Egg",
+		"temper": "Gentle",
+		"desc": "Pink and glassy. It throws little rainbows when it rocks. Something gentle is in here.",
+		"play": "Shields you and dazzles foes with bent light. Loyal, a bit of a worrier."
 	}
 }

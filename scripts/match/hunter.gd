@@ -500,6 +500,7 @@ func _open_glider() -> void:
 ## Shift, as in Supervive: a short dash, and a long one (its own, longer cooldown) when you're in
 ## the air or the short one is still recharging.
 var ex_cd := 0.0
+var used := {}                  # slot -> times you pressed it and it went off (the tutorial reads this)
 var hit_heat_t := 0.0           # a moment after being hit while gliding, the glider heats twice as fast
 var ex_next := false
 var dash_is_ex := false
@@ -913,7 +914,8 @@ func use_kin_ability(slot: String) -> void:
 		if is_local() and m.hud:
 			m.hud.toast("%s is resting%s" % [k.rec.get("name", "Your kin"), ("  ·  %s swaps in %s" % [Settings.key_cap("swap_kin"), (kin2 as Kin).rec.get("name", "your other kin")]) if kin2 and (kin2 as Kin).hp > 0.0 else ""], Color("a2a8bb"))
 		return
-	k.use_ability(slot, _ground_aim())
+	if k.use_ability(slot, _ground_aim()) or k.pend_slot == slot:
+		used[slot] = int(used.get(slot, 0)) + 1
 
 ## R: the bond ultimate, once fighting together has filled the meter.
 func use_ultimate() -> void:
@@ -1088,7 +1090,7 @@ func sim(dt: float) -> void:
 	if inp["skill"]: use_kin_ability("k2")
 	if inp["swap"]: swap_kin()
 	if inp["sec"] and runner and runner.has_slot("utility"):
-		runner.use("utility")
+		if runner.use("utility"): used["utility"] = int(used.get("utility", 0)) + 1
 	if inp["reload"]: start_reload()
 	if inp["tonic"]: use_tonic()
 	if inp.get("kit", false): use_kit()

@@ -18,6 +18,9 @@ extends Resource
 @export var ai: Dictionary = {}          # aggression loyalty caution style
 @export var throw_hit: Dictionary = {}   # extra status when it's thrown into a foe
 @export var shoulder := ""
+@export var animals: Array = []         # the one or two real animals it is based on
+@export var desc := ""                   # a line for the reveal card and the Kindex
+@export var egg: Dictionary = {}         # name temper desc play: how its egg is shown
 
 static func from_dict(d: Dictionary) -> KinDef:
 	var k := KinDef.new()
@@ -36,6 +39,9 @@ static func from_dict(d: Dictionary) -> KinDef:
 	k.ai = d.get("ai", {})
 	k.throw_hit = d.get("throw_hit", {})
 	k.shoulder = String(d.get("shoulder", ""))
+	k.animals = d.get("animals", [])
+	k.desc = String(d.get("desc", ""))
+	k.egg = d.get("egg", {})
 	return k
 
 ## The entry the rest of the game reads from Data.KIN.
@@ -44,6 +50,7 @@ func to_species() -> Dictionary:
 		"hp": float(stats.get("hp", 85.0)), "dmg": float(stats.get("dmg", 8.0)), "speed": float(stats.get("speed", 6.5)),
 		"range": float(stats.get("range", 1.3)), "ears": String(look.get("ears", "")), "look": look,
 		"skill": String(abilities[0]) if abilities.size() > 0 else "", "abilities": abilities, "ultimate": ultimate,
-		"shoulder": shoulder if shoulder != "" else "spring", "traits": traits, "ai": ai, "throw_hit": throw_hit}
+		"shoulder": shoulder if shoulder != "" else "spring", "traits": traits, "ai": ai, "throw_hit": throw_hit,
+		"animals": animals, "desc": desc, "egg": egg}
 	if wing.a > 0.0: out["wing"] = wing
 	return out

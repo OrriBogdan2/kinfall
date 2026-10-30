@@ -248,8 +248,9 @@ static func feed(rec: Dictionary, f: String) -> Dictionary:
 
 ## Kin from an egg: mostly one parent's species, a blend of both personalities, a head start
 ## along a parent's way of growing, and a small chance to shimmer.
-static func breed(a: Dictionary, b: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
-	var sp: String = a["species"] if rng.randf() < 0.5 else b["species"]
+static func breed(a: Dictionary, b: Dictionary, rng: RandomNumberGenerator, sp := "") -> Dictionary:
+	if sp == "" or not Data.KIN.has(sp):
+		sp = a["species"] if rng.randf() < 0.5 else b["species"]
 	var baby := Save.new_kin(sp)
 	for t in baby["traits"]:
 		var mix := (float(a["traits"].get(t, 0.5)) + float(b["traits"].get(t, 0.5))) * 0.5

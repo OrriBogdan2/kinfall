@@ -2,16 +2,22 @@ extends Node3D
 ## The first thing a new player sees: a short story, then three eggs on a little island. Pick one,
 ## keep it warm until it hatches, name what comes out, then head into the tutorial match together.
 
-const EGGS := [
-	{"species": "cindle", "name": "Warm egg", "temper": "Bold", "desc": "Warm to the touch, and it kicks when you get close. Something bold is in here.",
-		"play": "Charges in, hits hard, and throws fireballs. Brave, but quick to anger."},
-	{"species": "puddlet", "name": "Cool egg", "temper": "Gentle", "desc": "Cool and smooth. It rocks gently when you talk to it. Something gentle is in here.",
-		"play": "Keeps you safe and pushes foes back with waves. Loyal, a bit of a worrier."},
-	{"species": "burrlet", "name": "Mossy egg", "temper": "Curious", "desc": "Covered in soft moss, and it keeps turning toward little sounds. Something curious is in here.",
-		"play": "Roots foes in place with brambles. Notices everything, wanders off sometimes."},
-	{"species": "mystery", "name": "Mystery egg", "temper": "???", "desc": "Speckled, and strangely quiet. Nobody knows what's inside.",
-		"play": "Something that isn't any of the other three. You'll find out when it hatches."},
-]
+## The three starter eggs plus a mystery one. Names, tempers and blurbs come from each species'
+## "egg" block in content/kin/<id>.json, so every egg is named for its element (Venom Egg, ...).
+const STARTERS := ["cindle", "puddlet", "burrlet"]
+const MYSTERY := {"species": "mystery", "name": "Mystery Egg", "temper": "???", "desc": "Speckled, and strangely quiet. Nobody knows what's inside.",
+	"play": "Something that isn't any of the other three. You'll find out when it hatches."}
+
+static func starter_eggs() -> Array:
+	var out: Array = []
+	for sp in STARTERS:
+		var e: Dictionary = Data.egg_info(sp)
+		e["species"] = sp
+		for k in ["temper", "desc", "play"]:
+			if not e.has(k): e[k] = ""
+		out.append(e)
+	out.append(MYSTERY.duplicate())
+	return out
 
 const STORY := [
 	"Long ago the world broke apart.\nWhat was left drifts above the clouds as islands.",
@@ -67,7 +73,7 @@ func _ready() -> void:
 	cam.position = cam_from
 	cam.look_at(Vector3(0, 0.6, 0))
 	_build_set()
-	egg_defs = EGGS.duplicate(true)
+	egg_defs = starter_eggs()
 	var others: Array = Data.KIN.keys().filter(func(k): return not k in ["cindle", "puddlet", "burrlet"])
 	for d in egg_defs:
 		if d["species"] == "mystery":
@@ -482,6 +488,8 @@ func _show_pick() -> void:
 		var v := UI.vbox(6); card.add_child(v)
 		var hr := UI.hbox(8)
 		var ecol: Color = Color("c4bcd6") if mystery else Data.KIN[d["species"]]["color"]
+		while ecol.get_luminance() < 0.55:
+			ecol = ecol.lerp(Color.WHITE, 0.2)     # dark shells still need a readable name
 		var tt := UI.title(d["name"], 22, ecol); tt.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		hr.add_child(tt)
 		hr.add_child(UI.section(d["temper"], ecol))
@@ -637,9 +645,14 @@ func _process(delta: float) -> void:
 				kin_node = k
 				title.text = "It's a %s!" % Data.KIN[egg_defs[chosen]["species"]]["name"])
 			wegg.done.connect(func():
-				stage = "name"
+				stage = "reveal"
 				cam_to = Vector3(0, 2.2, 5.6)
-				_show_name())
+				# the big reveal (flash, fanfare, turntable and info), then naming
+				var rv := KinReveal.new(egg_defs[chosen]["species"])
+				add_child(rv)
+				rv.proceed.connect(func():
+					stage = "name"
+					_show_name()))
 			wegg.start()
 	for i in eggs.size():
 		var egg: Node3D = eggs[i]["egg"]

@@ -220,6 +220,9 @@ func _draw_world_labels() -> void:
 			var perp := Vector2(-d.y, d.x)
 			c.draw_colored_polygon(PackedVector2Array([edge + d * 18.0, edge - d * 6.0 + perp * 11.0, edge - d * 6.0 - perp * 11.0]), GOLD)
 			_ctext(edge - d * 26.0, "%dm" % int(m.player.flat_dist(th)), 13, GOLD, big)
+	# the tutorial's marker: a pin over what to go to, or an arrow at the screen edge, with the distance
+	if m.opts.get("tutorial", false) and m.tut_target != Vector3.INF and m.player and not m.player.out:
+		_draw_waypoint(m.tut_target, m.tut_label, Color("8fe3c8"))
 	for bc in m.beacons:
 		if bc["used"] or cam.is_position_behind(bc["pos"]):
 			continue
@@ -354,6 +357,9 @@ func _draw_top(sz: Vector2) -> void:
 		_panel(rr, Color(0.06, 0.07, 0.1, 0.88), 12)
 		_ctext(Vector2(sz.x * 0.5, 34), "TUTORIAL  %d / %d" % [mini(m.tut_step + 1, m.TUT.size()), m.TUT.size()], 12, Color("8fe3c8"))
 		_ctext(Vector2(sz.x * 0.5, 62), txt, 22, Color("f2c84a"), big)
+		if m.tut_id() == "extract" and m.player and m.player.extract_prog > 0.0:
+			_panel(Rect2(Vector2(sz.x * 0.5 - 120, 84), Vector2(240, 30)), Color(0.06, 0.07, 0.1, 0.85), 8)
+			_bar(Rect2(Vector2(sz.x * 0.5 - 104, 95), Vector2(208, 8)), clampf(m.player.extract_prog, 0.0, 1.0), Color("8fe3c8"))
 		return
 	var left := m.length - m.time
 	var first_open := 1e9
@@ -430,6 +436,10 @@ func _draw_minimap(sz: Vector2) -> void:
 		var sa: Vector2 = to_map.call(m.ship["a"]); var sb: Vector2 = to_map.call(m.ship["b"])
 		c.draw_line(sa, sb, Color(1, 1, 1, 0.35), 2.0, true)
 		c.draw_circle(to_map.call(m.ship_pos()), 5.0, GOLD)
+	if m.opts.get("tutorial", false) and m.tut_target != Vector3.INF:
+		var tv: Vector2 = to_map.call(m.tut_target)
+		if on_map.call(tv, 4.0): c.draw_arc(tv, 6.0, 0, TAU, 16, Color("8fe3c8"), 2.5, true)
+		else: _edge_arrow(inner, inner.get_center(), tv, Color("8fe3c8"))
 	for pg in m.pings:
 		var pv: Vector2 = to_map.call(pg["pos"])
 		if on_map.call(pv): c.draw_circle(pv, 4.0, pg["col"])
@@ -464,6 +474,41 @@ func _draw_minimap(sz: Vector2) -> void:
 			c.draw_circle(pv, 4.5, Color(0, 0, 0, 0.6))
 			c.draw_circle(pv, 3.5, col)
 			_ctext(pv + Vector2(0, -7), h.pname.substr(0, 1), 11, col, big)
+
+## A world marker: a bobbing pin and label over the spot, or (when it's off screen or behind the
+## camera) a big arrow at the screen edge pointing the way. Both show how far it is.
+func _draw_waypoint(at: Vector3, label: String, col: Color) -> void:
+	var cam := m.cam
+	var sz := c.size
+	var dist := int(round(Vector2(at.x - m.player.pos.x, at.z - m.player.pos.z).length()))
+	var bob := sin(Time.get_ticks_msec() / 1000.0 * 4.0) * 4.0
+	var tp := cam.unproject_position(at + Vector3(0, 2.6, 0))
+	var behind := cam.is_position_behind(at)
+	var on := not behind and Rect2(Vector2(40, 110), sz - Vector2(80, 230)).has_point(tp)
+	if on:
+		var p := tp + Vector2(0, bob)
+		c.draw_circle(p, 13.0, Color(0, 0, 0, 0.45))
+		c.draw_colored_polygon(PackedVector2Array([p + Vector2(0, -11), p + Vector2(9, 0), p + Vector2(0, 11), p + Vector2(-9, 0)]), col)
+		c.draw_colored_polygon(PackedVector2Array([p + Vector2(-7, 15), p + Vector2(7, 15), p + Vector2(0, 26)]), col)
+		_ctext(p + Vector2(0, 44), "%s  ·  %dm" % [label, dist], 15, col, big)
+		# a ring on the ground under it
+		if not behind:
+			var gp := cam.unproject_position(at + Vector3(0, 0.05, 0))
+			c.draw_arc(gp, 16.0 + bob, 0, TAU, 28, Color(col, 0.7), 2.5, true)
+	else:
+		var ctr := sz * 0.5
+		var d := (tp - ctr).normalized() if not behind else (ctr - tp).normalized()
+		if d.length() < 0.1: d = Vector2.UP
+		# kept inside the play area: under the tutorial banner, above the ability bar
+		var ctr2 := Vector2(sz.x * 0.5, sz.y * 0.47)
+		ctr = ctr2
+		var hx := sz.x * 0.5 - 70.0; var hy := sz.y * 0.5 - 150.0
+		var t := minf(hx / maxf(0.001, absf(d.x)), hy / maxf(0.001, absf(d.y)))
+		var edge := ctr + d * t + d * bob * 0.5
+		var perp := Vector2(-d.y, d.x)
+		c.draw_colored_polygon(PackedVector2Array([edge + d * 24.0, edge - d * 8.0 + perp * 15.0, edge - d * 8.0 - perp * 15.0]), Color(0, 0, 0, 0.5))
+		c.draw_colored_polygon(PackedVector2Array([edge + d * 20.0, edge - d * 6.0 + perp * 12.0, edge - d * 6.0 - perp * 12.0]), col)
+		_ctext(edge - d * 34.0, "%s  %dm" % [label, dist], 15, col, big)
 
 ## A small arrow on the minimap's edge pointing at something off the map.
 func _edge_arrow(inner: Rect2, from: Vector2, to: Vector2, col: Color) -> void:

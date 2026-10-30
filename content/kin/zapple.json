@@ -40,5 +40,16 @@
 	"throw_hit": {
 		"stun": 0.9
 	},
-	"wing": "#5a4a8a"
+	"wing": "#5a4a8a",
+	"animals": [
+		"Hare",
+		"Bat"
+	],
+	"desc": "A long-eared hare with bat wings. It hears everything coming and fires ringing pulses of sound.",
+	"egg": {
+		"name": "Echo Egg",
+		"temper": "Hyper",
+		"desc": "Deep blue and humming. Tap it and it taps back. Something restless is in here.",
+		"play": "Fast, loud and everywhere. Chains sound pulses between foes."
+	}
 }

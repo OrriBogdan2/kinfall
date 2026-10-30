@@ -34,6 +34,9 @@ Colours are hex strings, times are seconds, distances are tiles.
   uses attacks more; loyalty stays close and goes after whoever hurts its hunter; caution backs off when hurt.
 - `shoulder`: the passive while it rides on your shoulder (kindle, spring, briar, charge, bedrock, updraft).
 - `throw_hit`: extra status when it's thrown into a foe (burn, slow, root, stun, kb).
+- `animals`: the one or two real animals it's based on (shown on the hatch reveal card).
+- `desc`: a line about it for the hatch reveal card.
+- `egg`: how its egg is shown: `name` (e.g. "Venom Egg"), `temper`, `desc` and `play` (used on the first-egg picker and the Nesting Nook).
 
 Open `tests/kin_gallery.tscn` and press F6 to see it next to the others.
 

@@ -312,12 +312,8 @@ func _finish_rebind(ev: InputEvent) -> void:
 var inv_tab := "Items"
 
 func open_inventory() -> void:
-	if not Save.d["tutorial"].get("day1_done", false) and not Save.d["roster"].is_empty():
-		if typeof(Save.d["tutorial"].get("day1")) != TYPE_DICTIONARY: Save.d["tutorial"]["day1"] = {}
-		if not Save.d["tutorial"]["day1"].has("inventory"):
-			Save.d["tutorial"]["day1"]["inventory"] = true
-			Save.d["gems"] = int(Save.d["gems"]) + 5
-			Save.save_game()
+	if Progress.day1_mark("inventory") != "":
+		Sfx.play("unlock", null, -8.0)
 	var v := _page("inventory", "Inventory", 720)
 	var tabs := UI.hbox(6)
 	for t in ["Items", "Seeds", "Crops", "Furniture", "Kin", "Kindex"]:

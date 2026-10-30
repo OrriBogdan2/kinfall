@@ -39,5 +39,16 @@
 	},
 	"throw_hit": {
 		"root": 0.9
+	},
+	"animals": [
+		"Hedgehog",
+		"Toadstool"
+	],
+	"desc": "A hedgehog whose quills are glowing toadstools. It puffs spore clouds that root foes where they stand.",
+	"egg": {
+		"name": "Spore Egg",
+		"temper": "Curious",
+		"desc": "Soft and earthy, dusted with glowing spores that drift off when it twitches. Something curious is in here.",
+		"play": "Roots foes in place with spore clouds. Notices everything, wanders off sometimes."
 	}
 }

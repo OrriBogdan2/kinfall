@@ -39,5 +39,16 @@
 	},
 	"throw_hit": {
 		"burn": 5
+	},
+	"animals": [
+		"Fox",
+		"Scorpion"
+	],
+	"desc": "A sly fox with a scorpion's curled tail. Its sting drips venom that keeps eating at foes after the hit.",
+	"egg": {
+		"name": "Venom Egg",
+		"temper": "Bold",
+		"desc": "A dark plum shell beaded with green droplets. It hisses when you lean close. Something bold is in here.",
+		"play": "Darts in, stings hard and poisons. Brave, but quick to anger."
 	}
 }

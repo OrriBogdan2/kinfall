@@ -41,6 +41,57 @@ const SHOP_REQ := {
 	"furn:easel": {"extracts": 2},
 }
 
+# ---- your first day: a short list of things to try, each worth a few gems. Shared by the island
+# and the rooms inside the house, so the list stays on screen and counts wherever you do the thing.
+const DAY1 := [["pet", "Pet %s"], ["fetch", "Play fetch with %s"], ["plant", "Plant a seed in your farm"], ["water", "Water it"],
+	["inside", "Go inside your house"], ["inventory", "Open your inventory"], ["portal", "Visit the portal"]]
+const DAY1_KEYS := {"pet": "interact", "fetch": "play", "water": "interact", "inventory": "inventory"}
+
+static func day1_active() -> bool:
+	return not Save.d["tutorial"].get("day1_done", false) and not Save.d["roster"].is_empty()
+
+static func day1_steps() -> Dictionary:
+	if typeof(Save.d["tutorial"].get("day1")) != TYPE_DICTIONARY:
+		Save.d["tutorial"]["day1"] = {}
+	return Save.d["tutorial"]["day1"]
+
+## Ticks off a first-day step. Returns "" if nothing changed, "step" for a new tick (+5 gems) and
+## "all" when that was the last one (+30 more). Saves the game when something changed.
+static func day1_mark(step: String) -> String:
+	if not day1_active():
+		return ""
+	var dd := day1_steps()
+	if dd.has(step):
+		return ""
+	dd[step] = true
+	Save.d["gems"] = int(Save.d["gems"]) + 5
+	var out := "step"
+	if dd.size() >= DAY1.size():
+		Save.d["tutorial"]["day1_done"] = true
+		Save.d["gems"] = int(Save.d["gems"]) + 30
+		out = "all"
+	Save.save_game()
+	return out
+
+## The little checklist card shown in the top right.
+static func day1_box() -> PanelContainer:
+	var dd := day1_steps()
+	var box := UI.card(Color(0.06, 0.07, 0.1, 0.84), 12, 14)
+	box.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	box.offset_left = -300; box.offset_right = -16; box.offset_top = 14
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var v := UI.vbox(5); box.add_child(v)
+	v.add_child(UI.section("Your first day"))
+	var kname: String = Save.active_kin().get("name", "your kin")
+	for st in DAY1:
+		var done: bool = dd.has(st[0])
+		var txt: String = (String(st[1]) % kname) if String(st[1]).contains("%s") else String(st[1])
+		if DAY1_KEYS.has(st[0]): txt += "  (%s)" % Settings.key_cap(DAY1_KEYS[st[0]])
+		v.add_child(UI.label(("✓  " if done else "○  ") + txt, 14, UI.GOOD if done else UI.INK))
+	v.add_child(UI.label("+5 gems each, +30 for all of them", 12, UI.MUTED))
+	box.set_meta("n", dd.size())
+	return box
+
 static func stat(k: String) -> int:
 	match k:
 		"extracts": return int(Save.d.get("extracts", 0))

@@ -39,5 +39,16 @@
 	},
 	"throw_hit": {
 		"kb": 7
+	},
+	"animals": [
+		"Armadillo",
+		"Rhino beetle"
+	],
+	"desc": "An armadillo with a rhino beetle's horn. It rolls up in heavy plates and bends gravity to slam foes down.",
+	"egg": {
+		"name": "Gravity Egg",
+		"temper": "Steady",
+		"desc": "Far heavier than it looks. Loose pebbles roll toward it. Something steady is in here.",
+		"play": "Slow and tough. Pulls foes in and slams them down."
 	}
 }

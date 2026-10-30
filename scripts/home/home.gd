@@ -941,7 +941,7 @@ func _label_for(it: Dictionary) -> String:
 		"kin":
 			var rec: Dictionary = it["k"]["rec"]
 			return "Spend time with %s" % rec["name"]
-		"egg": return "Help it hatch!" if _egg_ready() else "Warm the egg"
+		"egg": return ("Help the %s hatch!" if _egg_ready() else "Warm the %s") % _egg_label()
 		"yard": return "Train your partner"
 		"nook": return "Pair two kin for an egg"
 	return ""
@@ -1074,30 +1074,22 @@ func _close_panel() -> void:
 	if was.ends_with(" evolved") or was.ends_with(" is changing") or was == "Welcome to your island":
 		_play_evolutions.call_deferred()
 
-# ---- your first day: a short list of things to try, each worth a few gems
-const DAY1 := [["pet", "Pet %s"], ["fetch", "Play fetch with %s"], ["plant", "Plant a seed in your farm"], ["water", "Water it"],
-	["inside", "Go inside your house"], ["inventory", "Open your inventory"], ["portal", "Visit the portal"]]
+# ---- your first day: the checklist lives in Progress so the house rooms can show and tick it too
+const DAY1 := Progress.DAY1
 var day1_box: PanelContainer = null
 
 func _day1_active() -> bool:
-	return visit.is_empty() and not Save.d["tutorial"].get("day1_done", false) and not Save.d["roster"].is_empty()
+	return visit.is_empty() and Progress.day1_active()
 
 func _day1(step: String) -> void:
-	if not _day1_active():
+	if not visit.is_empty():
 		return
-	if typeof(Save.d["tutorial"].get("day1")) != TYPE_DICTIONARY:
-		Save.d["tutorial"]["day1"] = {}
-	var dd: Dictionary = Save.d["tutorial"]["day1"]
-	if dd.has(step):
+	var r := Progress.day1_mark(step)
+	if r == "":
 		return
-	dd[step] = true
-	Save.d["gems"] = int(Save.d["gems"]) + 5
 	Sfx.play("unlock", null, -8.0)
-	if dd.size() >= DAY1.size():
-		Save.d["tutorial"]["day1_done"] = true
-		Save.d["gems"] = int(Save.d["gems"]) + 30
+	if r == "all":
 		_toast("First day done! +30 gems")
-	Save.save_game()
 	_refresh_day1()
 	_refresh_top()
 
@@ -1107,22 +1099,8 @@ func _refresh_day1() -> void:
 	day1_box = null
 	if not _day1_active():
 		return
-	var dd: Dictionary = Save.d["tutorial"].get("day1", {}) if typeof(Save.d["tutorial"].get("day1")) == TYPE_DICTIONARY else {}
-	var box := UI.card(Color(0.06, 0.07, 0.1, 0.84), 12, 14)
-	box.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	box.offset_left = -300; box.offset_right = -16; box.offset_top = 14
-	var v := UI.vbox(5); box.add_child(v)
-	v.add_child(UI.section("Your first day"))
-	var kname: String = Save.active_kin().get("name", "your kin")
-	var keys := {"pet": "interact", "fetch": "play", "water": "interact", "inventory": "inventory"}
-	for st in DAY1:
-		var done: bool = dd.has(st[0])
-		var txt: String = (String(st[1]) % kname) if String(st[1]).contains("%s") else String(st[1])
-		if keys.has(st[0]): txt += "  (%s)" % Settings.key_cap(keys[st[0]])
-		v.add_child(UI.label(("✓  " if done else "○  ") + txt, 14, UI.GOOD if done else UI.INK))
-	v.add_child(UI.label("+5 gems each, +30 for all of them", 12, UI.MUTED))
-	root_ui.add_child(box)
-	day1_box = box
+	day1_box = Progress.day1_box()
+	root_ui.add_child(day1_box)
 
 func _open_welcome() -> void:
 	var v := _new_panel("Welcome to your island", 560)
@@ -2717,11 +2695,25 @@ func _refresh_nest() -> void:
 	var egg: Dictionary = Save.d.get("egg", {})
 	if egg.is_empty() or not visit.is_empty():
 		return
-	var a := Save.kin(String(egg.get("a", "")))
-	var col: Color = Data.KIN[a["species"]]["color"] if not a.is_empty() else Color("f2e6cf")
+	var col: Color = Data.KIN[_egg_species()]["color"] if _egg_species() != "" else Color("f2e6cf")
 	nest = Models.nest_egg(col, Color("fff6c0"))
 	nest.position = NEST_AT
 	add_child(nest)
+
+## The species in the nest egg ("" if none). Older saves didn't store it: fall back to parent A.
+func _egg_species() -> String:
+	var egg: Dictionary = Save.d.get("egg", {})
+	if egg.is_empty():
+		return ""
+	var sp := String(egg.get("sp", ""))
+	if sp == "" or not Data.KIN.has(sp):
+		var a := Save.kin(String(egg.get("a", "")))
+		sp = String(a.get("species", ""))
+	return sp if Data.KIN.has(sp) else ""
+
+func _egg_label() -> String:
+	var sp := _egg_species()
+	return Data.egg_name(sp) if sp != "" else "egg"
 
 func _egg_ready() -> bool:
 	var egg: Dictionary = Save.d.get("egg", {})
@@ -3194,7 +3186,7 @@ func _open_nook() -> void:
 	var v := _new_panel("Nesting Nook", 600)
 	v.add_child(UI.label("Pick two kin who are close. They curl up in the nest together and leave an egg; it mixes their personalities and may take after either parent. It hatches after your next expedition, or in about ten minutes at home.", 14, UI.MUTED))
 	if not Save.d.get("egg", {}).is_empty():
-		v.add_child(UI.label("There's already an egg in the nest.", 16, UI.GOLD))
+		v.add_child(UI.label("There's already a %s in the nest." % _egg_label(), 16, UI.GOLD))
 		return
 	nook_pick = nook_pick.filter(func(u): return not Save.kin(String(u)).is_empty() and _can_pair(Save.kin(String(u))) == "")
 	for o in Save.d["roster"]:
@@ -3224,7 +3216,9 @@ func _open_nook() -> void:
 		v.add_child(UI.label("Pick %d more." % (2 - nook_pick.size()), 14, UI.MUTED))
 
 func _make_egg(rec: Dictionary, ok: Dictionary) -> void:
-	Save.d["egg"] = {"a": rec["uid"], "b": ok["uid"], "m": int(Save.d["matches"]) + 1, "t": Time.get_unix_time_from_system() + 600.0}
+	# which parent it takes after is settled now, so the egg can wear that element's name and colour
+	var esp: String = rec["species"] if randf() < 0.5 else ok["species"]
+	Save.d["egg"] = {"a": rec["uid"], "b": ok["uid"], "sp": esp, "m": int(Save.d["matches"]) + 1, "t": Time.get_unix_time_from_system() + 600.0}
 	rec["bred_m"] = int(Save.d["matches"]); ok["bred_m"] = int(Save.d["matches"])
 	Save.remember(rec, "egg", "had an egg with %s" % ok["name"], 2.0)
 	Save.remember(ok, "egg", "had an egg with %s" % rec["name"], 2.0)
@@ -3233,7 +3227,7 @@ func _make_egg(rec: Dictionary, ok: Dictionary) -> void:
 	_refresh_nest()
 	fx.burst(NEST_AT + Vector3(0, 0.6, 0), Color("ff8fb0"), 24, 3.0)
 	Sfx.play("unlock")
-	_toast("An egg appeared in the Nesting Nook")
+	_toast("A %s appeared in the Nesting Nook" % Data.egg_name(esp))
 
 func _open_pair(rec: Dictionary) -> void:
 	var v := _new_panel("Pair %s" % rec["name"], 560)
@@ -3262,7 +3256,7 @@ func _hatch_nest_egg() -> void:
 		_refresh_nest()
 		return
 	var rng := RandomNumberGenerator.new(); rng.randomize()
-	var baby := Care.breed(a, b, rng)
+	var baby := Care.breed(a, b, rng, _egg_species())
 	Save.d["egg"] = {}
 	# it's yours from the moment it hatches; the naming card only renames it
 	baby["name"] = Data.KIN_NAMES.pick_random()
@@ -3274,7 +3268,7 @@ func _hatch_nest_egg() -> void:
 	Save.save_game()
 	building_now = true
 	# the egg hatches in stages: wiggles, cracks, a peek, then the kin pops out
-	var shell_c: Color = Color(Data.KIN[a["species"]]["color"]).lightened(0.15)
+	var shell_c: Color = Color(Data.KIN[baby["species"]]["color"]).lightened(0.15)
 	if is_instance_valid(nest):
 		nest.get_node("Shell").visible = false
 	var eh := EggHatch.new(baby["species"], fx, 0.26, 0.36, 1.0, baby)
@@ -3299,7 +3293,13 @@ func _hatch_nest_egg() -> void:
 		if not ke.is_empty():
 			ke["pos"] = Vector3(land.x, ke["pos"].y, land.z)
 			(ke["node"] as Node3D).position = ke["pos"]
-		_name_baby(baby))
+		# the big reveal (flash, fanfare, turntable and info), then naming
+		var rv := KinReveal.new(baby["species"], baby)
+		add_child(rv)
+		panel_open = "reveal"; building_now = true      # hold the hunter still while you turn it round
+		rv.proceed.connect(func():
+			panel_open = ""; building_now = false
+			_name_baby(baby)))
 
 func _name_baby(baby: Dictionary) -> void:
 	var sp: Dictionary = Data.KIN[baby["species"]]

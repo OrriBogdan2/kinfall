@@ -40,5 +40,16 @@
 	"throw_hit": {
 		"kb": 8
 	},
-	"wing": "#9fe6b4"
+	"wing": "#9fe6b4",
+	"animals": [
+		"Owl",
+		"Luna moth"
+	],
+	"desc": "A moonlit owl with soft moth wings. It flits on moondust and dazzles foes with silver light.",
+	"egg": {
+		"name": "Moon Egg",
+		"temper": "Airy",
+		"desc": "Pale and faintly glowing. At night it floats a hair above the nest. Something airy is in here.",
+		"play": "Quick and slippery. Gusts foes away and flits out of reach."
+	}
 }

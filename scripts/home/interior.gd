@@ -60,11 +60,7 @@ func _ready() -> void:
 	else:
 		decor = (visit.get("decor", []) as Array).duplicate(true) if room == "house" else []
 	_rebuild_decor()
-	if visit.is_empty() and not Save.d["tutorial"].get("day1_done", false):
-		if typeof(Save.d["tutorial"].get("day1")) != TYPE_DICTIONARY: Save.d["tutorial"]["day1"] = {}
-		if not Save.d["tutorial"]["day1"].has("inside"):
-			Save.d["tutorial"]["day1"]["inside"] = true
-			Save.d["gems"] = int(Save.d["gems"]) + 5
+	var went_in := Progress.day1_mark("inside") if visit.is_empty() else ""
 	player = Models.hunter(Data.class_of_save(), Data.TEAM_COLORS[0], Data.weapon_for(Data.class_of_save(), String(Save.d.get("weapon", ""))), "", Save.d.get("look", {}))
 	add_child(player)
 	ppos = Vector3(W * 0.5, 0, D - 0.9)
@@ -72,6 +68,8 @@ func _ready() -> void:
 	cam.snap(Vector3(W * 0.5, 0, D * 0.5 - 0.6))
 	_spawn_kin()
 	_build_ui()
+	if went_in != "":
+		_day1_ticked(went_in)
 	Sfx.play_ambience("")
 	Sfx.play("whoosh", null, -14.0)
 
@@ -269,6 +267,10 @@ func _process(delta: float) -> void:
 		n.position = pos
 		n.get_node("Body").position.y = absf(sin(k["hop"])) * 0.1
 	cam.follow(Vector3(W * 0.5, 0, D * 0.5 - 0.6).lerp(ppos, 0.2), d, false)
+	# steps ticked somewhere else while in here (the inventory) show up straight away
+	if is_instance_valid(day1_box) and int(day1_box.get_meta("n", -1)) != Progress.day1_steps().size():
+		_refresh_day1()
+		_refresh_gems()
 	if decorating:
 		_update_ghost()
 	else:
@@ -315,13 +317,53 @@ func _use(it: Dictionary) -> void:
 	Sfx.play("click")
 	match String(it["kind"]):
 		"door": _leave()
-		"kin":
-			var k: Dictionary = it["k"]
-			Sfx.play("kin_happy", null, -4.0)
-			fx.burst(k["pos"] + Vector3(0, 0.9, 0), Color("ff8fb0"), 10, 1.6)
-			k["t"] = 1.2; k["goal"] = k["pos"]
+		"kin": _pet_kin(it["k"])
 		"journal": _open_journal()
 		"music": _open_music()
+
+## Petting indoors counts just like outside: joy, likes, the memory and the first-day list.
+func _pet_kin(k: Dictionary) -> void:
+	var rec: Dictionary = k["rec"]
+	Sfx.play("kin_happy", null, -4.0)
+	fx.burst(k["pos"] + Vector3(0, 0.9, 0), Color("ff8fb0"), 10, 1.6)
+	k["t"] = 1.2; k["goal"] = k["pos"]
+	if not visit.is_empty():
+		return
+	var loves_pet: bool = rec.get("likes", {}).get("play", "") == "pet"
+	var now_s := Time.get_ticks_msec() / 1000.0
+	if now_s >= float(k.get("pet_ok", 0.0)):
+		k["pet_ok"] = now_s + 20.0
+		Care.change(rec, "joy", 12.0 if loves_pet else 5.0)
+	if loves_pet and Care.discover(rec, "play"): _toast("%s loves scratches" % rec["name"])
+	if int(rec.get("pet_m", -1)) != int(Save.d["matches"]):
+		rec["pet_m"] = int(Save.d["matches"])
+		Save.remember(rec, "petted", "got a long scratch behind the ears", 1.5)
+	Save.save_game()
+	var r := Progress.day1_mark("pet")
+	if r != "":
+		_day1_ticked(r)
+
+func _day1_ticked(r: String) -> void:
+	Sfx.play("unlock", null, -8.0)
+	if r == "all":
+		_toast("First day done! +30 gems")
+	_refresh_day1()
+	_refresh_gems()
+
+func _refresh_gems() -> void:
+	var g := root_ui.find_child("Gems", true, false) as Label
+	if g: g.text = "%d gems" % int(Save.d["gems"])
+
+## The first-day checklist stays on screen indoors too.
+var day1_box: PanelContainer = null
+func _refresh_day1() -> void:
+	if is_instance_valid(day1_box):
+		day1_box.queue_free()
+	day1_box = null
+	if not visit.is_empty() or not Progress.day1_active():
+		return
+	day1_box = Progress.day1_box()
+	root_ui.add_child(day1_box)
 
 func _leave() -> void:
 	if decorating: _toggle_decorate()
@@ -515,6 +557,7 @@ func _build_ui() -> void:
 	panel_host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	panel_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root_ui.add_child(panel_host)
+	_refresh_day1()
 
 func _deco_button_text() -> void:
 	if deco_btn:

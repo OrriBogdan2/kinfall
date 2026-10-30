@@ -186,6 +186,20 @@ func load_kin_content() -> void:
 		sp["voice"] = String(Content._load("kin", id).get("voice", base.get("voice", "friendly")))
 		KIN[id] = sp
 
+## What a species' egg is called ("Venom Egg"), from content/kin/<id>.json "egg".
+func egg_name(sp_id: String) -> String:
+	var sp: Dictionary = KIN.get(sp_id, {})
+	var e: Dictionary = sp.get("egg", {})
+	if e.has("name"):
+		return String(e["name"])
+	return "%s Egg" % String(sp.get("type", "Kin")).capitalize()
+
+func egg_info(sp_id: String) -> Dictionary:
+	var sp: Dictionary = KIN.get(sp_id, {})
+	var e: Dictionary = sp.get("egg", {}).duplicate()
+	e["name"] = egg_name(sp_id)
+	return e
+
 ## Old single skills, kept for older saves and tips. Kin now use content/abilities.
 const KIN_SKILLS := {
 	"fireball": {"name": "Fireball", "cd": 6.0, "desc": "A fireball that explodes and sets foes burning."},
