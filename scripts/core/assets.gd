@@ -287,7 +287,11 @@ static func material(pack: String, cfg := {}) -> ShaderMaterial:
 	elif cfg.get("paint") != null:
 		m.set_shader_parameter("recolor", 1.0)
 		m.set_shader_parameter("recolor_to", cfg["paint"])
-	if cfg.get("outline", true):
+	var ol = cfg.get("outline", true)
+	if ol is String and ol == "normal":
+		# rigged characters keep the importer's tangents, so their shell grows along the normals
+		m.next_pass = Models.toon(Color.WHITE).next_pass
+	elif ol:
 		m.next_pass = outline_mat()
 	if not cfg.get("cache", true):
 		return m
@@ -380,14 +384,14 @@ static func mob(kind: String, base: Color) -> Node3D:
 	var rig := Node3D.new(); rig.name = "Rig"; rig.rotation.y = PI; body.add_child(rig)
 	rig.add_child(model)
 	var pal := "skeletons"
-	var m_bone := material(pal, {"tint": Color.WHITE, "rim": 0.35, "cache": false, "bright": 1.05})
+	var m_bone := material(pal, {"tint": Color.WHITE, "rim": 0.35, "cache": false, "bright": 1.05, "outline": "normal"})
 	m_bone.set_meta("pack_part", "bone")
 	var cloth_band := {"hue": 0.95, "width": 0.07, "min_sat": 0.45, "ref": 0.5}
 	if kind == "skitter":
 		cloth_band = {"hue": 0.05, "width": 0.04, "min_sat": 0.42, "ref": 0.7}
 	if kind == "spitter":
 		cloth_band["min_sat"] = 0.5
-	var m_cloth := material(pal, {"band": cloth_band, "paint": base, "rim": 0.35, "cache": false})
+	var m_cloth := material(pal, {"band": cloth_band, "paint": base, "rim": 0.35, "cache": false, "outline": "normal"})
 	m_cloth.set_meta("pack_part", "cloth")
 	var m_eye := Models.toon(Color("ffe25a"), false, 1.4)
 	var mats: Array = [m_bone, m_cloth, m_eye]
