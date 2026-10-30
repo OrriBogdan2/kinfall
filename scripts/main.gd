@@ -559,6 +559,15 @@ func _life_check() -> void:
 	m.mobs.clear()
 	var A: Hunter = mine[0]; var B: Hunter = mine[1]; var C: Hunter = mine[2]
 	var home: Vector3 = A.pos
+	# the test steps up to 8m in every direction, so start from open ground (spawns can be small landings)
+	for k in 2000:
+		var g := m.world.random_ground()
+		var roomy := true
+		for dx in range(-10, 11, 2):
+			for dz in range(-6, 7, 2):
+				if m.world.is_void(g.x + dx, g.z + dz) or absf(m.world.ground_at(g.x + dx, g.z + dz) - m.world.ground_at(g.x, g.z)) > 0.3: roomy = false
+		if roomy:
+			home = g; break
 	var far := home + Vector3(0, 0, 0)
 	var spot := func(h: Hunter, at: Vector3): h.teleport(at); h.vel = Vector3.ZERO
 	var run := func(sec: float):
@@ -568,7 +577,11 @@ func _life_check() -> void:
 	# park everyone else far apart
 	for h in m.hunters:
 		if h.team != 0 and h != foe: spot.call(h, m.world.random_ground())
-	spot.call(foe, m.world.random_ground())
+	var away := m.world.random_ground()
+	for k in 200:
+		if away.distance_to(home) > 40.0: break
+		away = m.world.random_ground()
+	spot.call(foe, away)
 	# 1. ally revive
 	spot.call(B, home + Vector3(2, 0, 0)); spot.call(C, home + Vector3(2, 0, 0.5)); spot.call(A, home)
 	m.knock(B, foe, {})
