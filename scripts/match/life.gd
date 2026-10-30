@@ -106,6 +106,7 @@ static func tick_wisps(m: Match, dt: float) -> void:
 			o.revive += dt / R["revive_time"] * (1.0 + R["extra_reviver"] * (allies - 1))
 			if o.revive >= 1.0:
 				trace(m, "wisp revive %s" % o.pname)
+				for rv in revivers: (rv as Hunter).revives += 1
 				m.revive_hunter(o, null)
 				continue
 		elif not kin_on:

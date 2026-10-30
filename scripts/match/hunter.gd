@@ -1790,8 +1790,45 @@ var gear: Array = [{}, {}]     # two slots of found gear: {id, rar}
 var gear_cd: Array = [0.0, 0.0]
 
 var base_armor := 50.0
+## Armor evolves through a run, like Supervive's: damage you deal to rival hunters fills it (monsters
+## count a third), and a knock adds a big chunk. Each tier adds plates on top of the base, and the new
+## plates arrive full. Tier colour shows on everyone's armor bar, so you can read how fed a rival is.
+const ARMOR_TIERS := [["Common", Color("dfe9f7"), 0.0], ["Uncommon", Color("7fe08a"), 220.0], ["Rare", Color("5fb6ff"), 560.0],
+	["Epic", Color("c27cff"), 1000.0], ["Legendary", Color("ffbf3a"), 1600.0]]
+const ARMOR_TIER_BONUS := 0.15     # of base armor per tier above Common
+const ARMOR_KNOCK_XP := 140.0
+var armor_xp := 0.0
+var armor_tier := 0
+var dmg_taken := 0.0
+var downs := 0                # times knocked this match
+var deaths := 0
+var revives := 0              # teammates you picked up
+
+## Adds armor progress; returns the new tier if it went up, else -1.
+func armor_gain(xp: float) -> int:
+	armor_xp += xp
+	var up := -1
+	while armor_tier < ARMOR_TIERS.size() - 1 and armor_xp >= float(ARMOR_TIERS[armor_tier + 1][2]):
+		armor_tier += 1
+		up = armor_tier
+	if up >= 0:
+		var old := max_armor
+		refresh_gear()
+		armor = minf(max_armor, armor + maxf(0.0, max_armor - old))
+	return up
+
+## How far into the current tier (0..1), for the HUD.
+func armor_frac() -> float:
+	if armor_tier >= ARMOR_TIERS.size() - 1:
+		return 1.0
+	var a := float(ARMOR_TIERS[armor_tier][2]); var b := float(ARMOR_TIERS[armor_tier + 1][2])
+	return clampf((armor_xp - a) / (b - a), 0.0, 1.0)
+
+func armor_col() -> Color:
+	return ARMOR_TIERS[armor_tier][1]
+
 func refresh_gear() -> void:
-	max_armor = base_armor + gear_stat("armor")
+	max_armor = round(base_armor * (1.0 + ARMOR_TIER_BONUS * float(armor_tier))) + gear_stat("armor")
 	armor = minf(armor, max_armor)
 
 func gear_stat(k: String) -> float:

@@ -1266,10 +1266,17 @@ func on_damage(target: Ent, by: Ent, d: float, o: Dictionary) -> void:
 	var credit: Ent = by
 	if by is Kin and by.owner_h:
 		credit = by.owner_h
+	if target is Hunter and target != credit:
+		(target as Hunter).dmg_taken += d
 	if credit is Hunter and target != credit:
 		credit.dmg_done += d
 		if not credit.remote and target.team != credit.team and src != "burn":
 			credit.ult = minf(1.0, credit.ult + d / 320.0 * (1.3 if credit.perk_n("overcharge") > 0 else 1.0))
+		if not credit.remote and target.team != credit.team and not (target is Hunter and (target as Hunter).downed):
+			var lv: int = credit.armor_gain(d * (1.0 if target is Hunter else 0.33))
+			if lv >= 0:
+				_armor_up(credit)
+				if "--simtest" in OS.get_cmdline_user_args(): print("ARMOR %s -> %s" % [credit.pname, Hunter.ARMOR_TIERS[lv][0]])
 	var mine := credit == player or (target == player)
 	var armor_hit: bool = o.get("armor", false) or (target is Hunter and (target as Hunter).armor > 0.5)
 	var col := Color("fff4d6")
@@ -1303,12 +1310,13 @@ func cancel_abilities(h: Hunter) -> void:
 	h.mel_hold = 0.0
 	h.strike_at_end = {}
 
-const KNOCK_HEAL := 34.5     # 250 of a medium's 1,050 in Supervive's numbers
+const KNOCK_HEAL := 0.10     # of the knocker's max health, only for whoever landed the knock
 func knock(h: Hunter, by: Ent, _o: Dictionary) -> void:
 	if h.downed or h.out:
 		return
 	cancel_abilities(h)
 	h.downed = true
+	h.downs += 1
 	h.down_hp = Data.MATCH["down_hp"]
 	h.hp = 0.0
 	h.revive = 0.0
@@ -1329,7 +1337,10 @@ func knock(h: Hunter, by: Ent, _o: Dictionary) -> void:
 		credit.knocks += 1
 		# the Supervive 1.0 knock reward: a small heal and a dash back
 		if not credit.downed and credit.team != h.team:
-			credit.hp = minf(credit.max_hp, credit.hp + KNOCK_HEAL)
+			var healed := minf(credit.max_hp - credit.hp, credit.max_hp * KNOCK_HEAL)
+			credit.hp += healed
+			if healed > 0.5: fx.word(credit.pos + Vector3(0, 2.1, 0), "+%d" % int(round(healed)), Color("7fe08a"), false)
+			if credit.armor_gain(Hunter.ARMOR_KNOCK_XP) >= 0: _armor_up(credit)
 			credit.dashes = minf(credit.max_dashes(), floorf(credit.dashes) + 1.0)
 			credit.ex_cd = 0.0 if credit.max_dashes() <= 1.0 else credit.ex_cd
 		add_feed("%s knocked %s" % [credit.pname, h.pname])
@@ -1351,6 +1362,15 @@ func knock(h: Hunter, by: Ent, _o: Dictionary) -> void:
 
 func freeze_frame(t: float) -> void:
 	hitstop = maxf(hitstop, t)
+
+## Armor went up a tier: a coloured ring for everyone to see, and a callout for you.
+func _armor_up(h: Hunter) -> void:
+	var col := h.armor_col()
+	fx.ring(h.pos, 2.4, Color(col, 0.9), 0.45)
+	fx.burst(h.pos + Vector3(0, 1.0, 0), col, 14, 3.5, 0.5)
+	if h == player:
+		sfx("revive", null, -6.0)
+		if hud: hud.toast("Armor upgraded  ·  %s" % String(Hunter.ARMOR_TIERS[h.armor_tier][0]), col)
 
 func _reward_moment(at: Vector3) -> void:
 	_slow(0.22, 0.35)
@@ -1420,11 +1440,12 @@ func revive_hunter(h: Hunter, by: Ent) -> void:
 	fx.ring(h.pos, 1.8, Color("9ee2a0"), 0.4)
 	add_feed("%s is back up" % h.pname)
 	if by is Hunter and by != h:
-		by.dmg_done += 0.0
+		(by as Hunter).revives += 1
 
 func eliminate(h: Hunter, by: Ent, why: String, final := false) -> void:
 	if h.out:
 		return
+	h.deaths += 1
 	if h.lives > 1 and not h.remote and not over and not final:
 		_lose_life(h, by, why)
 		return
@@ -3896,6 +3917,11 @@ func _finish() -> void:
 		r["kills"] = player.kills
 		r["knocks"] = player.knocks
 		r["damage"] = int(player.dmg_done)
+		r["taken"] = int(player.dmg_taken)
+		r["downs"] = player.downs
+		r["deaths"] = player.deaths
+		r["revives"] = player.revives
+		r["armor_tier"] = player.armor_tier
 		r["tonics"] = maxi(0, player.tonics - player.free_tonics)
 		r["stats"] = player.stats.duplicate()
 		# what each kin you brought did, for its memories and growth

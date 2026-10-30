@@ -701,11 +701,11 @@ func _vitals(sp: Vector2, w: float, h: Hunter, hp_col: Color, trail: float, numb
 	var x0 := sp.x - w * 0.5
 	if h.max_armor > 0.5:
 		var ar := Rect2(Vector2(x0, sp.y - 9), Vector2(w, 4))
-		_seg_bar(ar, h.armor, h.max_armor, 0.0, ARMOR_COL, 100.0)
+		_seg_bar(ar, h.armor, h.max_armor, 0.0, h.armor_col(), 100.0)
 		var sc := Vector2(x0 - 9, sp.y - 7)
 		var shp := PackedVector2Array([sc + Vector2(-4, -4), sc + Vector2(4, -4), sc + Vector2(4, 0), sc + Vector2(0, 4.5), sc + Vector2(-4, 0)])
 		c.draw_colored_polygon(shp, Color(0.03, 0.03, 0.05, 0.85))
-		c.draw_polyline(shp + PackedVector2Array([shp[0]]), Color(ARMOR_COL, 1.0 if h.armor > 0.5 else 0.35), 1.5)
+		c.draw_polyline(shp + PackedVector2Array([shp[0]]), Color(h.armor_col(), 1.0 if h.armor > 0.5 else 0.35), 1.5)
 	var hr := Rect2(Vector2(x0, sp.y), Vector2(w, 9))
 	_seg_bar(hr, h.hp, h.max_hp, trail, hp_col, 25.0)
 	if h.shield > 0.0:
@@ -835,7 +835,12 @@ func _draw_vitals(sz: Vector2, p: Hunter) -> void:
 	var af := clampf(p.armor / maxf(1.0, p.max_armor), 0.0, 1.0)
 	armor_lerp = move_toward(armor_lerp, af, get_process_delta_time() * (0.5 if armor_lerp > af else 4.0))
 	hover_spots.append([Rect2(Vector2(x0 - 56, y0 - 10), Vector2(w + 110, 48)), "vitals"])
-	_seg_bar(Rect2(Vector2(x0, y0), Vector2(w, 8)), p.armor, p.max_armor, armor_lerp, ARMOR_COL, 100.0)
+	_seg_bar(Rect2(Vector2(x0, y0), Vector2(w, 8)), p.armor, p.max_armor, armor_lerp, p.armor_col(), 100.0)
+	# progress to the next armor tier: a hairline over the armor bar in the next tier's colour
+	if p.armor_tier < Hunter.ARMOR_TIERS.size() - 1:
+		var nxt: Color = Hunter.ARMOR_TIERS[p.armor_tier + 1][1]
+		c.draw_rect(Rect2(Vector2(x0, y0 - 4), Vector2(w, 2)), Color(0, 0, 0, 0.35))
+		c.draw_rect(Rect2(Vector2(x0, y0 - 4), Vector2(w * p.armor_frac(), 2)), Color(nxt, 0.9))
 	var low := frac < 0.35
 	var hcol := HP_LOW.lerp(Color.WHITE, 0.25 * (0.5 + 0.5 * sin(m.time * 9.0))) if low else HP_COL
 	_seg_bar(Rect2(Vector2(x0, y0 + 14), Vector2(w, 16)), p.hp, p.max_hp, bar_lerp, hcol, 25.0)
@@ -844,7 +849,7 @@ func _draw_vitals(sz: Vector2, p: Hunter) -> void:
 	var hp_txt := str(int(ceil(p.hp)))
 	_text(Vector2(x0 + w + 10, y0 + 30), hp_txt, 24, INK if not low else HP_LOW, big)
 	if p.armor > 0.5:
-		_text(Vector2(x0 + w + 10, y0 + 8), str(int(ceil(p.armor))), 13, ARMOR_COL, big)
+		_text(Vector2(x0 + w + 10, y0 + 8), str(int(ceil(p.armor))), 13, p.armor_col(), big)
 	# hidden in the grass
 	var grass := m.world.in_bush(p.pos.x, p.pos.z)
 	if grass or p.crouch:
@@ -1167,7 +1172,7 @@ func _draw_squad(sz: Vector2, p: Hunter) -> void:
 		match lbl:
 			"ALIVE":
 				if h.max_armor > 0.5:
-					_seg_bar(Rect2(Vector2(tx, r.position.y + 27), Vector2(tw, 4)), h.armor, h.max_armor, 0.0, ARMOR_COL, 25.0)
+					_seg_bar(Rect2(Vector2(tx, r.position.y + 27), Vector2(tw, 4)), h.armor, h.max_armor, 0.0, h.armor_col(), 25.0)
 				var frac := clampf(h.hp / h.max_hp, 0.0, 1.0)
 				_seg_bar(Rect2(Vector2(tx, r.position.y + 34), Vector2(tw, 8)), h.hp, h.max_hp, _chip_of(h, frac), HP_COL if frac > 0.35 else HP_LOW, 25.0)
 				if _has_status(h):
@@ -1348,7 +1353,7 @@ func _nameplate(sp: Vector2, h: Hunter) -> void:
 			_ctext(sp + Vector2(0, 16), "DOWN", 11, Color("ffb36a"), big)
 		return
 	if h.max_armor > 0.5:
-		_seg_bar(Rect2(Vector2(x0, sp.y - 4), Vector2(w, 3)), h.armor, h.max_armor, 0.0, ARMOR_COL, 25.0)
+		_seg_bar(Rect2(Vector2(x0, sp.y - 4), Vector2(w, 3)), h.armor, h.max_armor, 0.0, h.armor_col(), 25.0)
 	var frac := clampf(h.hp / h.max_hp, 0.0, 1.0)
 	_seg_bar(Rect2(Vector2(x0, sp.y + 2), Vector2(w, 7)), h.hp, h.max_hp, _chip_of(h, frac), col if frac > 0.35 else col.lerp(Color.WHITE, 0.2 + 0.2 * sin(m.time * 9.0)), 25.0)
 	if h.shield > 0.0:

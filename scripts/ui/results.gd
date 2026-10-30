@@ -55,12 +55,20 @@ func show_result(r: Dictionary) -> void:
 	rule.color = Color(UI.TEAL if won else UI.BAD, 0.55)
 	v.add_child(rule)
 	# three stat tiles that count up
-	var stats := UI.hbox(10)
 	var secs := int(r.get("time", 0))
-	var tiles := [["knock", "Knocks", float(r.get("knocks", 0)), ""], ["burst", "Damage", float(r.get("damage", 0)), ""], ["clock", "Time", float(secs), "time"]]
-	for i in tiles.size():
-		stats.add_child(_stat_tile(tiles[i][0], tiles[i][1], tiles[i][2], tiles[i][3], 0.35 + i * 0.12))
-	v.add_child(stats)
+	var rows := [
+		[["knock", "Knocks", float(r.get("knocks", 0)), ""], ["burst", "Damage dealt", float(r.get("damage", 0)), ""],
+			["burst", "Damage taken", float(r.get("taken", 0)), ""], ["clock", "Time", float(secs), "time"]],
+		[["knock", "Kills", float(r.get("kills", 0)), ""], ["knock", "Times downed", float(r.get("downs", 0)), ""],
+			["heart", "Revives", float(r.get("revives", 0)), ""], ["gem", "Armor reached", float(r.get("armor_tier", 0)), "armor"]],
+	]
+	var n := 0
+	for row in rows:
+		var stats := UI.hbox(10)
+		for t in row:
+			stats.add_child(_stat_tile(t[0], t[1], t[2], t[3], 0.35 + n * 0.08))
+			n += 1
+		v.add_child(stats)
 	if won:
 		var chips: Array = []
 		if int(s["gems"]) > 0:
@@ -129,8 +137,14 @@ func _stat_tile(icon: String, what: String, value: float, fmt: String, delay: fl
 	var h := UI.hbox(10); c.add_child(h)
 	h.add_child(Icons.Glyph.new(icon, Color(1, 0.86, 0.6, 0.9), 34.0))
 	var col := UI.vbox(0); h.add_child(col)
-	var num := UI.title("0" if fmt == "" else "0:00", 28)
+	var num := UI.title("0" if fmt == "" else "0:00", 24)
 	col.add_child(num)
+	if fmt == "armor":
+		# the armor tier you finished on, in its own colour
+		var tier: Array = Hunter.ARMOR_TIERS[clampi(int(value), 0, Hunter.ARMOR_TIERS.size() - 1)]
+		num.text = String(tier[0]); num.add_theme_color_override("font_color", tier[1])
+		col.add_child(UI.label(what.to_upper(), 11, UI.MUTED, UI.caps))
+		return c
 	var lab := UI.label(what.to_upper(), 11, UI.MUTED, UI.caps); lab.autowrap_mode = TextServer.AUTOWRAP_OFF
 	col.add_child(lab)
 	var show := func(x: float) -> void:
