@@ -131,7 +131,9 @@
 					120,
 					1.6
 				]
-			]
+			],
+			"biome": "gloom",
+			"danger": 2
 		},
 		{
 			"id": "keep",
@@ -205,7 +207,9 @@
 					70,
 					1.6
 				]
-			]
+			],
+			"biome": "frost",
+			"danger": 1
 		},
 		{
 			"id": "quarry",
@@ -305,7 +309,9 @@
 					122,
 					1.7
 				]
-			]
+			],
+			"biome": "ember",
+			"danger": 1
 		},
 		{
 			"id": "shrine",
@@ -354,7 +360,9 @@
 					96,
 					1.4
 				]
-			]
+			],
+			"biome": "storm",
+			"danger": 1
 		},
 		{
 			"id": "nest",
@@ -432,7 +440,9 @@
 					147,
 					1.4
 				]
-			]
+			],
+			"biome": "bloom",
+			"danger": 1
 		},
 		{
 			"id": "skyport",
@@ -468,7 +478,9 @@
 					26,
 					1.5
 				]
-			]
+			],
+			"biome": "frost",
+			"danger": 0
 		},
 		{
 			"id": "lantern",
@@ -537,7 +549,9 @@
 					50,
 					1.6
 				]
-			]
+			],
+			"biome": "gloom",
+			"danger": 0
 		},
 		{
 			"id": "gull",
@@ -601,7 +615,9 @@
 						64
 					]
 				}
-			]
+			],
+			"biome": "frost",
+			"danger": 0
 		},
 		{
 			"id": "fern",
@@ -642,7 +658,9 @@
 					112,
 					1.6
 				]
-			]
+			],
+			"biome": "storm",
+			"danger": 0
 		},
 		{
 			"id": "still",
@@ -698,7 +716,9 @@
 					160,
 					1.4
 				]
-			]
+			],
+			"biome": "bloom",
+			"danger": 0
 		},
 		{
 			"id": "dawn",
@@ -734,7 +754,9 @@
 					202,
 					1.5
 				]
-			]
+			],
+			"biome": "meadow",
+			"danger": 0
 		},
 		{
 			"id": "moss",
@@ -803,7 +825,9 @@
 					170,
 					1.6
 				]
-			]
+			],
+			"biome": "meadow",
+			"danger": 0
 		},
 		{
 			"id": "iron",
@@ -850,7 +874,9 @@
 						118
 					]
 				}
-			]
+			],
+			"biome": "ember",
+			"danger": 0
 		}
 	],
 	"bridges": [

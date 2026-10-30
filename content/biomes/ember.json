@@ -1,0 +1,70 @@
+{
+	"name": "Emberfall",
+	"blurb": "Lava vents erupt on a warning glow; molten monsters leave burning ground.",
+	"colors": {
+		"top": "b4673f",
+		"top2": "8f4d30",
+		"side": "6a3426",
+		"deep": "2a1414",
+		"leaf": "ff8a3a"
+	},
+	"tint": "ffb070",
+	"particles": "embers",
+	"danger_mult": 1.0,
+	"mutation_mult": 1.0,
+	"mobs": [
+		{
+			"kind": "skitter",
+			"name": "Cinder Skitter",
+			"color": "ff7a3a",
+			"w": 3
+		},
+		{
+			"kind": "spitter",
+			"name": "Ash Spitter",
+			"color": "ff9a5a",
+			"w": 2
+		},
+		{
+			"kind": "bomber",
+			"name": "Ember Puffbomb",
+			"color": "ffb03a",
+			"w": 3
+		},
+		{
+			"kind": "brute",
+			"name": "Magma Brute",
+			"color": "c0482a",
+			"w": 1,
+			"hp": 1.25
+		}
+	],
+	"mutations": {
+		"molten": 5,
+		"armored": 1
+	},
+	"hazards": [
+		{
+			"kind": "lava_vent",
+			"per_island": 2
+		}
+	],
+	"loot": {
+		"weapons": {
+			"shotgun": 4,
+			"greatsword": 3,
+			"minigun": 2,
+			"rifle": 1,
+			"smg": 1,
+			"sniper": 1,
+			"burst_rifle": 1,
+			"longsword": 1,
+			"twin_blades": 1
+		},
+		"rarity_bonus": 0,
+		"gear": [
+			"ember"
+		]
+	},
+	"id": "ember"
+}

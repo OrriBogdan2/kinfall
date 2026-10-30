@@ -79,7 +79,7 @@ func _build_minimap() -> void:
 			var i := w.idx(x, z)
 			var col := Color(0, 0, 0, 0)
 			if w.kind[i] == World.T_GROUND:
-				col = Color(w.biome["top"]).lightened(0.12 + 0.08 * w.level[i])
+				col = Color(w._bio(i)["top"]).lightened(0.12 + 0.08 * w.level[i])
 				# authored maps: grabbable rims pale, sheer cliffs dark, so the map shows where you can climb
 				if w.sheer.has(i): col = Color("6a6488")
 				elif w.lip.has(i): col = Color("e6d6ae")

@@ -1,0 +1,70 @@
+{
+	"name": "Stormcrest",
+	"blurb": "Lightning rods strike marked circles; charged monsters arc their hits to a second target.",
+	"colors": {
+		"top": "a2a6cc",
+		"top2": "8288b4",
+		"side": "5a5e80",
+		"deep": "23243a",
+		"leaf": "f2e46a"
+	},
+	"tint": "fff6a0",
+	"particles": "sparks",
+	"danger_mult": 1.0,
+	"mutation_mult": 1.0,
+	"mobs": [
+		{
+			"kind": "skitter",
+			"name": "Spark Skitter",
+			"color": "f2e46a",
+			"w": 4,
+			"speed": 1.2
+		},
+		{
+			"kind": "sentinel",
+			"name": "Volt Sentinel",
+			"color": "8ae8ff",
+			"w": 3
+		},
+		{
+			"kind": "bomber",
+			"name": "Static Puffbomb",
+			"color": "c8f0ff",
+			"w": 2
+		},
+		{
+			"kind": "brute",
+			"name": "Thunder Brute",
+			"color": "7a7ab8",
+			"w": 1
+		}
+	],
+	"mutations": {
+		"charged": 5,
+		"swift": 2
+	},
+	"hazards": [
+		{
+			"kind": "lightning_rod",
+			"per_island": 2
+		}
+	],
+	"loot": {
+		"weapons": {
+			"smg": 3,
+			"minigun": 3,
+			"burst_rifle": 2,
+			"rifle": 2,
+			"twin_blades": 1,
+			"sniper": 1,
+			"shotgun": 1,
+			"longsword": 1,
+			"greatsword": 1
+		},
+		"rarity_bonus": 0,
+		"gear": [
+			"storm"
+		]
+	},
+	"id": "storm"
+}

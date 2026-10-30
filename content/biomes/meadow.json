@@ -1,0 +1,61 @@
+{
+	"name": "Greenreach",
+	"blurb": "Calm meadows. Few monsters, rarely anything nasty.",
+	"colors": {
+		"top": "a2c85c",
+		"top2": "84a84a",
+		"side": "8b6d52",
+		"deep": "2e3a2a",
+		"leaf": "ffd27a"
+	},
+	"tint": "c8f0a0",
+	"particles": "pollen",
+	"danger_mult": 0.6,
+	"mutation_mult": 0.3,
+	"mobs": [
+		{
+			"kind": "skitter",
+			"name": "Meadow Skitter",
+			"color": "8a6ec0",
+			"w": 4
+		},
+		{
+			"kind": "spitter",
+			"name": "Spitter",
+			"color": "4f9e6e",
+			"w": 2
+		},
+		{
+			"kind": "bomber",
+			"name": "Puffbomb",
+			"color": "e07a3a",
+			"w": 2
+		},
+		{
+			"kind": "brute",
+			"name": "Brute",
+			"color": "8a5a48",
+			"w": 1
+		}
+	],
+	"mutations": {
+		"swift": 1,
+		"armored": 1
+	},
+	"hazards": [],
+	"loot": {
+		"weapons": {
+			"rifle": 3,
+			"smg": 2,
+			"shotgun": 2,
+			"longsword": 2,
+			"twin_blades": 1,
+			"sniper": 1,
+			"burst_rifle": 1,
+			"minigun": 1,
+			"greatsword": 1
+		},
+		"rarity_bonus": 0
+	},
+	"id": "meadow"
+}

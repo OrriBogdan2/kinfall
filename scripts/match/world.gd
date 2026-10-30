@@ -1188,8 +1188,13 @@ func _assign_regions() -> void:
 			reg = int(a / TAU * REGIONS.size()) % REGIONS.size()
 		var b: Dictionary = biome.duplicate()
 		var r: Dictionary = REGIONS[reg]
+		if islands[ii].has("biome_colors"):
+			# an authored biome region: its own palette, with a touch of the tier's mood
+			var bc: Dictionary = islands[ii]["biome_colors"]
+			r = {}
+			for k in bc: r[k] = Color(String(bc[k]))
 		for k in r:
-			b[k] = Color(r[k]).lerp(Color(biome.get(k, r[k])), 0.22)
+			b[k] = Color(r[k]).lerp(Color(biome.get(k, r[k])), 0.12 if islands[ii].has("biome_colors") else 0.22)
 		islands[ii]["region"] = reg
 		_isl_bio.append(b)
 
@@ -1479,6 +1484,21 @@ static func load_layout(id: String) -> Dictionary:
 static func layout_for_tier(_tier: int) -> String:
 	return "skyreach"
 
+## A biome's data (content/biomes/<id>.json), cached.
+static var _biomes := {}
+static func load_biome(id: String) -> Dictionary:
+	if _biomes.has(id):
+		return _biomes[id]
+	var path := "res://content/biomes/%s.json" % id
+	var d = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
+	_biomes[id] = d if typeof(d) == TYPE_DICTIONARY else {}
+	return _biomes[id]
+
+## Which biome a point is in ("" off the map or on a generated map).
+func biome_at(x: float, z: float) -> String:
+	var ii := island_of(x, z)
+	return String(islands[ii].get("biome", "")) if ii >= 0 and ii < islands.size() else ""
+
 func is_sheer(x: int, z: int) -> bool:
 	return inb(x, z) and sheer.has(idx(x, z))
 
@@ -1578,7 +1598,12 @@ func generate_authored(L: Dictionary, seed_val: int) -> void:
 		var poi := _v2(D.get("poi", [cen.x, cen.y]))
 		islands.append({"c": cen, "r": sqrt(cells.size() / PI), "base": 0, "cells": cells, "role": String(D.get("role", "grove")),
 			"form": "authored", "fdir": Vector2.RIGHT, "name": String(D.get("name", "")), "id": String(D["id"]),
-			"region_fixed": int(D.get("region", 0)), "poi_at": poi, "drop": bool(D.get("drop", false)), "sheer_arcs": D.get("sheer", [])})
+			"region_fixed": int(D.get("region", 0)), "poi_at": poi, "drop": bool(D.get("drop", false)), "sheer_arcs": D.get("sheer", []),
+			"biome": String(D.get("biome", "")), "danger": int(D.get("danger", 0))})
+		if String(D.get("biome", "")) != "":
+			var bj := load_biome(String(D["biome"]))
+			if bj.has("colors"):
+				islands[ii]["biome_colors"] = bj["colors"]
 		if String(D.get("name", "")) != "":
 			labels.append({"name": String(D["name"]), "pos": Vector3(poi.x, 0, poi.y), "kind": "poi", "role": String(D.get("role", ""))})
 	# land bridges: narrow, sheer-sided necks of ground between two islands. The whole bridge

@@ -128,6 +128,13 @@ func start(o: Dictionary) -> void:
 	world.build_meshes()
 	fx = Fx.new(); fx.name = "Fx"; add_child(fx)
 	fields = Fields.new(self)
+	if world.layout_id != "":
+		biomes = BiomeRun.new(self)
+		if biomes.active():
+			biomes.decorate()
+			biomes.place_hazards()
+		else:
+			biomes.free_up(); biomes = null
 	# the combat systems listen to hits and statuses: bond meter and combos
 	_bond_cb = func(a, t, amt, tags): Bond.on_hit(a, t, amt, tags)
 	_combo_cb = func(t, st, by, dur): Combos.record(t, st, by, dur)
@@ -429,6 +436,7 @@ const SHIP_Y := 40.0
 const SHIP_SPEED := 11.0
 var big := false
 var ship := {}
+var biomes: BiomeRun = null     # biome regions on an authored map (spawn tables, rarity, mutations, traps)
 
 func _setup_ship() -> void:
 	var ang := rng.randf() * TAU
@@ -545,13 +553,17 @@ func _spawn_mobs() -> void:
 					comp = ["sentinel", "skitter", "skitter"]
 				else:
 					comp = ["spitter", "skitter", "bomber"]
+		# a camp in a biome region spawns from that region's table instead
+		var bcomp: Array = biomes.camp_comp(c) if biomes else []
+		if not bcomp.is_empty(): comp = bcomp
 		for kk in comp:
 			var q := p
 			for _t in 20:
 				var cand := p + Vector3(rng.randf_range(-1.8, 1.8), 0, rng.randf_range(-1.8, 1.8))
 				if not world.is_void(cand.x, cand.z) and not world.is_block(cand.x, cand.z):
 					q = Vector3(cand.x, world.ground_at(cand.x, cand.z), cand.z); break
-			spawn_mob(kk, q)
+			var smb := spawn_mob(kk, q)
+			if biomes: biomes.dress(smb)
 
 func spawn_mob(kk: String, at: Vector3) -> Mob:
 	at = _clear_spot(at)
@@ -1067,6 +1079,10 @@ func _mouse_aim() -> Vector3:
 		aim_y = g
 	return Vector3(p.x, base_y, p.z)
 
+## How much grip the ground has here (ice patches in a frost region make it slippery).
+func ground_grip(p: Vector3) -> float:
+	return biomes.grip(p) if biomes else 1.0
+
 func foes_of(team: int) -> Array:
 	var out: Array = []
 	for h in hunters:
@@ -1454,6 +1470,7 @@ func on_mob_dead(mb: Mob, by: Ent, _o: Dictionary) -> void:
 	if credit == player:
 		tut_kills += 1
 		player.add_stat("mobs")
+	if biomes: biomes.on_mob_dead(mb)
 	var big_mob: bool = mb.mkind in ["brute", "warden"]
 	sfx("die_big" if big_mob else "die_small", mb.pos, -5.0, randf_range(0.9, 1.15))
 	if credit == player: sfx("kill", null, -12.0, 1.4)
@@ -1830,6 +1847,7 @@ func _update_vision() -> void:
 
 func _exit_tree() -> void:
 	RenderingServer.global_shader_parameter_set("vis_on", 0.0)
+	if biomes: biomes.free_up()
 	if _bond_cb.is_valid() and CombatBus.hit_landed.is_connected(_bond_cb):
 		CombatBus.hit_landed.disconnect(_bond_cb)
 	if _combo_cb.is_valid() and CombatBus.status_applied.is_connected(_combo_cb):
@@ -2548,6 +2566,7 @@ func step(dt: float) -> void:
 	_update_events()
 	_update_zones(dt)
 	fields.tick(dt)
+	if biomes: biomes.tick(dt)
 	_update_tracking(dt)
 	if opts.get("tutorial", false):
 		if opts.get("tut_test", false):
@@ -2831,7 +2850,8 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 	if not from_net and randf() < [0.25, 0.6, 1.0][t]:
 		var keys: Array = Data.weapon_ids()
 		var a := randf() * TAU
-		spawn_weapon(String(keys[randi() % keys.size()]), Data.roll_rarity(rng, maxi(0, t - 1)), c["pos"] + Vector3(cos(a) * 1.1, 0, sin(a) * 1.1))
+		var wk: String = biomes.weapon_at(c["pos"], keys) if biomes else String(keys[randi() % keys.size()])
+		spawn_weapon(wk, mini(Data.RARITY.size() - 1, Data.roll_rarity(rng, maxi(0, t - 1) + (biomes.rarity_bonus_at(c["pos"]) if biomes else 0))), c["pos"] + Vector3(cos(a) * 1.1, 0, sin(a) * 1.1))
 	if not from_net and randf() < [0.35, 0.65, 1.0][t]:
 		var a2 := randf() * TAU
 		spawn_gear(Gear.roll(rng), Data.roll_rarity(rng, t), c["pos"] + Vector3(cos(a2) * 1.2, 0, sin(a2) * 1.2))

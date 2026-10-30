@@ -1,0 +1,72 @@
+{
+	"name": "Gloomheart",
+	"blurb": "The void leaks through here: rifts pull you in, void monsters blink, and the loot is the best on the map.",
+	"colors": {
+		"top": "5e5878",
+		"top2": "4a4262",
+		"side": "3a3048",
+		"deep": "141020",
+		"leaf": "b08aff"
+	},
+	"tint": "c8a8ff",
+	"particles": "motes",
+	"danger_mult": 1.3,
+	"mutation_mult": 1.2,
+	"mobs": [
+		{
+			"kind": "skitter",
+			"name": "Shade Skitter",
+			"color": "6a4ab0",
+			"w": 3
+		},
+		{
+			"kind": "spitter",
+			"name": "Rift Spitter",
+			"color": "b07aff",
+			"w": 2
+		},
+		{
+			"kind": "sentinel",
+			"name": "Void Sentinel",
+			"color": "9a6aff",
+			"w": 2
+		},
+		{
+			"kind": "brute",
+			"name": "Hollow Brute",
+			"color": "4a3a6a",
+			"w": 2,
+			"hp": 1.3
+		}
+	],
+	"mutations": {
+		"void": 5,
+		"armored": 2,
+		"charged": 1,
+		"toxic": 1
+	},
+	"hazards": [
+		{
+			"kind": "void_rift",
+			"per_island": 2
+		}
+	],
+	"loot": {
+		"weapons": {
+			"sniper": 2,
+			"greatsword": 2,
+			"minigun": 2,
+			"rifle": 2,
+			"smg": 2,
+			"shotgun": 2,
+			"longsword": 2,
+			"twin_blades": 2,
+			"burst_rifle": 2
+		},
+		"rarity_bonus": 1,
+		"gear": [
+			"gloom"
+		]
+	},
+	"id": "gloom"
+}

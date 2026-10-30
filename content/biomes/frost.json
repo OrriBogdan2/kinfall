@@ -1,0 +1,71 @@
+{
+	"name": "Frostreach",
+	"blurb": "Ice underfoot and frozen monsters: hits slow you, and they shatter when they die.",
+	"colors": {
+		"top": "dce9f1",
+		"top2": "b8d0de",
+		"side": "7a8aa0",
+		"deep": "2c3448",
+		"leaf": "9ad0e0"
+	},
+	"tint": "e8f6ff",
+	"particles": "snow",
+	"danger_mult": 1.0,
+	"mutation_mult": 1.0,
+	"mobs": [
+		{
+			"kind": "skitter",
+			"name": "Frost Skitter",
+			"color": "9fe0ff",
+			"w": 4
+		},
+		{
+			"kind": "spitter",
+			"name": "Rime Spitter",
+			"color": "7ac8f0",
+			"w": 2
+		},
+		{
+			"kind": "sentinel",
+			"name": "Ice Sentinel",
+			"color": "cfeeff",
+			"w": 2
+		},
+		{
+			"kind": "brute",
+			"name": "Glacier Brute",
+			"color": "a8d0ea",
+			"w": 1,
+			"hp": 1.2,
+			"speed": 0.85
+		}
+	],
+	"mutations": {
+		"frozen": 5,
+		"armored": 2
+	},
+	"hazards": [
+		{
+			"kind": "ice_patch",
+			"per_island": 4
+		}
+	],
+	"loot": {
+		"weapons": {
+			"sniper": 4,
+			"rifle": 2,
+			"burst_rifle": 3,
+			"longsword": 2,
+			"smg": 1,
+			"shotgun": 1,
+			"twin_blades": 1,
+			"minigun": 1,
+			"greatsword": 1
+		},
+		"rarity_bonus": 0,
+		"gear": [
+			"frost"
+		]
+	},
+	"id": "frost"
+}

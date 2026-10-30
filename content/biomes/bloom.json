@@ -1,0 +1,69 @@
+{
+	"name": "Bloomwild",
+	"blurb": "Overgrown and poisonous: spore pods burst when you get close, toxic monsters leave clouds.",
+	"colors": {
+		"top": "4aa882",
+		"top2": "36866a",
+		"side": "5a4a3a",
+		"deep": "1e2e26",
+		"leaf": "ff7ad0"
+	},
+	"tint": "d8ffb0",
+	"particles": "spores",
+	"danger_mult": 1.0,
+	"mutation_mult": 1.0,
+	"mobs": [
+		{
+			"kind": "skitter",
+			"name": "Thorn Skitter",
+			"color": "8ad05a",
+			"w": 3
+		},
+		{
+			"kind": "spitter",
+			"name": "Spore Spitter",
+			"color": "c06ad0",
+			"w": 3
+		},
+		{
+			"kind": "bomber",
+			"name": "Bloom Puffbomb",
+			"color": "ff8ac8",
+			"w": 2
+		},
+		{
+			"kind": "brute",
+			"name": "Moss Brute",
+			"color": "5a8a4a",
+			"w": 1
+		}
+	],
+	"mutations": {
+		"toxic": 5,
+		"swift": 1
+	},
+	"hazards": [
+		{
+			"kind": "spore_pod",
+			"per_island": 4
+		}
+	],
+	"loot": {
+		"weapons": {
+			"twin_blades": 3,
+			"smg": 3,
+			"longsword": 2,
+			"rifle": 2,
+			"sniper": 1,
+			"shotgun": 1,
+			"burst_rifle": 1,
+			"minigun": 1,
+			"greatsword": 1
+		},
+		"rarity_bonus": 0,
+		"gear": [
+			"bloom"
+		]
+	},
+	"id": "bloom"
+}

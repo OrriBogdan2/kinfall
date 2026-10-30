@@ -1266,7 +1266,8 @@ func _physics(dt: float) -> void:
 	else:
 		# near-instant on the ground; in the air you steer well but momentum carries
 		if grounded:
-			hv = accel2(hv, mv * spd, GROUND_ACCEL, GROUND_DECEL, GROUND_OVERSPEED, dt)
+			var grip: float = m.ground_grip(pos)     # ice in a frost region: you skid instead of stopping
+			hv = accel2(hv, mv * spd, GROUND_ACCEL * grip, GROUND_DECEL * grip, GROUND_OVERSPEED * grip, dt)
 		else:
 			hv = accel2(hv, mv * spd, AIR_ACCEL, AIR_DECEL, AIR_OVERSPEED, dt)
 	vel.x = hv.x; vel.z = hv.y
