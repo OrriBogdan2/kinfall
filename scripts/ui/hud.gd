@@ -174,6 +174,8 @@ func _draw_all() -> void:
 			_draw_crosshair(p)
 		if p.downed:
 			_draw_downed(sz, p)
+		elif p.out and not p.gone and not m.result.get("ending", false):
+			_draw_dead(sz, p)
 	_draw_small_toasts(sz)
 	for i in toasts.size():
 		var t: Dictionary = toasts[i]
@@ -190,6 +192,27 @@ func _draw_all() -> void:
 
 func _draw_world_labels() -> void:
 	var cam := m.cam
+	# deathboxes and revive beacons
+	for b in m.boxes:
+		if cam.is_position_behind(b["pos"]):
+			continue
+		var o: Hunter = b["owner"]
+		var bp := cam.unproject_position(b["pos"] + Vector3(0, 1.9, 0))
+		var soul := Life.soul_here(m, b)
+		var ally: bool = m.player != null and o.team == m.player.team
+		if soul and ally and o != m.player:
+			_ctext(bp, "%s  ·  %ds" % [o.pname, int(ceil(float(b["soul_until"]) - m.time))], 13, Color("9ee2a0"), big)
+		elif not b["empty"] and m.player and m.player.flat_dist(b["pos"]) < 14.0:
+			_ctext(bp, "%s's box" % o.pname if o != m.player else "Your box", 12, Life.box_color(b), big)
+	for bc in m.beacons:
+		if bc["used"] or cam.is_position_behind(bc["pos"]):
+			continue
+		if m.player and m.player.flat_dist(bc["pos"]) > 26.0 and float(bc["prog"]) <= 0.0:
+			continue
+		var bp := cam.unproject_position(bc["pos"] + Vector3(0, 3.2, 0))
+		_ctext(bp, "Revive beacon" + ("  ·  contested" if bc["contested"] else ""), 12, Color("8fffc0"), big)
+		if float(bc["prog"]) > 0.0:
+			_bar(Rect2(bp + Vector2(-40, 6), Vector2(80, 5)), float(bc["prog"]), Color("8fffc0"))
 	for h in m.hunters:
 		if h == m.player or h.out or h.extracted or not h.model or not h.model.visible or h.unseen:
 			continue
@@ -924,6 +947,9 @@ func _draw_prompt(sz: Vector2, p: Hunter) -> void:
 		var prog := 0.0
 		match it["kind"]:
 			"revive": prog = it["ent"].revive
+			"finish": prog = p.finish_t / Life.R["execute_time"]
+			"boxrev": prog = p.box_t / Life.R["box_revive_time"]
+			"loot": prog = p.box_t / Life.R["loot_time"]
 			"catch": prog = it["ent"].catch_prog
 			"chest": prog = it["chest"]["prog"]
 		var s: String = it["label"]
@@ -975,13 +1001,34 @@ func _draw_crosshair(p: Hunter) -> void:
 func _draw_downed(sz: Vector2, p: Hunter) -> void:
 	c.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.3, 0.02, 0.02, 0.18))
 	_ctext(Vector2(sz.x * 0.5, sz.y * 0.32), "You're down", 34, BAD, big)
-	var who := "You're a wisp. A teammate or your kin standing on you brings you back. Enemies can stomp or finish you."
+	var left := p.down_hp / Data.MATCH["down_hp"] * Life.R["bleed_out"]
+	var who := "You're a wisp: %ds left. A teammate or your kin standing on you brings you back. Enemies can stomp or execute you." % int(ceil(left))
 	if p.kin and p.kin.state == "fainted":
-		who = "You're a wisp, and your kin is out cold. Only a teammate standing on you can bring you back."
+		who = "You're a wisp: %ds left, and your kin is out cold. Only a teammate standing on you can bring you back." % int(ceil(left))
+	if p.get_meta("stomped", false):
+		who = "An enemy is standing on you! You're draining fast."
 	_ctext(Vector2(sz.x * 0.5, sz.y * 0.32 + 28), who, 16, INK)
 	_bar(Rect2(Vector2(sz.x * 0.5 - 140, sz.y * 0.32 + 44), Vector2(280, 8)), p.down_hp / Data.MATCH["down_hp"], BAD)
 	if p.revive > 0.0:
 		_bar(Rect2(Vector2(sz.x * 0.5 - 140, sz.y * 0.32 + 58), Vector2(280, 8)), p.revive, GOOD)
+
+## Dead, but your team's still in it.
+func _draw_dead(sz: Vector2, p: Hunter) -> void:
+	c.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.05, 0.03, 0.08, 0.25))
+	var y0 := sz.y * 0.62
+	_panel(Rect2(Vector2(sz.x * 0.5 - 300, y0 - 44), Vector2(600, 150)))
+	_ctext(Vector2(sz.x * 0.5, y0), "You're dead", 30, BAD, big)
+	var b := Life.box_of(m, p)
+	var lines: Array = []
+	if not b.is_empty() and Life.soul_here(m, b):
+		lines.append("A teammate can bring you back at your deathbox: %ds left." % int(ceil(float(b["soul_until"]) - m.time)))
+	lines.append("Or at any revive beacon (the green pillars), with nothing you carried." if m.beacons.any(func(x): return not x["used"]) else "No revive beacons left.")
+	var mate := m.spectating()
+	if mate:
+		lines.append("Watching %s." % mate.pname)
+	lines.append("%s to open the menu and leave." % Settings.key_cap("menu"))
+	for i in lines.size():
+		_ctext(Vector2(sz.x * 0.5, y0 + 28 + i * 22), lines[i], 16, INK if i < 2 else MUTED)
 
 func _draw_scores(sz: Vector2) -> void:
 	var r := Rect2(Vector2(sz.x * 0.5 - 300, sz.y * 0.18), Vector2(600, 40 + m.hunters.size() * 28))

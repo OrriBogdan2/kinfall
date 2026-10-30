@@ -27,6 +27,7 @@ func _ready() -> void:
 		if a == "--autoplay": opts["autoplay"] = true
 		if a == "--glide-demo": opts["glide_demo"] = true
 		if a == "--ledge-demo": opts["ledge_demo"] = true
+		if a == "--life-demo": opts["life_demo"] = true; opts["no_drop"] = true; opts["squad"] = 3; opts["teams"] = 3
 		if a.begins_with("--length="): opts["length"] = float(a.substr(9))
 		if a == "--no-drop": opts["no_drop"] = true
 		if a.begins_with("--aim-demo="): opts["aim_demo"] = a.substr(11); opts["no_drop"] = true
@@ -106,6 +107,9 @@ func _ready() -> void:
 	if "--speak-test" in args:
 		load("res://tools/speaktest.gd").new().run()
 		get_tree().quit()
+		return
+	if "--life-check" in args:
+		_life_check()
 		return
 	if Array(args).any(func(a): return String(a).begins_with("--weapon-check")):
 		_weapon_check()
@@ -284,6 +288,86 @@ func show_screen(screen: String, opts: Dictionary) -> void:
 			add_child(current)
 
 ## Headless check: a whole match with the player on autopilot, stepped as fast as possible.
+## Test: the down / death / revive rules, step by step, with idle hunters placed by hand.
+func _life_check() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.start({"teams": 2, "squad": 3, "tier": 0, "length": 1e9, "seed": 77, "no_drop": true, "autoplay": true})
+	m.set_process(false)
+	var mine: Array = m.hunters.filter(func(x): return x.team == 0)
+	var foe: Hunter = m.hunters.filter(func(x): return x.team != 0)[0]
+	for h in m.hunters:
+		h.ctrl = "idle"
+		h.inp["move"] = Vector2.ZERO
+	for mb in m.mobs: mb.queue_free()
+	m.mobs.clear()
+	var A: Hunter = mine[0]; var B: Hunter = mine[1]; var C: Hunter = mine[2]
+	var home: Vector3 = A.pos
+	var far := home + Vector3(0, 0, 0)
+	var spot := func(h: Hunter, at: Vector3): h.teleport(at); h.vel = Vector3.ZERO
+	var run := func(sec: float):
+		var t := 0.0
+		while t < sec:
+			m.step(Match.DT); t += Match.DT
+	# park everyone else far apart
+	for h in m.hunters:
+		if h.team != 0 and h != foe: spot.call(h, m.world.random_ground())
+	spot.call(foe, m.world.random_ground())
+	# 1. ally revive
+	spot.call(B, home + Vector3(2, 0, 0)); spot.call(C, home + Vector3(2, 0, 0.5)); spot.call(A, home)
+	m.knock(B, foe, {})
+	var t0 := m.time
+	while B.downed and m.time - t0 < 10.0: run.call(Match.DT)
+	print("LCHECK ally revive: back=%s after %.1fs hp %.0f%%" % [not B.downed, m.time - t0, B.hp / B.max_hp * 100.0])
+	# 2. bleed out alone (with the kin knocked out, so it can't pull them up)
+	for kk in [B.kin, B.kin2]:
+		if kk: kk.dead = true
+	spot.call(C, home + Vector3(-8, 0, 0)); spot.call(A, home + Vector3(-8, 0, 1))
+	B.gems = 20
+	m.knock(B, foe, {})
+	t0 = m.time
+	print("LCHECK  knocked: downed=%s hp=%s" % [B.downed, B.down_hp])
+	while not B.out and m.time - t0 < 30.0:
+		run.call(Match.DT)
+		if int((m.time - t0) * 60.0) % 120 == 0: print("LCHECK   t=%.1f downed=%s down_hp=%.1f revive=%.2f out=%s" % [m.time - t0, B.downed, B.down_hp, B.revive, B.out])
+	var bx := Life.box_of(m, B)
+	print("LCHECK bleed: dead=%s after %.1fs box=%s gems in box=%d" % [B.out, m.time - t0, not bx.is_empty(), int(bx.get("gems", -1))])
+	# 3. box revive
+	spot.call(C, bx["pos"]); C.inp["interact"] = true
+	t0 = m.time
+	while B.out and m.time - t0 < 10.0: run.call(Match.DT)
+	C.inp["interact"] = false
+	print("LCHECK box revive: back=%s after %.1fs hp %.0f%% gems %d" % [not B.out, m.time - t0, B.hp / B.max_hp * 100.0, B.gems])
+	# 4. stomp drain
+	for kk in [B.kin, B.kin2]:
+		if kk: kk.dead = true
+	spot.call(C, home + Vector3(-8, 0, 0))
+	spot.call(foe, B.pos)
+	m.knock(B, foe, {})
+	t0 = m.time
+	while not B.out and m.time - t0 < 30.0: run.call(Match.DT)
+	print("LCHECK stomp: dead=%s after %.1fs" % [B.out, m.time - t0])
+	spot.call(foe, m.world.random_ground())
+	# 5. beacon
+	var bc: Dictionary = m.beacons[0]
+	spot.call(C, bc["pos"])
+	t0 = m.time
+	while B.out and m.time - t0 < 12.0: run.call(Match.DT)
+	print("LCHECK beacon: back=%s after %.1fs hp %.0f%% sick %.1fs used=%s" % [not B.out, m.time - t0, B.hp / B.max_hp * 100.0, B.sick_t, bc["used"]])
+	# 6. execute
+	for kk in [B.kin, B.kin2]:
+		if kk: kk.dead = true
+	spot.call(C, home + Vector3(-8, 0, 0)); spot.call(B, home + Vector3(6, 0, 0))
+	m.knock(B, foe, {})
+	spot.call(foe, B.pos + Vector3(0.5, 0, 0)); foe.inp["interact"] = true
+	t0 = m.time
+	while not B.out and m.time - t0 < 10.0:
+		foe.inp["interact"] = true
+		run.call(Match.DT)
+	print("LCHECK execute: dead=%s after %.1fs (stomp drains too)" % [B.out, m.time - t0])
+	print("LCHECK beacons=%d boxes=%d" % [m.beacons.size(), m.boxes.size()])
+	get_tree().quit()
+
 ## Test: every weapon against a standing target at a couple of ranges, tapping and (for swords)
 ## charging, and prints the damage per second it actually lands.
 func _weapon_check() -> void:

@@ -135,8 +135,10 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 			move = _path_dir(m, h, goal)
 			inp["aim"] = Vector3(h.pos.x + move.x * 3.0, h.pos.y + 0.9, h.pos.z + move.y * 3.0)
 			inp["aim_y"] = h.pos.y
-			if h.flat_dist(goal) < 1.5 and a["goal_kind"] in ["chest", "catch", "revive"]:
+			if h.flat_dist(goal) < 1.2 and a["goal_kind"] in ["chest", "catch", "revive", "box"]:
 				inp["interact"] = true
+				move = Vector2.ZERO
+			elif h.flat_dist(goal) < 1.0 and a["goal_kind"] == "beacon":
 				move = Vector2.ZERO
 		if h.kin and h.kin.state == "active" and h.kin.flat_dist(h) > 6.0:
 			h.kin.recall()
@@ -325,6 +327,23 @@ func _choose(m: Match, h: Hunter) -> void:
 	for o in m.hunters:
 		if o != h and o.team == h.team and o.downed and not o.out:
 			goal = o.pos; gk = "revive"; break
+	# a dead teammate: their deathbox while the soul's there, else a revive beacon
+	if goal == Vector3.INF:
+		for b in m.boxes:
+			var o: Hunter = b["owner"]
+			if o.team == h.team and o != h and Life.soul_here(m, b) and h.flat_dist(b["pos"]) < 45.0:
+				goal = b["pos"]; gk = "box"; break
+	if goal == Vector3.INF and m.hunters.any(func(x): return x.team == h.team and x.out and not x.gone):
+		var bd := 90.0
+		for bc in m.beacons:
+			if bc["used"]: continue
+			var d := h.flat_dist(bc["pos"])
+			if d < bd: bd = d; goal = bc["pos"]; gk = "beacon"
+	# anyone else's box with something in it
+	if goal == Vector3.INF:
+		for b in m.boxes:
+			if not b["empty"] and h.flat_dist(b["pos"]) < 14.0 and not (b["owner"].team == h.team and Life.soul_here(m, b)):
+				goal = b["pos"]; gk = "box"; break
 	if goal == Vector3.INF:
 		var open_portals := m.portals.filter(func(p): return p["open"])
 		if open_portals.size() > 0 and (time_left < 110.0 or h.gems > 40 or randf() < 0.002):

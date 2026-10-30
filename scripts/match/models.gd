@@ -1356,6 +1356,50 @@ static func chest(tier := 0) -> Node3D:
 	root.set_meta("mats", [mw, mg])
 	return root
 
+## A dead hunter's deathbox: a squat crate with a glow in its value colour.
+static func deathbox(col: Color) -> Node3D:
+	var root := chest(0)
+	var g := Node3D.new(); g.name = "Glow"; root.add_child(g)
+	var beam := part(g, cyl(0.12, 0.24, 5.0, 10), glow_mat(Color(col, 0.3)), Vector3(0, 2.5, 0))
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var ring := MeshInstance3D.new(); ring.mesh = flat_quad(1.6)
+	ring.material_override = ring_mat(col, 0.1); ring.position.y = 0.04
+	g.add_child(ring)
+	# the soul: a little wisp bobbing over the box while a teammate can still bring them back
+	var soul := Node3D.new(); soul.name = "Soul"; soul.position = Vector3(0, 1.3, 0); root.add_child(soul)
+	part(soul, sphere(0.16, 10), glow_mat(Color(0.85, 1.0, 0.95, 0.9)), Vector3.ZERO)
+	part(soul, sphere(0.28, 10), glow_mat(Color(0.6, 1.0, 0.85, 0.25)), Vector3.ZERO)
+	PropAnim.on(soul, 1.4, 0.12)
+	((root.get_meta("mats") as Array)[0] as ShaderMaterial).set_shader_parameter("albedo", Color("5a5560"))
+	((root.get_meta("mats") as Array)[1] as ShaderMaterial).set_shader_parameter("albedo", col.darkened(0.2))
+	return root
+
+## A revive beacon: a stone pylon with a green crystal. Stand on it with a dead teammate waiting
+## and it brings them back.
+static func revive_beacon() -> Node3D:
+	var root := Node3D.new()
+	var stone := toon(Color("8f9aa0"))
+	var glow := Color("8fffc0")
+	part(root, cyl(1.2, 1.3, 0.16, 8), stone, Vector3(0, 0.08, 0))
+	part(root, cyl(0.9, 0.96, 0.12, 8), toon(Color("b8c2c6")), Vector3(0, 0.22, 0))
+	for i in 4:
+		var a := TAU * i / 4.0 + 0.4
+		part(root, box(0.22, 1.5, 0.22), stone, Vector3(cos(a) * 1.0, 0.75, sin(a) * 1.0), Vector3.ONE, Vector3(0, -a, 0))
+		part(root, box(0.05, 0.9, 0.02), toon(glow, false, 0.9), Vector3(cos(a) * 0.88, 0.85, sin(a) * 0.88), Vector3.ONE, Vector3(0, -a, 0))
+	var g := Node3D.new(); g.name = "Glow"; root.add_child(g)
+	var cr := Node3D.new(); cr.position = Vector3(0, 1.7, 0); g.add_child(cr)
+	var pm := PrismMesh.new(); pm.size = Vector3(0.5, 0.7, 0.5)
+	var cm := toon(glow.darkened(0.1), true, 0.7)
+	part(cr, pm, cm, Vector3(0, 0.35, 0))
+	part(cr, pm, cm, Vector3(0, -0.35, 0), Vector3.ONE, Vector3(PI, 0, 0))
+	PropAnim.on(cr, 0.7, 0.1)
+	var beam := part(g, cyl(0.2, 0.4, 12.0, 10), glow_mat(Color(glow, 0.2)), Vector3(0, 6.0, 0))
+	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var ring := MeshInstance3D.new(); ring.name = "Ring"; ring.mesh = flat_quad(4.6)
+	ring.material_override = ring_mat(glow, 0.05); ring.position.y = 0.3
+	g.add_child(ring)
+	return root
+
 static func shrine() -> Node3D:
 	var root := Node3D.new()
 	var stone := toon(Color("a9a39a"))

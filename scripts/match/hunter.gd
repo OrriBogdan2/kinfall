@@ -98,6 +98,10 @@ var downed := false
 var down_hp := 0.0
 var revive := 0.0
 var out := false
+var gone := false              # dead for good: no box revive, no beacon (see Life)
+var sick_t := 0.0              # resurrection sickness after a beacon revive: -25% damage
+var box_t := 0.0               # holding interact at a deathbox
+var hurt_at := -9.0            # last time a hit landed (channels like a box revive break on it)
 var extracted := false
 var extract_prog := 0.0
 var kin: Ent = null             # the active kin: its abilities are on Q and V, its ultimate on R
@@ -254,6 +258,7 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 	if ctrl == "local" and Game.god:
 		return 0.0
 	reveal_t = maxf(reveal_t, 1.0)
+	hurt_at = m.time
 	if opts.has("wallstun"):
 		wallstun = float(opts["wallstun"])
 	# Getting hit while gliding, as in Supervive: no extra damage, but every hit eats glider fuel
@@ -278,10 +283,7 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 	if shoulder() == "bedrock":
 		d *= 0.85
 	if downed:
-		down_hp -= d
-		flash_t = 0.1
-		if down_hp <= 0.0 and not remote:
-			m.eliminate(self, by, "finished")
+		# a wisp can't be shot: it's lost to stomps, an execute, or bleeding out
 		return 0.0
 	if shield > 0.0:
 		var a := minf(shield, d)
@@ -1018,7 +1020,7 @@ func sim(dt: float) -> void:
 				inp[k] = false
 		return
 	tick_status(dt)
-	for k in ["hit_heat_t", "ex_cd", "reveal_t", "inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t"]:
+	for k in ["hit_heat_t", "ex_cd", "reveal_t", "inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t", "sick_t"]:
 		set(k, maxf(0.0, get(k) - dt))
 	if shield_t > 0.0:
 		shield_t -= dt

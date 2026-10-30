@@ -14,6 +14,7 @@ Clean-room rebuild. Nothing here comes from Supervive's files. The values come f
 | `scripts/combat/class_profile.gd`, `weapon_profile.gd`, `data/` | Light/medium/heavy classes and 9 guns/swords as data files. See KINFALL_CLASSES.md. |
 | `scripts/combat/weapon_user.gd`, `projectile.gd`, `training_dummy.gd` | Weapon firing (guns and swords), projectiles, and practice dummies. See WEAPON_FIRING_DATA.md. |
 | `tests/weapons_sim.gd` | Headless weapon check: `godot --headless --path . -s tests/weapons_sim.gd` |
+| `scripts/match/` + `data/rules/` | Downed (wisp), deathboxes, revives, revive beacons, team wipes, solo rules, kin hooks. See DEATH_AND_REVIVE.md. Test: `tests/life_sim.gd` |
 | `scripts/feel/kinfall_input.gd` | Registers default binds at runtime (`kf_*` actions). |
 | `scenes/feel_test.tscn` | Playground: islands over an abyss, a raised island to mantle onto, pillars, a jump pad and a debug HUD. |
 | `tests/feel_sim.gd` | Headless check: `godot --headless --path . -s tests/feel_sim.gd` |

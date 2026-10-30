@@ -127,7 +127,7 @@ func ability_power() -> float:
 
 ## Can its abilities and ultimate be used right now?
 func ready_to_fight() -> bool:
-	return not dead and state not in ["fainted", "reviving", "bench", "wild", "dazed"]
+	return not dead and state not in ["fainted", "reviving", "bench", "wild", "dazed", "away"]
 
 # ------------------------------------------------------------------ mind
 func courage() -> float:
@@ -421,6 +421,10 @@ func sim(dt: float) -> void:
 	prev = pos
 	if dead:
 		return
+	if state == "away":
+		# your hunter is dead and waiting on a revive: the kin keeps out of sight until then
+		if owner_h: pos = owner_h.pos; prev = pos
+		return
 	tick_status(dt)
 	for k in ["atk_cd", "bark_cd", "lunge_t", "throw_cd", "haste_t"]:
 		set(k, maxf(0.0, get(k) - dt))
@@ -571,7 +575,11 @@ func walkable_to(p: Vector3) -> bool:
 func _sim_active(dt: float) -> void:
 	if owner_h and (owner_h.out or owner_h.extracted):
 		return
-	if owner_h and owner_h.downed:
+	var guard: Ent = _wisp_threat() if owner_h and owner_h.downed else null
+	if guard:
+		# someone's come to stomp or execute your hunter: the kin goes for them first
+		target = guard
+	elif owner_h and owner_h.downed:
 		_consider_revive(dt)
 		if state != "active":
 			return
@@ -585,7 +593,7 @@ func _sim_active(dt: float) -> void:
 	if owner_h and flat_dist(owner_h) > brain.leash() + (6.0 if big else 0.0):
 		state = "returning"
 		return
-	if target == null or target.dead or not target.hittable() or (target is Hunter and target.downed) or flat_dist(target) > brain.chase_range() + 3.0 or randf() < dt * 0.5:
+	if guard == null and (target == null or target.dead or not target.hittable() or (target is Hunter and target.downed) or flat_dist(target) > brain.chase_range() + 3.0 or randf() < dt * 0.5):
 		target = brain.pick_target()
 	var wish := Vector2.ZERO
 	var spd := speed * (0.6 if slow_t > 0.0 else 1.0) * (1.3 if haste_t > 0.0 else 1.0)
@@ -716,7 +724,22 @@ func _consider_revive(dt: float) -> void:
 		grounded = true
 	state = "reviving"
 
+## An enemy standing over your downed hunter (to stomp or execute them).
+func _wisp_threat() -> Ent:
+	if owner_h == null or not owner_h.downed or hp <= 0.0:
+		return null
+	for f in m.hunters:
+		if f.team != owner_h.team and not f.downed and not f.out and f.hittable() and f.flat_dist(owner_h) < 3.0:
+			return f
+	return null
+
 func _sim_revive(dt: float) -> void:
+	var threat := _wisp_threat()
+	if threat:
+		state = "active"
+		target = threat
+		bark("owner_down")
+		return
 	if owner_h == null or not owner_h.downed or owner_h.out:
 		state = "active"
 		revive_wait = 0.0
@@ -729,7 +752,7 @@ func _sim_revive(dt: float) -> void:
 		return
 	_ground_move(Vector2.ZERO, dt)
 	var speedup := 0.8 + trust / 100.0 * 0.4
-	owner_h.revive += dt / Data.MATCH["kin_revive_time"] * speedup
+	owner_h.revive += dt / Life.R["kin_revive_time"] * speedup
 	if owner_h.revive >= 1.0:
 		m.revive_hunter(owner_h, self)
 		note("revived", "pulled you back up when you were down", 4.0)
@@ -827,7 +850,7 @@ func _callouts() -> void:
 # ------------------------------------------------------------------ visuals
 func render(delta: float, alpha: float) -> void:
 	super.render(delta, alpha)
-	visible = not dead and state != "bench" and not (owner_h and (owner_h.out or owner_h.extracted or owner_h.riding))
+	visible = not dead and state != "bench" and state != "away" and not (owner_h and (owner_h.out or owner_h.extracted or owner_h.riding))
 	if not model:
 		return
 	var body: Node3D = model.get_node("Body")

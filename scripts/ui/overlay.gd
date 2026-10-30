@@ -167,6 +167,7 @@ func open_pause(where: String) -> void:
 		v.add_child(UI.button("Leave the training area" if m.opts.get("training", false) else ("Skip the tutorial" if tut else "Leave match (you lose what you carry)"), func():
 			close()
 			m.paused = false
+			if m.player and m.player.out: Life.make_gone(m, m.player)
 			m.result = {"extracted": tut, "why": "left"}
 			m._finish(), bw))
 	else:

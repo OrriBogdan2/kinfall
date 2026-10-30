@@ -16,6 +16,8 @@ var kins: Array = []
 var mobs: Array = []
 var shots: Array = []
 var pickups: Array = []     # {pos, vel, kind:"gem"|"seed"|"tonic", v, key, node, t}
+var boxes: Array = []       # deathboxes, see Life
+var beacons: Array = []     # revive beacons, see Life
 var chests: Array = []      # {pos, open, prog, node, tier}
 var shrines: Array = []     # {pos, used, prog, node}
 var breaks: Array = []      # {i, pos, kind, hp, node, dead}
@@ -133,6 +135,7 @@ func start(o: Dictionary) -> void:
 	_spawn_hunters()
 	_spawn_mobs()
 	_spawn_chests()
+	Life.place_beacons(self)
 	_spawn_breakables()
 	for rg in world.rings:
 		var rn := Models.air_ring()
@@ -1070,7 +1073,7 @@ func foes_of(team: int) -> Array:
 
 func dmg_mult(h: Hunter) -> float:
 	if h == null: return 1.0
-	return (1.25 if h.bless_t > 0.0 else 1.0) * (1.0 + h.gear_stat("dmg")) * h.fuse_mod("dmg")
+	return (1.25 if h.bless_t > 0.0 else 1.0) * (1.0 + h.gear_stat("dmg")) * h.fuse_mod("dmg") * (Life.R["sickness_dmg"] if h.sick_t > 0.0 else 1.0)
 
 func sfx(n: String, p = null, vol := 0.0, pitch := 1.0) -> void:
 	Sfx.play(n, p, vol, 0.07, pitch)
@@ -1246,6 +1249,15 @@ func _check_team(team: int) -> void:
 	for x in members:
 		if not x.remote:
 			eliminate(x, x.last_hit_by, "team wiped")
+	_team_gone(team)
+
+## The whole team is down or dead with nobody to bring them back: everyone's dead for good.
+func _team_gone(team: int) -> void:
+	if Life.team_alive(self, team):
+		return
+	for x in hunters:
+		if x.team == team and x.out and not x.remote:
+			Life.make_gone(self, x)
 
 func revive_hunter(h: Hunter, by: Ent) -> void:
 	if h.remote:
@@ -1253,7 +1265,7 @@ func revive_hunter(h: Hunter, by: Ent) -> void:
 	if net_on:
 		net_event(["up", h.nid])
 	h.downed = false
-	h.hp = h.max_hp * 0.4
+	h.hp = h.max_hp * Life.R["revive_hp"]
 	h.armor = 0.0
 	h.revive = 0.0
 	h.inv_t = 1.5
@@ -1280,8 +1292,24 @@ func eliminate(h: Hunter, by: Ent, why: String, final := false) -> void:
 	if credit is Hunter and credit != h and credit.team != h.team:
 		credit.kills += 1
 	add_feed("%s is out" % h.pname if why != "abyss" else "%s fell into the abyss" % h.pname)
-	# everything they carried spills out; caught kin escape
-	if net_on and not is_host and not h.remote:
+	h.set_meta("died_why", why)
+	h.set_meta("died_at", time)
+	var waiting := false
+	if not net_on and not h.remote:
+		# everything they carried goes into a deathbox where they fell. While a teammate is still
+		# in the fight they can bring them back at it (or at a revive beacon)
+		Life.drop_box(self, h, why)
+		h.lost_gems = h.gems
+		h.gems = 0; h.seeds = {}; h.caught = []
+		waiting = Life.team_alive(self, h.team) and not opts.get("training", false) and not opts.get("tutorial", false)
+		if waiting:
+			for kk in [h.kin, h.kin2]:
+				if kk and not (kk as Kin).dead:
+					giant_free(kk)
+					(kk as Kin).state = "away"
+		else:
+			Life.make_gone(self, h)
+	elif net_on and not is_host and not h.remote:
 		net_event(["spill", _r(h.pos.x), _r(h.pos.y), _r(h.pos.z), h.gems, h.seeds, h.caught])
 	elif not world.is_void(h.pos.x, h.pos.z) and not h.remote:
 		var n := mini(10, int(ceil(h.gems / 5.0)))
@@ -1291,13 +1319,16 @@ func eliminate(h: Hunter, by: Ent, why: String, final := false) -> void:
 			drop("seed", h.pos + Vector3(0, 0.5, 0), int(h.seeds[s]), s)
 		for rec in h.caught:
 			spawn_wild(rec, h.pos, true)
-	h.lost_gems = h.gems
-	h.gems = 0; h.seeds = {}; h.caught = []
-	# the kin they brought are left behind, dazed, for anyone to collect
-	_leave_kin(h)
+	if net_on:
+		h.lost_gems = h.gems
+		h.gems = 0; h.seeds = {}; h.caught = []
+		# the kin they brought are left behind, dazed, for anyone to collect
+		_leave_kin(h)
+		h.gone = true
 	if h == player:
-		result = {"extracted": false, "why": why}
-		_end_soon(2.2)
+		if not waiting:
+			result = {"extracted": false, "why": why}
+			_end_soon(2.2)
 		if why != "abyss":
 			_slow(0.8, 0.3)
 		killcam_text = ("Taken out by %s" % credit.pname) if credit is Hunter and credit != h else ("You fell" if why == "abyss" else "You're out")
@@ -1401,8 +1432,6 @@ func on_fell(e: Ent) -> void:
 	elif e is Kin:
 		e.dead = true
 
-const STOMP := 14.0         # downed health a stomping enemy drains per second
-const FINISH_TIME := 1.4
 
 func S_dev_god() -> bool:
 	return bool(opts.get("god", false)) or bool(opts.get("tutorial", false)) or bool(opts.get("training", false)) or Game.god
@@ -1538,6 +1567,9 @@ func _leave_kin(h: Hunter) -> void:
 		var k: Kin = kk
 		giant_free(k)
 		var at: Vector3 = k.pos if k.state in ["active", "fainted", "returning", "reviving"] else h.pos
+		var bx := Life.box_of(self, h)
+		if k.state == "away" and not bx.is_empty() and bx["pos"] != Vector3.INF:
+			at = bx["pos"]
 		var leave: bool = not h.remote and not opts.get("training", false) and not opts.get("tutorial", false)
 		if leave:
 			if world.is_void(at.x, at.z):
@@ -2161,6 +2193,11 @@ func _process(delta: float) -> void:
 		if killer is Hunter and killer != player and not killer.out and killer.flat_dist(player) < 16.0:
 			foc = foc.lerp(killer.pos, 0.5 if player.downed else 0.85)
 		cam.zoom_to = 0.8
+		# dead and waiting on your team: after a moment, watch a teammate who's still in it
+		var mate := spectating()
+		if mate:
+			foc = mate.prev.lerp(mate.pos, alpha)
+			cam.zoom_to = 1.0
 		cam.follow(foc, delta, false)
 	elif player:
 		cam.follow(cam.focus, delta, false)
@@ -2276,6 +2313,17 @@ func step(dt: float) -> void:
 		if int(time * 60.0) % 90 == 0: player.inp["sig"] = true
 		if time > 4.0 and int(time * 60.0) % 240 == 0:
 			player.ult = 1.0; player.inp["ult"] = true
+	if opts.get("life_demo", false) and player and time < 0.05 and not beacons.is_empty():
+		# test: stand by a revive beacon with a teammate's deathbox next to it
+		var bc: Vector3 = beacons[0]["pos"]
+		player.teleport(world.free_spot_near(bc + Vector3(-3.0, 0, 2.5), [bc], 1.5, 0.4, 8.0))
+		for x in hunters:
+			if x.team == player.team and x != player:
+				x.teleport(world.free_spot_near(bc + Vector3(-1.5, 0, 3.0), [bc, player.pos], 1.2, 0.4, 8.0))
+				x.gems = 60
+				x.ctrl = "idle"
+				eliminate(x, null, "knocked out")
+				break
 	if opts.get("ledge_demo", false) and player and time < 0.05:
 		# test: start just off the edge of your island, a few metres below the lip
 		var p0 := player.pos
@@ -2399,6 +2447,10 @@ func step(dt: float) -> void:
 	if not ship.is_empty() and not ship.get("gone", false):
 		_update_ship(dt)
 	_update_interact(dt)
+	Life.tick_wisps(self, dt)
+	if not net_on:
+		Life.tick_beacons(self, dt)
+		_watch_death()
 	_update_dex(dt)
 	_update_portals(dt)
 	_update_events()
@@ -2506,29 +2558,33 @@ func _update_interact(dt: float) -> void:
 		if not want:
 			h.swap_hold = false
 		var best := {}
-		# 1. wisps, as in Supervive: standing on a downed teammate revives them (no key), standing
-		# on a downed enemy stomps them, and holding interact finishes them off
+		# 1. wisps, as in Supervive: standing on a downed teammate revives them and standing on a
+		# downed enemy stomps them (both in Life.tick_wisps); holding interact executes them
 		for o in hunters:
-			if o == h or not o.downed or o.out or h.flat_dist(o) > 1.6:
+			if o == h or not o.downed or o.out or h.flat_dist(o) > Life.R["revive_radius"]:
 				continue
 			if o.team == h.team:
-				var rate: float = dt / Data.MATCH["revive_time"]
 				if o.remote:
-					_rev_out[o.nid] = float(_rev_out.get(o.nid, 0.0)) + rate
-					o.revive += rate
-				else:
-					o.revive += rate
-					if o.revive >= 1.0:
-						revive_hunter(o, h)
+					_rev_out[o.nid] = float(_rev_out.get(o.nid, 0.0)) + dt / Life.R["revive_time"]
+					o.revive += dt / Life.R["revive_time"]
 			elif not o.remote:
-				o.down_hp -= STOMP * dt
-				o.revive = maxf(0.0, o.revive - dt * 0.5)
-				if o.down_hp <= 0.0:
-					eliminate(o, h, "finished")
-					continue
-				best = {"kind": "finish", "ent": o, "label": "Hold " + Settings.key_cap("interact") + " to finish %s" % o.pname}
+				best = {"kind": "finish", "ent": o, "label": "Hold %s to execute %s" % [Settings.key_cap("interact"), o.pname]}
 		if not want or best.get("kind", "") != "finish":
 			h.finish_t = 0.0
+		# 1b. deathboxes: bring a teammate back while their soul is there, or take everything
+		if best.is_empty():
+			for b in boxes:
+				if h.flat_dist(b["pos"]) > 1.5 or absf(h.pos.y - float(b["pos"].y)) > 1.4:
+					continue
+				var o: Hunter = b["owner"]
+				if o.team == h.team and o != h and Life.soul_here(self, b) and not o.remote:
+					best = {"kind": "boxrev", "box": b, "label": "Hold %s to bring %s back" % [Settings.key_cap("interact"), o.pname], "col": Color("9ee2a0")}
+					break
+				if not b["empty"]:
+					best = {"kind": "loot", "box": b, "label": "Hold %s to loot %s" % [Settings.key_cap("interact"), "your box" if o == h else o.pname + "'s box"], "col": Life.box_color(b)}
+					break
+		if best.get("kind", "") not in ["boxrev", "loot"] or not want:
+			h.box_t = 0.0
 		# 2. catch a dazed wild kin (not in training: practice kin go home with nobody)
 		if best.is_empty() and not opts.get("training", false):
 			for k in kins:
@@ -2573,15 +2629,26 @@ func _update_interact(dt: float) -> void:
 					h.swap_hold = true
 					_take_weapon(h, best["wp"])
 			"finish":
+				# the execute: you're locked in place for it
 				var o: Hunter = best["ent"]
 				h.finish_t += dt
-				if h.finish_t >= FINISH_TIME:
+				h.root_t = maxf(h.root_t, 0.1)
+				if h.finish_t >= Life.R["execute_time"]:
 					h.finish_t = 0.0
-					eliminate(o, h, "finished")
-					# a finish restores you, as in Supervive
-					h.hp = h.max_hp
-					fx.burst(h.pos + Vector3(0, 1.0, 0), Color("ffd36a"), 20, 4.0, 0.5, -3.0)
-					sfx("heal", h.pos, -2.0, 0.9)
+					eliminate(o, h, "executed")
+					fx.burst(o.pos + Vector3(0, 0.8, 0), Color("ff6a5a"), 20, 4.0, 0.5, -3.0)
+					sfx("crit", o.pos, -2.0, 0.7)
+			"boxrev", "loot":
+				var b: Dictionary = best["box"]
+				# taking a hit breaks the channel
+				if time - h.hurt_at < 0.1:
+					h.box_t = 0.0
+				h.box_t += dt
+				var need: float = Life.R["box_revive_time"] if best["kind"] == "boxrev" else Life.R["loot_time"]
+				if h.box_t >= need:
+					h.box_t = 0.0
+					if best["kind"] == "boxrev": Life.box_revive(self, b, h)
+					else: Life.loot_box(self, h, b)
 			"catch":
 				var k: Kin = best["ent"]
 				k.catch_prog += dt / 1.3
@@ -3164,6 +3231,44 @@ func _update_rules(_dt: float) -> void:
 		var rival := alive.any(func(x): return x.team != player.team)
 		if not rival and portals.all(func(p): return p["open"]) and hud:
 			pass
+
+## You're dead but your team's still in it: you wait (and watch) for a box or beacon revive.
+## Once nobody's left to bring you back, the expedition's over for you.
+func _watch_death() -> void:
+	for b in boxes:
+		var n: Node3D = b["node"]
+		if n:
+			var soul: Node3D = n.get_node_or_null("Soul")
+			if soul: soul.visible = Life.soul_here(self, b)
+	if player == null or not player.out or result.get("ending", false) or over:
+		return
+	if player.gone or not Life.team_alive(self, player.team):
+		var mate: Hunter = null
+		for x in hunters:
+			if x.team == player.team and x.extracted: mate = x
+		if mate and not player.gone:
+			# a teammate made it out: your kin went with them
+			player.gone = true
+			add_feed("Your kin went home with %s" % mate.pname)
+		Life.make_gone(self, player)
+		result = {"extracted": false, "why": String(player.get_meta("died_why", "team wiped"))}
+		_end_soon(2.2)
+
+## The teammate the camera follows while you're dead, or null.
+func spectating() -> Hunter:
+	if player == null or not player.out or player.gone or time - float(player.get_meta("died_at", time)) < 2.5:
+		return null
+	for x in hunters:
+		if x.team == player.team and x != player and not x.out and not x.extracted:
+			return x
+	return null
+
+## Leave while dead and waiting on your team.
+func give_up() -> void:
+	if player and player.out and not result.get("ending", false):
+		Life.make_gone(self, player)
+		result = {"extracted": false, "why": String(player.get_meta("died_why", "knocked out"))}
+		_end_soon(0.5)
 
 func _end_soon(after: float) -> void:
 	if result.get("ending", false):
