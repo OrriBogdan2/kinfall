@@ -257,9 +257,6 @@ func _ready() -> void:
 	if "--ability-check" in args:
 		_ability_check()
 		return
-	if "--ac-dbg" in args:
-		_ac_dbg()
-		return
 	if "--simtest" in args:
 		_simtest(opts)
 		return
@@ -850,18 +847,6 @@ func _ac_glove(P: Hunter, gid: String, rar := 1) -> void:
 	P.gear[0] = {"id": gid, "rar": rar}
 	P.gear_cd[0] = 0.0
 	P.m.use_gear(P, 0)
-
-func _ac_dbg() -> void:
-	var r := _ac_setup(5.0); var m: Match = r[0]; var P: Hunter = r[1]; var T: Hunter = r[2]
-	var gk: Kin = P.kin
-	gk.teleport(P.pos + Vector3(1, 0, 0)); gk.state = "active"
-	var land := T.pos + Vector3(1.5, 0, 0)
-	print("GS start T=%s land=%s kin=%s" % [T.pos, land, gk.pos])
-	Effects.run(Content.ability("slam").effects, gk, {"aim": land})
-	for i in 60:
-		_ac_run(m, Match.DT)
-		if i >= 26: print("GS %d T=%s v=%s kin=%s st=%s knock=%.2f" % [i, T.pos.snapped(Vector3.ONE*0.01), T.vel.snapped(Vector3.ONE*0.01), gk.pos.snapped(Vector3.ONE*0.01), gk.state, T.knock_t])
-	get_tree().quit()
 
 func _ability_check() -> void:
 	var r: Array
