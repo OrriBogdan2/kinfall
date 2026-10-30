@@ -99,20 +99,52 @@ const OUTFIT_KEYS := ["veil", "nyx", "kestrel", "sage", "marlow", "pyra", "basti
 const OUTFIT_COLS := [Color("c9bcff"), Color("b06ae0"), Color("6ad0e0"), Color("9ee2a0"), Color("e0b05a"), Color("ff7a5a"), Color("e6dbc4"), Color("c08a5a"), Color("f2d47a")]
 const LOOK_DETAILS := ["None", "Freckles", "Scar", "Face paint", "Stubble", "Beard", "Moustache", "Beauty mark"]
 
+## Races: each one changes the whole silhouette (size, head, build and features), so hunters read as
+## different people at a glance from the high match camera. Purely visual: the hitbox comes from the
+## class, never the race. "skin": the skin colour picked when you switch to it.
+const RACES := [
+	{"id": "human", "name": "Human", "scale": 1.0, "head": 1.0, "bulk": 1.0, "skin": 1,
+		"desc": "Adaptable folk from every corner of the Skylands."},
+	{"id": "vulpin", "name": "Vulpin", "scale": 0.95, "head": 1.06, "bulk": 0.94, "skin": 2,
+		"desc": "Fox-eared and quick, with a big brush of a tail."},
+	{"id": "stoneborn", "name": "Stoneborn", "scale": 1.17, "head": 0.86, "bulk": 1.3, "skin": 19,
+		"desc": "Huge, slow-spoken folk of living rock, with crystals growing out of them."},
+	{"id": "sprig", "name": "Sprig", "scale": 0.8, "head": 1.26, "bulk": 0.86, "skin": 11,
+		"desc": "Tiny forest sprites with leaf wings and far too much nerve."},
+	{"id": "scalefolk", "name": "Scalefolk", "scale": 1.06, "head": 0.96, "bulk": 1.02, "skin": 12,
+		"desc": "Sun-loving lizardfolk with a crest and a long tail."},
+	{"id": "owlet", "name": "Owlet", "scale": 0.92, "head": 1.18, "bulk": 1.06, "skin": 2,
+		"desc": "Wide-eyed bird folk with ear tufts and a feather tail."},
+]
+const LOOK_RACES := ["Human", "Vulpin", "Stoneborn", "Sprig", "Scalefolk", "Owlet"]
+
 static func default_look() -> Dictionary:
-	return {"body": 1, "gender": 1, "face": 0, "skin": 1, "hair": 0, "hair_col": 0, "detail": 0, "outfit": 3}
+	return {"race": 0, "body": 1, "gender": 1, "face": 0, "skin": 1, "hair": 0, "hair_col": 0, "detail": 0, "outfit": 3}
+
+## A random look for bots and background hunters: any race, any style, the race's own colouring
+## most of the time.
+static func random_look(rng: RandomNumberGenerator = null) -> Dictionary:
+	var R := func(n: int) -> int: return (rng.randi() if rng else randi()) % n
+	var race := int(R.call(RACES.size()))
+	var skin: int = int(RACES[race]["skin"]) if int(R.call(3)) > 0 else int(R.call(LOOK_SKIN.size()))
+	if race == 0: skin = int(R.call(8))
+	return {"race": race, "body": R.call(3), "gender": R.call(2), "face": R.call(LOOK_FACES.size()), "skin": skin,
+		"hair": R.call(LOOK_HAIRS.size()), "hair_col": R.call(LOOK_HAIR.size()), "detail": R.call(LOOK_DETAILS.size()),
+		"outfit": R.call(LOOK_OUTFITS.size())}
 
 ## A saved look with every value inside its list (older saves had a third gender option).
 static func clean_look(lk: Dictionary) -> Dictionary:
 	var out := default_look()
 	out.merge(lk, true)
-	var lists := {"body": LOOK_BODIES, "gender": LOOK_GENDERS, "face": LOOK_FACES, "skin": LOOK_SKIN, "hair": LOOK_HAIRS, "hair_col": LOOK_HAIR, "detail": LOOK_DETAILS, "outfit": LOOK_OUTFITS}
+	var lists := {"race": LOOK_RACES, "body": LOOK_BODIES, "gender": LOOK_GENDERS, "face": LOOK_FACES, "skin": LOOK_SKIN, "hair": LOOK_HAIRS, "hair_col": LOOK_HAIR, "detail": LOOK_DETAILS, "outfit": LOOK_OUTFITS}
 	for k in lists:
 		out[k] = clampi(int(out[k]), 0, (lists[k] as Array).size() - 1)
 	return out
 
 static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", appearance := {}) -> Node3D:
 	var lk: Dictionary = clean_look(appearance)
+	var race: Dictionary = RACES[int(lk["race"])]
+	var rid: String = race["id"]
 	var root := Node3D.new()
 	var oi: int = OUTFIT_KEYS.find(outfit) if outfit != "" else int(lk["outfit"])
 	if oi < 0: oi = 3
@@ -162,7 +194,21 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 	var chest_w := bw * (0.88 if fem else 1.07)
 	# hips and a coat that flares a little below the belt
 	part(torso, cyl(0.21 * bw, (0.22 if fem else 0.2) * bw, 0.14, 16), m_pants, Vector3(0, 0.02, 0))
-	part(torso, cyl((0.225 if fem else 0.235) * bw, (0.34 if fem else 0.29) * bw, 0.24, 16), m_body, Vector3(0, -0.04, 0.01))
+	# the class shapes the clothes: light hunters wear a fitted jacket and a short cape, medium ones
+	# the long field coat, heavy ones plate armour over a padded skirt
+	match cls:
+		"light":
+			part(torso, cyl(0.215 * bw, 0.235 * bw, 0.16, 16), m_body, Vector3(0, 0.0, 0.01))
+			part(torso, box(0.42 * bw, 0.5, 0.03), m_acc, Vector3(0, 0.3, 0.27 * bw), Vector3.ONE, Vector3(0.18, 0, 0))   # cape
+			part(torso, cyl(0.19, 0.24, 0.12, 14), m_acc, Vector3(0, 0.6, 0.02))   # cowl
+		"heavy":
+			part(torso, cyl(0.245 * bw, 0.33 * bw, 0.26, 10), m_pants, Vector3(0, -0.05, 0.01))
+			for k in 6:
+				var a := TAU * k / 6.0 + PI / 6.0
+				part(torso, box(0.17 * bw, 0.22, 0.04), m_trim, Vector3(sin(a) * 0.29 * bw, -0.07, cos(a) * 0.29 * bw), Vector3.ONE, Vector3(-0.22 * cos(a), a, 0.22 * sin(a)))   # tassets
+			part(torso, box(0.36 * bw, 0.3, 0.08), m_trim, Vector3(0, 0.36, -0.24 * bw), Vector3.ONE, Vector3(0.08, 0, 0))   # breastplate
+		_:
+			part(torso, cyl((0.225 if fem else 0.235) * bw, (0.34 if fem else 0.29) * bw, 0.24, 16), m_body, Vector3(0, -0.04, 0.01))
 	# chest: shirt under an open jacket
 	part(torso, capsule(0.24, 0.62), m_body, Vector3(0, 0.33, 0), Vector3(chest_w, 1.0, bw * 0.95))
 	if fem:
@@ -181,10 +227,11 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 	for sx in [-1.0, 1.0]:
 		part(torso, box(0.1, 0.11, 0.08), m_leather, Vector3(0.19 * sx * bw, 0.06, -0.1), Vector3.ONE, Vector3(0, 0.5 * sx, 0))
 	part(torso, box(0.06, 0.62, 0.04), m_leather, Vector3(0.02, 0.36, -0.215 * bw), Vector3.ONE, Vector3(-0.1, 0, 0.62))
-	# shoulder pads in team colour
+	# shoulder pads in team colour (big pauldrons on heavies)
+	var pad_k := 1.45 if cls == "heavy" else (0.8 if cls == "light" else 1.0)
 	for sx in [-1.0, 1.0]:
-		var hm := SphereMesh.new(); hm.radius = 0.13; hm.height = 0.13; hm.is_hemisphere = true; hm.radial_segments = 14; hm.rings = 5
-		part(torso, hm, m_acc, Vector3(0.24 * sx * chest_w, 0.52, 0.0), Vector3(1.0, 0.9, 1.1), Vector3(0, 0, -0.45 * sx))
+		var hm := SphereMesh.new(); hm.radius = 0.13 * pad_k; hm.height = 0.13 * pad_k; hm.is_hemisphere = true; hm.radial_segments = 14; hm.rings = 5
+		part(torso, hm, m_acc, Vector3((0.24 + (pad_k - 1.0) * 0.06) * sx * chest_w, 0.52 + (pad_k - 1.0) * 0.04, 0.0), Vector3(1.0, 0.9, 1.1), Vector3(0, 0, -0.45 * sx))
 		part(torso, cyl(0.135, 0.135, 0.025, 14), m_trim, Vector3(0.245 * sx * chest_w, 0.5, 0.0), Vector3.ONE, Vector3(0, 0, -0.45 * sx))
 	# the glider pack: a rolled wing on a back plate
 	part(torso, box(0.3, 0.34, 0.1), m_leather, Vector3(0, 0.36, 0.24 * bw))
@@ -193,13 +240,17 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 	part(torso, cyl(0.08, 0.08, 0.06, 12), m_acc, Vector3(0.2, 0.56, 0.27 * bw), Vector3.ONE, Vector3(0, 0, PI / 2))
 	# head: a slightly bigger head reads better from the top-down camera
 	part(torso, sphere(0.235), m_skin, Vector3(0, 0.86, 0), Vector3(1.0, 0.98, 0.98), Vector3.ZERO, "Head")
-	for sx in [-1.0, 1.0]:
-		part(torso, sphere(0.05, 8), m_skin, Vector3(0.225 * sx, 0.84, 0.01), Vector3(0.6, 1.0, 0.8))   # ears
+	if rid == "human":
+		for sx in [-1.0, 1.0]:
+			part(torso, sphere(0.05, 8), m_skin, Vector3(0.225 * sx, 0.84, 0.01), Vector3(0.6, 1.0, 0.8))   # ears
 	var skin_c: Color = LOOK_SKIN[int(lk["skin"])]
 	var hair_c: Color = LOOK_HAIR[int(lk["hair_col"])]
 	_face(torso, int(lk["face"]), gender, m_dark, m_skin, skin_c, int(lk["detail"]), hair_c, team_col)
-	# a hood or helmet covers the hair; only what hangs below it shows
-	_hair(torso, int(lk["hair"]), gender, m_hair, look in ["veil", "nyx", "bastion", "tusk", "halo"])
+	# a hood or helmet covers the hair; only what hangs below it shows. Stoneborn grow crystals and
+	# Scalefolk a crest instead of hair.
+	if not rid in ["stoneborn", "scalefolk"]:
+		_hair(torso, int(lk["hair"]), gender, m_hair, look in ["veil", "nyx", "bastion", "tusk", "halo"])
+	_race_parts(torso, rid, m_skin, m_hair, m_dark, skin_c, hair_c, hero_col)
 	match look:
 		"veil":
 			part(torso, sphere(0.265), m_acc, Vector3(0, 0.92, 0.05), Vector3(1.0, 0.95, 1.05))  # hood
@@ -310,9 +361,97 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 	for nm in ["LegL", "LegR"]:
 		merge_static(legs.get_node(nm))
 		merge_static(legs.get_node(nm + "/Knee"))
+	# the race's proportions: head size, how broad the body is, overall height
+	var hk := float(race["head"])
+	var bk := float(race["bulk"])
+	head.scale = Vector3.ONE * hk
+	head.position.y += (hk - 1.0) * 0.08
+	if bk != 1.0:
+		for ch in torso.get_children():
+			if ch is MeshInstance3D and not String(ch.name).begins_with("Tail") and ch.name != "Wings":
+				(ch as Node3D).scale = Vector3(bk, 1.0 + (bk - 1.0) * 0.35, bk)
+		aim.scale = Vector3(lerpf(1.0, bk, 0.75), 1.0, 1.0)
+		shoulder.position.x *= bk
+		legs.scale = Vector3(bk, 1.0, bk)
 	root.set_meta("mats", collect_mats(root))
-	root.scale = Vector3.ONE * float(Data.CLASSES[cls]["scale"])
+	root.set_meta("race", rid)
+	var rs := float(race["scale"])
+	root.scale = Vector3.ONE * float(Data.CLASSES[cls]["scale"]) * rs
+	ring.scale = Vector3.ONE / rs       # the ring under your feet shows the real hitbox, whatever your size
 	return root
+
+## What each race adds: ears, tails, wings, snouts, crests, crystals.
+static func _race_parts(torso: Node3D, rid: String, m_skin: Material, m_hair: Material, m_dark: Material, skin_c: Color, hair_c: Color, hero_col: Color) -> void:
+	match rid:
+		"vulpin":
+			var inner := toon(Color("ffb6bf"))
+			for sx in [-1.0, 1.0]:
+				part(torso, cyl(0.0, 0.13, 0.38, 4), m_hair, Vector3(0.16 * sx, 1.13, 0.01), Vector3(1.0, 1.0, 0.55), Vector3(0, 0.785, -0.36 * sx))
+				part(torso, cyl(0.0, 0.075, 0.24, 4), inner, Vector3(0.155 * sx, 1.1, -0.03), Vector3(1.0, 1.0, 0.3), Vector3(0, 0.785, -0.36 * sx))
+			part(torso, sphere(0.1, 12), toon(skin_c.lightened(0.35)), Vector3(0, 0.79, -0.19), Vector3(1.15, 0.75, 0.9))   # muzzle
+			part(torso, sphere(0.035, 8), m_dark, Vector3(0, 0.81, -0.285))   # nose
+			# the tail: a big brush that sweeps up behind, with a white tip
+			var tail := Node3D.new(); tail.name = "Tail"; tail.position = Vector3(0, 0.02, 0.26); torso.add_child(tail)
+			var pts := [[Vector3(0, -0.02, 0.08), 0.1], [Vector3(0.06, 0.06, 0.26), 0.16], [Vector3(0.16, 0.18, 0.42), 0.19], [Vector3(0.26, 0.34, 0.5), 0.16]]
+			for p in pts:
+				part(tail, sphere(float(p[1]), 12), m_hair, p[0])
+			part(tail, sphere(0.12, 10), toon(Color("fbf6ee")), Vector3(0.33, 0.47, 0.52))
+		"stoneborn":
+			var rock := toon(skin_c.darkened(0.28))
+			var glow := toon(hero_col.lightened(0.2), false, 0.9)
+			for sx in [-1.0, 1.0]:
+				part(torso, box(0.16, 0.12, 0.18), rock, Vector3(0.25 * sx, 0.62, 0.03), Vector3.ONE, Vector3(0.1, 0.3 * sx, -0.25 * sx))     # rock plates on the shoulders
+				part(torso, cyl(0.0, 0.05, 0.2, 5), glow, Vector3(0.24 * sx, 0.74, 0.1), Vector3.ONE, Vector3(-0.3, 0, -0.45 * sx))   # shoulder crystals
+			# a crown of crystals instead of hair
+			for c in [[Vector3(0, 1.14, 0.03), Vector3(-0.2, 0, 0), 0.38], [Vector3(0.12, 1.07, 0.06), Vector3(-0.35, 0, -0.55), 0.28], [Vector3(-0.13, 1.06, 0.05), Vector3(-0.3, 0, 0.6), 0.26], [Vector3(0.0, 1.0, 0.18), Vector3(-0.9, 0, 0), 0.22]]:
+				part(torso, cyl(0.0, 0.085, float(c[2]), 5), glow, c[0], Vector3.ONE, c[1])
+			# glowing cracks across the chest
+			part(torso, box(0.025, 0.2, 0.02), glow, Vector3(-0.05, 0.36, -0.235), Vector3.ONE, Vector3(0, 0, 0.5))
+			part(torso, box(0.025, 0.14, 0.02), glow, Vector3(0.05, 0.27, -0.235), Vector3.ONE, Vector3(0, 0, -0.6))
+			part(torso, box(0.18, 0.08, 0.18), rock, Vector3(0, 0.84, -0.17), Vector3.ONE, Vector3(0.2, 0, 0))   # heavy brow
+		"sprig":
+			var tipm := toon(hero_col.lightened(0.3), false, 1.0)
+			for sx in [-1.0, 1.0]:
+				# antennae with glowing tips, and long pointed ears
+				part(torso, cyl(0.012, 0.014, 0.3, 6), m_dark, Vector3(0.08 * sx, 1.16, 0.0), Vector3.ONE, Vector3(-0.25, 0, -0.38 * sx))
+				part(torso, sphere(0.045, 8), tipm, Vector3(0.14 * sx, 1.3, -0.04))
+				part(torso, cyl(0.0, 0.055, 0.2, 4), m_skin, Vector3(0.28 * sx, 0.88, 0.0), Vector3(1.0, 1.0, 0.5), Vector3(0, 0, -1.25 * sx))
+			# leaf wings on the back, see-through and faintly lit
+			var wing_m := StandardMaterial3D.new()
+			wing_m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+			wing_m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+			wing_m.albedo_color = Color(hero_col.lerp(Color("c8ffd8"), 0.5), 0.55)
+			wing_m.cull_mode = BaseMaterial3D.CULL_DISABLED
+			var wings := Node3D.new(); wings.name = "Wings"; wings.position = Vector3(0, 0.5, 0.3); torso.add_child(wings)
+			for sx in [-1.0, 1.0]:
+				var wmi := part(wings, sphere(0.26, 12), wing_m, Vector3(0.26 * sx, 0.1, 0.1), Vector3(0.8, 1.9, 0.06), Vector3(1.0, 0.35 * sx, 0.95 * sx))
+				wmi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+				var w2 := part(wings, sphere(0.18, 12), wing_m, Vector3(0.2 * sx, -0.16, 0.12), Vector3(0.75, 1.5, 0.06), Vector3(1.0, 0.25 * sx, 2.0 * sx))
+				w2.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		"scalefolk":
+			part(torso, sphere(0.16, 14), m_skin, Vector3(0, 0.8, -0.19), Vector3(0.9, 0.72, 1.25))   # snout
+			for sx in [-1.0, 1.0]:
+				part(torso, sphere(0.02, 6), m_dark, Vector3(0.05 * sx, 0.84, -0.385))
+			var crest := toon(hair_c)
+			for i in 5:
+				var z := -0.1 + i * 0.075
+				part(torso, cyl(0.0, 0.05, 0.2 - absf(i - 1.5) * 0.025, 3), crest, Vector3(0, 1.08 - i * 0.02, z), Vector3(0.35, 1.0, 1.0), Vector3(0.5 + i * 0.12, 0, 0))
+			for sx in [-1.0, 1.0]:
+				part(torso, cyl(0.0, 0.07, 0.18, 3), crest, Vector3(0.21 * sx, 0.9, 0.06), Vector3(0.3, 1.0, 1.0), Vector3(0.3, 0, -1.2 * sx))   # frills
+			# a long tail that tapers down to the ground behind
+			var tail := Node3D.new(); tail.name = "Tail"; tail.position = Vector3(0, 0.0, 0.24); torso.add_child(tail)
+			var segs := [[Vector3(0, -0.04, 0.08), 0.11, 0.3], [Vector3(0, -0.16, 0.3), 0.085, 0.3], [Vector3(0, -0.3, 0.52), 0.06, 0.28], [Vector3(0, -0.38, 0.72), 0.035, 0.22]]
+			for sg in segs:
+				part(tail, capsule(float(sg[1]), float(sg[2]) + float(sg[1]) * 2.0), m_skin, sg[0], Vector3.ONE, Vector3(1.05, 0, 0))
+		"owlet":
+			part(torso, cyl(0.0, 0.05, 0.13, 4), toon(Color("f2a24a")), Vector3(0, 0.8, -0.26), Vector3(1.0, 1.0, 0.8), Vector3(-PI / 2 + 0.35, 0, 0))   # beak
+			for sx in [-1.0, 1.0]:
+				part(torso, cyl(0.0, 0.09, 0.32, 3), m_hair, Vector3(0.17 * sx, 1.12, 0.0), Vector3(0.6, 1.0, 1.0), Vector3(0.15, 0, -0.6 * sx))   # ear tufts
+				part(torso, box(0.06, 0.22, 0.03), m_hair, Vector3(0.27 * sx, 0.3, 0.05), Vector3.ONE, Vector3(0.1, 0, -0.25 * sx))   # wing feathers at the sides
+			var tail := Node3D.new(); tail.name = "Tail"; tail.position = Vector3(0, 0.0, 0.26); torso.add_child(tail)
+			for i in 5:
+				var a := (i - 2) * 0.32
+				part(tail, box(0.09, 0.46, 0.025), m_hair if i % 2 == 0 else toon(hair_c.lightened(0.25)), Vector3(sin(a) * 0.12, -0.1, 0.14), Vector3.ONE, Vector3(1.0, 0, a))
 
 ## A paraglider wing: arched across its span, rounded at the tips, striped in the given colours.
 static func glider_mesh(cloth: Color, stripe: Color, edge: Color) -> ArrayMesh:

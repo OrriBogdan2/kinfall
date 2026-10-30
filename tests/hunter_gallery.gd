@@ -16,7 +16,8 @@ func _ready() -> void:
 	for c in ["light", "medium", "heavy"]:
 		for w in Data.CLASSES[c]["weapons"]: ids.append([c, w])
 	for i in ids.size():
-		var lk := {"body": i % 3, "gender": i % 3, "face": i % 5, "skin": (i * 2) % Models.LOOK_SKIN.size(), "hair": i % 6, "hair_col": i % Models.LOOK_HAIR.size(), "outfit": i % Models.LOOK_OUTFITS.size()}
+		var race := i % Models.RACES.size()
+		var lk := {"race": race, "body": i % 3, "gender": i % 2, "face": i % 5, "skin": int(Models.RACES[race]["skin"]) if race > 0 else (i * 2) % 8, "hair": i % 6, "hair_col": i % Models.LOOK_HAIR.size(), "outfit": i % Models.LOOK_OUTFITS.size()}
 		var h := Models.hunter(ids[i][0], Data.TEAM_COLORS[i % 4], ids[i][1], "", lk)
 		h.position = Vector3((i - (ids.size() - 1) * 0.5) * 1.25, 0, 0)
 		h.rotation.y = PI + 0.3

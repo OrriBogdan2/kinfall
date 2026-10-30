@@ -247,7 +247,7 @@ func _beacon(isl: Node3D, c: Color, r: float) -> void:
 func _spawn_glider(age := 0.0) -> void:
 	var cl: String = ["light", "medium", "heavy"][rng.randi_range(0, 2)]
 	var team := rng.randi_range(1, Data.TEAM_COLORS.size() - 1)
-	var lk := {"gender": rng.randi() % 2, "face": rng.randi() % Models.LOOK_FACES.size(), "skin": rng.randi() % Models.LOOK_SKIN.size(), "hair": rng.randi() % Models.LOOK_HAIRS.size(), "hair_col": rng.randi() % Models.LOOK_HAIR.size(), "outfit": rng.randi() % Models.LOOK_OUTFITS.size()}
+	var lk := Models.random_look(rng)
 	var cw: Array = Data.CLASSES[cl]["weapons"]
 	var h := Models.hunter(cl, Data.TEAM_COLORS[team], cw[rng.randi_range(0, cw.size() - 1)], "", lk)
 	(h.get_node("TeamRing") as Node3D).visible = false

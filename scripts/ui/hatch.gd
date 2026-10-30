@@ -394,19 +394,22 @@ func _clear_bottom() -> void:
 		ch.queue_free()
 
 # ---- your hunter
-const LOOK_ROWS := [["gender", "Gender", Models.LOOK_GENDERS], ["body", "Body", Models.LOOK_BODIES], ["face", "Face", Models.LOOK_FACES],
+const LOOK_ROWS := [["race", "Race", Models.LOOK_RACES], ["gender", "Gender", Models.LOOK_GENDERS], ["body", "Body", Models.LOOK_BODIES], ["face", "Face", Models.LOOK_FACES],
 	["detail", "Details", Models.LOOK_DETAILS], ["skin", "Skin", Models.LOOK_SKIN], ["hair", "Hair", Models.LOOK_HAIRS], ["hair_col", "Hair colour", Models.LOOK_HAIR], ["outfit", "Outfit", Models.LOOK_OUTFITS]]
 
 func _show_create() -> void:
 	stage = "create"
 	if look.is_empty():
 		look = Models.clean_look(Save.d.get("look", {}))
+		for a in OS.get_cmdline_user_args():
+			if a.begins_with("--create-race="):   # test: open the creator on a race
+				look["race"] = int(a.substr(14)); look["skin"] = int(Models.RACES[int(look["race"])]["skin"])
 	title.text = "Make your hunter"
 	_clear_bottom()
 	if create_box: create_box.queue_free()
 	_rebuild_preview()
 	for e in eggs: (e["holder"] as Node3D).visible = false
-	if sub_lbl: sub_lbl.text = "Drag your hunter (or hold A / D) to turn them round. Looks are just for show."
+	if sub_lbl: sub_lbl.text = "Drag your hunter (or hold A / D) to turn them round."
 	cam_to = Vector3(0, 1.5, 4.6)
 	look_at_t = Vector3(0.0, 0.9, 1.6)
 	var card := UI.card(UI.CARD, 14, 16)
@@ -431,6 +434,12 @@ func _show_create() -> void:
 			hr.add_child(val)
 		hr.add_child(UI.button("›", func(): _step_look(key, 1, opts.size()), 44))
 		v.add_child(hr)
+		if key == "race":
+			var rd := UI.label(String(Models.RACES[int(look["race"])]["desc"]), 14, Color("ffd79a"))
+			rd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			rd.custom_minimum_size.x = 380
+			var rm := MarginContainer.new(); rm.add_theme_constant_override("margin_left", 128); rm.add_child(rd)
+			v.add_child(rm)
 	var nr := UI.hbox(8)
 	var nl := UI.label("Your name", 15, UI.MUTED); nl.custom_minimum_size.x = 120
 	nr.add_child(nl)
@@ -440,8 +449,7 @@ func _show_create() -> void:
 	v.add_child(nr)
 	var br := UI.hbox(10)
 	br.add_child(UI.button("Random", func():
-		for row in LOOK_ROWS:
-			look[row[0]] = randi() % (row[2] as Array).size()
+		look = Models.random_look()
 		_show_create(), 140))
 	br.add_child(UI.primary("Looks good", func():
 		Save.d["look"] = look.duplicate()
@@ -468,6 +476,9 @@ func _show_create() -> void:
 func _step_look(key: String, d: int, n: int) -> void:
 	look[key] = posmod(int(look[key]) + d, n)
 	Sfx.play("hover", null, -6.0)
+	if key == "race":
+		# each race starts in its own colouring; you can still change the skin after
+		look["skin"] = int(Models.RACES[int(look["race"])]["skin"])
 	_show_create()
 
 var preview_yaw := PI
