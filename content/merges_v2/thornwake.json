@@ -1,0 +1,69 @@
+{
+	"grammar": 1,
+	"id": "thornwake",
+	"name": "Sporewake",
+	"flavor": "Mycroll grows into a giant toadstool beast for 8s. Its stomps root everything around it.",
+	"theme": "spore",
+	"duration": 8,
+	"grow_duration": 1.0,
+	"grow_strength": 0.1,
+	"passives": [
+		{
+			"stat": "armor",
+			"amount": 0.3
+		},
+		{
+			"stat": "knockback_resist",
+			"amount": 0.5
+		}
+	],
+	"on_start": [
+		{
+			"delivery": {
+				"type": "burst",
+				"origin": "owner",
+				"radius": 4
+			},
+			"effects": [
+				{
+					"type": "damage",
+					"amount": 14
+				},
+				{
+					"type": "root",
+					"duration": 1.6
+				}
+			]
+		}
+	],
+	"pulses": [
+		{
+			"every": 1.5,
+			"stage": {
+				"delivery": {
+					"type": "burst",
+					"origin": "owner",
+					"radius": 2.8
+				},
+				"effects": [
+					{
+						"type": "damage",
+						"amount": 10
+					},
+					{
+						"type": "root",
+						"duration": 1.0
+					}
+				]
+			}
+		}
+	],
+	"merged": {
+		"active": {
+			"stage": 0,
+			"scale": {
+				"radius": 1.3
+			}
+		}
+	}
+}

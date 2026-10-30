@@ -1,0 +1,24 @@
+{
+	"grammar": 1,
+	"id": "steadfast_form",
+	"name": "Steadfast",
+	"flavor": "Raised to look after you: slower, sturdier.",
+	"affinity": "steadfast",
+	"requires": {
+		"level": 4
+	},
+	"grants": [
+		{
+			"kind": "stat_shift",
+			"from": "kin_speed",
+			"to": "kin_hp",
+			"points": 1
+		}
+	],
+	"cosmetic": {
+		"parts": [
+			"plates"
+		],
+		"tint": "#c9b27a"
+	}
+}

@@ -1,0 +1,142 @@
+{
+	"grammar": 1,
+	"id": "pebbit",
+	"name": "Gravadillo",
+	"animals": [
+		"Armadillo",
+		"Rhino beetle"
+	],
+	"theme": "gravity",
+	"flavor": "An armadillo with a rhino beetle's horn. It rolls up in heavy plates and bends gravity to slam foes down.",
+	"colors": {
+		"body": "#3c4058",
+		"belly": "#8e8aa8",
+		"glow": "#b48cff"
+	},
+	"look": {
+		"ears": "none",
+		"body": "gravadillo",
+		"tail": "none",
+		"feet": "none",
+		"aura": "pebbles"
+	},
+	"body": {
+		"size": "large",
+		"reach": 1.4,
+		"mass": 1.4,
+		"gait": {
+			"hop_rate": 5.5,
+			"hop_height": 0.06,
+			"pace": 0.82
+		}
+	},
+	"stats": {
+		"kin_hp": 12,
+		"kin_damage": 5,
+		"kin_speed": 2,
+		"owner_armor": 1
+	},
+	"personality": {
+		"bravery": 0.9,
+		"loyalty": 0.7,
+		"temper": 0.3,
+		"curiosity": 0.2
+	},
+	"ai": {
+		"aggression": 0.55,
+		"loyalty": 0.75,
+		"caution": 0.15,
+		"role": "tank"
+	},
+	"carry": {
+		"style": "mount",
+		"name": "Anchor",
+		"passives": [
+			{
+				"stat": "damage_reduction",
+				"amount": 0.15
+			},
+			{
+				"stat": "knockback_resist",
+				"amount": 0.5
+			}
+		],
+		"mount": {
+			"speed": 0.9,
+			"jump": 0.9,
+			"turn": 0.7
+		}
+	},
+	"throw": {
+		"effects": [
+			{
+				"type": "push",
+				"strength": 7
+			}
+		]
+	},
+	"dodge_rider": {
+		"name": "Gravity Wake",
+		"on_end": [
+			{
+				"delivery": {
+					"type": "burst",
+					"origin": "owner",
+					"radius": 3.5
+				},
+				"effects": [
+					{
+						"type": "pull",
+						"strength": 8
+					}
+				]
+			}
+		]
+	},
+	"active": "slam",
+	"auto": "rock_guard",
+	"merge": "titan",
+	"evolution": {
+		"root": "Peb",
+		"paths": [
+			{
+				"affinity": "fierce",
+				"nodes": [
+					"fierce_form"
+				]
+			},
+			{
+				"affinity": "steadfast",
+				"nodes": [
+					"steadfast_form",
+					"pebbit_dense_plate"
+				]
+			},
+			{
+				"affinity": "curious",
+				"nodes": [
+					"curious_form"
+				]
+			},
+			{
+				"affinity": "swift",
+				"nodes": [
+					"swift_form"
+				]
+			}
+		]
+	},
+	"voice": {
+		"line": "slow, steady, few words, deeply loyal once trust is earned",
+		"syllables": [
+			"Peb",
+			"bit"
+		]
+	},
+	"egg": {
+		"name": "Gravity Egg",
+		"temper": "Steady",
+		"desc": "Far heavier than it looks. Loose pebbles roll toward it. Something steady is in here.",
+		"play": "Slow and tough. Pulls foes in and slams them down."
+	}
+}

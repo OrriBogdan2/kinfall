@@ -1,0 +1,79 @@
+{
+	"grammar": 1,
+	"id": "bad_kin",
+	"name": "Chimera",
+	"animals": [
+		"Lion",
+		"Goat",
+		"Snake"
+	],
+	"theme": "fire",
+	"colors": {
+		"body": "#ff0000",
+		"belly": "pink",
+		"glow": "#00ff00"
+	},
+	"look": {
+		"body": "dragon",
+		"ears": "none"
+	},
+	"body": {
+		"size": "small",
+		"reach": 1.3
+	},
+	"stats": {
+		"kin_hp": 10,
+		"kin_damage": 8,
+		"kin_speed": 10,
+		"kin_luck": 2
+	},
+	"personality": {
+		"bravery": 0.5,
+		"loyalty": 1.5,
+		"temper": 0.5
+	},
+	"ai": {
+		"aggression": 0.5,
+		"loyalty": 0.5,
+		"caution": 0.5,
+		"role": "assassin"
+	},
+	"carry": {
+		"style": "mount",
+		"passives": [
+			{
+				"stat": "shield",
+				"amount": 20
+			},
+			{
+				"stat": "move_speed",
+				"amount": 0.3
+			}
+		]
+	},
+	"throw": {
+		"effects": [
+			{
+				"type": "heal",
+				"amount": 10,
+				"target": "owner"
+			}
+		]
+	},
+	"active": "no_such_ability",
+	"auto": "fixture_bolt",
+	"merge": "bad_merge",
+	"evolution": {
+		"root": "Chimeraform",
+		"paths": [
+			{
+				"affinity": "fierce",
+				"nodes": [
+					"big_shift",
+					"big_shift",
+					"missing_node"
+				]
+			}
+		]
+	}
+}

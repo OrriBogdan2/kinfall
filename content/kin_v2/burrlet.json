@@ -1,0 +1,142 @@
+{
+	"grammar": 1,
+	"id": "burrlet",
+	"name": "Mycroll",
+	"animals": [
+		"Hedgehog",
+		"Toadstool"
+	],
+	"theme": "spore",
+	"flavor": "A hedgehog whose quills are glowing toadstools. It puffs spore clouds that root foes where they stand.",
+	"colors": {
+		"body": "#6b4a3c",
+		"belly": "#e9d6bd",
+		"glow": "#3fe0c0"
+	},
+	"look": {
+		"ears": "none",
+		"body": "mycroll",
+		"tail": "none",
+		"feet": "none",
+		"aura": "spores"
+	},
+	"body": {
+		"size": "small",
+		"reach": 1.3,
+		"mass": 0.8,
+		"gait": {
+			"hop_rate": 7.0,
+			"hop_height": 0.11,
+			"pace": 0.9
+		}
+	},
+	"stats": {
+		"kin_hp": 6,
+		"kin_damage": 2,
+		"kin_speed": 6,
+		"owner_max_hp": 3,
+		"owner_shield": 3
+	},
+	"personality": {
+		"bravery": 0.55,
+		"loyalty": 0.6,
+		"temper": 0.4,
+		"curiosity": 0.8
+	},
+	"ai": {
+		"aggression": 0.5,
+		"loyalty": 0.6,
+		"caution": 0.45,
+		"role": "controller"
+	},
+	"carry": {
+		"style": "shoulder",
+		"name": "Mycelium",
+		"on_shot": {
+			"effects": [
+				{
+					"type": "slow",
+					"duration": 0.7
+				}
+			]
+		}
+	},
+	"throw": {
+		"effects": [
+			{
+				"type": "root",
+				"duration": 0.9
+			}
+		]
+	},
+	"dodge_rider": {
+		"name": "Spore Puff",
+		"on_start": [
+			{
+				"delivery": {
+					"type": "zone",
+					"origin": "owner",
+					"radius": 1.5,
+					"duration": 2,
+					"every": 0.5
+				},
+				"effects": [
+					{
+						"type": "damage",
+						"amount": 2
+					},
+					{
+						"type": "slow",
+						"duration": 0.7
+					}
+				]
+			}
+		]
+	},
+	"active": "puffcap_mines",
+	"auto": "thorn_patch",
+	"merge": "thornwake",
+	"evolution": {
+		"root": "Burr",
+		"paths": [
+			{
+				"affinity": "fierce",
+				"nodes": [
+					"fierce_form"
+				]
+			},
+			{
+				"affinity": "steadfast",
+				"nodes": [
+					"steadfast_form"
+				]
+			},
+			{
+				"affinity": "curious",
+				"nodes": [
+					"curious_form",
+					"burrlet_spore_drift"
+				]
+			},
+			{
+				"affinity": "swift",
+				"nodes": [
+					"swift_form"
+				]
+			}
+		]
+	},
+	"voice": {
+		"line": "curious and odd, notices small things",
+		"syllables": [
+			"Burr",
+			"let"
+		]
+	},
+	"egg": {
+		"name": "Spore Egg",
+		"temper": "Curious",
+		"desc": "Soft and earthy, dusted with glowing spores that drift off when it twitches. Something curious is in here.",
+		"play": "Roots foes in place with spore clouds. Notices everything, wanders off sometimes."
+	}
+}

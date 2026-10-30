@@ -1,0 +1,62 @@
+{
+	"grammar": 1,
+	"id": "flare_dash",
+	"name": "Stinger Dash",
+	"short": "Lunge",
+	"flavor": "On its own, Vespyx lunges 7m tail first, poisoning everything it passes through.",
+	"theme": "venom",
+	"tier": 1,
+	"from": "kin",
+	"range": 7,
+	"cooldown": 9,
+	"charges": 1,
+	"trigger": {
+		"type": "auto"
+	},
+	"cue": {
+		"type": "foe_in_range",
+		"range": 6
+	},
+	"stages": [
+		{
+			"delivery": {
+				"type": "dash",
+				"distance": 7,
+				"speed": 24,
+				"width": 1.1
+			},
+			"effects": [
+				{
+					"type": "damage",
+					"amount": 14
+				},
+				{
+					"type": "damage",
+					"preset": "poison",
+					"amount": 18
+				}
+			],
+			"then": {
+				"on_end": [
+					{
+						"delivery": {
+							"type": "burst",
+							"origin": "here",
+							"radius": 1.6
+						},
+						"effects": [
+							{
+								"type": "damage",
+								"amount": 8
+							},
+							{
+								"type": "push",
+								"strength": 5
+							}
+						]
+					}
+				]
+			}
+		}
+	]
+}

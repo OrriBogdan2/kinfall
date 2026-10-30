@@ -1,0 +1,55 @@
+{
+	"grammar": 2,
+	"id": "bad_merge",
+	"name": "Too Much",
+	"duration": 30,
+	"passives": [
+		{
+			"stat": "flight",
+			"amount": 1
+		},
+		{
+			"stat": "extra_jumps",
+			"amount": 3
+		},
+		{
+			"stat": "damage",
+			"amount": 0.2
+		},
+		{
+			"stat": "damage",
+			"amount": 0.1
+		}
+	],
+	"on_shot": {
+		"effects": [
+			{
+				"type": "stun",
+				"duration": 0.5
+			}
+		],
+		"splash": 5
+	},
+	"pulses": [
+		{
+			"every": 0.1,
+			"stage": {
+				"delivery": {
+					"type": "aura",
+					"radius": 3
+				},
+				"effects": [
+					{
+						"type": "damage",
+						"amount": 5
+					}
+				]
+			}
+		}
+	],
+	"merged": {
+		"active": {
+			"stage": 0
+		}
+	}
+}

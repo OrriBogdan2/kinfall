@@ -1,0 +1,24 @@
+{
+	"grammar": 1,
+	"id": "swift_form",
+	"name": "Swift",
+	"flavor": "Raised on the move: lighter and quicker.",
+	"affinity": "swift",
+	"requires": {
+		"level": 4
+	},
+	"grants": [
+		{
+			"kind": "stat_shift",
+			"from": "kin_hp",
+			"to": "kin_speed",
+			"points": 1
+		}
+	],
+	"cosmetic": {
+		"parts": [
+			"wings"
+		],
+		"tint": "#5ad0e0"
+	}
+}

@@ -1,0 +1,71 @@
+{
+	"grammar": 1,
+	"id": "slam",
+	"name": "Gravity Slam",
+	"short": "Slam",
+	"flavor": "Gravadillo drops onto the spot like a meteor: everything within 3.5m is sucked into the crater and flung up; anyone already airborne is spiked.",
+	"theme": "gravity",
+	"tier": 1,
+	"from": "kin",
+	"range": 7,
+	"cooldown": 9,
+	"charges": 1,
+	"trigger": {
+		"type": "on_cast"
+	},
+	"cue": {
+		"type": "foe_in_range",
+		"range": 7
+	},
+	"stages": [
+		{
+			"delivery": {
+				"type": "leap",
+				"range": 7,
+				"time": 0.5,
+				"height": 2.2
+			},
+			"then": {
+				"on_land": [
+					{
+						"delivery": {
+							"type": "burst",
+							"origin": "here",
+							"radius": 3.5
+						},
+						"effects": [
+							{
+								"type": "pull",
+								"preset": "gravity_well"
+							}
+						]
+					},
+					{
+						"delivery": {
+							"type": "burst",
+							"origin": "here",
+							"radius": 2.4
+						},
+						"effects": [
+							{
+								"type": "damage",
+								"amount": 18
+							},
+							{
+								"type": "lift",
+								"strength": 8
+							}
+						],
+						"modifiers": [
+							{
+								"type": "spike",
+								"bonus": 0.5,
+								"stun": 0.8
+							}
+						]
+					}
+				]
+			}
+		}
+	]
+}

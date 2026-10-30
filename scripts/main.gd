@@ -96,6 +96,19 @@ func _ready() -> void:
 		print("CHECK DONE, failures: ", bad)
 		get_tree().quit()
 		return
+	if Array(args).any(func(a): return String(a).begins_with("--grammar-check")):
+		# tooling: parse every kin grammar file (docs/KIN_GRAMMAR.md) and print structural errors;
+		# --grammar-check=<root> checks another folder (e.g. res://tests/grammar_fixtures/broken)
+		var groot := "res://content"
+		for a in args:
+			if a.begins_with("--grammar-check="): groot = a.substr(16)
+		var gbad := KinGrammar.check(groot)
+		get_tree().quit(1 if gbad > 0 else 0)
+		return
+	if "--grammar-vocab" in args:
+		print(KinGrammar.vocab_markdown())
+		get_tree().quit()
+		return
 	if "--meshtime" in args:
 		# test: how long the big map takes to build its meshes, and how many draws it makes
 		var w := World.new()

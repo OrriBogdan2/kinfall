@@ -1,0 +1,33 @@
+{
+	"grammar": 1,
+	"id": "pebbit_dense_plate",
+	"name": "Dense Plate",
+	"flavor": "Its guard plate soaks more but drops sooner.",
+	"affinity": "steadfast",
+	"requires": {
+		"level": 8,
+		"after": [
+			"steadfast_form"
+		]
+	},
+	"grants": [
+		{
+			"kind": "sidegrade",
+			"slot": "auto",
+			"stage": 0,
+			"up": {
+				"param": "delivery.hp",
+				"scale": 1.25
+			},
+			"down": {
+				"param": "delivery.duration",
+				"scale": 0.8
+			}
+		}
+	],
+	"cosmetic": {
+		"parts": [
+			"shell"
+		]
+	}
+}

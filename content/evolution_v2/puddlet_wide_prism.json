@@ -1,0 +1,33 @@
+{
+	"grammar": 1,
+	"id": "puddlet_wide_prism",
+	"name": "Wide Prism",
+	"flavor": "A wider crystal wall that fades sooner.",
+	"affinity": "steadfast",
+	"requires": {
+		"level": 8,
+		"after": [
+			"steadfast_form"
+		]
+	},
+	"grants": [
+		{
+			"kind": "sidegrade",
+			"slot": "active",
+			"stage": 0,
+			"up": {
+				"param": "delivery.length",
+				"scale": 1.25
+			},
+			"down": {
+				"param": "delivery.duration",
+				"scale": 0.8
+			}
+		}
+	],
+	"cosmetic": {
+		"parts": [
+			"crest"
+		]
+	}
+}

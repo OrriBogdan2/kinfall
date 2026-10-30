@@ -1,0 +1,69 @@
+{
+	"grammar": 1,
+	"id": "tempest",
+	"name": "Eclipse",
+	"flavor": "Lunowl swells into a living eclipse for 7s that drags foes in and flings them skyward.",
+	"theme": "lunar",
+	"duration": 7,
+	"grow_duration": 1.0,
+	"grow_strength": 0.1,
+	"passives": [
+		{
+			"stat": "move_speed",
+			"amount": 0.3
+		},
+		{
+			"stat": "extra_jumps",
+			"amount": 1
+		},
+		{
+			"stat": "glide",
+			"amount": 0.5
+		}
+	],
+	"on_start": [
+		{
+			"delivery": {
+				"type": "burst",
+				"origin": "owner",
+				"radius": 4
+			},
+			"effects": [
+				{
+					"type": "damage",
+					"amount": 12
+				},
+				{
+					"type": "lift",
+					"strength": 9
+				}
+			]
+		}
+	],
+	"pulses": [
+		{
+			"every": 0.6,
+			"stage": {
+				"delivery": {
+					"type": "burst",
+					"origin": "owner",
+					"radius": 5.5
+				},
+				"effects": [
+					{
+						"type": "pull",
+						"strength": 7
+					}
+				]
+			}
+		}
+	],
+	"merged": {
+		"active": {
+			"stage": 0,
+			"scale": {
+				"range": 1.3
+			}
+		}
+	}
+}

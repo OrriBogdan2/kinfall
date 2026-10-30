@@ -1,0 +1,43 @@
+{
+	"grammar": 1,
+	"id": "refraction",
+	"name": "Refraction",
+	"short": "Mirror",
+	"flavor": "When you're hurt, Prismander wraps you in a 1s mirror shell: shots that reach you fly back at the shooter, and you get a 20 shield.",
+	"theme": "prism",
+	"tier": 1,
+	"from": "owner",
+	"cooldown": 12,
+	"charges": 1,
+	"trigger": {
+		"type": "auto"
+	},
+	"cue": {
+		"type": "owner_hurt",
+		"below": 0.55
+	},
+	"stages": [
+		{
+			"delivery": {
+				"type": "burst",
+				"origin": "owner",
+				"radius": 0
+			},
+			"effects": [
+				{
+					"type": "reflect",
+					"target": "owner",
+					"power": 1.0,
+					"duration": 1,
+					"radius": 1.6
+				},
+				{
+					"type": "shield",
+					"target": "owner",
+					"amount": 20,
+					"duration": 3
+				}
+			]
+		}
+	]
+}

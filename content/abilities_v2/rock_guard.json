@@ -1,0 +1,31 @@
+{
+	"grammar": 1,
+	"id": "rock_guard",
+	"name": "Mass Guard",
+	"short": "Plate",
+	"flavor": "When you're under fire, Gravadillo curls into a heavy plate in front of you for 3s that stops enemy shots (120 HP).",
+	"theme": "gravity",
+	"tier": 1,
+	"from": "owner",
+	"cooldown": 12,
+	"charges": 1,
+	"trigger": {
+		"type": "auto"
+	},
+	"cue": {
+		"type": "owner_under_fire"
+	},
+	"stages": [
+		{
+			"delivery": {
+				"type": "wall",
+				"origin": "owner",
+				"offset": 1.2,
+				"length": 2.4,
+				"hp": 120,
+				"duration": 3,
+				"follow": true
+			}
+		}
+	]
+}

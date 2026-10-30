@@ -1,0 +1,33 @@
+{
+	"grammar": 1,
+	"id": "cindle_barbed_tail",
+	"name": "Barbed Tail",
+	"flavor": "Its hook reaches further but stuns for less.",
+	"affinity": "fierce",
+	"requires": {
+		"level": 8,
+		"after": [
+			"fierce_form"
+		]
+	},
+	"grants": [
+		{
+			"kind": "sidegrade",
+			"slot": "active",
+			"stage": 0,
+			"up": {
+				"param": "delivery.range",
+				"scale": 1.2
+			},
+			"down": {
+				"param": "effects.4.duration",
+				"scale": 0.7
+			}
+		}
+	],
+	"cosmetic": {
+		"parts": [
+			"spikes"
+		]
+	}
+}
