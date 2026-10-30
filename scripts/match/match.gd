@@ -2913,6 +2913,11 @@ func _update_interact(dt: float) -> void:
 					h.box_t = 0.0
 				h.box_t += dt
 				var need: float = Life.R["box_revive_time"] if best["kind"] == "boxrev" else Life.R["loot_time"]
+				if best["kind"] == "boxrev":
+					# everyone can see a deathbox revive going up (and who's doing it)
+					b["rev_prog"] = h.box_t / need
+					b["rev_by"] = h
+					b["rev_at"] = time
 				if h.box_t >= need:
 					h.box_t = 0.0
 					if best["kind"] == "boxrev": Life.box_revive(self, b, h)

@@ -14,7 +14,8 @@ const R := {
 	"revive_time": 4.0,         # [wiki "a few seconds"] [est]
 	"revive_hp": 0.25,          # [design] back on your feet with a quarter of your health
 	"extra_reviver": 0.5,       # each extra teammate on you: +50% speed [design]
-	"stomp_mult": 4.0,          # [wiki] an enemy on a wisp drains it this much faster and blocks the revive
+	"stomp_mult": 2.5,          # [design] an enemy standing on a wisp drains it this much faster and blocks the revive
+	"stomp_slow": 0.4,          # [design] ...and pins it: the wisp drifts at this fraction of its normal speed
 	"execute_time": 3.0,        # [footage] (old: hold interact on an enemy wisp; now the stomp below)
 	"stomp_commit": 0.2,        # [design] hold interact this long on an enemy wisp to start the stomp...
 	"stomp_time": 2.4,          # [footage] ...then you're locked in for this long, three stomps and done
@@ -68,15 +69,34 @@ static func tick_wisps(m: Match, dt: float) -> void:
 			continue
 		var allies := 0
 		var foes := 0
+		var revivers: Array = []
+		var stompers: Array = []
 		for h in m.hunters:
 			if h == o or h.out or h.extracted or h.downed or h.dropping or h.flat_dist(o) > R["revive_radius"] or absf(h.pos.y - o.pos.y) > 1.6:
 				continue
-			if h.team == o.team: allies += 1
-			else: foes += 1
+			if h.team == o.team:
+				allies += 1
+				revivers.append(h)
+			else:
+				foes += 1
+				stompers.append(h)
+				h.set_meta("standing_on", o)
+				h.set_meta("standing_at", m.time)
+		o.set_meta("revivers", revivers if foes == 0 else [])
+		o.set_meta("stompers", stompers)
+		# the crush: a low thud under the wisp while someone's standing on it, heard by both sides
+		if foes > 0:
+			var st: float = float(o.get_meta("crush_t", 0.0)) - dt
+			if st <= 0.0:
+				st = 0.42
+				m.sfx("thump", o.pos, -6.0)
+			o.set_meta("crush_t", st)
 		var kin_on := false
 		for kk in [o.kin, o.kin2]:
 			if kk and not (kk as Kin).dead and (kk as Kin).state == "reviving" and (kk as Kin).flat_dist(o) < 1.4:
 				kin_on = true
+		if foes > 0 and not o.get_meta("stomped", false) and o == m.player and m.hud:
+			m.hud.toast("%s is on you! Drift away" % stompers[0].pname, Color("ff5a4a"))
 		o.set_meta("stomped", foes > 0)
 		if foes > 0:
 			# stomped: drains fast and nobody can pick you up

@@ -466,8 +466,11 @@ func _life_check() -> void:
 	spot.call(foe, B.pos)
 	m.knock(B, foe, {})
 	t0 = m.time
+	run.call(Match.DT); run.call(Match.DT)
+	var pinned: bool = B.get_meta("stomped", false)
+	var stood: bool = foe.get_meta("standing_on", null) == B
 	while not B.out and m.time - t0 < 30.0: run.call(Match.DT)
-	print("LCHECK stomp: dead=%s after %.1fs" % [B.out, m.time - t0])
+	print("LCHECK stomp: dead=%s after %.1fs (expect ~%.1fs at %.1fx) pinned=%s stomper flagged=%s slow=%.2f" % [B.out, m.time - t0, Life.R["bleed_out"] / Life.R["stomp_mult"], Life.R["stomp_mult"], pinned, stood, Life.R["stomp_slow"]])
 	spot.call(foe, m.world.random_ground())
 	# 5. beacon
 	var bc: Dictionary = m.beacons[0]
@@ -531,6 +534,23 @@ func _life_check() -> void:
 	spot.call(B2, home + Vector3(-6, 0, 0))
 	m.eliminate(B2, foe, "knocked out")
 	print("LCHECK meadow: kin state=%s box kin=%d" % [B2.kin.state, (Life.box_of(m, B2).get("kin", []) as Array).size()])
+	# 9. the deathbox loot window: a box with a rare glove and some gems; take one by hand, smart loot the rest
+	var lb: Dictionary = {}
+	for b0 in m.boxes:
+		if not b0.get("empty", true):
+			lb = b0
+	if not lb.is_empty():
+		var gid: String = String(Gear.ALL.keys()[0]) if not Gear.ALL.is_empty() else ""
+		if gid != "": (lb["gear"] as Array).append({"id": gid, "rar": 3})
+		lb["gems"] = int(lb.get("gems", 0)) + 15
+		var looter: Hunter = C
+		looter.gear = [{}, {}]; looter.refresh_gear()
+		var its: Array = Life.box_items(m, looter, lb)
+		var g0 := looter.gems
+		var first: Dictionary = its[0]
+		Life.take_item(m, looter, lb, first)
+		var got := Life.smart_loot(m, looter, lb)
+		print("LCHECK loot window: items=%d took first=%s smart=%d gems +%d gear=%s left=%d empty=%s" % [its.size(), first["name"], got, looter.gems - g0, str(looter.gear), Life.box_items(m, looter, lb).size(), lb["empty"]])
 	get_tree().quit()
 
 ## Test: every weapon against a standing target at a couple of ranges, tapping and (for swords)

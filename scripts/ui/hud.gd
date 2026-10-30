@@ -259,6 +259,7 @@ func _draw_world_labels() -> void:
 		_ctext(bp, "Revive beacon" + ("  ·  contested" if bc["contested"] else ""), 12, Color("8fffc0"), big)
 		if float(bc["prog"]) > 0.0:
 			_bar(Rect2(bp + Vector2(-40, 6), Vector2(80, 5)), float(bc["prog"]), Color("8fffc0"))
+	_draw_wisp_rings()
 	for h in m.hunters:
 		if h == m.player or h.out or h.extracted or not h.model or not h.model.visible or h.unseen:
 			continue
@@ -1164,8 +1165,9 @@ func _draw_squad(sz: Vector2, p: Hunter) -> void:
 					_status_row(Vector2(tx + tw * 0.5, r.position.y + 52), h)
 			"WISP":
 				var left := _bleed_left(h)
-				_bar(Rect2(Vector2(tx, r.position.y + 28), Vector2(tw, 6)), h.down_hp / Data.MATCH["down_hp"], Color("ff6a4a").lerp(Color.WHITE, 0.25 * pulse))
-				_text(Vector2(tx, r.position.y + 51), "KNOCKED  %ds" % int(ceil(left)), 13, Color("ff8a6a"), big)
+				var stp: bool = h.get_meta("stomped", false)
+				_bar(Rect2(Vector2(tx, r.position.y + 28), Vector2(tw, 6)), h.down_hp / Data.MATCH["down_hp"], (Color("ff2a1a") if stp else Color("ff6a4a")).lerp(Color.WHITE, (0.5 if stp else 0.25) * pulse))
+				_text(Vector2(tx, r.position.y + 51), ("STOMPED  %ds" if stp else "KNOCKED  %ds") % int(ceil(left)), 13, Color("ff4a3a") if stp else Color("ff8a6a"), big)
 				if h.revive > 0.0:
 					_arc(Vector2(r.end.x - 16, r.position.y + 46), 8, h.revive, GOOD, 3.0)
 			"DEATHBOX":
@@ -1323,10 +1325,18 @@ func _nameplate(sp: Vector2, h: Hunter) -> void:
 	_ctext(bc + Vector2(0, 4), String(h.cls).substr(0, 1).to_upper(), 10, cc, big)
 	_text(Vector2(x0 + 2, sp.y - 11), h.pname.substr(0, 14), 13, col.lerp(Color.WHITE, 0.25), big)
 	if h.downed:
-		_seg_bar(Rect2(Vector2(x0, sp.y - 2), Vector2(w, 6)), h.down_hp, Data.MATCH["down_hp"], 0.0, Color("ffb36a"), 25.0)
-		_ctext(sp + Vector2(0, 16), "DOWN", 11, Color("ffb36a"), big)
-		if h.revive > 0.0:
-			_arc(sp + Vector2(0, 30), 10, h.revive, GOOD, 3.0)
+		var stomped: bool = h.get_meta("stomped", false)
+		var pulse := 0.5 + 0.5 * sin(m.time * 14.0)
+		var bcol := Color("ff3a2a").lerp(Color.WHITE, 0.3 * pulse) if stomped else Color("ffb36a")
+		_seg_bar(Rect2(Vector2(x0, sp.y - 2), Vector2(w, 6)), h.down_hp, Data.MATCH["down_hp"], 0.0, bcol, 25.0)
+		var revs: Array = h.get_meta("revivers", [])
+		if stomped:
+			var sts: Array = h.get_meta("stompers", [])
+			_ctext(sp + Vector2(0, 16), "STOMPED  ·  %s" % (sts[0] as Hunter).pname if not sts.is_empty() else "STOMPED", 11, bcol, big)
+		elif h.revive > 0.0 and not revs.is_empty():
+			_ctext(sp + Vector2(0, 16), "%s reviving  %d%%" % [(revs[0] as Hunter).pname, int(h.revive * 100.0)], 11, GOOD, big)
+		else:
+			_ctext(sp + Vector2(0, 16), "DOWN", 11, Color("ffb36a"), big)
 		return
 	if h.max_armor > 0.5:
 		_seg_bar(Rect2(Vector2(x0, sp.y - 4), Vector2(w, 3)), h.armor, h.max_armor, 0.0, ARMOR_COL, 25.0)
@@ -1605,12 +1615,18 @@ func _draw_downed(sz: Vector2, p: Hunter) -> void:
 	var who := "You're a wisp: %ds left. A teammate or your kin standing on you brings you back. Enemies can stomp or execute you." % int(ceil(left))
 	if p.kin and p.kin.state == "fainted":
 		who = "You're a wisp: %ds left, and your kin is out cold. Only a teammate standing on you can bring you back." % int(ceil(left))
-	if p.get_meta("stomped", false):
-		who = "An enemy is standing on you! You're draining fast."
-	_ctext(Vector2(sz.x * 0.5, sz.y * 0.32 + 28), who, 16, INK)
-	_bar(Rect2(Vector2(sz.x * 0.5 - 140, sz.y * 0.32 + 44), Vector2(280, 8)), p.down_hp / Data.MATCH["down_hp"], BAD)
+	var stomped: bool = p.get_meta("stomped", false)
+	if stomped:
+		var sts: Array = p.get_meta("stompers", [])
+		who = "%s is on you! You're pinned and draining %.1fx faster. Drift away!" % [(sts[0] as Hunter).pname if not sts.is_empty() else "An enemy", Life.R["stomp_mult"]]
+		_edge_pulse(sz, Color(1.0, 0.1, 0.05), 0.35 + 0.3 * (0.5 + 0.5 * sin(m.time * 9.0)))
+	_ctext(Vector2(sz.x * 0.5, sz.y * 0.32 + 28), who, 16, Color("ff7a6a") if stomped else INK)
+	_bar(Rect2(Vector2(sz.x * 0.5 - 140, sz.y * 0.32 + 44), Vector2(280, 8)), p.down_hp / Data.MATCH["down_hp"], Color("ff2a1a").lerp(Color.WHITE, 0.3 * (0.5 + 0.5 * sin(m.time * 14.0))) if stomped else BAD)
 	if p.revive > 0.0:
 		_bar(Rect2(Vector2(sz.x * 0.5 - 140, sz.y * 0.32 + 58), Vector2(280, 8)), p.revive, GOOD)
+		var revs: Array = p.get_meta("revivers", [])
+		if not revs.is_empty():
+			_ctext(Vector2(sz.x * 0.5, sz.y * 0.32 + 84), "%s is reviving you  %d%%" % [(revs[0] as Hunter).pname, int(p.revive * 100.0)], 15, GOOD, big)
 
 ## Dead, but your team's still in it.
 func _draw_dead(sz: Vector2, p: Hunter) -> void:
@@ -2079,4 +2095,77 @@ func _build_loot() -> void:
 	if is_instance_valid(pc):
 		var vs := pc.get_viewport_rect().size
 		pc.position = Vector2(vs.x * 0.5 + 90.0, maxf(90.0, vs.y * 0.5 - pc.size.y * 0.5 - 40.0))
+
+# ------------------------------------------------------------------ wisp and deathbox revive rings
+## A ring on the ground round every wisp you can see, the size of the revive range: green and
+## filling as a teammate brings them up (both teams see it), red and pulsing while an enemy is
+## standing on it. Near a downed teammate you get a "step in" cue with how far off you are; on top
+## of an enemy wisp you get "Standing on <name>". Deathbox revives get the same ring.
+func _ground_ring(at: Vector3, r: float, col: Color, width: float, frac := 1.0, start := -PI * 0.5) -> void:
+	var cam := m.cam
+	var n := 40
+	var pts := PackedVector2Array()
+	var steps := maxi(2, int(ceil(n * clampf(frac, 0.0, 1.0))))
+	for i in steps + 1:
+		var a := start + TAU * frac * float(i) / float(steps)
+		var wp := at + Vector3(cos(a) * r, 0.08, sin(a) * r)
+		if cam.is_position_behind(wp):
+			return
+		pts.append(cam.unproject_position(wp))
+	c.draw_polyline(pts, col, width, true)
+
+func _draw_wisp_rings() -> void:
+	var p: Hunter = m.player
+	var rr: float = Life.R["revive_radius"]
+	for o in m.hunters:
+		if not o.downed or o.out or (o.unseen and o != p) or m.cam.is_position_behind(o.position):
+			continue
+		var stomped: bool = o.get_meta("stomped", false)
+		var pulse := 0.5 + 0.5 * sin(m.time * 10.0)
+		if stomped:
+			_ground_ring(o.pos, rr * (1.0 + 0.08 * pulse), Color(1.0, 0.18, 0.1, 0.55 + 0.35 * pulse), 4.0)
+			_ground_ring(o.pos, rr * 0.55, Color(1.0, 0.3, 0.2, 0.35 * pulse), 2.5)
+		else:
+			var ally: bool = p != null and o.team == p.team
+			var base := GOOD if ally else Color("ffb36a")
+			_ground_ring(o.pos, rr, Color(base, 0.35), 2.0)
+			if o.revive > 0.0:
+				_ground_ring(o.pos, rr, Color(GOOD, 0.95), 5.0, o.revive)
+		if p == null or p.out or p.downed or p == o:
+			continue
+		var d := p.flat_dist(o)
+		var lp := m.cam.unproject_position(o.pos + Vector3(0, 0.1, 0)) + Vector2(0, 30)
+		if o.team == p.team and not stomped and d > rr and d < 9.0:
+			_ctext(lp, "Step in to revive  ·  %.1fm" % (d - rr), 13, GOOD, big)
+	# you, standing on an enemy wisp
+	if p and not p.out and p.has_meta("standing_on") and m.time - float(p.get_meta("standing_at", -9.0)) < 0.15:
+		var o2 = p.get_meta("standing_on")
+		if is_instance_valid(o2) and (o2 as Hunter).downed:
+			var sz := c.size
+			var s := "Standing on %s  ·  they drain %.1fx faster and can barely move" % [(o2 as Hunter).pname, Life.R["stomp_mult"]]
+			var w := body.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+			_rounded(Rect2(Vector2(sz.x * 0.5 - w * 0.5 - 14, sz.y * 0.5 + 70), Vector2(w + 28, 28)), Color(0.12, 0.02, 0.02, 0.85), 8, Color(1, 0.3, 0.2, 0.7), 2)
+			_ctext(Vector2(sz.x * 0.5, sz.y * 0.5 + 89), s, 15, Color("ff8a7a"))
+	# deathbox revives in progress
+	for b in m.boxes:
+		if m.time - float(b.get("rev_at", -9.0)) > 0.15 or m.cam.is_position_behind(b["pos"]):
+			continue
+		var by = b.get("rev_by")
+		_ground_ring(b["pos"], 1.6, Color(GOOD, 0.3), 2.0)
+		_ground_ring(b["pos"], 1.6, Color(GOOD, 0.95), 5.0, float(b.get("rev_prog", 0.0)))
+		var bp := m.cam.unproject_position(b["pos"] + Vector3(0, 2.0, 0))
+		var o3: Hunter = b["owner"]
+		_ctext(bp, "%s bringing back %s  %d%%" % [(by as Hunter).pname if is_instance_valid(by) else "Someone", o3.pname, int(float(b.get("rev_prog", 0.0)) * 100.0)], 12, GOOD, big)
+
+## A soft coloured glow round the screen edges (danger to you).
+func _edge_pulse(sz: Vector2, col: Color, a: float) -> void:
+	var bands := 6
+	for i in bands:
+		var t := float(i) / bands
+		var w := 70.0 * (1.0 - t)
+		var cc := Color(col, a * (1.0 - t) * 0.35)
+		c.draw_rect(Rect2(Vector2.ZERO, Vector2(sz.x, w)), cc)
+		c.draw_rect(Rect2(Vector2(0, sz.y - w), Vector2(sz.x, w)), cc)
+		c.draw_rect(Rect2(Vector2.ZERO, Vector2(w, sz.y)), cc)
+		c.draw_rect(Rect2(Vector2(sz.x - w, 0), Vector2(w, sz.y)), cc)
 
