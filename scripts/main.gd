@@ -82,6 +82,7 @@ func _ready() -> void:
 		if a.begins_with("--squad="): opts["squad"] = int(a.substr(8))
 		if a.begins_with("--bot-diff="): opts["bot_diff"] = a.substr(11)
 		if a == "--perk-demo": opts["perk_demo"] = true
+		if a.begins_with("--exit-demo="): opts["exit_demo"] = a.substr(12); opts["no_drop"] = true
 	if "--check" in args:
 		var CheckT = load("res://tools/check.gd")
 		var bad := 0
@@ -256,6 +257,9 @@ func _ready() -> void:
 		return
 	if "--simtest" in args:
 		_simtest(opts)
+		return
+	if "--extract-check" in args:
+		_extract_check()
 		return
 	if OS.has_feature("web"):
 		_expose_test_hooks()
@@ -844,6 +848,166 @@ func _duel_check() -> void:
 	print("DUEL CHECK ", "PASS" if ok else "FAIL")
 	get_tree().quit()
 
+## Headless check of every way out: call a skiff (monster waves come, a rival can board too, it
+## leaves with whoever's on deck), open a rift hatch with a key (and lose a key to a deathbox, then
+## loot it back), and charge an uplink (a rival in the yard stalls it, it completes, the lift opens).
+func _extract_check() -> void:
+	var ok := true
+	var fresh := func() -> Match:
+		var mm := Match.new()
+		add_child(mm)
+		mm.start({"teams": 2, "squad": 2, "tier": 0, "seed": 77, "no_drop": true, "autoplay": true})
+		mm.set_process(false)
+		for h in mm.hunters:
+			h.ctrl = "idle"; h.inp["move"] = Vector2.ZERO
+			h.max_hp = 5000.0; h.hp = 5000.0
+		for mb in mm.mobs: mb.queue_free()
+		mm.mobs.clear()
+		return mm
+	var run := func(mm: Match, sec: float, every := Callable()):
+		var t := 0.0
+		while t < sec and not mm.over:
+			if every.is_valid(): every.call()
+			mm.step(Match.DT); t += Match.DT
+	# keeps the test quiet: wave monsters cleared, and the idle hunters held where they were put
+	# (biome hazards like gusts would otherwise shove them around)
+	var calm := func(mm: Match):
+		for mb in mm.mobs:
+			if not mb.dead: mb.dead = true; mb.visible = false
+		for h in mm.hunters:
+			if h.has_meta("pin") and not h.extracted and not h.out:
+				h.teleport(h.get_meta("pin")); h.vel = Vector3.ZERO
+	var done := func(mm: Match):
+		mm.over = true       # the end-of-match timer must not take us to the results screen
+		mm.queue_free()
+	# ---- 1. the skiff
+	var m: Match = fresh.call()
+	var P: Hunter = m.player
+	var mate: Hunter = m.hunters.filter(func(x): return x.team == P.team and x != P)[0]
+	var R: Hunter = m.hunters.filter(func(x): return x.team != P.team)[0]
+	var docks := m.exits.of_kind("dock")
+	print("EXCHECK exits: %d docks, %d hatches, %d outposts" % [docks.size(), m.exits.of_kind("hatch").size(), m.exits.of_kind("outpost").size()])
+	if docks.is_empty() or m.exits.of_kind("hatch").is_empty() or m.exits.of_kind("outpost").is_empty():
+		print("EXCHECK FAIL a kind of exit is missing"); ok = false
+	var d: Dictionary = docks[0]
+	m.time = float(d["open_at"]) + 1.0
+	P.teleport(d["pos"] + Vector3(0.3, 0, 0.3))
+	var t0 := m.time
+	run.call(m, 2.5, func(): P.inp["interact"] = true)
+	P.inp["interact"] = false
+	print("EXCHECK skiff: state=%s after holding %.1fs, arrives in %.0fs" % [d["state"], m.time - t0, float(d["t"])])
+	if d["state"] != "called": ok = false; print("EXCHECK FAIL skiff not called")
+	run.call(m, 30.0)
+	var waves := m.mobs.filter(func(x): return not x.dead and int(x.get_meta("exit", -1)) == int(d["i"])).size()
+	print("EXCHECK skiff: waves=%d monsters alive from them=%d t left=%.0f" % [int(d["waves"]), waves, float(d["t"])])
+	if int(d["waves"]) < 2 or waves <= 0: ok = false; print("EXCHECK FAIL no monster waves")
+	# the player and a rival step on the deck; the teammate stays on the pier's foot (not aboard)
+	for mb in m.mobs: mb.dead = true; mb.visible = false
+	P.teleport(d["berth"]); R.teleport(d["berth"] + Vector3(0.8, 0, 0.4))
+	mate.teleport(d["pos"])
+	for h in [P, R, mate]: h.set_meta("pin", h.pos)
+	while d["state"] == "called" and m.time - t0 < 80.0: run.call(m, Match.DT, calm.bind(m))
+	print("EXCHECK skiff: state=%s (boarding %.0fs) player %.1fm from the berth (y %.2f vs %.2f) downed=%s out=%s" % [d["state"], float(d["t"]), P.flat_dist(d["berth"]), P.pos.y, d["berth"].y, P.downed, P.out])
+	run.call(m, 1.0, calm.bind(m))
+	print("EXCHECK skiff: aboard=%s" % str((d["aboard"] as Array).map(func(x): return x.pname)))
+	while d["state"] == "boarding" and m.time - t0 < 100.0: run.call(m, Match.DT, calm.bind(m))
+	print("EXCHECK skiff: left. player extracted=%s how=%s where=%s  rival extracted=%s  mate (on the pier) extracted=%s" % [P.extracted, m.result.get("how", ""), m.result.get("where", ""), R.extracted, mate.extracted])
+	if not P.extracted or m.result.get("how", "") != "skiff" or not R.extracted or mate.extracted: ok = false; print("EXCHECK FAIL skiff boarding")
+	done.call(m)
+	await get_tree().process_frame
+	# ---- 2. the rift hatch
+	m = fresh.call()
+	P = m.player
+	R = m.hunters.filter(func(x): return x.team != P.team)[0]
+	mate = m.hunters.filter(func(x): return x.team == P.team and x != P)[0]
+	var hx: Dictionary = m.exits.of_kind("hatch")[0]
+	R.rift_keys = 0
+	R.teleport(hx["pos"] + Vector3(0.6, 0, 0.6))
+	run.call(m, 0.5, func(): R.inp["interact"] = true)
+	print("EXCHECK hatch: without a key: state=%s rival extracted=%s" % [hx["state"], R.extracted])
+	if hx["state"] != "sealed" or R.extracted: ok = false; print("EXCHECK FAIL hatch opened without a key")
+	R.inp["interact"] = false
+	R.teleport(m.world.random_ground())
+	# a key in a deathbox: the teammate dies carrying one, the player loots it
+	mate.rift_keys = 1
+	mate.lives = 1
+	mate.teleport(hx["pos"] + Vector3(3.0, 0, 0))
+	m.eliminate(mate, R, "knocked out", true)
+	var bx := Life.box_of(m, mate)
+	print("EXCHECK hatch: teammate died with a key: their keys=%d box keys=%d" % [mate.rift_keys, int(bx.get("keys", -1))])
+	if mate.rift_keys != 0 or int(bx.get("keys", 0)) != 1: ok = false; print("EXCHECK FAIL key not in the box")
+	P.rift_keys = 0
+	var got_key := false
+	for it in Life.box_items(m, P, bx):
+		if it["key"] == "keys": Life.take_item(m, P, bx, it); got_key = true
+	print("EXCHECK hatch: looted the box: player keys=%d" % P.rift_keys)
+	if not got_key or P.rift_keys != 1: ok = false; print("EXCHECK FAIL couldn't loot the key")
+	var feed0 := m.feed_all.size()
+	var pings0 := m.pings.size()
+	P.teleport(hx["pos"] + Vector3(0.7, 0, 0.5))
+	t0 = m.time
+	run.call(m, 0.4, func(): P.inp["interact"] = true)
+	P.inp["interact"] = false
+	print("EXCHECK hatch: opened in %.2fs state=%s player extracted=%s how=%s keys left=%d  quiet: new pings=%d" % [m.time - t0, hx["state"], P.extracted, m.result.get("how", ""), P.rift_keys, m.pings.size() - pings0])
+	if not P.extracted or m.result.get("how", "") != "hatch" or P.rift_keys != 0 or m.pings.size() != pings0: ok = false; print("EXCHECK FAIL hatch")
+	# the hatch stays open a moment: a rival steps in after
+	R.teleport(hx["pos"] + Vector3(0.3, 0, 0.2))
+	run.call(m, 0.3)
+	var rival_in := R.extracted
+	run.call(m, 6.0)
+	print("EXCHECK hatch: rival slipped in behind=%s, then it sealed again: %s" % [rival_in, hx["state"]])
+	if not rival_in or hx["state"] != "sealed": ok = false; print("EXCHECK FAIL hatch window")
+	done.call(m)
+	await get_tree().process_frame
+	# ---- 3. the uplink
+	m = fresh.call()
+	P = m.player
+	R = m.hunters.filter(func(x): return x.team != P.team)[0]
+	var o: Dictionary = m.exits.of_kind("outpost")[0]
+	m.time = float(o["open_at"]) + 1.0
+	P.teleport(o["pos"] + Vector3(0.6, 0, 0.6))
+	run.call(m, 2.0, func(): P.inp["interact"] = true)
+	P.inp["interact"] = false
+	P.set_meta("pin", o["pos"] + Vector3(0.6, 0, 0.6))
+	print("EXCHECK uplink: state=%s team=%d" % [o["state"], int(o["team"])])
+	if o["state"] != "charging": ok = false; print("EXCHECK FAIL uplink didn't start")
+	run.call(m, 8.0, calm.bind(m))
+	var p1 := float(o["prog"])
+	R.teleport(o["pos"] + Vector3(-1.6, 0, 1.0))
+	R.set_meta("pin", R.pos)
+	run.call(m, 1.0, calm.bind(m))
+	var pa := float(o["prog"])
+	run.call(m, 3.0, calm.bind(m))
+	var pb := float(o["prog"])
+	print("EXCHECK uplink: %d%% after 8s; rival in the yard: contested=%s %d%% -> %d%% over 3s (paused)" % [int(p1 * 100), o["contested"], int(pa * 100), int(pb * 100)])
+	if p1 <= 0.1 or not o["contested"] or absf(pb - pa) > 0.001: ok = false; print("EXCHECK FAIL contest")
+	R.remove_meta("pin")
+	R.teleport(m.world.random_ground())
+	t0 = m.time
+	while o["state"] == "charging" and m.time - t0 < 60.0:
+		run.call(m, 0.5, calm.bind(m))
+	print("EXCHECK uplink: state=%s after %.0fs more, waves=%d prog=%.2f contested=%s player in yard=%s (%.1fm) downed=%s" % [o["state"], m.time - t0, int(o["waves"]), float(o["prog"]), o["contested"], m.exits.in_yard(o, P), P.flat_dist(o["pos"]), P.downed])
+	for h in m.hunters: print("   ", h.pname, " team ", h.team, " ", h.flat_dist(o["pos"]), " in yard ", m.exits.in_yard(o, h))
+	if o["state"] != "open" or int(o["waves"]) < 2: ok = false; print("EXCHECK FAIL uplink never completed (or no waves)")
+	P.remove_meta("pin")
+	P.teleport(o["pos"] + Vector3(0.4, 0, 0.3))
+	run.call(m, 0.3)
+	print("EXCHECK uplink: player extracted=%s how=%s where=%s" % [P.extracted, m.result.get("how", ""), m.result.get("where", "")])
+	if not P.extracted or m.result.get("how", "") != "uplink": ok = false; print("EXCHECK FAIL lift")
+	done.call(m)
+	await get_tree().process_frame
+	# ---- 4. docks close late, one stays open
+	m = fresh.call()
+	var closing := m.exits.of_kind("dock").filter(func(x): return float(x["close_at"]) < 1e8).size()
+	m.time = m.length - 25.0
+	run.call(m, 0.5)
+	var still := m.exits.of_kind("dock").filter(func(x): return x["state"] != "closed")
+	print("EXCHECK docks: %d close during the match, %d still open near the end; a call now takes %.0fs" % [closing, still.size(), m.exits.call_time()])
+	if still.size() != 1 or m.exits.call_time() > 10.0: ok = false; print("EXCHECK FAIL closing")
+	done.call(m)
+	print("EXCHECK ", "PASS" if ok else "FAIL")
+	get_tree().quit()
+
 func _simtest(opts: Dictionary) -> void:
 	opts["autoplay"] = true
 	var m := Match.new()
@@ -853,9 +1017,12 @@ func _simtest(opts: Dictionary) -> void:
 	var t0 := Time.get_ticks_msec()
 	var log_t := 0.0
 	var kill_at := -1.0
+	var until := 1e9
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--kill-at="): kill_at = float(a.substr(10))
-	while not m.over and m.time < m.length + 5.0:
+		if a.begins_with("--sim-until="): until = float(a.substr(12))
+	print("SIMTEST seed ", m.seed_val)
+	while not m.over and m.time < m.length + 5.0 and m.time < until:
 		m.step(Match.DT)
 		if kill_at > 0.0 and m.time >= kill_at and m.player and not m.player.out:
 			# test: the player goes down for good here, to check what happens to the kin they brought
@@ -877,6 +1044,14 @@ func _simtest(opts: Dictionary) -> void:
 			var TG = P.ai.get("tgt")
 			if TG: print("  DBG tgt=%s pos=%s hp=%s dead=%s drop=%s vel=%s grap=%s ride=%s cross=%s blockhere=%s ground=%s" % [TG.get_class() + ":" + str(TG.get_script().resource_path.get_file()), TG.pos.snapped(Vector3(0.1,0.1,0.1)), TG.hp, TG.dead, P.dropping, P.vel.snapped(Vector3(0.1,0.1,0.1)), P.grap.size(), P.riding, P.ai.has("cross"), m.world.is_block(P.pos.x, P.pos.z), m.world.ground_at(P.pos.x, P.pos.z)])
 			print("  player pos=%s goal=%s kind=%s tgt=%s move=%s grounded=%s" % [P.pos.snapped(Vector3(0.1,0.1,0.1)), str(P.ai.get("goal")), P.ai.get("goal_kind"), str(P.ai.get("tgt")), str(P.inp["move"]), P.grounded])
+			if "--stuck-debug" in OS.get_cmdline_user_args():
+				var W: World = m.world
+				var tiles := []
+				for dz in range(-1, 2):
+					for dx in range(-1, 2):
+						var ti := W.idx(int(P.pos.x) + dx, int(P.pos.z) + dz)
+						tiles.append("%d/%d%s" % [W.kind[ti], W.level[ti], "w" if W.walls.has(ti) else ""])
+				print("  STUCK? vel=%s pad=%s grap=%d stun=%.1f root=%.1f base=%.1f drop=%s ride=%s glide=%s roll=%.2f cross=%s tiles=%s hist=%s" % [P.vel.snapped(Vector3(0.1,0.1,0.1)), str(P.pad.keys()), P.grap.size(), P.stun_t, P.root_t, P.base_t, P.dropping, P.riding, P.gliding, P.roll_t, str(P.ai.get("cross", {}).get("take", "")), str(tiles), str(P.get_meta("hist", []).slice(-3))])
 			print("t=%d alive=%d down=%d mobs=%d shots=%d pickups=%d feed=%s" % [m.time, alive, down, m.mobs.filter(func(x): return not x.dead).size(), m.shots.size(), m.pickups.size(), str(m.feed.map(func(f): return f["text"]))])
 		if m.result.get("ending", false):
 			break
