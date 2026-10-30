@@ -317,7 +317,7 @@ func _call(x: Dictionary, h: Hunter) -> void:
 	(n.get_node("Sparks") as CPUParticles3D).emitting = true
 	(n.get_node("Beacon/Lever") as Node3D).rotation.x = 0.5
 	# loud: everyone hears the horn and sees the flare and the ping
-	Sfx.play("horn", null, -3.0, 0.9)
+	Sfx.play("horn", null, -3.0, 0.03, 0.9)
 	m.sfx("warn", x["pos"], 0.0, 0.7)
 	m.ping(x["pos"], ExitModels.DOCK)
 	m.fx.ring(x["berth"], 4.0, ExitModels.DOCK, 0.6)
@@ -818,6 +818,12 @@ func demo(mode: String) -> void:
 		for h in [p, R0]:
 			if h != null and h.has_meta("pin") and not h.extracted:
 				h.teleport(h.get_meta("pin")); h.vel = Vector3.ZERO
+		# hold the moment: screenshots take a varying amount of game time to render
+		var hold: Array = m.get_meta("xdemo_hold", [])
+		if not hold.is_empty():
+			var hx: Dictionary = hold[0]
+			if String(hx["state"]) == String(hold[1]):
+				hx[String(hold[2])] = hold[3]
 		return
 	m.set_meta("xdemo", true)
 	var R: Hunter = null
@@ -837,14 +843,17 @@ func demo(mode: String) -> void:
 			d["wave_t"] = 0.0
 			if mode == "call":
 				d["t"] = 30.0
+				m.set_meta("xdemo_hold", [d, "called", "t", 30.0])
 				p.teleport(d["pos"] + Vector3(0.6, 0, 0.6))
 			elif mode == "approach":
-				d["t"] = APPROACH_T * 0.62
-				p.teleport(b - o3 * 2.0)
+				d["t"] = APPROACH_T * 0.45
+				m.set_meta("xdemo_hold", [d, "called", "t", APPROACH_T * 0.45])
+				p.teleport(b - o3 * 4.5)
 			else:
-				d["t"] = 0.8
-				p.teleport(b - o3 * 0.6)
-				if R: R.teleport(b + o3 * 0.9 + Vector3(o3.z, 0, -o3.x) * 0.8)
+				d["t"] = 0.3
+				m.set_meta("xdemo_hold", [d, "boarding", "t", 7.0])
+				p.teleport(b - o3 * 0.9 + Vector3(-o3.z, 0, o3.x) * 0.5)
+				if R: R.teleport(b + o3 * 1.0 + Vector3(o3.z, 0, -o3.x) * 0.6)
 			m.cam.zoom_to = 0.85
 		"hatch":
 			var hx: Dictionary = of_kind("hatch")[0]
@@ -854,6 +863,7 @@ func demo(mode: String) -> void:
 				R.rift_keys = 1
 				R.teleport(hx["pos"] + Vector3(-0.8, 0, -0.6))
 				m.get_tree().create_timer(1.6).timeout.connect(func(): act(hx, "open", R))
+				m.set_meta("xdemo_hold", [hx, "open", "t", 4.0])
 			m.cam.zoom_to = 0.6
 		"uplink", "lift":
 			var o: Dictionary = of_kind("outpost")[0]
@@ -861,6 +871,7 @@ func demo(mode: String) -> void:
 			act(o, "start", p)
 			o["wave_t"] = 0.0
 			o["prog"] = 0.55 if mode == "uplink" else 0.93
+			m.set_meta("xdemo_hold", [o, "charging", "prog", 0.55] if mode == "uplink" else [o, "open", "t", 12.0])
 			p.teleport(o["pos"] + Vector3(1.5, 0, 2.2))
 			if R and mode == "uplink":
 				R.teleport(o["pos"] + Vector3(-2.0, 0, -1.4))

@@ -93,20 +93,31 @@ static func skiff() -> Node3D:
 	for sx in [-1.0, 1.0]:
 		Models.part(hull, Models.box(1.6, 0.08, 1.4), cloth, Vector3(sx * 2.0, 0.05, 0.4), Vector3.ONE, Vector3(0, 0, sx * -0.18))
 		Models.part(hull, Models.box(1.6, 0.06, 0.18), stripe, Vector3(sx * 2.0, 0.1, -0.25), Vector3.ONE, Vector3(0, 0, sx * -0.18))
-	# the lift-bag on two masts
-	for z in [-1.2, 1.2]:
-		Models.part(hull, Models.cyl(0.06, 0.08, 2.6, 6), dark, Vector3(0, 1.3, z))
-	var bag := Node3D.new(); bag.name = "Bag"; bag.position = Vector3(0, 3.1, 0); hull.add_child(bag)
-	Models.part(bag, Models.sphere(1.5, 18), cloth, Vector3.ZERO, Vector3(0.95, 0.6, 1.75))
-	Models.part(bag, Models.sphere(1.52, 18), stripe, Vector3.ZERO, Vector3(0.12, 0.62, 1.77))
-	for z in [-1.4, 0.0, 1.4]:
-		Models.part(bag, Models.cyl(1.0 - absf(z) * 0.22, 1.0 - absf(z) * 0.22, 0.2, 18), stripe, Vector3(0, 0, z), Vector3(1.4, 1, 0.6), Vector3(PI / 2, 0, 0))
+	# two slim lift-bags on outrigger booms, one each side, so the deck stays open to the sky
+	# (and you can see who's aboard from above)
+	var bag := Node3D.new(); bag.name = "Bag"; hull.add_child(bag)
+	for sx in [-1.0, 1.0]:
+		Models.part(bag, Models.box(1.3, 0.1, 0.14), dark, Vector3(sx * 1.85, 0.9, -1.0))
+		Models.part(bag, Models.box(1.3, 0.1, 0.14), dark, Vector3(sx * 1.85, 0.9, 1.0))
+		for z in [-1.0, 1.0]:
+			Models.part(bag, Models.cyl(0.05, 0.05, 0.8, 6), dark, Vector3(sx * 1.32, 0.5, z))
+		var pod := Node3D.new(); pod.position = Vector3(sx * 2.55, 1.15, 0.0); bag.add_child(pod)
+		Models.part(pod, Models.sphere(0.62, 14), cloth, Vector3.ZERO, Vector3(0.95, 0.95, 3.6))
+		Models.part(pod, Models.sphere(0.63, 14), stripe, Vector3.ZERO, Vector3(0.25, 0.97, 3.62))
+		for z in [-1.3, 0.0, 1.3]:
+			Models.part(pod, Models.cyl(0.6 - absf(z) * 0.12, 0.6 - absf(z) * 0.12, 0.14, 14), stripe, Vector3(0, 0, z), Vector3.ONE, Vector3(PI / 2, 0, 0))
+	# a short mast and sail at the bow, a lantern at the stern, rope coils on deck
+	Models.part(hull, Models.cyl(0.07, 0.09, 2.4, 6), dark, Vector3(0, 1.2, -1.4))
+	Models.part(hull, Models.box(0.05, 1.5, 1.1), cloth, Vector3(0, 1.45, -0.95), Vector3.ONE, Vector3(0, 0.0, 0))
+	Models.part(hull, Models.cyl(0.32, 0.32, 0.1, 10), Models.toon(Color("d8c49a")), Vector3(-0.7, 0.07, 1.4))
+	Models.part(hull, Models.sphere(0.18, 10), Models.toon(DOCK, false, 1.5), Vector3(0, 0.95, 2.0))
+	Models.part(hull, Models.cyl(0.05, 0.05, 0.9, 6), dark, Vector3(0, 0.5, 2.0))
 	# the stern propeller and a pennant
 	var prop := Node3D.new(); prop.name = "Prop"; prop.position = Vector3(0, 0.6, 2.6); hull.add_child(prop)
 	Models.part(prop, Models.cyl(0.12, 0.12, 0.3, 10), brass, Vector3.ZERO, Vector3.ONE, Vector3(PI / 2, 0, 0))
 	for k in 3:
 		Models.part(prop, Models.box(0.14, 1.2, 0.04), wood, Vector3.ZERO, Vector3.ONE, Vector3(0, 0, TAU * k / 3.0))
-	Models.part(hull, Models.box(0.04, 0.5, 0.8), Models.toon(DOCK), Vector3(0, 4.3, 0.4))
+	Models.part(hull, Models.box(0.04, 0.4, 0.7), Models.toon(DOCK), Vector3(0, 2.3, -1.1))
 	# running lights
 	for sx in [-1.32, 1.32]:
 		Models.part(hull, Models.sphere(0.11, 8), Models.toon(DOCK, false, 1.4), Vector3(sx, 0.45, -2.1))
