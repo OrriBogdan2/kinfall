@@ -1061,6 +1061,7 @@ func _ability_check() -> void:
 	var ready := func(cls: String, sp: String, at: Vector3, mv: Vector2) -> void:
 		P.teleport(at); P.vel = Vector3.ZERO
 		T.teleport(home2 + Vector3(6.0, 0, 0)); T.vel = Vector3.ZERO
+		T.burn_t = 0.0; T.blight_t = 0.0; T.slow_t = 0.0; T.stun_t = 0.0; T.root_t = 0.0; T.knock_t = 0.0
 		P.cls = cls; P.dodge_def = Content.class_dodge(cls)
 		P.kin = kref if sp != "" else null
 		if P.kin: (P.kin as Kin).species = sp
@@ -1099,10 +1100,12 @@ func _ability_check() -> void:
 		_ac("venom dash poisons", T.burn_t > 0.0 or T.blight_t > 0.0, "burn %.1f blight %.1f" % [T.burn_t, T.blight_t])
 		# gravity: where you stop, foes nearby are tugged toward you
 		ready.call("medium", "pebbit", home2, Vector2(1, 0))
-		var tmin := {"x": T.pos.x}
+		var tmin := {"x": T.pos.x, "v": 0.0, "px": 0.0}
 		P.do_dash()
-		_ac_run(m, 0.5, func(): tmin["x"] = minf(float(tmin["x"]), T.pos.x))
-		_ac("gravity dash tugs", float(tmin["x"]) < home2.x + 5.6, "target pulled to x %.2f (from 6.0)" % (float(tmin["x"]) - home2.x))
+		_ac_run(m, 0.5, func():
+			tmin["x"] = minf(float(tmin["x"]), T.pos.x)
+			if -T.vel.x > float(tmin["v"]): tmin["v"] = -T.vel.x; tmin["px"] = P.pos.x - home2.x)
+		_ac("gravity dash tugs", float(tmin["v"]) > 3.0, "target pulled at %.1fm/s (you at %.1f), to x %.2f from %.2f; element %s" % [tmin["v"], tmin["px"], float(tmin["x"]) - home2.x, T.pos.x - home2.x, P.kin_element()])
 		# echo: a second, shorter dash a beat later
 		ready.call("medium", "zapple", home2 + Vector3(-4.0, 0, 0), Vector2(1, 0))
 		var e0 := P.pos.x
