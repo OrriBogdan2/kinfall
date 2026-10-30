@@ -35,6 +35,9 @@ var rn := FastNoiseLite.new()
 var _s := {}
 var _x := {}
 
+## Spots along grassy rims where a fringe of grass can hang over the edge: [Vector3, outward Vector3, tile].
+var rims: Array = []
+
 var V := PackedVector3Array()
 var N := PackedVector3Array()
 var C := PackedColorArray()
@@ -79,7 +82,10 @@ func height_texture() -> ImageTexture:
 	for z in h:
 		for x in w:
 			var lv := v(x, z)
-			var blk := 1.0 if lv >= 0 and W.kind[W.idx(x, z)] == W.T_BLOCK else 0.0
+			# rocks, trees and walls darken the ground at their feet (buildings and other set pieces
+			# marked no_deco bring their own shadows)
+			var i: int = W.idx(x, z)
+			var blk := 1.0 if lv >= 0 and W.kind[i] == W.T_BLOCK and not W.no_deco.has(i) else 0.0
 			img.set_pixel(x, z, Color(float(lv + 1) / 32.0, blk, 0))
 	return ImageTexture.create_from_image(img)
 
@@ -180,7 +186,7 @@ func _fill_under() -> void:
 		var x := i % w; var z := i / w
 		var R: float = maxf(1.5, float(reach.get(W.island[i], 1.5)))
 		var dc := d[i] - 0.5
-		var deep := clampf(3.5 + R * 0.95, 4.0, 30.0)
+		var deep := clampf(3.0 + R * 0.7, 4.0, 15.0)
 		var t := clampf(dc / R, 0.0, 1.0)
 		var taper := deep * pow(t, 0.62)
 		taper *= 1.0 + rn.get_noise_2d(x * 0.31 + 50.0, z * 0.31) * 0.28
@@ -243,7 +249,9 @@ func _cross(ax: int, az: int, bx: int, bz: int, t: int) -> Dictionary:
 		if ia >= 0 and W.sheer.has(ia): style = E_SHEER
 		elif ia >= 0 and W.lip.has(ia): style = E_LIP
 		rim = v(ax, az) * LEVEL - _rim(p)
-	var out := {"p": p, "n": n, "void": vb < 0, "style": style, "rim": rim, "a": ia, "ground": maxi(vb, 0) * LEVEL}
+	var ib := -1
+	if bx >= 0 and bz >= 0 and bx < w and bz < h: ib = bz * w + bx
+	var out := {"p": p, "n": n, "void": vb < 0, "style": style, "rim": rim, "a": ia, "b": ib, "ground": maxi(vb, 0) * LEVEL}
 	_x[key] = out
 	return out
 
@@ -354,6 +362,7 @@ func _walk(cx: int, cz: int, vs: Array, t: int) -> Array:
 func _wall(P: Dictionary, Q: Dictionary, top: float, ground: float) -> void:
 	var rp := _profile(P, top)
 	var rq := _profile(Q, top)
+	_note_rim(P, Q, top)
 	var nref: Vector2 = (P["n"] + Q["n"])
 	var n3 := Vector3(nref.x, 0, nref.y).normalized()
 	for r in ROWS - 1:
@@ -383,6 +392,17 @@ func _wall(P: Dictionary, Q: Dictionary, top: float, ground: float) -> void:
 		return
 	var cl: Color = rp[ROWS - 1][1]
 	_quad_n(bp, bq, Vector3(bq.x, sk, bq.z), Vector3(bp.x, sk, bp.z), n3, n3, n3, n3, cl, cl, cl, cl, S_ROCK, n3)
+
+func _note_rim(P: Dictionary, Q: Dictionary, top: float) -> void:
+	if int(P["style"]) in [E_LIP, E_SHEER] or int(Q["style"]) in [E_LIP, E_SHEER]:
+		return
+	for X in [P, Q]:
+		var a: int = X["a"]; var b: int = X["b"]
+		if a < 0 or absf(W.level[a] * LEVEL - top) > 0.01 or W.stairs.has(a) or (b >= 0 and W.stairs.has(b)) or W.kind[a] != W.T_GROUND:
+			return
+	var m: Vector2 = (P["p"] + Q["p"]) * 0.5
+	var n: Vector2 = (P["n"] + Q["n"]).normalized()
+	rims.append([Vector3(m.x, top, m.y), Vector3(n.x, 0, n.y), int(P["a"])])
 
 ## The cross-section of a cliff at one contour point: ROWS of [position, colour, style of the band
 ## below]. Depends only on the point and the terrace height, so neighbouring cells agree.

@@ -937,6 +937,7 @@ func a0_of(isl: int) -> float:
 # ------------------------------------------------------------------ meshes
 const TerrainMesh := preload("res://scripts/match/terrain_mesh.gd")
 const RuinWalls := preload("res://scripts/match/ruin_walls.gd")
+var _rims: Array = []               # grassy rim spots from the terrain mesher, for the grass fringe
 var under := PackedFloat32Array()   # per tile: the height of the island's rocky underside (visual only)
 
 func build_meshes() -> void:
@@ -947,6 +948,7 @@ func build_meshes() -> void:
 	var tm := TerrainMesh.new(self)
 	var mesh := tm.build()
 	under = tm.under
+	_rims = tm.rims
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	_island_roots(st)
@@ -1022,7 +1024,7 @@ func _island_roots(st: SurfaceTool) -> void:
 		var rad := sqrt(cells.size() / PI)
 		var top_c: Color = Color(bio["side"]).darkened(0.25).lerp(Color(bio["deep"]), 0.5)
 		var deep_c: Color = Color(bio["deep"]).darkened(0.2)
-		_root(st, rr, Vector3(tip.x + 0.5, lo + 1.2, tip.y + 0.5), clampf(rad * 0.22, 0.8, 3.0), rad * rr.randf_range(0.35, 0.55) + 2.0, top_c, deep_c)
+		_root(st, rr, Vector3(tip.x + 0.5, lo + 1.2, tip.y + 0.5), clampf(rad * 0.2, 0.8, 2.6), minf(rad * rr.randf_range(0.25, 0.4) + 2.0, 8.0), top_c, deep_c)
 		var n := clampi(int(rad * 0.5), 1, 7)
 		for _k in n:
 			var c: Vector2i = cells[rr.randi_range(0, cells.size() - 1)]
@@ -1224,6 +1226,16 @@ func _decorate() -> void:
 					fcols[drng.randi_range(0, fcols.size() - 1)]])
 			if drng.randf() < (0.06 if edge_dist(x, z, 2) < 2 else 0.015):
 				pb.append(Vector3(x + drng.randf(), level[i] * LEVEL, z + drng.randf()))
+	# a fringe of grass hanging over grassy terrace edges and coasts, so rims read soft and lived-in
+	for rm in _rims:
+		if drng.randf() > 0.6:
+			continue
+		var rp: Vector3 = rm[0]; var rn: Vector3 = rm[1]
+		var tb2 := _bio(int(rm[2]))
+		var sc2 := 0.8 + drng.randf() * 0.5
+		var tilt := Basis(rn.cross(Vector3.UP).normalized(), -0.45) if rn.length() > 0.1 else Basis()
+		xs.append([Transform3D(tilt * Basis(Vector3.UP, drng.randf() * TAU).scaled(Vector3(sc2, sc2 * 0.9, sc2)), rp + rn * 0.04 - Vector3(0, 0.03, 0)),
+			Color(tb2["top"]).lerp(Color(tb2["top2"]), drng.randf()).lightened(0.08)])
 	_chunked(deco, xs, Models.grass_mesh(false), Models.grass_material(0.08), "Grass")
 	_chunked(deco, fl, Models.flower_mesh(), Models.grass_material(0.05, true), "Flowers")
 	var pebbled := false

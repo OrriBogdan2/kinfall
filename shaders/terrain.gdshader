@@ -27,7 +27,7 @@ void vertex() {
 
 float hgt(vec2 p) {
 	vec2 t = texture(height_tex, p / map_size).rg;
-	return (t.r * 32.0 - 1.0) * 0.8 + t.g * 1.2;
+	return (t.r * 32.0 - 1.0) * 0.8 + t.g * 0.7;
 }
 
 // How much higher ground and blockers crowd around this spot (0 open .. 1 tucked in a corner).
