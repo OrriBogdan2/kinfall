@@ -180,8 +180,7 @@ func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, n
 	pname = name_txt
 	ctrl = control
 	if control != "local":
-		bot_look = {"gender": randi() % 2, "body": randi() % 3, "detail": randi() % Models.LOOK_DETAILS.size(), "face": randi() % Models.LOOK_FACES.size(), "skin": randi() % Models.LOOK_SKIN.size(),
-			"hair": randi() % Models.LOOK_HAIRS.size(), "hair_col": randi() % 6, "outfit": randi() % Models.LOOK_OUTFITS.size()}
+		bot_look = Models.random_look()
 	max_hp = cdat["hp"]; hp = max_hp
 	max_armor = round(max_hp * ARMOR_DUR); armor = max_armor; base_armor = max_armor
 	glide_max = GLIDE_TIME * float(cdat.get("glide_cap", 1.0))
