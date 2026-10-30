@@ -411,6 +411,10 @@ func impulse(kbv: Vector2, lift := -1.0) -> void:
 	var k := kbv * (0.5 if shoulder() == "bedrock" else 1.0)
 	var s := k.length() / mass()
 	if s < 0.05:
+		if lift >= 0.0:
+			# a straight-up lift (a slam's crater, an eruption) with no sideways push
+			vel.y = maxf(vel.y, minf(9.0, lift / mass()))
+			grounded = false
 		return
 	if s > 4.0:
 		kb_t = m.time
@@ -1149,12 +1153,30 @@ func charge_frac() -> float:
 		return -1.0
 	return clampf(float(abil_charge["t"]) / float(ud.charge.get("time", 1.0)), 0.0, 1.0)
 
-## The level of one of your ability slots (skill points). Every slot is level 1 until levelling is in;
-## "sec" (RMB), "dash" (Shift), "gear" (Q), "k1" (E), "r" (R).
+## The rank of one of your ability slots this run (slot_lv, 1..3; the ult 1..2). Ranks raise an
+## ability's numbers: +15% damage, its "per_level" numbers (range, duration, radius...) and a shorter
+## cooldown. Any slot name works: "sec"/"utility" (RMB), "dash"/"dodge" (Shift), "gear"/"gear0" (Q),
+## "kin"/"k1" (E), "ult"/"r" (R).
+const SLOT_ALIAS := {"utility": "sec", "dodge": "dash", "gear0": "gear", "q": "gear", "k1": "kin", "e": "kin", "r": "ult"}
 func ability_level(slot: String) -> int:
-	if has_method("slot_level"):
-		return maxi(1, int(call("slot_level", slot)))
-	return 1
+	var s := String(SLOT_ALIAS.get(slot, slot))
+	return maxi(1, int(slot_lv.get(s, 1)))
+
+## The rank line on an ability's hover panel ("" for things that don't rank).
+func rank_text(slot: String) -> String:
+	var s := String({"sec": "sec", "k1": "kin", "gear0": "gear", "dash": "dash", "r": "ult"}.get(slot, ""))
+	if s == "":
+		return ""
+	var lv := int(slot_lv.get(s, 0))
+	var mx := int(SLOT_MAX[s])
+	var per := "+30% duration, +15% damage" if s == "ult" else ("15% faster recharge" if s == "dash" else "+15% damage, 10% shorter cooldown, longer/bigger effects")
+	if lv <= 0:
+		return "Locked  ·  a skill point unlocks it"
+	return "Rank %d / %d%s" % [lv, mx, ("  ·  next rank: " + per) if lv < mx else "  ·  max rank"]
+
+## Cooldown multiplier for a slot's rank: 10% shorter per rank past the first.
+func rank_cd_k(slot: String) -> float:
+	return 1.0 - 0.1 * float(ability_level(slot) - 1)
 
 ## What the HUD needs to draw one ability slot: name, short name, icon, colour, one-line desc,
 ## cooldown left and total, charges. slot: "sec" | "dash" | "gear" | "k1" | "r".
@@ -1165,7 +1187,7 @@ func slot_info(slot: String) -> Dictionary:
 			var d: AbilityDef = runner.def_of("utility") if runner else null
 			if d == null: return out
 			out.merge({"name": d.display_name, "short": d.short, "icon": d.icon, "col": d.color, "desc": d.desc, "cd": runner.cd_left("utility"),
-				"cd_max": d.cooldown, "charges": runner.charges("utility"), "max_charges": d.charges, "verb": d.verb, "ready": runner.is_ready("utility"), "charge": charge_frac()}, true)
+				"cd_max": runner.cd_max("utility"), "charges": runner.charges("utility"), "max_charges": d.charges, "verb": d.verb, "ready": runner.is_ready("utility"), "charge": charge_frac()}, true)
 		"dash", "dodge":
 			var d: AbilityDef = dodge_def
 			var rd := dash_rider()
@@ -1179,13 +1201,13 @@ func slot_info(slot: String) -> Dictionary:
 			if g.is_empty() or not Gear.ALL.has(String(g["id"])): return out
 			var gd: Dictionary = Gear.ALL[String(g["id"])]
 			out.merge({"name": String(gd["name"]), "short": String(gd.get("short", gd["name"])), "icon": Gear.icon_of(String(g["id"])), "col": gd["col"], "desc": Gear.desc_of(String(g["id"]), int(g["rar"])),
-				"cd": float(gear_cd[0]), "cd_max": Gear.cd_of(String(g["id"]), int(g["rar"])), "charges": 1 if float(gear_cd[0]) <= 0.0 else 0, "max_charges": 1, "verb": String(gd.get("verb", "")), "ready": float(gear_cd[0]) <= 0.0 and Gear.active(String(g["id"]))}, true)
+				"cd": float(gear_cd[0]), "cd_max": Gear.cd_of(String(g["id"]), int(g["rar"])) * rank_cd_k("gear"), "charges": 1 if float(gear_cd[0]) <= 0.0 else 0, "max_charges": 1, "verb": String(gd.get("verb", "")), "ready": float(gear_cd[0]) <= 0.0 and Gear.active(String(g["id"]))}, true)
 		"k1", "e":
 			var k: Kin = kin
 			if k == null or k.runner == null: return out
 			var d: AbilityDef = k.runner.def_of("k1")
 			if d == null: return out
-			out.merge({"name": d.display_name, "short": d.short, "icon": d.icon, "col": d.color, "desc": d.desc, "cd": k.runner.cd_left("k1"), "cd_max": d.cooldown,
+			out.merge({"name": d.display_name, "short": d.short, "icon": d.icon, "col": d.color, "desc": d.desc, "cd": k.runner.cd_left("k1"), "cd_max": k.runner.cd_max("k1"),
 				"charges": k.runner.charges("k1"), "max_charges": d.charges, "verb": d.verb, "element": d.element, "ready": k.runner.is_ready("k1") and k.ready_to_fight() and k.state != "fused"}, true)
 		"r", "ult":
 			var u := Ultimate.def_for(kin) if kin else null

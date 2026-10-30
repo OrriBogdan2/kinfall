@@ -257,6 +257,9 @@ func _ready() -> void:
 	if "--ability-check" in args:
 		_ability_check()
 		return
+	if "--ac-dbg" in args:
+		_ac_dbg()
+		return
 	if "--simtest" in args:
 		_simtest(opts)
 		return
@@ -844,6 +847,29 @@ func _ac_glove(P: Hunter, gid: String, rar := 1) -> void:
 	P.gear_cd[0] = 0.0
 	P.m.use_gear(P, 0)
 
+func _ac_dbg() -> void:
+	var r := _ac_setup(5.0); var m: Match = r[0]; var P: Hunter = r[1]; var T: Hunter = r[2]
+	P.runner.set_slot("utility", Content.ability("earthshatter"))
+	P.runner.use("utility", {})
+	for i in 40:
+		_ac_run(m, Match.DT)
+		if i % 3 == 0: print("ES %d P=%s T=%s Thp=%.0f Tgr=%s inv=%.2f" % [i, P.pos.snapped(Vector3.ONE*0.01), T.pos.snapped(Vector3.ONE*0.01), T.hp, T.grounded, T.inv_t])
+	m.queue_free(); await get_tree().process_frame
+	r = _ac_setup(2.5); m = r[0]; P = r[1]; T = r[2]
+	P.runner.set_slot("utility", Content.ability("breach"))
+	P.runner.use("utility", {})
+	for i in 30:
+		_ac_run(m, Match.DT)
+		if i % 3 == 0: print("BR %d P=%s v=%s gr=%s fly=%.2f knock=%.2f T=%s" % [i, P.pos.snapped(Vector3.ONE*0.01), P.vel.snapped(Vector3.ONE*0.01), P.grounded, P.fly_t, P.knock_t, T.pos.snapped(Vector3.ONE*0.01)])
+	m.queue_free(); await get_tree().process_frame
+	r = _ac_setup(6.0); m = r[0]; P = r[1]; T = r[2]
+	P.runner.set_slot("utility", Content.ability("shadow_step"))
+	P.runner.use("utility", {})
+	for i in 20:
+		_ac_run(m, Match.DT)
+		if i % 2 == 0: print("SS %d P=%s T=%s Thp=%.0f shots=%d" % [i, P.pos.snapped(Vector3.ONE*0.01), T.pos.snapped(Vector3.ONE*0.01), T.hp, m.shots.size()])
+	get_tree().quit()
+
 func _ability_check() -> void:
 	var r: Array
 	var m: Match; var P: Hunter; var T: Hunter
@@ -1047,34 +1073,73 @@ func _ability_check() -> void:
 			mind["d"] = minf(mind["d"], T.flat_dist(land)))
 		_ac("gravity slam pulls + lifts", acc["top"] > 0.4 and float(mind["d"]) < dl - 0.3, "rose %.2f, to crater %.1f -> %.1f (kin %s)" % [acc["top"], dl, mind["d"], gk.state])
 	m.queue_free(); await get_tree().process_frame
-	# 20. Dashes: class verbs and kin riders
+	# 20. Dashes: class verbs and kin riders. Each starts grounded at the same spot, 3m short of the target.
 	r = _ac_setup(6.0); m = r[0]; P = r[1]; T = r[2]
-	P.cls = "light"; P.dodge_def = Content.class_dodge("light")
-	P.inp["move"] = Vector2(1, 0)
+	var home2 := P.pos
+	var kref = P.kin
+	var ready := func(cls: String, sp: String, at: Vector3, mv: Vector2) -> void:
+		P.teleport(at); P.vel = Vector3.ZERO
+		T.teleport(home2 + Vector3(6.0, 0, 0)); T.vel = Vector3.ZERO
+		P.cls = cls; P.dodge_def = Content.class_dodge(cls)
+		P.kin = kref if sp != "" else null
+		if P.kin: (P.kin as Kin).species = sp
+		_ac_run(m, 0.3)
+		P.dashes = P.max_dashes(); P.ex_cd = 0.0; P.roll_t = 0.0
+		P.inp["move"] = mv
+	# Light: phase step, a shot fired through you mid-step does nothing
+	ready.call("light", "", home2, Vector2(1, 0))
+	var php2 := P.hp
 	P.do_dash()
-	_ac("light phase step", P.phase_t > 0.1, "phase %.2f" % P.phase_t)
-	_ac_run(m, 0.6)
-	P.cls = "medium"; P.dodge_def = Content.class_dodge("medium"); P.dashes = 1.0
+	m.spawn_shot(T, P.pos + Vector3(1.0, 0.95, 0), Vector2(-30, 0), 20.0, 0.3, 0.15, Color.RED, {})
+	_ac_run(m, 0.25)
+	_ac("light phase: shots pass", P.phase_t >= 0.0 and P.hp >= php2, "hp %.0f -> %.0f" % [php2, P.hp])
+	# Medium: the roll reloads
+	ready.call("medium", "", home2, Vector2(1, 0))
 	P.ammo = 0
 	P.do_dash()
 	_ac("medium roll reloads", P.ammo > 0, "ammo %d" % P.ammo)
-	_ac_run(m, 0.6)
-	if P.kin:
-		(P.kin as Kin).species = "wisplet"
-		P.dashes = 1.0
+	# Heavy: the charge bowls the target back
+	ready.call("heavy", "", T.pos + Vector3(-2.2, 0, 0), Vector2(1, 0))
+	var tx := T.pos.x
+	P.do_dash()
+	_ac_run(m, 0.5)
+	_ac("heavy charge knocks back", T.pos.x - tx > 1.0 and T.hp < T.max_hp, "target pushed %.1f, took %.0f" % [T.pos.x - tx, T.max_hp - T.hp])
+	if kref:
+		# lunar: no travel, an instant blink
+		ready.call("medium", "wisplet", home2, Vector2(1, 0))
 		var bp := P.pos
-		P.inp["move"] = Vector2(-1, 0)
 		P.do_dash()
-		print("   lunar: element=%s grounded=%s dashes=%.1f roll=%.2f" % [P.kin_element(), P.grounded, P.dashes, P.roll_t])
 		_ac("lunar dash blinks", P.roll_t <= 0.0 and P.flat_dist(bp) > 2.0, "moved %.1f instantly" % P.flat_dist(bp))
-		_ac_run(m, 0.6)
-		(P.kin as Kin).species = "cindle"
-		P.dashes = 1.0
-		P.teleport(T.pos + Vector3(-2.5, 0, 0))
-		P.inp["move"] = Vector2(1, 0)
+		# venom: dash through the target poisons them
+		ready.call("medium", "cindle", T.pos + Vector3(-1.8, 0, 0), Vector2(1, 0))
+		T.burn_t = 0.0; T.blight_t = 0.0
 		P.do_dash()
 		_ac_run(m, 0.4)
-		_ac("venom dash poisons", T.burn_t > 0.0 or T.blight_t > 0.0, "burn %.1f" % T.burn_t)
+		_ac("venom dash poisons", T.burn_t > 0.0 or T.blight_t > 0.0, "burn %.1f blight %.1f" % [T.burn_t, T.blight_t])
+		# gravity: where you stop, foes nearby are tugged toward you
+		ready.call("medium", "pebbit", home2, Vector2(1, 0))
+		var gd0 := P.flat_dist(T)
+		P.do_dash()
+		_ac_run(m, 0.5)
+		_ac("gravity dash tugs", P.flat_dist(T) < gd0 - 3.6 - 0.3 or T.vel.length() > 0.5 or T.pos.x < home2.x + 5.7, "target x %.2f" % (T.pos.x - home2.x))
+		# echo: a second, shorter dash a beat later
+		ready.call("medium", "zapple", home2 + Vector3(-4.0, 0, 0), Vector2(1, 0))
+		var e0 := P.pos.x
+		P.do_dash()
+		_ac_run(m, 0.2)
+		var e1 := P.pos.x
+		_ac_run(m, 0.5)
+		_ac("echo dash repeats", P.pos.x - e1 > 1.0, "first %.1fm, then +%.1fm" % [e1 - e0, P.pos.x - e1])
+		# spore: a slowing cloud where you started
+		ready.call("medium", "burrlet", home2, Vector2(-1, 0))
+		var nf := m.fields.list.size()
+		P.do_dash()
+		_ac("spore dash leaves cloud", m.fields.list.size() > nf, "")
+		# prism: a decoy where you started
+		ready.call("medium", "puddlet", home2, Vector2(-1, 0))
+		var nd := m.verbs.decoys.size()
+		P.do_dash()
+		_ac("prism dash leaves decoy", m.verbs.decoys.size() > nd, "")
 	m.queue_free(); await get_tree().process_frame
 	# 21. Every ability and active glove runs without errors (watch the log for SCRIPT ERROR)
 	r = _ac_setup(5.0); m = r[0]; P = r[1]; T = r[2]

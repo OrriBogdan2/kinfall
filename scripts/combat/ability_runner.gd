@@ -36,7 +36,13 @@ func cd_frac(slot: String) -> float:
 	if not slots.has(slot) or is_ready(slot):
 		return 0.0
 	var d: AbilityDef = slots[slot]["def"]
-	return clampf(float(slots[slot]["cd"]) / maxf(0.01, d.cooldown), 0.0, 1.0)
+	return clampf(float(slots[slot]["cd"]) / maxf(0.01, d.cooldown * float(slots[slot].get("cd_k", 1.0))), 0.0, 1.0)
+
+## The full cooldown of a slot at its current rank.
+func cd_max(slot: String) -> float:
+	if not slots.has(slot):
+		return 0.0
+	return (slots[slot]["def"] as AbilityDef).cooldown * float(slots[slot].get("cd_k", 1.0))
 
 func use(slot: String, ctx := {}) -> bool:
 	if not is_ready(slot):
@@ -44,8 +50,10 @@ func use(slot: String, ctx := {}) -> bool:
 	var s: Dictionary = slots[slot]
 	var d: AbilityDef = s["def"]
 	s["charges"] = float(s["charges"]) - 1.0
+	# a higher rank (ctx.level) recharges faster: 10% per rank past the first
+	s["cd_k"] = clampf(1.0 - 0.1 * (float(ctx.get("level", 1)) - 1.0), 0.5, 1.0)
 	if float(s["cd"]) <= 0.0:
-		s["cd"] = d.cooldown
+		s["cd"] = d.cooldown * float(s["cd_k"])
 	var c := ctx.duplicate()
 	c["slot"] = slot
 	c["ability"] = d.id
@@ -66,7 +74,7 @@ func tick(dt: float) -> void:
 		s["cd"] = float(s["cd"]) - dt * rate
 		if float(s["cd"]) <= 0.0:
 			s["charges"] = minf(float(d.charges), float(s["charges"]) + 1.0)
-			s["cd"] = d.cooldown if float(s["charges"]) < d.charges else 0.0
+			s["cd"] = d.cooldown * float(s.get("cd_k", 1.0)) if float(s["charges"]) < d.charges else 0.0
 
 func reset() -> void:
 	for slot in slots:

@@ -317,17 +317,21 @@ func start_leap(to: Vector3, e: Dictionary, ctx: Dictionary) -> void:
 
 # ------------------------------------------------------------------ bond ultimates
 ## Armor form: it wraps around its hunter until the time runs out.
+## Rank 2 of the bond ultimate lasts 30% longer.
+func ult_time(u: UltimateDef) -> float:
+	return u.time * (1.0 + 0.3 * float((owner_h.ability_level("ult") if owner_h else 1) - 1))
+
 func fuse(u: UltimateDef) -> void:
 	fuse_def = u
-	fuse_t = u.time
+	fuse_t = ult_time(u)
 	fly = {}
 	target = null
 	state = "fused"
 	teleport(owner_h.pos + Vector3(0, 1.0, 0))
-	owner_h.fuse = {"def": u, "t": u.time}
+	owner_h.fuse = {"def": u, "t": fuse_t}
 	var om: Dictionary = u.owner_mods
 	if float(om.get("shield", 0.0)) > 0.0:
-		owner_h.shield = maxf(owner_h.shield, float(om["shield"])); owner_h.shield_t = maxf(owner_h.shield_t, u.time)
+		owner_h.shield = maxf(owner_h.shield, float(om["shield"])); owner_h.shield_t = maxf(owner_h.shield_t, fuse_t)
 	if om.get("refill_dash", false):
 		owner_h.dashes = owner_h.max_dashes()
 	if shell_fx == null and owner_h.model:
@@ -381,7 +385,7 @@ func grow(u: UltimateDef, aim: Vector3) -> void:
 		settle = 0.0
 	var sc := float(gd.get("scale", 2.2))
 	var bonus := float(gd.get("hp", 120.0))
-	giant = {"def": u, "t": u.time, "scale": sc, "bonus": bonus, "r": r, "stomp": gd.get("stomp", [])}
+	giant = {"def": u, "t": ult_time(u), "T": ult_time(u), "scale": sc, "bonus": bonus, "r": r, "stomp": gd.get("stomp", [])}
 	max_hp += bonus
 	hp = minf(max_hp, hp + bonus)
 	r = r * (0.5 + sc * 0.5)
@@ -906,7 +910,7 @@ func render(delta: float, alpha: float) -> void:
 	if not giant.is_empty():
 		var u: UltimateDef = giant["def"]
 		var left := float(giant["t"])
-		var grow_k := clampf((u.time - left) / 0.35, 0.0, 1.0) * clampf(left / 0.3, 0.0, 1.0)
+		var grow_k := clampf((float(giant.get("T", u.time)) - left) / 0.35, 0.0, 1.0) * clampf(left / 0.3, 0.0, 1.0)
 		gs = lerpf(1.0, float(giant["scale"]), grow_k)
 	model.scale = Vector3.ONE * 0.95 * float(model.get_meta("evo_scale", 1.0)) * gs
 	model.rotation.y = face

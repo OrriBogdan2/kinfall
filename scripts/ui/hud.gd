@@ -2056,6 +2056,9 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 			out.append(["Armor takes 20% off every hit until it wears out. Neither armor nor health comes back on its own: use armor kits and tonics.", MUTED, 13])
 			if p.lives < 50:
 				out.append(["Lives left: %d" % p.lives, Color("ff7a8a"), 13])
+	var rk := p.rank_text(id)
+	if rk != "" and not out.is_empty():
+		out.append([rk, GOLD, 12])
 	return out
 
 ## Point the cursor at a monster, a kin or another hunter to see what it is.

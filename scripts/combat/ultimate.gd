@@ -23,7 +23,7 @@ static func cast(h: Hunter) -> bool:
 		return false
 	h.ult = 0.0
 	var aim: Vector3 = h.inp.get("aim", h.pos)
-	var ctx := {"slot": "ult", "ability": u.id, "power": k.ability_power(), "aim": aim}
+	var ctx := {"slot": "ult", "ability": u.id, "power": k.ability_power(), "aim": aim, "level": h.ability_level("ult")}
 	if u.form == "giant":
 		k.grow(u, aim)
 	else:

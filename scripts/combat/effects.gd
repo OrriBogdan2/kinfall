@@ -42,12 +42,8 @@ static func run(effects: Array, caster: Node, ctx: Dictionary) -> void:
 	for e0 in effects:
 		if e0 is Dictionary:
 			var e: Dictionary = e0
-			if e.has("per_level") and float(ctx.get("level", 1)) > 1.0:
-				# "per_level": {"time": 0.5, "radius": 0.2} adds that much per level past the first
-				e = e.duplicate()
-				var pl: Dictionary = e["per_level"]
-				for key in pl:
-					e[key] = float(e.get(key, 0.0)) + float(pl[key]) * (float(ctx["level"]) - 1.0)
+			if float(ctx.get("level", 1)) > 1.0:
+				e = _ranked(e, float(ctx["level"]))
 			if e.has("charged"):
 				e = _charged(e, ctx)
 			var delay := float(e.get("delay", 0.0))
@@ -77,6 +73,45 @@ static func run(effects: Array, caster: Node, ctx: Dictionary) -> void:
 					if is_instance_valid(caster) and not caster.dead: run([ee], caster, ctx))
 				continue
 			_one(e, caster, ctx)
+
+## Ranks (skill points into a slot, ctx.level 1..3) grow an ability's numbers. Damage is handled by
+## level_k (+15% a rank). On top of that every effect type grows the numbers that matter for it by
+## the percentages below per rank past the first, and "per_level": {"time": 0.5} in the JSON adds a
+## flat amount per rank instead (it replaces the default for that key). Dash/rush distances never grow.
+const RANK_GROW := {
+	"wall": {"hp": 0.2, "time": 0.15, "length": 0.1},
+	"reflect": {"time": 0.2, "dmg_k": 0.1},
+	"tether": {"time": 0.15, "stun": 0.2},
+	"trap": {"time": 0.15, "root": 0.15, "radius": 0.1},
+	"zone": {"time": 0.15, "radius": 0.1, "slow": 0.1},
+	"line": {"length": 0.1, "stun": 0.15},
+	"projectile": {"range": 0.1, "stun": 0.15, "root": 0.15, "slow": 0.15},
+	"pull": {"strength": 0.15, "radius": 0.1},
+	"area": {"radius": 0.08, "stun": 0.15, "root": 0.15, "slow": 0.15},
+	"cone": {"radius": 0.08, "stun": 0.15, "slow": 0.15},
+	"chain": {"count": 0.34, "stun": 0.15},
+	"yank": {"stun": 0.25},
+	"swap": {"stun": 0.25},
+	"bridge": {"time": 0.2, "length": 0.1},
+	"cloak": {"time": 0.2}, "decoy": {"time": 0.25}, "reveal": {"time": 0.2, "radius": 0.1},
+	"shield": {"amount": 0.15, "time": 0.1}, "heal": {"amount": 0.15}, "guard": {"time": 0.15},
+	"ally_area": {"heal": 0.15, "shield": 0.15, "radius": 0.1},
+	"blink": {"distance": 0.1}, "behind": {"crit": 0.25}, "crit": {"time": 0.2}, "haste": {"time": 0.2},
+}
+
+static func _ranked(e: Dictionary, lvl: float) -> Dictionary:
+	var out := e.duplicate()
+	var r := lvl - 1.0
+	var grow: Dictionary = RANK_GROW.get(String(e.get("type", "")), {})
+	var pl: Dictionary = e.get("per_level", {})
+	for key in grow:
+		if out.has(key) and not pl.has(key) and (out[key] is float or out[key] is int):
+			var v := float(out[key]) * (1.0 + float(grow[key]) * r)
+			out[key] = int(round(v)) if out[key] is int else v
+	for key in pl:
+		out[key] = float(out.get(key, 0.0)) + float(pl[key]) * r
+	out.erase("per_level")
+	return out
 
 ## "charged": {"dmg": [6, 40]} sets dmg between 6 and 40 by how long the ability was held.
 static func _charged(e: Dictionary, ctx: Dictionary) -> Dictionary:
@@ -259,7 +294,6 @@ static func _one(e: Dictionary, caster: Node, ctx: Dictionary) -> void:
 			m.sfx(String(e.get("sfx", "throw")), caster.pos, -3.0, float(e.get("pitch", 1.0)))
 		"area":
 			var at := _where(e, caster, ctx)
-			print("DBG area at=", at, " caster=", caster.pos, " foes=", m.foes_of(caster.team).map(func(f): return [f.pos, f.hittable()]))
 			var r := float(e.get("radius", 2.0))
 			m.fx.ring(at, r, col, 0.3)
 			m.fx.burst(at + Vector3(0, 0.4, 0), col, int(clampf(r * 10.0, 8.0, 30.0)), 5.0, 0.45, 6.0, 1.1)
@@ -357,7 +391,7 @@ static func _one(e: Dictionary, caster: Node, ctx: Dictionary) -> void:
 				if e.has("on_land"):
 					var land: Array = e["on_land"]
 					m.later(float(e.get("time", 0.5)), func():
-						if is_instance_valid(caster): run(land, caster, {"at": caster.pos, "slot": ctx.get("slot", ""), "ability": ctx.get("ability", "")}))
+						if is_instance_valid(caster): run(land, caster, {"at": caster.pos, "slot": ctx.get("slot", ""), "ability": ctx.get("ability", ""), "level": ctx.get("level", 1)}))
 		"dash":
 			if caster is Hunter:
 				(caster as Hunter).dash_with(e)
@@ -503,7 +537,6 @@ static func _one(e: Dictionary, caster: Node, ctx: Dictionary) -> void:
 			# appear behind whoever the shot hit, facing them, with crits ready
 			var tg = ctx.get("target", null)
 			var who: Node = owner_of(caster) if caster is Kin else caster
-			print("DBG behind tg=", tg, " who=", who)
 			if tg is Ent and is_instance_valid(tg) and not tg.dead and who is Ent:
 				var back := Vector2(tg.pos.x - who.pos.x, tg.pos.z - who.pos.z).normalized()
 				var to := Vector3(tg.pos.x + back.x * 1.1, 0, tg.pos.z + back.y * 1.1)

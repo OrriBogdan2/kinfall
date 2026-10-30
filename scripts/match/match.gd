@@ -804,7 +804,7 @@ func use_gear(h: Hunter, slot: int) -> void:
 	if not Gear.active(gid):
 		return
 	var gd: Dictionary = Gear.ALL[gid]
-	h.gear_cd[slot] = Gear.cd_of(gid, int(g.get("rar", 1)))
+	h.gear_cd[slot] = Gear.cd_of(gid, int(g.get("rar", 1))) * h.rank_cd_k("gear")
 	var col: Color = gd["col"]
 	h.reveal_t = maxf(h.reveal_t, 0.6)
 	if h == player:
