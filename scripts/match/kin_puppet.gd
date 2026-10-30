@@ -32,6 +32,9 @@ var move_k := 0.0
 var pulse_k := 0.0
 var last_pulse := 0
 var stars: Node3D
+var legs: Array[Node3D] = []
+var wings: Array[Node3D] = []
+var spin: Node3D
 var phase := randf() * TAU
 
 func _ready() -> void:
@@ -44,6 +47,14 @@ func _ready() -> void:
 		set_process(false); return
 	tail = flex.get_node_or_null("Tail")
 	ears = flex.get_node_or_null("Ears")
+	var lg := flex.get_node_or_null("Legs")
+	if lg:
+		for ch in lg.get_children():
+			if String(ch.name).begins_with("Leg"): legs.append(ch)
+	var wg := flex.get_node_or_null("Wings")
+	if wg:
+		for ch in wg.get_children(): wings.append(ch)
+	spin = flex.get_node_or_null("Spin")
 	for sd in ["L", "R"]:
 		var e := flex.get_node_or_null("Eye" + sd) as Node3D
 		if e:
@@ -140,6 +151,17 @@ func _process(dt: float) -> void:
 		var droop := 0.35 if dazed else 0.0
 		ears.rotation.x = clampf(ear_flop * 0.12, -0.5, 0.5) + droop
 		ears.rotation.z = sin(twitch * PI * 2.0) * 0.12
+	# legs: a trot that speeds up with it, diagonal pairs together
+	for i in legs.size():
+		var ph := 0.0 if i % 4 in [0, 3] else PI
+		legs[i].rotation.x = sin(t * 14.0 + ph) * 0.55 * move_k
+	# wings: a slow flutter at rest, quick beats when it moves
+	for i in wings.size():
+		var side := -1.0 if String(wings[i].name).ends_with("L") else 1.0
+		var flap := sin(t * (5.0 + move_k * 9.0) + phase) * (0.25 + move_k * 0.3)
+		wings[i].rotation.z = side * (flap - 0.1)
+	if spin:
+		spin.rotation.y += dt * (1.2 + move_k * 2.0)
 	# stars circling the head while dazed
 	if dazed and stars == null:
 		_make_stars()

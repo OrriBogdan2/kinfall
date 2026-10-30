@@ -25,7 +25,9 @@ Colours are hex strings, times are seconds, distances are tiles.
 
 - `look`: `body` is round, drop, burr, pear, boulder or cloud; `ears` is flame, fin, leaf, bolt, horn or wisp;
   `tail` is flame, fish, sprout, zig, stub or wisp; `feet` is paws, stumps or none; `aura` is embers, bubbles,
-  leaves, sparks, pebbles or wind.
+  leaves, sparks, pebbles, wind, drips, prism, spores, rings or moondust. The six built-in species have
+  hand-built animal bodies instead (scripts/match/kin_models.gd); a new species uses these parts unless it
+  gets a builder there too. `wing` (optional) colours wing membranes.
 - `abilities`: one or two ability ids. The first is Q, the second V.
 - `ultimate`: an ultimate id (R).
 - `ai`: the species' fighting temperament, mixed 50/50 with each kin's own traits. Aggression chases further and

@@ -1,10 +1,10 @@
 {
 	"id": "zapple",
-	"name": "Zapple",
-	"type": "volt",
-	"color": "#f5d03a",
-	"belly": "#fff4c2",
-	"glow": "#fff27a",
+	"name": "Echolop",
+	"type": "echo",
+	"color": "#4a5aa8",
+	"belly": "#c9d2ff",
+	"glow": "#7fe8ff",
 	"stats": {
 		"hp": 70,
 		"dmg": 8,
@@ -12,11 +12,11 @@
 		"range": 1.3
 	},
 	"look": {
-		"ears": "bolt",
-		"body": "pear",
-		"tail": "zig",
-		"feet": "paws",
-		"aura": "sparks"
+		"ears": "none",
+		"body": "echolop",
+		"tail": "none",
+		"feet": "none",
+		"aura": "rings"
 	},
 	"traits": {
 		"bravery": 0.65,
@@ -39,5 +39,6 @@
 	},
 	"throw_hit": {
 		"stun": 0.9
-	}
+	},
+	"wing": "#5a4a8a"
 }

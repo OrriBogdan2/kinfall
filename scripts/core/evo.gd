@@ -3,7 +3,7 @@ class_name Evo
 ##
 ## Every kin builds up four affinities from how it lives: what it eats, what it does in matches
 ## and its own personality. Every 4 levels it takes a new form along its strongest affinity, so
-## one Cindle can become fierce and another steadfast. Between forms, every 4 levels from level 2,
+## one Vespyx can become fierce and another steadfast. Between forms, every 4 levels from level 2,
 ## it gains a mutation: a new body part (or a bigger version of one it has) with a small perk.
 ## There is no cap, and the parts and order differ for every kin.
 

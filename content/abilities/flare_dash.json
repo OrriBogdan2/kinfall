@@ -1,11 +1,11 @@
 {
 	"id": "flare_dash",
-	"name": "Flare Dash",
+	"name": "Stinger Dash",
 	"icon": "dash",
-	"color": "#ffb347",
+	"color": "#a6ff3a",
 	"cooldown": 9,
 	"range": 7,
-	"desc": "Your kin bursts forward in flames, burning everything it passes through.",
+	"desc": "Your kin lunges forward tail first, poisoning everything it passes through.",
 	"auto": {
 		"when": "foe_in_range",
 		"range": 6
@@ -18,7 +18,7 @@
 			"width": 1.1,
 			"dmg": 14,
 			"burn": 6,
-			"color": "#ffb347",
+			"color": "#a6ff3a",
 			"on_end": [
 				{
 					"type": "area",
@@ -26,7 +26,7 @@
 					"radius": 1.6,
 					"dmg": 8,
 					"kb": 5,
-					"color": "#ff7a3d"
+					"color": "#d4ff8a"
 				}
 			]
 		}

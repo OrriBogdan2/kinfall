@@ -1,10 +1,10 @@
 {
 	"id": "thornwake",
-	"name": "Thornwake",
+	"name": "Sporewake",
 	"form": "giant",
 	"time": 8,
-	"color": "#8fd16a",
-	"desc": "Burrlet grows into a giant briar beast for 8s. Its stomps root everything around it.",
+	"color": "#3fe0c0",
+	"desc": "Mycroll grows into a giant toadstool beast for 8s. Its stomps root everything around it.",
 	"giant": {
 		"scale": 2.3,
 		"hp": 150,
@@ -18,7 +18,7 @@
 				"radius": 2.8,
 				"dmg": 10,
 				"root": 1.0,
-				"color": "#8fd16a"
+				"color": "#3fe0c0"
 			}
 		]
 	},

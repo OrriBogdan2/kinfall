@@ -1,10 +1,10 @@
 {
 	"id": "overcharge",
-	"name": "Overcharge",
+	"name": "Crescendo",
 	"icon": "charge",
-	"color": "#f5d03a",
+	"color": "#7fe8ff",
 	"cooldown": 13,
-	"desc": "Your kin charges you up: 3s of speed, every dash back, and crits for 2s.",
+	"desc": "Your kin's song speeds you up: 3s of speed, every dash back, and crits for 2s.",
 	"auto": {
 		"when": "owner_fighting",
 		"chance": 0.25
@@ -27,7 +27,7 @@
 		{
 			"type": "burst",
 			"target": "owner",
-			"color": "#fff27a"
+			"color": "#d0f8ff"
 		}
 	],
 	"from": "owner",

@@ -1,11 +1,11 @@
 {
 	"id": "slam",
-	"name": "Boulder Slam",
+	"name": "Gravity Slam",
 	"icon": "slam",
-	"color": "#d8c9b0",
+	"color": "#b48cff",
 	"cooldown": 8,
 	"range": 7,
-	"desc": "Your kin leaps onto the spot and blasts foes away. Great near edges.",
+	"desc": "Your kin drops onto the spot like a meteor and blasts foes away. Great near edges.",
 	"auto": {
 		"when": "foe_in_range",
 		"range": 7
@@ -23,7 +23,7 @@
 					"dmg": 20,
 					"kb": 10,
 					"lift": 6,
-					"color": "#d8c9b0"
+					"color": "#b48cff"
 				}
 			]
 		}

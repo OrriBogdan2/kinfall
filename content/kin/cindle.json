@@ -1,10 +1,10 @@
 {
 	"id": "cindle",
-	"name": "Cindle",
-	"type": "ember",
-	"color": "#ff7a3d",
-	"belly": "#ffd28a",
-	"glow": "#ffb347",
+	"name": "Vespyx",
+	"type": "venom",
+	"color": "#4a2f5c",
+	"belly": "#d8c6e8",
+	"glow": "#a6ff3a",
 	"stats": {
 		"hp": 80,
 		"dmg": 9,
@@ -12,11 +12,11 @@
 		"range": 1.3
 	},
 	"look": {
-		"ears": "flame",
-		"body": "round",
-		"tail": "flame",
-		"feet": "paws",
-		"aura": "embers"
+		"ears": "none",
+		"body": "vespyx",
+		"tail": "none",
+		"feet": "none",
+		"aura": "drips"
 	},
 	"traits": {
 		"bravery": 0.75,
@@ -24,7 +24,7 @@
 		"temper": 0.7,
 		"curiosity": 0.5
 	},
-	"voice": "hot-headed, eager, talks in short bursts",
+	"voice": "sly and eager, talks in quick little hisses",
 	"shoulder": "kindle",
 	"abilities": [
 		"fireball",

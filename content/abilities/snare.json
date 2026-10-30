@@ -1,11 +1,11 @@
 {
 	"id": "snare",
-	"name": "Bramble Snare",
+	"name": "Spore Snare",
 	"icon": "snare",
-	"color": "#8fd16a",
+	"color": "#3fe0c0",
 	"cooldown": 8,
 	"range": 8,
-	"desc": "Brambles burst up at the spot a moment later and root every foe there for 1.6s.",
+	"desc": "Fungus bursts up at the spot a moment later and roots every foe there for 1.6s.",
 	"auto": {
 		"when": "foe_in_range",
 		"range": 7
@@ -16,7 +16,7 @@
 			"at": "aim",
 			"radius": 2.2,
 			"time": 0.35,
-			"color": "#8fd16a"
+			"color": "#3fe0c0"
 		},
 		{
 			"type": "area",
@@ -24,7 +24,7 @@
 			"radius": 2.2,
 			"dmg": 8,
 			"root": 1.6,
-			"color": "#6fbf5a",
+			"color": "#a8ffe8",
 			"delay": 0.35
 		}
 	],

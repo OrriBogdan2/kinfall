@@ -1,10 +1,10 @@
 {
 	"id": "pebbit",
-	"name": "Pebbit",
-	"type": "stone",
-	"color": "#a39a8c",
-	"belly": "#e0d8c8",
-	"glow": "#f0e2c0",
+	"name": "Gravadillo",
+	"type": "gravity",
+	"color": "#3c4058",
+	"belly": "#8e8aa8",
+	"glow": "#b48cff",
 	"stats": {
 		"hp": 120,
 		"dmg": 11,
@@ -12,10 +12,10 @@
 		"range": 1.4
 	},
 	"look": {
-		"ears": "horn",
-		"body": "boulder",
-		"tail": "stub",
-		"feet": "stumps",
+		"ears": "none",
+		"body": "gravadillo",
+		"tail": "none",
+		"feet": "none",
 		"aura": "pebbles"
 	},
 	"traits": {

@@ -1,11 +1,11 @@
 {
 	"id": "gust",
-	"name": "Gust",
+	"name": "Moon Gust",
 	"icon": "gust",
-	"color": "#d8ccff",
+	"color": "#fff0a0",
 	"cooldown": 6,
 	"range": 6,
-	"desc": "A burst of wind that hurls nearby foes outward and up.",
+	"desc": "A beat of moonlit wings that hurls nearby foes outward and up.",
 	"auto": {
 		"when": "foe_in_range",
 		"range": 3
@@ -18,7 +18,7 @@
 			"dmg": 8,
 			"kb": 10.5,
 			"lift": 5,
-			"color": "#d8ccff"
+			"color": "#fff0a0"
 		}
 	],
 	"from": "kin",

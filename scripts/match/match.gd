@@ -1617,6 +1617,34 @@ func give_kin(h: Hunter, rec: Dictionary) -> Kin:
 			player_lost.erase(L)
 	return k
 
+## A rival just took one of your kin: they're marked, and you're faster running them down.
+func kin_stolen(thief: Hunter, rec: Dictionary) -> void:
+	if player == null:
+		return
+	player.chase = thief
+	ping(thief.pos, Color("ffd23f"))
+	if hud:
+		hud.toast("%s took %s! Chase them down: they're marked, and you're faster heading their way" % [thief.pname, rec.get("name", "your kin")], Color("ffd23f"))
+
+## Who has one of your kin right now (a rival still in the match), or null.
+func kin_thief() -> Hunter:
+	for L in player_lost:
+		var hh = L.get("holder")
+		if hh is Hunter and (hh as Hunter).team != player.team and not (hh as Hunter).out and not (hh as Hunter).extracted:
+			return hh
+	return null
+
+func _tick_chase() -> void:
+	if player == null:
+		return
+	var th := kin_thief()
+	player.chase = th
+	if th:
+		# the thief can't hide: always visible, and pinged on the map every few seconds
+		th.reveal_t = maxf(th.reveal_t, 0.5)
+		if int(time * 60.0) % 240 == 0:
+			pings.append({"pos": th.pos, "col": Color("ffd23f"), "t": 0.0})
+
 ## Where each of your lost kin ends up when the match is over.
 func _resolve_lost() -> Array:
 	var out: Array = []
@@ -2478,6 +2506,7 @@ func step(dt: float) -> void:
 		_update_ship(dt)
 	_update_interact(dt)
 	Life.tick_wisps(self, dt)
+	_tick_chase()
 	if not net_on:
 		Life.tick_beacons(self, dt)
 		_watch_death()
@@ -2712,10 +2741,15 @@ func _catch(h: Hunter, k: Kin) -> void:
 	if k.lost_from != "":
 		# someone's lost kin: it keeps who it is, and we remember who has it now
 		rec["lost_from"] = k.lost_from
+		rec["prev_trust"] = float(k.rec.get("trust", 50.0))
 		for L in player_lost:
 			if L["kin"] == k: L["holder"] = h
 		if k.lost_from == "you" and h == player:
 			add_feed("You got %s back! Extract to bring it home." % rec.get("name", "your kin"))
+		elif k.lost_owner is Hunter and (k.lost_owner as Hunter).team != h.team:
+			h.stolen_carry = true
+			if k.lost_from == "you":
+				kin_stolen(h, rec)
 	else:
 		rec["trust"] = 20.0
 		rec["memory"] = []

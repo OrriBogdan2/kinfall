@@ -1,10 +1,10 @@
 {
 	"id": "updraft",
-	"name": "Updraft",
+	"name": "Moonlift",
 	"icon": "updraft",
-	"color": "#e2d8ff",
+	"color": "#fff0a0",
 	"cooldown": 14,
-	"desc": "A column of wind lifts you high and cools your glider. Your kin uses it on its own to save you from the abyss.",
+	"desc": "A column of moonlight lifts you high and cools your glider. Your kin uses it on its own to save you from the abyss.",
 	"auto": {
 		"when": "owner_falling"
 	},
@@ -14,7 +14,7 @@
 			"up": 14,
 			"forward": 3,
 			"target": "owner",
-			"color": "#e2d8ff"
+			"color": "#fff0a0"
 		},
 		{
 			"type": "cool_glider",

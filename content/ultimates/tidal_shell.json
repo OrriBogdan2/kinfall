@@ -1,10 +1,10 @@
 {
 	"id": "tidal_shell",
-	"name": "Tidal Shell",
+	"name": "Prism Shell",
 	"form": "armor",
 	"time": 7,
-	"color": "#6cc8ff",
-	"desc": "Puddlet wraps around you as a shell of water for 7s: an 80 point shield, steady healing, and shots that slow.",
+	"color": "#7ff3ff",
+	"desc": "Prismander wraps around you as a shell of living crystal for 7s: an 80 point shield, steady healing, and shots that slow.",
 	"owner": {
 		"shield": 80,
 		"regen": 6
@@ -20,7 +20,7 @@
 			"dmg": 6,
 			"kb": 12,
 			"slow": 2,
-			"color": "#6cc8ff"
+			"color": "#7ff3ff"
 		},
 		{
 			"type": "heal",

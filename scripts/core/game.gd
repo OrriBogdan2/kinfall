@@ -137,9 +137,14 @@ func apply_result(r: Dictionary) -> Dictionary:
 				nk.erase("lost_from")
 				Save.remember(nk, "caught", "was caught by you in the islands and brought home")
 			else:
-				# a rival's kin, left behind when they went down: it still misses them
+				# a rival's kin you took home: it still misses them. One that loved its old hunter
+				# (trust 80+) pines for a good while and is very slow to bond with you
 				nk["memory"] = []
 				nk["trust"] = 15.0
+				if float(rec.get("prev_trust", 0.0)) >= 80.0:
+					nk["trust"] = 5.0
+					nk["pining"] = 6
+					Save.remember(nk, "pining", "loved %s and won't warm to anyone else easily" % from, -5.0)
 				Save.remember(nk, "taken", "belonged to %s until you took it home" % from)
 			Care.ensure(nk)
 			nk["needs"] = {"food": 45.0, "energy": 40.0, "joy": 45.0, "clean": 30.0}
@@ -253,6 +258,8 @@ func apply_result(r: Dictionary) -> Dictionary:
 func _kin_after(k: Dictionary, run: Dictionary, won: bool, r: Dictionary, treat: String, out: Dictionary, lead: bool) -> void:
 	var d := Save.d
 	k["matches"] = int(k.get("matches", 0)) + 1
+	if int(k.get("pining", 0)) > 0:
+		k["pining"] = int(k["pining"]) - 1
 	var before := float(k["trust"])
 	var evs: Array = run.get("events", [])
 	var counts := {}

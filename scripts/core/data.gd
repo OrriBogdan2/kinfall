@@ -128,32 +128,32 @@ const SIGS := {
 ## (or adds a new species) when the game starts, so new kin need no code.
 ## skill: what Q does while the kin is out. shoulder: what you get while it rides on you.
 var KIN := {
-	"cindle": {"name": "Cindle", "type": "ember", "color": Color("ff7a3d"), "belly": Color("ffd28a"),
+	"cindle": {"name": "Vespyx", "type": "venom", "color": Color("4a2f5c"), "belly": Color("d8c6e8"),
 		"hp": 80.0, "dmg": 9.0, "speed": 6.8, "range": 1.3, "ears": "flame",
 		"skill": "fireball", "shoulder": "kindle",
 		"traits": {"bravery": 0.75, "loyalty": 0.5, "temper": 0.7, "curiosity": 0.5},
 		"voice": "hot-headed, eager, talks in short bursts"},
-	"puddlet": {"name": "Puddlet", "type": "tide", "color": Color("4aa8e8"), "belly": Color("c9ecff"),
+	"puddlet": {"name": "Prismander", "type": "prism", "color": Color("f0a6d6"), "belly": Color("ffe2f1"),
 		"hp": 95.0, "dmg": 7.0, "speed": 6.0, "range": 1.3, "ears": "fin",
 		"skill": "wave", "shoulder": "spring",
 		"traits": {"bravery": 0.45, "loyalty": 0.85, "temper": 0.2, "curiosity": 0.6},
 		"voice": "gentle, worried about you, a little formal"},
-	"burrlet": {"name": "Burrlet", "type": "thorn", "color": Color("6fbf5a"), "belly": Color("e2f2b0"),
+	"burrlet": {"name": "Mycroll", "type": "spore", "color": Color("6b4a3c"), "belly": Color("e9d6bd"),
 		"hp": 90.0, "dmg": 8.0, "speed": 6.2, "range": 1.3, "ears": "leaf",
 		"skill": "snare", "shoulder": "briar",
 		"traits": {"bravery": 0.55, "loyalty": 0.6, "temper": 0.4, "curiosity": 0.8},
 		"voice": "curious and odd, notices small things"},
-	"zapple": {"name": "Zapple", "type": "volt", "color": Color("f5d03a"), "belly": Color("fff4c2"),
+	"zapple": {"name": "Echolop", "type": "echo", "color": Color("4a5aa8"), "belly": Color("c9d2ff"),
 		"hp": 70.0, "dmg": 8.0, "speed": 7.6, "range": 1.3, "ears": "bolt",
 		"skill": "chain", "shoulder": "charge",
 		"traits": {"bravery": 0.65, "loyalty": 0.4, "temper": 0.6, "curiosity": 0.9},
 		"voice": "hyper, easily distracted, loves winning"},
-	"pebbit": {"name": "Pebbit", "type": "stone", "color": Color("a39a8c"), "belly": Color("e0d8c8"),
+	"pebbit": {"name": "Gravadillo", "type": "gravity", "color": Color("3c4058"), "belly": Color("8e8aa8"),
 		"hp": 120.0, "dmg": 11.0, "speed": 5.4, "range": 1.4, "ears": "horn",
 		"skill": "slam", "shoulder": "bedrock",
 		"traits": {"bravery": 0.9, "loyalty": 0.7, "temper": 0.3, "curiosity": 0.2},
 		"voice": "slow, steady, few words, deeply loyal once trust is earned"},
-	"wisplet": {"name": "Wisplet", "type": "gale", "color": Color("b9a6f5"), "belly": Color("efe8ff"),
+	"wisplet": {"name": "Lunowl", "type": "lunar", "color": Color("d9d4f2"), "belly": Color("fff8e6"),
 		"hp": 70.0, "dmg": 7.0, "speed": 8.0, "range": 1.3, "ears": "wisp",
 		"skill": "gust", "shoulder": "updraft",
 		"traits": {"bravery": 0.35, "loyalty": 0.55, "temper": 0.5, "curiosity": 0.7},
@@ -197,12 +197,12 @@ const KIN_SKILLS := {
 }
 
 const SHOULDER := {
-	"kindle": {"name": "Kindle", "desc": "Your shots set targets burning."},
-	"spring": {"name": "Spring", "desc": "You heal 3 HP per second."},
-	"briar": {"name": "Briar", "desc": "Your shots slow targets."},
-	"charge": {"name": "Charge", "desc": "You fire and reload 20% faster."},
-	"bedrock": {"name": "Bedrock", "desc": "You take 15% less damage and half the knockback."},
-	"updraft": {"name": "Updraft", "desc": "One extra dash charge."},
+	"kindle": {"name": "Toxin", "desc": "Your shots poison targets."},
+	"spring": {"name": "Glimmer", "desc": "You heal 3 HP per second."},
+	"briar": {"name": "Mycelium", "desc": "Your shots slow targets."},
+	"charge": {"name": "Tempo", "desc": "You fire and reload 20% faster."},
+	"bedrock": {"name": "Anchor", "desc": "You take 15% less damage and half the knockback."},
+	"updraft": {"name": "Moonstep", "desc": "One extra dash charge."},
 }
 
 const MOBS := {

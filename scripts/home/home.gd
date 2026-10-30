@@ -733,7 +733,7 @@ func _move_kin(d: float) -> void:
 				if pd["crop"] != "" and float(pd.get("wt", 0.0)) <= 0.0:
 					_water(tk[0], tk[1])
 					_emote(k, "♪")
-					rec["trust"] = minf(100.0, float(rec["trust"]) + 0.2)
+					rec["trust"] = minf(100.0, float(rec["trust"]) + (0.07 if int(rec.get("pining", 0)) > 0 else 0.2))
 				k["t"] = randf_range(1.0, 2.0)
 		elif k["t"] <= 0.0 and not locked and rec.get("farmhand", false) and visit.is_empty() and (k["farm_t"] if k.has("farm_t") else 0.0) <= 0.0 and _dry_plot() != []:
 			k["task"] = _dry_plot()
@@ -1977,7 +1977,7 @@ func _open_expedition() -> void:
 		modes.add_child(b)
 	v.add_child(modes)
 	var go := UI.hbox(10)
-	go.add_child(UI.primary("Start expedition", _start_match, 220))
+	go.add_child(UI.primary("Start expedition", _confirm_start, 220))
 	go.add_child(UI.button("Training area", _start_training, 180))
 	if Bridge.net_available():
 		go.add_child(UI.button("Play online with friends", func(): Game.goto("lobby", {"cls": Data.class_of_save(), "tier": exp_tier}), 240))
@@ -2144,6 +2144,31 @@ func _start_training() -> void:
 	Save.d["cls"] = Data.class_of_save()
 	Save.save_game()
 	Game.start_match({"training": true, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242})
+
+## Before a run where kin can be lost, say so plainly and make the player confirm.
+func _confirm_start() -> void:
+	var td: Dictionary = Data.TIERS[exp_tier]
+	if not td.get("risk_kin", false):
+		_start_match()
+		return
+	var v := _new_panel("Your kin can be lost", 640)
+	var names: Array = []
+	for rec in Save.d.get("roster", []):
+		if rec.get("uid", "") in [Save.d.get("active", ""), Save.d.get("active2", "")]:
+			names.append(String(rec.get("name", "your kin")))
+	var who := " and ".join(names) if not names.is_empty() else "the kin you bring"
+	var lines := ["In %s, if you die, %s drop into your deathbox. Anyone who loots it takes them, and a rival who gets them out keeps them." % [td["name"], who]]
+	if td.get("loose_capture", false):
+		lines.append("Kin out of your hands (thrown or fighting) can also be captured while you're dead.")
+	lines.append("If a rival takes your kin you can chase them down in the match (they're marked and you're faster heading their way), get a teammate to bring you back at your box, or ask for them back after the run.")
+	for ln in lines:
+		var l := UI.label(ln, 15, UI.INK)
+		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(l)
+	var row := UI.hbox(10)
+	row.add_child(UI.primary("I understand, go", _start_match, 220))
+	row.add_child(UI.button("Back", _open_expedition, 140))
+	v.add_child(row)
 
 func _start_match() -> void:
 	Save.d["cls"] = Data.class_of_save()

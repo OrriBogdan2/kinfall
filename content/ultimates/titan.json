@@ -1,10 +1,10 @@
 {
 	"id": "titan",
-	"name": "Titan",
+	"name": "Heavy Star",
 	"form": "giant",
 	"time": 8,
-	"color": "#d8c9b0",
-	"desc": "Pebbit becomes a towering titan for 8s. Huge health, and every stomp launches foes away.",
+	"color": "#b48cff",
+	"desc": "Gravadillo collapses into a towering heavy star for 8s. Huge health, and every stomp launches foes away.",
 	"giant": {
 		"scale": 2.6,
 		"hp": 250,
@@ -19,7 +19,7 @@
 				"dmg": 14,
 				"kb": 12,
 				"lift": 7,
-				"color": "#d8c9b0"
+				"color": "#b48cff"
 			}
 		]
 	},
@@ -31,7 +31,7 @@
 			"dmg": 22,
 			"kb": 14,
 			"lift": 8,
-			"color": "#d8c9b0"
+			"color": "#b48cff"
 		}
 	]
 }

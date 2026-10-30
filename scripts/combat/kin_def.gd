@@ -9,6 +9,7 @@ extends Resource
 @export var color := Color.WHITE
 @export var belly := Color.WHITE
 @export var glow := Color.WHITE
+@export var wing := Color(0, 0, 0, 0)    # wing membrane colour, for kin that have wings
 @export var stats: Dictionary = {}       # hp dmg speed range
 @export var look: Dictionary = {}        # ears body tail feet aura
 @export var traits: Dictionary = {}      # starting personality: bravery loyalty temper curiosity
@@ -26,6 +27,7 @@ static func from_dict(d: Dictionary) -> KinDef:
 	k.color = Color(String(d.get("color", "#ffffff")))
 	k.belly = Color(String(d.get("belly", "#ffffff")))
 	k.glow = Color(String(d.get("glow", d.get("color", "#ffffff"))))
+	if d.has("wing"): k.wing = Color(String(d["wing"]))
 	k.stats = d.get("stats", {})
 	k.look = d.get("look", {})
 	k.traits = d.get("traits", {})
@@ -38,8 +40,10 @@ static func from_dict(d: Dictionary) -> KinDef:
 
 ## The entry the rest of the game reads from Data.KIN.
 func to_species() -> Dictionary:
-	return {"name": display_name, "type": type, "color": color, "belly": belly, "glow": glow,
+	var out := {"name": display_name, "type": type, "color": color, "belly": belly, "glow": glow,
 		"hp": float(stats.get("hp", 85.0)), "dmg": float(stats.get("dmg", 8.0)), "speed": float(stats.get("speed", 6.5)),
 		"range": float(stats.get("range", 1.3)), "ears": String(look.get("ears", "")), "look": look,
 		"skill": String(abilities[0]) if abilities.size() > 0 else "", "abilities": abilities, "ultimate": ultimate,
 		"shoulder": shoulder if shoulder != "" else "spring", "traits": traits, "ai": ai, "throw_hit": throw_hit}
+	if wing.a > 0.0: out["wing"] = wing
+	return out

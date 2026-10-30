@@ -1,11 +1,11 @@
 {
 	"id": "chain_spark",
-	"name": "Chain Spark",
+	"name": "Echo Chain",
 	"icon": "chain",
-	"color": "#fff27a",
+	"color": "#7fe8ff",
 	"cooldown": 6,
 	"range": 7,
-	"desc": "Lightning that jumps between three foes and stuns each for a moment.",
+	"desc": "A sound wave that bounces between three foes and stuns each for a moment.",
 	"auto": {
 		"when": "foe_in_range",
 		"range": 7
@@ -18,7 +18,7 @@
 			"jump": 4.5,
 			"dmg": 16,
 			"stun": 0.4,
-			"color": "#fff27a"
+			"color": "#7fe8ff"
 		}
 	],
 	"from": "kin",

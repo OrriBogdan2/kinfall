@@ -1,10 +1,10 @@
 {
 	"id": "rock_guard",
-	"name": "Rock Guard",
+	"name": "Mass Guard",
 	"icon": "fortify",
-	"color": "#f0e2c0",
+	"color": "#b48cff",
 	"cooldown": 12,
-	"desc": "Your kin turns to stone for 4s (takes 60% less damage), shoves foes off it and gives you a 30 point shield.",
+	"desc": "Your kin grows impossibly heavy for 4s (takes 60% less damage), shoves foes off it and gives you a 30 point shield.",
 	"auto": {
 		"when": "owner_hurt",
 		"below": 0.6
@@ -28,7 +28,7 @@
 			"radius": 2.0,
 			"dmg": 6,
 			"kb": 8,
-			"color": "#f0e2c0"
+			"color": "#b48cff"
 		}
 	],
 	"from": "kin",

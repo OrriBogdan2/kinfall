@@ -1,10 +1,10 @@
 {
 	"id": "tempest",
-	"name": "Tempest",
+	"name": "Eclipse",
 	"form": "giant",
 	"time": 7,
-	"color": "#d8ccff",
-	"desc": "Wisplet swells into a living storm for 7s that drags foes in and flings them skyward.",
+	"color": "#fff0a0",
+	"desc": "Lunowl swells into a living eclipse for 7s that drags foes in and flings them skyward.",
 	"giant": {
 		"scale": 2.2,
 		"hp": 120,
@@ -19,7 +19,7 @@
 				"dmg": 8,
 				"kb": 6,
 				"lift": 8,
-				"color": "#d8ccff"
+				"color": "#fff0a0"
 			}
 		]
 	},
@@ -31,7 +31,7 @@
 				"at": "self",
 				"radius": 5.5,
 				"strength": 7,
-				"color": "#d8ccff"
+				"color": "#fff0a0"
 			}
 		]
 	},
@@ -42,7 +42,7 @@
 			"radius": 4,
 			"dmg": 12,
 			"lift": 9,
-			"color": "#d8ccff"
+			"color": "#fff0a0"
 		}
 	]
 }

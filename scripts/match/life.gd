@@ -140,7 +140,14 @@ static func loot_box(m: Match, h: Hunter, b: Dictionary) -> void:
 	for s in b["seeds"]:
 		h.seeds[s] = int(h.seeds.get(s, 0)) + int(b["seeds"][s])
 	for rec in b["caught"]:
+		if h == m.player and String(rec.get("lost_from", "")) == "you":
+			# one of yours the dead hunter had taken: it's straight back at your side
+			m.give_kin(h, rec)
+			m.add_feed("%s is back with you!" % rec.get("name", "Your kin"))
+			continue
 		h.caught.append(rec)
+		if String(rec.get("lost_from", "")) != "" and String(rec.get("lost_from", "")) != h.pname:
+			h.stolen_carry = true
 	h.tonics += int(b["tonics"])
 	h.armor_kits += int(b["kits"])
 	_kin_from_box(m, h, b)
@@ -266,10 +273,16 @@ static func _kin_from_box(m: Match, h: Hunter, b: Dictionary) -> void:
 			for L in m.player_lost:
 				if String(L["uid"]) == String(rec.get("uid", "")): L["holder"] = h
 			m.add_feed(("%s is carrying %s for you" if h.team == o.team else "%s took %s from your box!") % [h.pname, rec.get("name", "your kin")])
+			if h.team != o.team:
+				h.stolen_carry = true
+				m.kin_stolen(h, rec)
 		elif h.team != o.team:
-			# a rival's kin: it's yours if you get it home
+			# a rival's kin: it's yours if you get it home (and it remembers how much it loved them)
+			r2["prev_trust"] = float(rec.get("trust", 50.0))
+			r2["lost_from"] = o.pname
 			r2["trust"] = 20.0
 			r2["memory"] = []
+			h.stolen_carry = true
 			if h == m.player: m.add_feed("You took %s's %s! Extract to keep it." % [o.pname, Data.KIN[r2["species"]]["name"]])
 		h.caught.append(r2)
 	b["kin"] = []

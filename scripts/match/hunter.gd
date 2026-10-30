@@ -100,6 +100,8 @@ var revive := 0.0
 var out := false
 var gone := false              # dead for good: no box revive, no beacon (see Life)
 var sick_t := 0.0              # resurrection sickness after a beacon revive: -25% damage
+var stolen_carry := false      # carrying someone else's kin: it struggles, slowing you a little
+var chase: Hunter = null       # whoever has your kin: you run faster toward them
 var box_t := 0.0               # holding interact at a deathbox
 var hurt_at := -9.0            # last time a hit landed (channels like a box revive break on it)
 var extracted := false
@@ -204,6 +206,13 @@ func equip(w: String, rar: int, with_ammo := -1) -> void:
 				ch.queue_free()
 		var acc: Color = Data.RARITY[rar]["color"] if rar > 0 else Data.TEAM_COLORS[team % Data.TEAM_COLORS.size()]
 		Models.gun_parts(gun, w, Models.toon(Color("4a4d5c")), Models.toon(Color("2b2a33")), Models.toon(acc, true, 0.45 if rar > 0 else 0.0))
+
+## Chasing down whoever took your kin: 18% faster heading their way. Carrying a stolen kin: 8% slower.
+func _chase_mod(mv: Vector2) -> float:
+	var k := 0.92 if stolen_carry else 1.0
+	if chase and not chase.out and not chase.extracted and mv.length() > 0.1 and mv.normalized().dot(dir_to(chase)) > 0.5:
+		k *= 1.18
+	return k
 
 ## The colour that marks this hunter's effects (from their class).
 func accent() -> Color:
@@ -1136,7 +1145,7 @@ func _physics(dt: float) -> void:
 		_grapple(dt)
 		return
 	var mv: Vector2 = inp["move"] if stun_t <= 0.0 and root_t <= 0.0 else Vector2.ZERO
-	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.4 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * _fire_slow() * (0.45 if drink_t > 0.0 or kit_t > 0.0 else 1.0) * (0.55 if crouch else 1.0) * (1.0 + gear_stat("speed")) * fuse_mod("speed")
+	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.4 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * _fire_slow() * (0.45 if drink_t > 0.0 or kit_t > 0.0 else 1.0) * (0.55 if crouch else 1.0) * (1.0 + gear_stat("speed")) * fuse_mod("speed") * _chase_mod(mv)
 	var hv := Vector2(vel.x, vel.z)
 	var cur := hv.length()
 	if roll_t > 0.0:

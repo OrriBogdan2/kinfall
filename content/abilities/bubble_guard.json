@@ -1,10 +1,10 @@
 {
 	"id": "bubble_guard",
-	"name": "Bubble Guard",
+	"name": "Crystal Shell",
 	"icon": "fortify",
-	"color": "#8fdcff",
+	"color": "#7ff3ff",
 	"cooldown": 12,
-	"desc": "Wraps you and your kin in a 45 point bubble and washes off slows, roots and burns.",
+	"desc": "Wraps you and your kin in a 45 point crystal shell and clears slows, roots and poison.",
 	"auto": {
 		"when": "owner_hurt",
 		"below": 0.55
@@ -15,7 +15,7 @@
 			"amount": 45,
 			"time": 5,
 			"target": "both",
-			"color": "#8fdcff"
+			"color": "#7ff3ff"
 		},
 		{
 			"type": "cleanse",

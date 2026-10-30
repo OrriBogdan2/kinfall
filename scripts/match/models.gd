@@ -782,128 +782,131 @@ static func kin(species: String, rec := {}) -> Node3D:
 	# Body moves the kin around (hops, lunges, tumbles); Flex inside it squashes and stretches (KinPuppet)
 	var body_root := Node3D.new(); body_root.name = "Body"; root.add_child(body_root)
 	var body := Node3D.new(); body.name = "Flex"; body_root.add_child(body)
-	var shape := String(look.get("body", "round"))
-	var head_y := 0.44      # where the eyes sit
-	var top_y := 0.68       # where ears sit
-	var front_z := -0.28
-	match shape:
-		"drop":
-			# a water drop: round below, tapering to a curl on top
-			part(body, sphere(0.34), m_body, Vector3(0, 0.32, 0), Vector3(1.0, 0.88, 1.0))
-			part(body, cyl(0.02, 0.24, 0.34), m_body, Vector3(0, 0.66, 0.04), Vector3.ONE, Vector3(0.25, 0, 0))
-			part(body, sphere(0.05, 8), m_body, Vector3(0, 0.84, 0.12))
-			part(body, sphere(0.24), m_belly, Vector3(0, 0.28, -0.14), Vector3(1.0, 0.95, 0.7))
-			top_y = 0.6
-		"burr":
-			# a round burr of leaves with little thorns all over its back
-			part(body, sphere(0.33), m_body, Vector3(0, 0.33, 0), Vector3(1.05, 0.95, 1.0))
-			part(body, sphere(0.23), m_belly, Vector3(0, 0.29, -0.15), Vector3(1.0, 0.95, 0.7))
-			for i in 9:
-				var a := float(i) / 9.0 * TAU
-				var up := 0.35 + 0.18 * float(i % 3)
-				var dir := Vector3(cos(a) * 0.9, up, sin(a) * 0.9 + 0.35).normalized()
-				if dir.z < -0.2: continue
-				var sp_n := part(body, cyl(0.0, 0.05, 0.16, 6), m_dark, Vector3(0, 0.36, 0.02) + dir * 0.3)
-				sp_n.basis = Basis(Quaternion(Vector3.UP, dir))
-		"pear":
-			# a pear: a wide bottom and a narrower head, always a little jittery
-			part(body, sphere(0.33), m_body, Vector3(0, 0.3, 0), Vector3(1.05, 0.85, 1.0))
-			part(body, sphere(0.25), m_body, Vector3(0, 0.56, -0.02))
-			part(body, sphere(0.22), m_belly, Vector3(0, 0.26, -0.15), Vector3(1.0, 0.9, 0.7))
-			head_y = 0.58; top_y = 0.78; front_z = -0.22
-		"boulder":
-			# a chunky rock: a wide body with stone plates on its back and a heavy brow
-			part(body, sphere(0.36), m_body, Vector3(0, 0.33, 0), Vector3(1.18, 0.86, 1.08))
-			part(body, sphere(0.24), m_belly, Vector3(0, 0.27, -0.17), Vector3(1.1, 0.9, 0.65))
-			for i in 3:
-				part(body, box(0.3 - i * 0.06, 0.08, 0.2), m_dark, Vector3(0, 0.6 - i * 0.12, 0.12 + i * 0.12), Vector3.ONE, Vector3(-0.5 - i * 0.3, 0, 0))
-			part(body, box(0.4, 0.07, 0.12), m_dark, Vector3(0, 0.53, -0.26), Vector3.ONE, Vector3(0.35, 0, 0))
-			head_y = 0.42
-		"cloud":
-			# a puff of cloud that floats, with no feet at all
-			for pf in [[Vector3(0, 0.42, 0), 0.3], [Vector3(-0.2, 0.38, 0.08), 0.2], [Vector3(0.2, 0.38, 0.08), 0.2], [Vector3(0, 0.6, 0.06), 0.2], [Vector3(0, 0.34, 0.22), 0.18]]:
-				part(body, sphere(pf[1]), m_body, pf[0])
-			part(body, sphere(0.2), m_belly, Vector3(0, 0.38, -0.14), Vector3(1.0, 0.9, 0.6))
-			head_y = 0.48; top_y = 0.72
-		_:
-			part(body, sphere(0.34), m_body, Vector3(0, 0.34, 0), Vector3(1.05, 0.92, 1.0))
-			part(body, sphere(0.24), m_belly, Vector3(0, 0.3, -0.14), Vector3(1.0, 0.95, 0.7))
-	# face: big eyes with a catch light, and rosy cheeks
-	for sx in [-1.0, 1.0]:
-		var sd := "L" if sx < 0.0 else "R"
-		part(body, sphere(0.068, 10), m_eye, Vector3(0.12 * sx, head_y, front_z), Vector3(1, 1.15, 1), Vector3.ZERO, "Eye" + sd)
-		part(body, sphere(0.024, 6), m_white, Vector3(0.12 * sx + 0.025, head_y + 0.035, front_z - 0.05), Vector3.ONE, Vector3.ZERO, "Shine" + sd)
-		part(body, sphere(0.04, 6), m_blush, Vector3(0.2 * sx, head_y - 0.08, front_z + 0.05), Vector3(1, 0.5, 0.4))
-	# feet
-	match String(look.get("feet", "paws")):
-		"stumps":
-			for sx in [-1.0, 1.0]:
-				for sz in [-1.0, 1.0]:
-					part(body, cyl(0.08, 0.1, 0.14, 8), m_dark, Vector3(0.2 * sx, 0.06, 0.12 * sz))
-		"none":
-			body.position.y = 0.12
-		_:
-			for sx in [-1.0, 1.0]:
-				part(body, sphere(0.08, 8), m_body, Vector3(0.2 * sx, 0.06, -0.08), Vector3(1, 0.6, 1.2))
-	# tail, on its own pivot so it can wag
-	var flex := body
-	var tail_n := Node3D.new(); tail_n.name = "Tail"; flex.add_child(tail_n)
-	body = tail_n
-	match String(look.get("tail", "nub")):
-		"flame":
-			part(body, cyl(0.0, 0.11, 0.3, 8), m_glow, Vector3(0, 0.36, 0.38), Vector3.ONE, Vector3(-1.0, 0, 0))
-			part(body, cyl(0.0, 0.06, 0.2, 8), toon(Color("fff0a0"), false, 0.9), Vector3(0, 0.42, 0.46), Vector3.ONE, Vector3(-0.8, 0, 0))
-		"fish":
-			part(body, box(0.02, 0.24, 0.22), m_belly, Vector3(0, 0.3, 0.42), Vector3.ONE, Vector3(0.3, 0, 0))
-			part(body, sphere(0.09, 8), m_body, Vector3(0, 0.26, 0.32))
-		"sprout":
-			part(body, cyl(0.015, 0.02, 0.22, 6), toon(Color("5a8a3a")), Vector3(0, 0.4, 0.36), Vector3.ONE, Vector3(-0.6, 0, 0))
-			part(body, sphere(0.08, 8), toon(Color("8fd16a")), Vector3(0, 0.5, 0.44), Vector3(1.4, 0.3, 0.8))
-		"zig":
-			for i in 3:
-				part(body, box(0.05, 0.16, 0.05), m_glow, Vector3(0.05 * (1 if i % 2 == 0 else -1), 0.3 + i * 0.1, 0.34 + i * 0.05), Vector3.ONE, Vector3(-0.6, 0, 0.6 * (1 if i % 2 == 0 else -1)))
-		"stub":
-			part(body, sphere(0.09, 8), m_dark, Vector3(0, 0.22, 0.36))
-		"wisp":
-			for i in 3:
-				part(body, sphere(0.07 - i * 0.015, 8), m_glow, Vector3(0, 0.36 + i * 0.05, 0.36 + i * 0.12), Vector3.ONE, Vector3.ZERO, "Wisp%d" % i)
-		_:
-			part(body, sphere(0.1, 8), m_body, Vector3(0, 0.26, 0.32))
-	body = flex
-	_repivot(tail_n, Vector3(0, 0.3, 0.3))
-	var ears_n := Node3D.new(); ears_n.name = "Ears"; flex.add_child(ears_n)
-	body = ears_n
-	match String(sp["ears"]):
-		"flame":
-			var m_f := toon(Color("ffb347"), true, 0.5); mats.append(m_f)
-			part(body, cyl(0.0, 0.12, 0.3), m_f, Vector3(0, top_y + 0.06, 0.02))
-			part(body, cyl(0.0, 0.08, 0.22), m_f, Vector3(-0.13, top_y, 0.04), Vector3.ONE, Vector3(0, 0, 0.4))
-			part(body, cyl(0.0, 0.08, 0.22), m_f, Vector3(0.13, top_y, 0.04), Vector3.ONE, Vector3(0, 0, -0.4))
-		"fin":
-			part(body, sphere(0.14), m_belly, Vector3(0, top_y - 0.02, 0.06), Vector3(0.35, 1.1, 1.3))
-			part(body, sphere(0.1), m_body, Vector3(-0.3, 0.3, 0.05), Vector3(0.4, 0.8, 1.2))
-			part(body, sphere(0.1), m_body, Vector3(0.3, 0.3, 0.05), Vector3(0.4, 0.8, 1.2))
-		"leaf":
-			var m_l := toon(Color("3e8f3a")); mats.append(m_l)
-			part(body, sphere(0.14), m_l, Vector3(-0.14, top_y, 0), Vector3(0.5, 1.2, 0.25), Vector3(0, 0, 0.5))
-			part(body, sphere(0.14), m_l, Vector3(0.14, top_y, 0), Vector3(0.5, 1.2, 0.25), Vector3(0, 0, -0.5))
-		"bolt":
-			var m_b := toon(Color("fff27a"), true, 0.4); mats.append(m_b)
-			part(body, box(0.06, 0.26, 0.06), m_b, Vector3(-0.14, top_y + 0.04, 0), Vector3.ONE, Vector3(0, 0, 0.5))
-			part(body, box(0.06, 0.26, 0.06), m_b, Vector3(0.14, top_y + 0.04, 0), Vector3.ONE, Vector3(0, 0, -0.5))
-			part(body, box(0.05, 0.16, 0.05), m_b, Vector3(-0.22, top_y + 0.18, 0), Vector3.ONE, Vector3(0, 0, -0.4))
-			part(body, box(0.05, 0.16, 0.05), m_b, Vector3(0.22, top_y + 0.18, 0), Vector3.ONE, Vector3(0, 0, 0.4))
-		"horn":
-			var m_h := toon(Color("e8e0cc")); mats.append(m_h)
-			part(body, cyl(0.0, 0.07, 0.2), m_h, Vector3(-0.15, top_y - 0.02, -0.05), Vector3.ONE, Vector3(-0.2, 0, 0.35))
-			part(body, cyl(0.0, 0.07, 0.2), m_h, Vector3(0.15, top_y - 0.02, -0.05), Vector3.ONE, Vector3(-0.2, 0, -0.35))
-		"wisp":
-			var m_w := toon(Color("efe8ff"), false, 0.8); mats.append(m_w)
-			for i in 3:
-				var a := float(i) / 3.0 * TAU
-				part(body, sphere(0.06, 8), m_w, Vector3(cos(a) * 0.3, top_y + 0.04 + sin(a * 2.0) * 0.04, sin(a) * 0.3), Vector3.ONE, Vector3.ZERO, "Orb%d" % i)
-	body = flex
-	_repivot(ears_n, Vector3(0, top_y - 0.06, 0))
+	var built := KinModels.build(species, body, {"body": m_body, "belly": m_belly, "dark": m_dark, "glow": m_glow, "eye": m_eye, "white": m_white,
+		"wing_col": sp.get("wing", (sp["belly"] as Color).lerp(glow_c, 0.3))}, mats)
+	if built.is_empty():
+		var shape := String(look.get("body", "round"))
+		var head_y := 0.44      # where the eyes sit
+		var top_y := 0.68       # where ears sit
+		var front_z := -0.28
+		match shape:
+			"drop":
+				# a water drop: round below, tapering to a curl on top
+				part(body, sphere(0.34), m_body, Vector3(0, 0.32, 0), Vector3(1.0, 0.88, 1.0))
+				part(body, cyl(0.02, 0.24, 0.34), m_body, Vector3(0, 0.66, 0.04), Vector3.ONE, Vector3(0.25, 0, 0))
+				part(body, sphere(0.05, 8), m_body, Vector3(0, 0.84, 0.12))
+				part(body, sphere(0.24), m_belly, Vector3(0, 0.28, -0.14), Vector3(1.0, 0.95, 0.7))
+				top_y = 0.6
+			"burr":
+				# a round burr of leaves with little thorns all over its back
+				part(body, sphere(0.33), m_body, Vector3(0, 0.33, 0), Vector3(1.05, 0.95, 1.0))
+				part(body, sphere(0.23), m_belly, Vector3(0, 0.29, -0.15), Vector3(1.0, 0.95, 0.7))
+				for i in 9:
+					var a := float(i) / 9.0 * TAU
+					var up := 0.35 + 0.18 * float(i % 3)
+					var dir := Vector3(cos(a) * 0.9, up, sin(a) * 0.9 + 0.35).normalized()
+					if dir.z < -0.2: continue
+					var sp_n := part(body, cyl(0.0, 0.05, 0.16, 6), m_dark, Vector3(0, 0.36, 0.02) + dir * 0.3)
+					sp_n.basis = Basis(Quaternion(Vector3.UP, dir))
+			"pear":
+				# a pear: a wide bottom and a narrower head, always a little jittery
+				part(body, sphere(0.33), m_body, Vector3(0, 0.3, 0), Vector3(1.05, 0.85, 1.0))
+				part(body, sphere(0.25), m_body, Vector3(0, 0.56, -0.02))
+				part(body, sphere(0.22), m_belly, Vector3(0, 0.26, -0.15), Vector3(1.0, 0.9, 0.7))
+				head_y = 0.58; top_y = 0.78; front_z = -0.22
+			"boulder":
+				# a chunky rock: a wide body with stone plates on its back and a heavy brow
+				part(body, sphere(0.36), m_body, Vector3(0, 0.33, 0), Vector3(1.18, 0.86, 1.08))
+				part(body, sphere(0.24), m_belly, Vector3(0, 0.27, -0.17), Vector3(1.1, 0.9, 0.65))
+				for i in 3:
+					part(body, box(0.3 - i * 0.06, 0.08, 0.2), m_dark, Vector3(0, 0.6 - i * 0.12, 0.12 + i * 0.12), Vector3.ONE, Vector3(-0.5 - i * 0.3, 0, 0))
+				part(body, box(0.4, 0.07, 0.12), m_dark, Vector3(0, 0.53, -0.26), Vector3.ONE, Vector3(0.35, 0, 0))
+				head_y = 0.42
+			"cloud":
+				# a puff of cloud that floats, with no feet at all
+				for pf in [[Vector3(0, 0.42, 0), 0.3], [Vector3(-0.2, 0.38, 0.08), 0.2], [Vector3(0.2, 0.38, 0.08), 0.2], [Vector3(0, 0.6, 0.06), 0.2], [Vector3(0, 0.34, 0.22), 0.18]]:
+					part(body, sphere(pf[1]), m_body, pf[0])
+				part(body, sphere(0.2), m_belly, Vector3(0, 0.38, -0.14), Vector3(1.0, 0.9, 0.6))
+				head_y = 0.48; top_y = 0.72
+			_:
+				part(body, sphere(0.34), m_body, Vector3(0, 0.34, 0), Vector3(1.05, 0.92, 1.0))
+				part(body, sphere(0.24), m_belly, Vector3(0, 0.3, -0.14), Vector3(1.0, 0.95, 0.7))
+		# face: big eyes with a catch light, and rosy cheeks
+		for sx in [-1.0, 1.0]:
+			var sd := "L" if sx < 0.0 else "R"
+			part(body, sphere(0.068, 10), m_eye, Vector3(0.12 * sx, head_y, front_z), Vector3(1, 1.15, 1), Vector3.ZERO, "Eye" + sd)
+			part(body, sphere(0.024, 6), m_white, Vector3(0.12 * sx + 0.025, head_y + 0.035, front_z - 0.05), Vector3.ONE, Vector3.ZERO, "Shine" + sd)
+			part(body, sphere(0.04, 6), m_blush, Vector3(0.2 * sx, head_y - 0.08, front_z + 0.05), Vector3(1, 0.5, 0.4))
+		# feet
+		match String(look.get("feet", "paws")):
+			"stumps":
+				for sx in [-1.0, 1.0]:
+					for sz in [-1.0, 1.0]:
+						part(body, cyl(0.08, 0.1, 0.14, 8), m_dark, Vector3(0.2 * sx, 0.06, 0.12 * sz))
+			"none":
+				body.position.y = 0.12
+			_:
+				for sx in [-1.0, 1.0]:
+					part(body, sphere(0.08, 8), m_body, Vector3(0.2 * sx, 0.06, -0.08), Vector3(1, 0.6, 1.2))
+		# tail, on its own pivot so it can wag
+		var flex := body
+		var tail_n := Node3D.new(); tail_n.name = "Tail"; flex.add_child(tail_n)
+		body = tail_n
+		match String(look.get("tail", "nub")):
+			"flame":
+				part(body, cyl(0.0, 0.11, 0.3, 8), m_glow, Vector3(0, 0.36, 0.38), Vector3.ONE, Vector3(-1.0, 0, 0))
+				part(body, cyl(0.0, 0.06, 0.2, 8), toon(Color("fff0a0"), false, 0.9), Vector3(0, 0.42, 0.46), Vector3.ONE, Vector3(-0.8, 0, 0))
+			"fish":
+				part(body, box(0.02, 0.24, 0.22), m_belly, Vector3(0, 0.3, 0.42), Vector3.ONE, Vector3(0.3, 0, 0))
+				part(body, sphere(0.09, 8), m_body, Vector3(0, 0.26, 0.32))
+			"sprout":
+				part(body, cyl(0.015, 0.02, 0.22, 6), toon(Color("5a8a3a")), Vector3(0, 0.4, 0.36), Vector3.ONE, Vector3(-0.6, 0, 0))
+				part(body, sphere(0.08, 8), toon(Color("8fd16a")), Vector3(0, 0.5, 0.44), Vector3(1.4, 0.3, 0.8))
+			"zig":
+				for i in 3:
+					part(body, box(0.05, 0.16, 0.05), m_glow, Vector3(0.05 * (1 if i % 2 == 0 else -1), 0.3 + i * 0.1, 0.34 + i * 0.05), Vector3.ONE, Vector3(-0.6, 0, 0.6 * (1 if i % 2 == 0 else -1)))
+			"stub":
+				part(body, sphere(0.09, 8), m_dark, Vector3(0, 0.22, 0.36))
+			"wisp":
+				for i in 3:
+					part(body, sphere(0.07 - i * 0.015, 8), m_glow, Vector3(0, 0.36 + i * 0.05, 0.36 + i * 0.12), Vector3.ONE, Vector3.ZERO, "Wisp%d" % i)
+			_:
+				part(body, sphere(0.1, 8), m_body, Vector3(0, 0.26, 0.32))
+		body = flex
+		_repivot(tail_n, Vector3(0, 0.3, 0.3))
+		var ears_n := Node3D.new(); ears_n.name = "Ears"; flex.add_child(ears_n)
+		body = ears_n
+		match String(sp["ears"]):
+			"flame":
+				var m_f := toon(Color("ffb347"), true, 0.5); mats.append(m_f)
+				part(body, cyl(0.0, 0.12, 0.3), m_f, Vector3(0, top_y + 0.06, 0.02))
+				part(body, cyl(0.0, 0.08, 0.22), m_f, Vector3(-0.13, top_y, 0.04), Vector3.ONE, Vector3(0, 0, 0.4))
+				part(body, cyl(0.0, 0.08, 0.22), m_f, Vector3(0.13, top_y, 0.04), Vector3.ONE, Vector3(0, 0, -0.4))
+			"fin":
+				part(body, sphere(0.14), m_belly, Vector3(0, top_y - 0.02, 0.06), Vector3(0.35, 1.1, 1.3))
+				part(body, sphere(0.1), m_body, Vector3(-0.3, 0.3, 0.05), Vector3(0.4, 0.8, 1.2))
+				part(body, sphere(0.1), m_body, Vector3(0.3, 0.3, 0.05), Vector3(0.4, 0.8, 1.2))
+			"leaf":
+				var m_l := toon(Color("3e8f3a")); mats.append(m_l)
+				part(body, sphere(0.14), m_l, Vector3(-0.14, top_y, 0), Vector3(0.5, 1.2, 0.25), Vector3(0, 0, 0.5))
+				part(body, sphere(0.14), m_l, Vector3(0.14, top_y, 0), Vector3(0.5, 1.2, 0.25), Vector3(0, 0, -0.5))
+			"bolt":
+				var m_b := toon(Color("fff27a"), true, 0.4); mats.append(m_b)
+				part(body, box(0.06, 0.26, 0.06), m_b, Vector3(-0.14, top_y + 0.04, 0), Vector3.ONE, Vector3(0, 0, 0.5))
+				part(body, box(0.06, 0.26, 0.06), m_b, Vector3(0.14, top_y + 0.04, 0), Vector3.ONE, Vector3(0, 0, -0.5))
+				part(body, box(0.05, 0.16, 0.05), m_b, Vector3(-0.22, top_y + 0.18, 0), Vector3.ONE, Vector3(0, 0, -0.4))
+				part(body, box(0.05, 0.16, 0.05), m_b, Vector3(0.22, top_y + 0.18, 0), Vector3.ONE, Vector3(0, 0, 0.4))
+			"horn":
+				var m_h := toon(Color("e8e0cc")); mats.append(m_h)
+				part(body, cyl(0.0, 0.07, 0.2), m_h, Vector3(-0.15, top_y - 0.02, -0.05), Vector3.ONE, Vector3(-0.2, 0, 0.35))
+				part(body, cyl(0.0, 0.07, 0.2), m_h, Vector3(0.15, top_y - 0.02, -0.05), Vector3.ONE, Vector3(-0.2, 0, -0.35))
+			"wisp":
+				var m_w := toon(Color("efe8ff"), false, 0.8); mats.append(m_w)
+				for i in 3:
+					var a := float(i) / 3.0 * TAU
+					part(body, sphere(0.06, 8), m_w, Vector3(cos(a) * 0.3, top_y + 0.04 + sin(a * 2.0) * 0.04, sin(a) * 0.3), Vector3.ONE, Vector3.ZERO, "Orb%d" % i)
+		body = flex
+		_repivot(ears_n, Vector3(0, top_y - 0.06, 0))
 	# the aura shell: an outline of light in its glow colour, brightest at the silhouette
 	var shell := part(body_root, sphere(0.4, 18), aura_mat(glow_c, 0.0), Vector3(0, 0.4, 0.02), Vector3(1.12, 1.15, 1.1), Vector3.ZERO, "Shell")
 	shell.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -930,6 +933,16 @@ static func kin(species: String, rec := {}) -> Node3D:
 		"sparks": pt.gravity = Vector3.ZERO; pt.spread = 180.0; pt.initial_velocity_min = 0.8; pt.initial_velocity_max = 1.6; pt.lifetime = 0.5; pt.mesh = box(0.02, 0.09, 0.02)
 		"pebbles": pt.gravity = Vector3(0, -2.0, 0); pt.mesh = box(0.05, 0.05, 0.05); pt.amount = 4
 		"wind": pt.gravity = Vector3.ZERO; pt.spread = 180.0; pt.initial_velocity_min = 0.6; pt.initial_velocity_max = 1.0; pt.mesh = sphere(0.025, 4)
+		"drips": pt.gravity = Vector3(0, -1.6, 0); pt.initial_velocity_min = 0.0; pt.initial_velocity_max = 0.2; pt.mesh = sphere(0.03, 6); pt.scale_amount_min = 0.8
+		"prism":
+			var pp := PrismMesh.new(); pp.size = Vector3(0.05, 0.08, 0.02)
+			pt.mesh = pp; pt.gravity = Vector3(0, 0.3, 0); pt.spread = 180.0; pt.initial_velocity_min = 0.2; pt.initial_velocity_max = 0.5; pt.angular_velocity_min = -180.0; pt.angular_velocity_max = 180.0
+		"spores": pt.gravity = Vector3(0, 0.15, 0); pt.spread = 180.0; pt.initial_velocity_min = 0.05; pt.initial_velocity_max = 0.25; pt.lifetime = 2.2; pt.mesh = sphere(0.022, 4); pt.amount = 10
+		"rings":
+			var tr := TorusMesh.new(); tr.inner_radius = 0.06; tr.outer_radius = 0.075; tr.rings = 12; tr.ring_segments = 3
+			pt.mesh = tr; pt.gravity = Vector3.ZERO; pt.direction = Vector3(0, 0.4, -1); pt.spread = 25.0; pt.initial_velocity_min = 0.5; pt.initial_velocity_max = 0.8; pt.amount = 4
+			pt.scale_amount_min = 1.0; pt.scale_amount_max = 2.6
+		"moondust": pt.gravity = Vector3(0, -0.15, 0); pt.spread = 180.0; pt.initial_velocity_min = 0.05; pt.initial_velocity_max = 0.2; pt.lifetime = 1.8; pt.mesh = sphere(0.02, 4); pt.amount = 9
 	var pm := StandardMaterial3D.new()
 	pm.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	pm.vertex_color_use_as_albedo = true

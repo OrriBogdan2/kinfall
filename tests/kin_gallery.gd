@@ -22,14 +22,18 @@ func _ready() -> void:
 	ground.material_override = Models.toon(Color("5f8d45"), false)
 	add_child(ground)
 	var ids: Array = Data.KIN.keys()
+	var close := "--kin-close" in OS.get_cmdline_user_args()
+	var yaw := 0.0
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--kin-yaw="): yaw = float(a.substr(10))
 	for i in ids.size():
 		var k := Models.kin(String(ids[i]), {"level": 6})
 		k.position = Vector3((i - (ids.size() - 1) * 0.5) * 1.6, 0, 0)
-		k.rotation.y = PI + 0.35
+		k.rotation.y = PI + 0.35 + yaw
 		k.scale = Vector3.ONE * 1.3
 		add_child(k)
 		var shell: MeshInstance3D = k.get_node_or_null("Body/Shell")
-		if shell:
+		if shell and not close:
 			shell.visible = true
 			(shell.material_override as ShaderMaterial).set_shader_parameter("strength", 0.6)
 		var pt: CPUParticles3D = k.get_node_or_null("Aura")
@@ -49,5 +53,7 @@ func _ready() -> void:
 	cam.position = Vector3(0, 4.2, 6.5)
 	cam.rotation = Vector3(-0.55, 0, 0)
 	cam.fov = 50
+	if close:
+		cam.position = Vector3(0, 1.6, 4.4); cam.rotation = Vector3(-0.22, 0, 0); cam.fov = 62
 	add_child(cam)
 	cam.make_current()

@@ -158,6 +158,9 @@ func consider_throw(p: Vector3) -> String:
 	return "go"
 
 func note(kindk: String, text: String, trust_d := 0.0) -> void:
+	# a kin that still misses the hunter it was taken from warms up to you far more slowly
+	if trust_d > 0.0 and int(rec.get("pining", 0)) > 0:
+		trust_d *= 0.35
 	events.append({"kind": kindk, "text": text, "trust": trust_d})
 	trust = clampf(trust + trust_d, 0.0, 100.0)
 

@@ -1,10 +1,10 @@
 {
 	"id": "burrlet",
-	"name": "Burrlet",
-	"type": "thorn",
-	"color": "#6fbf5a",
-	"belly": "#e2f2b0",
-	"glow": "#b8f07a",
+	"name": "Mycroll",
+	"type": "spore",
+	"color": "#6b4a3c",
+	"belly": "#e9d6bd",
+	"glow": "#3fe0c0",
 	"stats": {
 		"hp": 90,
 		"dmg": 8,
@@ -12,11 +12,11 @@
 		"range": 1.3
 	},
 	"look": {
-		"ears": "leaf",
-		"body": "burr",
-		"tail": "sprout",
-		"feet": "paws",
-		"aura": "leaves"
+		"ears": "none",
+		"body": "mycroll",
+		"tail": "none",
+		"feet": "none",
+		"aura": "spores"
 	},
 	"traits": {
 		"bravery": 0.55,

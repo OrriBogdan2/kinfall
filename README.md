@@ -2,7 +2,7 @@
 
 A creature-raising farm and a PvPvE extraction game, built in Godot 4.6.
 
-Your kin live with you on a floating-island farm. Each one has its own personality, remembers what you do together, and decides how far it trusts you. In matches it rides on your shoulder, gets thrown into fights, fights on its own, and might refuse an order it thinks is reckless.
+Your kin live with you on a floating-island farm. Each species is built from one or two real animals and has an element of its own: Vespyx (fox and scorpion, Venom), Prismander (axolotl with crystal gills, Prism), Mycroll (a hedgehog grown over with glowing toadstools, Spore), Echolop (hare and bat, Echo), Gravadillo (armadillo and rhino beetle, Gravity) and Lunowl (owl and luna moth, Lunar). Each one has its own personality, remembers what you do together, and decides how far it trusts you. In matches it rides on your shoulder, gets thrown into fights, fights on its own, and might refuse an order it thinks is reckless.
 
 ## Running it
 
@@ -59,7 +59,7 @@ Touch the side of an island while you're falling (or gliding) and you float back
 - **Throw and recall.** C throws the kin into a fight, where it picks targets and fights on its own. C again recalls it straight to your shoulder; after a recall there's a one-second wait before the next throw.
 - **Bond meter.** Your hits, your kin's hits, combos and kin knockouts fill a shared meter. When it's full, R calls the active kin's bond ultimate: an armor form (it fuses onto you: bonus damage, shields, shots that burn, slow or arc) or a giant form (it grows huge and stomps).
 - **Combos.** Your kin stuns or roots a foe and your next hit on it lands a COMBO (bonus damage and bond). You stun or slow a foe and your kin's next hit POUNCES for more. A kin ability on a burning foe FLARES.
-- **How kin fight.** Each kin's aggression, loyalty and caution (from its species and its own traits) decide how far it chases, how close it stays, who it goes after and when it backs off. Kin also use their abilities on their own (Settings can turn that off); Wisplet's Updraft will lift you out of a fall into the abyss if it's loyal enough.
+- **How kin fight.** Each kin's aggression, loyalty and caution (from its species and its own traits) decide how far it chases, how close it stays, who it goes after and when it backs off. Kin also use their abilities on their own (Settings can turn that off); Lunowl's Moonlift will lift you out of a fall into the abyss if it's loyal enough.
 - **Kin at risk by tier.** In the Meadow your kin are never lost: while you're dead they keep out of sight and come back if you're revived (or go home). In the Dusk Isles the kin you have on you (shoulder or bench) drop into your deathbox when you die, and anyone who loots the box takes them; kin out of your hands escape. In the Hollow, kin out of your hands are also left dazed where they were and anyone can capture them (hold F for 3s). A box revive or looting your own box gets your kin back; a teammate who loots it carries them home for you. Kin still in a box at the end go to Old Pell's Ransom House on your farm (buy them back or haggle; after 6 expeditions he sells them on), and kin a rival took stay with that rival (make them an offer, or meet them on a later expedition, sense your kin nearby, knock them out and take it back). Everything is paid in gems you earn in play.
 
 ## Raising kin
@@ -71,7 +71,7 @@ Code: `scripts/core/care.gd`, `scripts/core/kin_speak.gd`, the raising section o
 - **Likes.** Every kin loves one food, refuses another and has a favourite way to spend time. You find out by trying, and the card remembers.
 - **Training.** Four stats (Power, Guard, Speed, Focus) trained at the yard with a three-round timing drill. A happy kin learns faster, a tired one won't train. Points are capped by level.
 - **Bond.** Trust ranks: Wary, Friendly, Close (skills hit harder), Devoted (rushes to revive you), Soulbound (never refuses, +10% to everything).
-- **Talking.** Newly hatched kin only say their own name ("Cin! Cindle?"), and get their meaning across with tone and what they do. Around level 4 with some trust they pick up a few words, around level 8 short sentences, and by level 12 with a Devoted bond they talk freely.
+- **Talking.** Newly hatched kin only say their own name ("Ves! Vespyx?"), and get their meaning across with tone and what they do. Around level 4 with some trust they pick up a few words, around level 8 short sentences, and by level 12 with a Devoted bond they talk freely.
 - **Natures, life stages, eggs.** Each kin has a nature from its strongest traits and grows from Hatchling to Youngling, Grown and Elder. Two kin at level 5 with a Close bond can leave an egg in the nest; the baby mixes their personalities and may come out shimmering (rare colours, also found wild about 1 in 25).
 - **Outfits and the Kindex.** The stall sells things for kin to wear, worn into matches too. The Kindex tab in the inventory tracks every species you've seen, caught, evolved and found shimmering.
 

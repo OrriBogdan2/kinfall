@@ -204,6 +204,22 @@ func _draw_world_labels() -> void:
 			_ctext(bp, "%s  ·  %ds" % [o.pname, int(ceil(float(b["soul_until"]) - m.time))], 13, Color("9ee2a0"), big)
 		elif not b["empty"] and m.player and m.player.flat_dist(b["pos"]) < 14.0:
 			_ctext(bp, "%s's box" % o.pname if o != m.player else "Your box", 12, Life.box_color(b), big)
+	# whoever has your kin: marked over their head, or an arrow at the screen edge
+	var th: Hunter = m.kin_thief() if m.player and not m.player.out else null
+	if th:
+		var sz := c.size
+		var tp := cam.unproject_position(th.position + Vector3(0, 2.8, 0))
+		var on := not cam.is_position_behind(th.position) and Rect2(Vector2(30, 30), sz - Vector2(60, 60)).has_point(tp)
+		if on:
+			_ctext(tp, "Has your kin", 15, GOLD, big)
+			c.draw_colored_polygon(PackedVector2Array([tp + Vector2(-8, 6), tp + Vector2(8, 6), tp + Vector2(0, 16)]), GOLD)
+		else:
+			var ctr := sz * 0.5
+			var d := (tp - ctr).normalized() if not cam.is_position_behind(th.position) else (ctr - tp).normalized()
+			var edge := ctr + d * minf(sz.x, sz.y) * 0.44
+			var perp := Vector2(-d.y, d.x)
+			c.draw_colored_polygon(PackedVector2Array([edge + d * 18.0, edge - d * 6.0 + perp * 11.0, edge - d * 6.0 - perp * 11.0]), GOLD)
+			_ctext(edge - d * 26.0, "%dm" % int(m.player.flat_dist(th)), 13, GOLD, big)
 	for bc in m.beacons:
 		if bc["used"] or cam.is_position_behind(bc["pos"]):
 			continue
