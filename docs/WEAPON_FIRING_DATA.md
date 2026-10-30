@@ -91,7 +91,7 @@ Units: Supervive's 1 unit = 1 cm. Tags: `[footage]`, `[patch]`, `[wiki]`, `[gap]
   - Tracer length scales with speed.
 - **`weapon_user.gd`:** fires whatever WeaponProfile is equipped.
   - **Guns:** auto, burst, single shot, spin-up and sniper warmup. Magazines with auto-reload; spread that grows per shot and recovers; dashing resets spread; minigun spread that tightens; rifle damage that drops when holding fire; fall-off near and far; shotgun slug-count damage table; slowed while firing; lockout and slow after letting go.
-  - **Swords:** tap for the combo, hold to charge. Wedge-shaped hits with a blade-tip sweet spot; lunges that weaken when repeated (charged lunges don't); lunge hits land at the end of the lunge; knockback the target can steer.
+  - **Swords:** tap for the combo, hold to charge. Wedge-shaped hits with a blade-tip sweet spot and knockback the target can steer. **Kinfall change (Oct 2026):** a basic LMB swing never moves you (no per-swing lunge, no finisher step) and charged attacks are stationary too; gap-closers live on right click (Twin Blades' Shadow Lunge, Longsword's Rising Cut). Reach was raised a little so swings still connect: Twin Blades 2.0 -> 2.3m, Longsword 2.4 -> 2.7m, Greatsword 3.2 -> 3.4m.
 - **`training_dummy.gd`:** target with floating damage numbers, a hit flash, knockback and DPS tracking.
 - **The hunter** now has HP, `take_hit(info)` (gliders take ×2, damage heat, spike credit, steerable knockback, stun), and a speed multiplier weapons set while firing.
 
@@ -101,10 +101,10 @@ Headless results (`tests/weapons_sim.gd`, 4s of fire at a 1,050 HP dummy):
 |---|---|---|
 | SMG | 180 DPS | 36 of 36 hits |
 | Sniper | 96 DPS | first hit 0.75s after press (0.6s aim + travel) |
-| Twin Blades | 175 DPS | charged stab: 120, lunged 3.5m |
+| Twin Blades | 175 DPS | charged spin: 120, all around you, 2.7m reach |
 | Rifle (held) | 141 DPS | 30 rounds, then a 1.8s reload |
 | Burst Rifle | 250 DPS while firing | 186 including reloads |
-| Longsword | 170 DPS | charged 160, lunged 2.7m |
+| Longsword | 170 DPS | charged thrust: 160, 3.8m reach, narrow |
 | Shotgun | 120 DPS at 3m | spread grows to the 24° max after a few shots |
 | Minigun | 208 DPS | first shot after a 0.7s spin-up |
 | Greatsword | 192 DPS | charged slam with sweet spot: 260 |

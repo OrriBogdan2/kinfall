@@ -52,6 +52,9 @@ func _ready() -> void:
 			streams[n] = takes[0]
 		elif takes.size() > 1:
 			streams[n] = takes
+	# sounds made in code: the glider snapping open (a cloth snap, a whoosh, a soft pop) and folding away
+	streams["glider_open"] = _glider_sound(true)
+	streams["glider_close"] = _glider_sound(false)
 	for i in POOL:
 		var p := AudioStreamPlayer.new()
 		p.bus = "SFX"
@@ -154,3 +157,62 @@ func play(sname: String, pos = null, vol_db := 0.0, pitch_var := 0.07, pitch := 
 	p.volume_db = v
 	p.pitch_scale = pitch * (1.0 + rng.randf_range(-pitch_var, pitch_var))
 	p.play()
+
+
+## Plays a ready-made stream (a glider skin's sound, say) with the same distance falloff as play().
+func play_stream(st: AudioStream, pos = null, vol_db := 0.0, pitch_var := 0.05) -> void:
+	if st == null or players.is_empty():
+		return
+	var v := vol_db
+	if pos != null:
+		var dist := Vector2(pos.x - listener.x, pos.z - listener.z).length()
+		if dist > hear_range:
+			return
+		v += linear_to_db(clampf(1.0 - dist / hear_range, 0.05, 1.0))
+	var p := players[next]
+	next = (next + 1) % POOL
+	p.stream = st
+	p.volume_db = v
+	p.pitch_scale = 1.0 + rng.randf_range(-pitch_var, pitch_var)
+	p.play()
+
+## A glider opening (snap + whoosh + pop) or closing (a soft falling swish), synthesized.
+func _glider_sound(opening: bool) -> AudioStreamWAV:
+	const R := 22050
+	var n := int(R * (0.42 if opening else 0.28))
+	var buf := PackedFloat32Array(); buf.resize(n)
+	var rng := RandomNumberGenerator.new(); rng.seed = 7 if opening else 11
+	var lp := 0.0; var lp2 := 0.0; var prev := 0.0
+	for i in n:
+		var t := float(i) / R
+		var noise := rng.randf_range(-1.0, 1.0)
+		var v := 0.0
+		if opening:
+			# the snap: a bright, very short crack of high-passed noise
+			var hp := noise - prev
+			v += hp * exp(-t * 70.0) * 0.9
+			# the whoosh: noise through a filter that opens up, swelling then fading
+			var cut := 0.04 + 0.22 * clampf(t / 0.12, 0.0, 1.0)
+			lp += (noise - lp) * cut
+			var env := clampf((t - 0.015) / 0.05, 0.0, 1.0) * exp(-maxf(0.0, t - 0.08) * 9.0)
+			v += lp * env * 1.4
+			# the pop of the canopy filling: a quick low thump
+			v += sin(TAU * (150.0 - t * 200.0) * t) * exp(-t * 28.0) * 0.55
+		else:
+			# folding away: a soft swish that falls in pitch
+			var cut2 := 0.18 * (1.0 - clampf(t / 0.25, 0.0, 1.0)) + 0.02
+			lp += (noise - lp) * cut2
+			lp2 += (lp - lp2) * 0.5
+			var env2 := clampf(t / 0.04, 0.0, 1.0) * exp(-t * 11.0)
+			v = lp2 * env2 * 1.1
+		prev = noise
+		buf[i] = v
+	var data := PackedByteArray(); data.resize(n * 2)
+	for i in n:
+		data.encode_s16(i * 2, int(clampf(tanh(buf[i] * 1.3), -1.0, 1.0) * 30000.0))
+	var w := AudioStreamWAV.new()
+	w.format = AudioStreamWAV.FORMAT_16_BITS
+	w.mix_rate = R
+	w.stereo = false
+	w.data = data
+	return w

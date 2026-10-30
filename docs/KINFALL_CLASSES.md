@@ -27,6 +27,13 @@ How the classes differ:
 - **Medium:** the Supervive baseline.
 - **Heavy:** most HP, slowest, two short dashes instead of one long one, hard to push off ledges. That last point matters a lot in an abyss game.
 
+### The kit (keys)
+
+LMB weapon · RMB weapon ability · Shift dash (the air dash is the long dash, so there's no separate
+ex-dash key; classes differ by dash distance and charges) · Space jump, hold to glide (Mouse 5 glides
+too) · Q active glove · E kin ability · C or middle mouse throw / recall kin · R bond ultimate ·
+1 heal (tonic when hurt, armor kit when health is full) · F interact. One kin per expedition.
+
 ## Weapons
 
 Each class has two guns and one sword. Firing behavior is measured from Supervive footage and patch notes (see WEAPON_FIRING_DATA.md).
@@ -70,12 +77,64 @@ Notes on the table:
 ## Also built in this update (1.0 glider rules)
 
 - Overheated gliders slow to 60% speed.
-- Damage while gliding adds heat (250 damage = 30 heat), and damage that pushes heat to 100% spikes instantly: 4 hits of 250 on a fresh glider.
+- Damage while gliding does not knock you out of the air and you take normal damage, but it adds heat at **double** rate (250 damage = 60 heat). Only damage that pushes heat to 100% spikes you (stun, plummet, 0.7s stun on landing; over the abyss that's a fall): 2 hits of 250 on a fresh glider. Monsters add heat but can't spike.
 - Wind rings cool the glider by 35 heat and add 4 m/s.
 - Jetstreams stop heat gain and speed you up ×1.4.
 - Abyss storm clouds double heat gain and slow you ×0.7.
 - Spiking someone cools your own glider by 50 (call `on_spiked_enemy()` on the attacker).
 - The test scene has one of each zone over the gap.
+
+## Falling and the glider catch (Oct 2026)
+
+- Falls ease into terminal speed instead of snapping to it: terminal 9 m/s (was 10), approached at
+  3.2/s. A 1s drop off an edge is ~6.3m (was ~8.3m reached at full speed in 0.33s); 90% of terminal
+  after ~0.7s. Jumps (rising) keep the same snappy gravity.
+- Opening the glider mid-fall brakes you to its sink rate at 16 m/s² (~0.5s from terminal) instead of
+  snapping; a slow start gets half the gap to glide speed up front and the rest from glide acceleration.
+- The camera follows height more softly (3.5/s vs 8/s across), so falls and glides don't jolt the view.
+- Sinking below island level darkens the screen from the edges, more near the kill depth and with an
+  empty glider, pulsing red with a heartbeat at the very bottom.
+
+## Movement chains (Oct 2026)
+
+- **Dash buffer:** Shift pressed during a dash or a ledge climb (or the first beat of a jump-pad
+  launch) is held for 0.18s and fires the moment that movement ends.
+- **Rush -> dash:** Shift during a glove or ability rush (Grapple, a charge) cancels it into the dash.
+  A glove fired mid-dash (Blink, Grapple) takes over from the dash.
+- **Pad -> dash:** after the first 0.12s of a jump-pad flight, Shift breaks out of it into a dash.
+- **Dash -> jump:** Space during a ground dash ends it and keeps 55% of its speed into the jump.
+- **Glide -> dash -> glide:** dashing in the air closes the glider for the dash (the long air dash);
+  keep holding Space / Mouse 5 and it opens again as the dash ends.
+- **Carry:** out of a dash you keep 15% of its speed on the ground and 30% in the air (no long slide).
+
+## Base to a teammate (B, squads)
+
+- 3s channel toward the teammate nearest your cursor. **Stationary**, like Supervive's recall:
+  moving, dashing, jumping, attacking or casting cancels it, and so does any damage (feedback toast,
+  a 4s lockout). Everyone sees a filling ring on you and an "incoming" marker on the teammate.
+- You appear beside them with **recall weakness** for 3s: damage dealt ×0.5, the stun/root/slow you
+  apply ×0.5, healing and shields you apply ×0.5 (a status icon with a timer on your nameplate).
+- 40s cooldown, shown as a small B slot on the ability bar in squads. Bots far (30m+) from their
+  squad with nothing to fight use it now and then. `--base-check` tests a clean channel and an interrupt.
+- In the duel room B opens the bot setup instead (there are no teammates there).
+
+## Vertical play
+
+- Skyfall: drop 8m+ fast onto rivals and the landing slams them (10-26 damage by height, a pop up).
+- Up-gloves: Rocket (straight up, cools the glider), Skyhook (swing onto a ledge or into the air),
+  Hover (a mid-air second jump). Chains: pad -> dash -> glide, dash-jump, wall kick -> glide.
+- No ceiling: the camera pulls back with altitude (up to 1.7x), its focus stays within 4m below
+  you, and a height readout shows above 6m.
+
+## Camera and aim (Oct 2026)
+
+- Default follow is **Supervive**: the view leans toward the cursor in proportion to how far the
+  cursor is from your character (1.4m deadzone, 42% of the distance, capped at 7.5m), eased at 6/s,
+  so you see more where you aim and you never leave the screen. The old presets stay in Settings.
+- Sneaking (Ctrl) zooms the camera out to 1.45x, eased; the cursor lean works the same.
+- Ground-targeted effects land at the cursor, clamped to 10m for hunters (gloves) or the ability's
+  reach for kin. When your kin is out with its ability ready, a faint ring shows where it would land.
+- Weapon autos fire toward the cursor; the aim line shows the weapon's range.
 
 ## Hooks for the combat code
 - `notify_damaged(amount)`: returns true if the hit spiked a glider (credit the attacker).

@@ -20,6 +20,7 @@ class_name Effects
 ##   cleanse     (clears slow, root, stun and burn)     refill_dash      cool_glider      crit time      burst color
 
 static func run(effects: Array, caster: Node, ctx: Dictionary) -> void:
+	effects = _readable(effects, caster)
 	for e in effects:
 		if e is Dictionary:
 			var delay := float(e.get("delay", 0.0))
@@ -30,6 +31,33 @@ static func run(effects: Array, caster: Node, ctx: Dictionary) -> void:
 					if is_instance_valid(caster) and not caster.dead: run([ee], caster, ctx))
 				continue
 			_one(e, caster, ctx)
+
+## Readability: an area attack someone on the other side lands on you gets a short wind-up: a
+## ground marker that fills, then the hit. Your own casts stay instant.
+const ENEMY_WINDUP := 0.32
+
+static func _readable(effects: Array, caster: Node) -> Array:
+	var m := _m(caster)
+	if m == null or m.get("player") == null or caster == null:
+		return effects
+	var own: Node = owner_of(caster)
+	if own == null or own.get("team") == null or int(own.team) == int(m.player.team):
+		return effects
+	var out: Array = []
+	for e in effects:
+		if e is Dictionary and String(e.get("type", "")) == "area" and not e.has("delay") and String(e.get("at", "self")) == "aim" and float(e.get("radius", 2.0)) >= 1.4:
+			out.append({"type": "telegraph", "radius": float(e.get("radius", 2.0)), "time": ENEMY_WINDUP, "at": "aim", "color": String(e.get("color", "ff6a4a"))})
+			var ee: Dictionary = e.duplicate()
+			ee["delay"] = ENEMY_WINDUP
+			out.append(ee)
+		else:
+			out.append(e)
+	return out
+
+## Recall weakness: healing and shields from someone who just based to a teammate are halved.
+static func _weak_k(caster: Node) -> float:
+	var o: Node = owner_of(caster)
+	return 0.5 if o and "weak_t" in o and float(o.weak_t) > 0.0 else 1.0
 
 static func _m(caster: Node) -> Node:
 	return caster.get("m") if caster else null
@@ -51,11 +79,21 @@ static func _aim_dir(caster: Node, ctx: Dictionary) -> Vector2:
 		return (caster as Hunter).aim_dir()
 	return Vector2(-sin(caster.face), -cos(caster.face))
 
+## Ground-targeted effects land at the cursor, clamped to a hunter's reach (10m by default, or the
+## effect's own "range"), so how far the mouse is sets how far the effect goes.
+const HUNTER_REACH := 10.0
+
 static func _aim_point(caster: Node, ctx: Dictionary) -> Vector3:
 	if ctx.has("aim"):
 		return ctx["aim"]
 	if caster is Hunter:
-		return (caster as Hunter).inp.get("aim", caster.pos)
+		var a: Vector3 = (caster as Hunter).inp.get("aim", caster.pos)
+		var d := Vector2(a.x - caster.pos.x, a.z - caster.pos.z)
+		var reach := float(ctx.get("reach", HUNTER_REACH))
+		if d.length() > reach:
+			d = d.normalized() * reach
+			a = Vector3(caster.pos.x + d.x, a.y, caster.pos.z + d.y)
+		return a
 	return caster.pos
 
 static func _where(e: Dictionary, caster: Node, ctx: Dictionary, default := "self") -> Vector3:
@@ -194,13 +232,19 @@ static func _one(e: Dictionary, caster: Node, ctx: Dictionary) -> void:
 			var at := _where(e, caster, ctx, "aim")
 			m.fields.add(caster, at, e, ctx, pw)
 		"telegraph":
+			# a warning marker on the ground that fills up, then disappears as the hit lands
 			var at := _where(e, caster, ctx, "aim")
-			m.fx.ring(at, float(e.get("radius", 2.0)), Color(col, 0.7), float(e.get("time", 0.4)))
+			var tt := float(e.get("time", 0.4))
+			var tele: Node3D = m.fx.telegraph_circle(at, float(e.get("radius", 2.0)), Color(col, 0.9))
+			m.sfx("warn", at, -10.0, 0.8)
+			var tw := tele.create_tween()
+			tw.tween_method(func(k: float): if is_instance_valid(tele): m.fx.telegraph_progress(tele, k), 0.0, 1.0, tt)
+			tw.tween_callback(func(): if is_instance_valid(tele): m.fx.end_telegraph(tele))
 		"rush":
 			if caster is Kin:
 				(caster as Kin).start_rush(_aim_dir(caster, ctx), e, ctx)
 			elif caster is Hunter:
-				(caster as Hunter).dash_with({"speed": float(e.get("speed", 20.0)), "time": float(e.get("distance", 6.0)) / float(e.get("speed", 20.0)), "shove": true, "shove_kb": float(e.get("kb", 6.0)), "shove_dmg": float(e.get("dmg", 8.0))})
+				(caster as Hunter).dash_with({"speed": float(e.get("speed", 20.0)), "time": float(e.get("distance", 6.0)) / float(e.get("speed", 20.0)), "shove": true, "shove_kb": float(e.get("kb", 6.0)), "shove_dmg": float(e.get("dmg", 8.0)), "kind": "rush"})
 		"leap":
 			var to := _where(e, caster, ctx, "aim")
 			if caster is Kin:
@@ -242,12 +286,12 @@ static func _one(e: Dictionary, caster: Node, ctx: Dictionary) -> void:
 				m.sfx("whoosh", t.pos, -2.0, 1.2)
 		"heal":
 			for t in _targets(e, caster):
-				_heal(t, float(e.get("amount", 20.0)))
+				_heal(t, float(e.get("amount", 20.0)) * _weak_k(caster))
 				m.fx.burst(t.pos + Vector3(0, 1.0, 0), Color("8fe0a0"), 12, 2.5, 0.5, -3.0)
 		"shield":
 			for t in _targets(e, caster):
 				if "shield" in t:
-					t.shield = maxf(float(t.shield), float(e.get("amount", 40.0)))
+					t.shield = maxf(float(t.shield), float(e.get("amount", 40.0)) * _weak_k(caster))
 					if "shield_t" in t: t.shield_t = maxf(float(t.shield_t), float(e.get("time", 5.0)))
 				m.fx.ring(t.pos + Vector3(0, 0.1, 0), 1.0 if t is Hunter else 0.7, col, 0.4)
 			m.sfx("shield", caster.pos, -3.0)

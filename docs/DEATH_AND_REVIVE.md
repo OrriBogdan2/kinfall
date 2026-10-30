@@ -16,15 +16,15 @@ ALIVE ──0 HP──► DOWNED (wisp) ──bleeds out / executed / team wiped
 |---|---|---|---|
 | Knocked | 0 HP with a teammate still up → you become a **wisp**: crawl slowly, can't attack, dash, jump or glide, and can't be shot | crawl at 40% speed | [wiki] "heavily slowed" / [est] |
 | Bleed-out | Wisp drains on its own | **15s** | [patch] |
-| Ally revive | A teammate standing on your wisp fills the revive bar and pauses the drain; extra teammates speed it up | **4s**, back at 33% HP | [wiki] "a few seconds" / [est] |
-| Stomp | An enemy standing on a wisp drains it 4× faster and blocks the revive | ×4 | [wiki] / [est] |
+| Ally revive | A teammate standing on your wisp fills the revive bar and pauses the drain; extra teammates speed it up | **4s**, back at 25% HP | [wiki] "a few seconds" / [est] |
+| Stomp | An enemy standing on a wisp drains it faster, pins it (it crawls at 40% of its normal wisp speed) and blocks the revive. Clear signal on both sides: pulsing red ring under the wisp, red fast-draining bar on its nameplate and squad frame, a crushing thud, "Standing on <name>" for the stomper, "<name> is on you!" plus a red screen-edge pulse for the wisp | ×2.5 drain, ×0.4 speed | [design] |
 | Execute | Enemy holds E on the wisp: they're locked in place for the finisher, then you're dead | **3s** | [footage] |
 | Knock reward | The knocker heals and gets a dash charge back | +250 HP, +1 dash | [patch] |
 | Last one standing | Knocking a team's last standing player wipes the team: no wisp, everyone left dies | — | [patch] |
 | Dead | Your **deathbox** drops with everything you carried. Abyss deaths drop it at the killer's last ground position, or at the edge you fell from | — | [patch] |
 | Box colour | Grey / blue / purple / gold by value | 500 / 2k / 5k | [patch] (colour by value) |
-| Deathbox revive | Teammate holds E at your box while your soul is there. Damage cancels the channel. **You get the box's loot back** | **5s**, 50% HP, 90s soul window | [wiki] / [design] |
-| Looting | Anyone else holds E: takes everything | 1s | [design] |
+| Deathbox revive | Teammate holds E at your box while your soul is there. Damage cancels the channel. **You get the box's loot back** | **5s**, 25% HP, 90s soul window | [wiki] / [design] |
+| Looting | Press F at a box: a window lists everything in it (icon, rarity colour, "upgrade" where it beats yours). Click to take items one at a time (a glove or weapon swap leaves yours in the box); press F again or Smart loot to take everything useful and leave worse gear. Bots still hold F for 1s | instant | [design] |
 | Revive beacon | Teammate stands on it: brings back every dead or downed teammate. Single use. Map-wide alert. Two teams on it pauses (doesn't reset) | **6s** | [patch] 1.0 |
 | Everbeacon | Unlimited uses, can't be contested | **10s** | [patch] |
 | Beacon revive | Full HP but **no loot** (your box stays where it was, so go get it), plus resurrection sickness | −25% damage for **12s** | [patch] + [design] |
@@ -109,10 +109,10 @@ All names and multipliers are placeholders.
 | Knocked with teammate up | Wisp; crawl 1.86 m/s; knocker +250 HP and +1 dash |
 | Ally stands on wisp | Back up in 4.0s at 33% HP |
 | Alone | Bled out at 15.0s; box holds all loot (2,100 value) |
-| Ally holds E at box | Revived in 5.0s, 50% HP, loot back |
+| Ally holds E at box | Revived in 5.0s, 25% HP, loot back |
 | Ally shot mid-channel | Channel reset to 0 |
 | Enemy execute | Dead after 3.0s |
-| Enemy loots box | Takes everything |
+| Enemy loots box | Window: take items one by one or smart loot |
 | Beacon | Back in 6.0s at the beacon, full HP, no loot, −25% damage for 12s, beacon used up |
 | Enemy steps on beacon | Paused at 33%, resumes when they leave |
 | Last one standing knocked | Whole team dead |
@@ -121,3 +121,12 @@ All names and multipliers are placeholders.
 | Shallows death | Kin stays with you; nothing to loot |
 | Deeps / Abyss death | Kin goes in the box; an enemy looting the box takes it; Abyss also marks loose kin as capturable |
 | Deeps, teammate box-revives you | Back with your kin and your loot |
+
+## Revive readability
+
+- Every visible wisp has a ring on the ground the size of the revive range. Teammates see it green, enemies orange.
+- While a teammate revives, the ring fills green and the nameplate reads "<name> reviving 62%". Both teams see it.
+- A teammate near your wisp but outside the range gets "Step in to revive · 1.3m".
+- The downed player sees "<name> is reviving you" under their revive bar.
+- Deathbox revives show the same filling ring at the box, with "<reviver> bringing back <name> 40%".
+- Checked by `--life-check` (stomp: pinned flag, stomper flag, ~6s death at ×2.5; loot window: items, take, smart loot).

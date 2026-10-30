@@ -41,10 +41,14 @@ func _ready() -> void:
 		if a == "--autoplay": opts["autoplay"] = true
 		if a == "--glide-demo": opts["glide_demo"] = true
 		if a == "--ledge-demo": opts["ledge_demo"] = true
+		if a.begins_with("--mates-revive="): opts["mates_revive"] = float(a.substr(15))
+		if a == "--mates-demo": opts["mates_demo"] = true; opts["no_drop"] = true; opts["god"] = true; opts["squad"] = 4; opts["teams"] = 2
 		if a == "--life-demo": opts["life_demo"] = true; opts["no_drop"] = true; opts["squad"] = 3; opts["teams"] = 3
 		if a.begins_with("--length="): opts["length"] = float(a.substr(9))
 		if a == "--no-drop": opts["no_drop"] = true
 		if a.begins_with("--aim-demo="): opts["aim_demo"] = a.substr(11); opts["no_drop"] = true
+		if a == "--loot-demo": opts["loot_demo"] = true
+		if a == "--stomp-demo": opts["stomp_demo"] = true
 		if a == "--ring-demo": opts["ring_demo"] = true; opts["no_drop"] = true
 		if a == "--wall-demo": opts["wall_demo"] = true; opts["no_drop"] = true
 		if a == "--cone-demo": opts["cone_demo"] = true
@@ -132,6 +136,12 @@ func _ready() -> void:
 		return
 	if Array(args).any(func(a): return String(a).begins_with("--weapon-check")):
 		_weapon_check()
+		return
+	if "--base-check" in args:
+		_base_check()
+		return
+	if "--duel-check" in args:
+		_duel_check()
 		return
 	if "--simtest" in args:
 		_simtest(opts)
@@ -226,6 +236,8 @@ func _ready() -> void:
 		show_screen("hatch", {"create": true})    # test: the hunter creator
 	elif "--match" in args:
 		show_screen("match", opts)
+	elif "--duel" in args:
+		show_screen("match", Match.duel_opts())
 	elif "--training" in args:
 		show_screen("match", {"training": true, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242, "no_drop": "--no-drop" in args, "perk_demo": "--perk-demo" in args})
 	elif "--tutorial" in args:
@@ -456,8 +468,11 @@ func _life_check() -> void:
 	spot.call(foe, B.pos)
 	m.knock(B, foe, {})
 	t0 = m.time
+	run.call(Match.DT); run.call(Match.DT)
+	var pinned: bool = B.get_meta("stomped", false)
+	var stood: bool = foe.get_meta("standing_on", null) == B
 	while not B.out and m.time - t0 < 30.0: run.call(Match.DT)
-	print("LCHECK stomp: dead=%s after %.1fs" % [B.out, m.time - t0])
+	print("LCHECK stomp: dead=%s after %.1fs (expect ~%.1fs at %.1fx) pinned=%s stomper flagged=%s slow=%.2f" % [B.out, m.time - t0, Life.R["bleed_out"] / Life.R["stomp_mult"], Life.R["stomp_mult"], pinned, stood, Life.R["stomp_slow"]])
 	spot.call(foe, m.world.random_ground())
 	# 5. beacon
 	var bc: Dictionary = m.beacons[0]
@@ -521,6 +536,23 @@ func _life_check() -> void:
 	spot.call(B2, home + Vector3(-6, 0, 0))
 	m.eliminate(B2, foe, "knocked out")
 	print("LCHECK meadow: kin state=%s box kin=%d" % [B2.kin.state, (Life.box_of(m, B2).get("kin", []) as Array).size()])
+	# 9. the deathbox loot window: a box with a rare glove and some gems; take one by hand, smart loot the rest
+	var lb: Dictionary = {}
+	for b0 in m.boxes:
+		if not b0.get("empty", true):
+			lb = b0
+	if not lb.is_empty():
+		var gid: String = String(Gear.ALL.keys()[0]) if not Gear.ALL.is_empty() else ""
+		if gid != "": (lb["gear"] as Array).append({"id": gid, "rar": 3})
+		lb["gems"] = int(lb.get("gems", 0)) + 15
+		var looter: Hunter = C
+		looter.gear = [{}, {}]; looter.refresh_gear()
+		var its: Array = Life.box_items(m, looter, lb)
+		var g0 := looter.gems
+		var first: Dictionary = its[0]
+		Life.take_item(m, looter, lb, first)
+		var got := Life.smart_loot(m, looter, lb)
+		print("LCHECK loot window: items=%d took first=%s smart=%d gems +%d gear=%s left=%d empty=%s" % [its.size(), first["name"], got, looter.gems - g0, str(looter.gear), Life.box_items(m, looter, lb).size(), lb["empty"]])
 	get_tree().quit()
 
 ## Test: every weapon against a standing target at a couple of ranges, tapping and (for swords)
@@ -550,7 +582,8 @@ func _weapon_check() -> void:
 				var home := Vector3.ZERO
 				# find flat open ground for both
 				for tries in 400:
-					var at: Vector3 = m.world.random_ground(m.world.island_of(P.pos.x, P.pos.z))
+					# the training island first; long sightlines may need the open ground elsewhere
+					var at: Vector3 = m.world.random_ground(m.world.island_of(P.pos.x, P.pos.z)) if tries < 200 else m.world.random_ground()
 					var to := at + Vector3(dist, 0, 0)
 					var ok := true
 					for k in 9:
@@ -588,6 +621,67 @@ func _weapon_check() -> void:
 				print("WCHECK %-12s %-6s dist %4.1f  dps %6.1f  (%d in %ds)" % [wid, mode, dist, dealt / dur, int(dealt), int(dur)])
 				m.queue_free()
 				await get_tree().process_frame
+	get_tree().quit()
+
+## Headless check for basing to a teammate (B): a clean channel arrives weakened; a hit interrupts.
+func _base_check() -> void:
+	var m := Match.new()
+	add_child(m)
+	m.start({"teams": 2, "squad": 2, "tier": 0, "no_drop": true, "seed": 77, "autoplay": true, "big": false})
+	m.set_process(false)
+	var p: Hunter = m.player
+	p.ctrl = "local"
+	var mate := m.base_target(p)
+	if mate == null:
+		print("BCHECK FAIL no teammate"); get_tree().quit(); return
+	for i in 30: m.step(Match.DT)
+	p.inp["move"] = Vector2.ZERO
+	p.start_base(mate)
+	var t := 0.0
+	while t < 3.3:
+		p.inp["move"] = Vector2.ZERO
+		m.step(Match.DT); t += Match.DT
+	var near := p.flat_dist(mate) < 2.5
+	print("BCHECK clean: arrived=%s weak=%.1f cd=%.0f dmg_mult=%.2f" % [near, p.weak_t, p.base_cd, m.dmg_mult(p)])
+	p.base_cd = 0.0
+	p.start_base(mate)
+	for i in 30: m.step(Match.DT)
+	p.hurt(5.0, null, {"src": "test"})
+	print("BCHECK interrupt: channel=%.2f cancelled=%s" % [p.base_t, p.base_t <= 0.0])
+	print("BCHECK ", "PASS" if near and p.base_t <= 0.0 else "FAIL")
+	get_tree().quit()
+
+## Headless smoke test for the duel room: your autopilot against the sparring bot for a few
+## minutes, changing the bot's class, behaviour, glove and difficulty along the way.
+func _duel_check() -> void:
+	var o := Match.duel_opts()
+	o["autoplay"] = true
+	var m := Match.new()
+	add_child(m)
+	m.start(o)
+	m.set_process(false)
+	var ok := true
+	if m.duel == null or m.duel.bot == null:
+		print("DUEL FAIL no bot"); get_tree().quit(); return
+	print("DUEL START player=%s bot=%s dist=%.1f" % [m.player.pos.snapped(Vector3(0.1, 0.1, 0.1)), m.duel.bot.pos.snapped(Vector3(0.1, 0.1, 0.1)), m.player.flat_dist(m.duel.bot)])
+	var plan := {20.0: ["mode", 1], 40.0: ["mode", 1], 60.0: ["mode", 1], 80.0: ["cls", 1], 100.0: ["glove", 1], 120.0: ["diff", 1], 140.0: ["weapon", 1]}
+	var done := {}
+	while m.time < 170.0:
+		m.step(Match.DT)
+		for t in plan:
+			if m.time >= float(t) and not done.has(t):
+				done[t] = true
+				m.duel.cycle(String(plan[t][0]), int(plan[t][1]))
+				print("DUEL t=%d %s -> %s / %s / %s / %s / %s" % [m.time, plan[t][0], m.duel.pick_text("cls"), m.duel.pick_text("weapon"), m.duel.pick_text("glove"), m.duel.pick_text("diff"), m.duel.pick_text("mode")])
+		if m.duel.bot == null or not is_instance_valid(m.duel.bot):
+			print("DUEL FAIL bot lost at ", m.time); ok = false; break
+		if m.over:
+			print("DUEL FAIL match ended at ", m.time); ok = false; break
+	var st: Dictionary = m.duel.stats
+	print("DUEL STATS ", st, " rounds=", m.duel.round_n, " bots=", m.hunters.size())
+	if int(st["shots"]) <= 0 or float(st["dealt"]) <= 0.0:
+		print("DUEL FAIL nothing landed"); ok = false
+	print("DUEL CHECK ", "PASS" if ok else "FAIL")
 	get_tree().quit()
 
 func _simtest(opts: Dictionary) -> void:

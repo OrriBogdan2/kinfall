@@ -11,19 +11,21 @@ const DEFAULTS := {
 	# video
 	"fullscreen": false, "vsync": true, "max_fps": 0, "msaa": 2, "shadows": true, "ui_scale": 1.0, "show_fps": false,
 	# gameplay
-	"shake": 1.0, "cam_lead": 1.0, "cam_style": "supervive", "cam_follow": "standard", "dash_hold": false, "damage_numbers": true, "tips": true, "cast_on_press": true, "crouch_toggle": false, "mod_mode": false, "kin_auto": false, "bot_diff": "auto",
+	"shake": 1.0, "cam_lead": 1.0, "cam_style": "supervive", "cam_follow": "supervive", "dash_hold": false, "damage_numbers": true, "tips": true, "cast_on_press": true, "crouch_toggle": false, "mod_mode": false, "kin_auto": false, "bot_diff": "auto",
 	# accessibility
 	"reduce_flashes": false, "hud_opacity": 1.0,
 	# controls: action -> list of "key:<physical keycode>" / "mouse:<button>"
-	"keys": {},
+	"keys": {}, "keys_v": 2,
 }
+## Bumped when the default kit changes enough that old custom bindings would be nonsense.
+const KEYS_V := 2
 
 ## Rebindable actions, in the order the controls list shows them.
 const ACTIONS := [
 	["up", "Move up"], ["down", "Move down"], ["left", "Move left"], ["right", "Move right"],
-	["fire", "Fire"], ["secondary", "Weapon utility (right click)"], ["dash", "Dodge"], ["jump", "Jump (hold to glide)"], ["glide", "Glide (hold in the air)"], ["crouch", "Crouch"], ["signature", "Kin ability 1"],
-	["kin_skill", "Kin ability 2"], ["ultimate", "Bond ultimate"], ["throw", "Throw / recall kin"], ["swap_kin", "Swap kin"], ["gear1", "Gear active 1"], ["gear2", "Gear active 2"],
-	["interact", "Use, catch, revive, pet"], ["tonic", "Drink a tonic"], ["scores", "Scoreboard"],
+	["fire", "Weapon attack"], ["secondary", "Weapon ability (right click)"], ["dash", "Dash"], ["jump", "Jump (hold to glide)"], ["glide", "Glide (hold in the air)"], ["crouch", "Sneak"],
+	["gear1", "Glove active"], ["signature", "Kin ability"], ["throw", "Throw / recall kin"], ["ultimate", "Bond ultimate"], ["base", "Base to a teammate (squads)"],
+	["interact", "Use, catch, revive, pet"], ["tonic", "Heal (tonic, or armor kit when health is full)"], ["scores", "Scoreboard"],
 	["play", "Play fetch with a kin"], ["talk", "Talk to a kin"], ["details", "A kin's details"], ["inventory", "Inventory"],
 ]
 
@@ -45,6 +47,11 @@ func _ready() -> void:
 		var old: Dictionary = Save.d.get("settings", {})
 		for pair in [["volume", "master"], ["music", "music"], ["shake", "shake"], ["cam_lead", "cam_lead"]]:
 			if old.has(pair[0]): v[pair[1]] = float(old[pair[0]])
+	if not cf.has_section_key("s", "keys_v") and String(v.get("cam_follow", "")) == "standard":
+		v["cam_follow"] = "supervive"     # the new Supervive-style cursor lean becomes everyone's default once
+	if int(v.get("keys_v", 1)) < KEYS_V or not cf.has_section_key("s", "keys_v"):
+		v["keys"] = {}          # the kit changed (Q/E gloves, C kin, G throw): start from the new defaults
+		v["keys_v"] = KEYS_V
 	if not cf.has_section_key("s", "crouch_toggle") and OS.has_feature("web"):
 		v["crouch_toggle"] = true      # browsers close the tab on Ctrl+W, so don't make people hold Ctrl
 	get_tree().node_added.connect(_on_node_added)

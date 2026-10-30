@@ -1,0 +1,22 @@
+{
+ "name": "Frost Glove",
+ "cd": 20,
+ "col": "9ae8ff",
+ "stats": {
+  "cdr": 0.04
+ },
+ "icon": "snare",
+ "desc": "Freeze a patch at the cursor for 4s. Anyone inside is slowed hard.",
+ "effects": [
+  {
+   "type": "zone",
+   "radius": 3.0,
+   "time": 4.0,
+   "every": 0.5,
+   "slow": 0.45,
+   "at": "aim",
+   "color": "9ae8ff"
+  }
+ ],
+ "id": "frost"
+}

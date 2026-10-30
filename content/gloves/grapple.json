@@ -1,0 +1,21 @@
+{
+ "name": "Grapple Glove",
+ "cd": 15,
+ "col": "e8c06a",
+ "stats": {
+  "speed": 0.03
+ },
+ "icon": "hook",
+ "desc": "Zip 7 tiles toward the cursor, shoving aside anyone in the way.",
+ "effects": [
+  {
+   "type": "rush",
+   "distance": 7.0,
+   "speed": 26.0,
+   "width": 0.9,
+   "dmg": 6.0,
+   "kb": 5.0
+  }
+ ],
+ "id": "grapple"
+}

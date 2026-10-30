@@ -2432,7 +2432,7 @@ func _open_expedition() -> void:
 	if not ak.is_empty():
 		left.add_child(UI.section("Kin you bring"))
 		left.add_child(_kin_pick_row("Partner", ak, "active"))
-		if Save.d["roster"].size() > 1:
+		if Match.TWO_KIN and Save.d["roster"].size() > 1:
 			left.add_child(_kin_pick_row("Second", Save.second_kin(), "active2"))
 		if float(ak["trust"]) < 30.0:
 			var tl := UI.label("%s doesn't trust you much yet and may refuse risky throws." % ak["name"], 13, UI.BAD)
@@ -2479,6 +2479,7 @@ func _open_expedition() -> void:
 	var start_b := UI.primary("Start expedition", _confirm_start, 240)
 	go.add_child(start_b)
 	go.add_child(UI.button("Training area", _start_training, 170))
+	go.add_child(UI.button("Duel room", _start_duel, 150))
 	if Bridge.net_available():
 		go.add_child(UI.button("Play online with friends", func(): Game.goto("lobby", {"cls": Data.class_of_save(), "tier": exp_tier}), 240))
 	v.add_child(go)
@@ -2522,7 +2523,7 @@ func _kin_pick_row(label_t: String, rec: Dictionary, key: String) -> Control:
 			var ad := Content.ability(String(aid))
 			if ad: names.append(ad.display_name)
 		var ud := Content.ultimate(String(sp.get("ultimate", "")))
-		var keys := ("%s / %s / %s" % [Settings.key_cap("signature"), Settings.key_cap("kin_skill"), Settings.key_cap("ultimate")]) if key == "active" else ("swap in with %s" % Settings.key_cap("swap_kin"))
+		var keys := ("%s / %s" % [Settings.key_cap("signature"), Settings.key_cap("ultimate")]) if key == "active" else ("swap in with %s" % Settings.key_cap("swap_kin"))
 		var al := UI.label("%s  ·  %s  ·  bond: %s" % [keys, ", ".join(names), ud.display_name if ud else "-"], 12, UI.MUTED)
 		al.autowrap_mode = TextServer.AUTOWRAP_OFF
 		al.clip_text = true
@@ -2660,6 +2661,12 @@ func _start_training() -> void:
 	Save.d["cls"] = Data.class_of_save()
 	Save.save_game()
 	Game.start_match({"training": true, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242})
+
+## The duel room: you against one sparring bot you set up yourself.
+func _start_duel() -> void:
+	Save.d["cls"] = Data.class_of_save()
+	Save.save_game()
+	Game.start_match(Match.duel_opts())
 
 ## Before a run where kin can be lost, say so plainly and make the player confirm.
 func _confirm_start() -> void:
