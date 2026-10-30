@@ -254,6 +254,7 @@ func _draw_world_labels() -> void:
 	# the tutorial's marker: a pin over what to go to, or an arrow at the screen edge, with the distance
 	if m.opts.get("tutorial", false) and m.tut_target != Vector3.INF and m.player and not m.player.out:
 		_draw_waypoint(m.tut_target, m.tut_label, Color("8fe3c8"))
+	_draw_exit_labels()
 	for bc in m.beacons:
 		if bc["used"] or cam.is_position_behind(bc["pos"]):
 			continue
@@ -435,23 +436,12 @@ func _draw_top(sz: Vector2) -> void:
 		_panel(rr, Color(0.06, 0.07, 0.1, 0.88), 12)
 		_ctext(Vector2(sz.x * 0.5, 34), "TUTORIAL  %d / %d" % [mini(m.tut_step + 1, m.TUT.size()), m.TUT.size()], 12, Color("8fe3c8"))
 		_ctext(Vector2(sz.x * 0.5, 62), txt, 22, Color("f2c84a"), big)
-		if m.tut_id() == "extract" and m.player and m.player.extract_prog > 0.0:
-			_panel(Rect2(Vector2(sz.x * 0.5 - 120, 84), Vector2(240, 30)), Color(0.06, 0.07, 0.1, 0.85), 8)
-			_bar(Rect2(Vector2(sz.x * 0.5 - 104, 95), Vector2(208, 8)), clampf(m.player.extract_prog, 0.0, 1.0), Color("8fe3c8"))
+		if m.tut_id() == "defend" and m.player:
+			var o: Dictionary = m._tut_outpost()
+			if not o.is_empty():
+				_panel(Rect2(Vector2(sz.x * 0.5 - 120, 84), Vector2(240, 30)), Color(0.06, 0.07, 0.1, 0.85), 8)
+				_bar(Rect2(Vector2(sz.x * 0.5 - 104, 95), Vector2(208, 8)), clampf(float(o["prog"]), 0.0, 1.0), ExitModels.UPLINK)
 		return
-	var left := m.length - m.time
-	var first_open := 1e9
-	for p in m.portals:
-		if not p["open"]: first_open = minf(first_open, p["open_at"])
-	var any_open := m.portals.any(func(p): return p["open"])
-	var line := ""
-	var col := MUTED
-	if left < 30.0:
-		line = "The islands are falling"; col = BAD
-	elif any_open:
-		line = "Exits are open"; col = Color("8fe3c8")
-	else:
-		line = "Exits open in %s" % _fmt(first_open - m.time)
 	# top right, as in Supervive: squads left, your kills, your knocks, your gems
 	var teams := {}
 	for h in m.hunters:
@@ -575,13 +565,15 @@ func _draw_minimap(sz: Vector2) -> void:
 			var e := pp + Vector2(cos(a), sin(a)) * Match.VIEW_RANGE * k
 			pts.append(Vector2(clampf(e.x, inner.position.x, inner.end.x), clampf(e.y, inner.position.y, inner.end.y)))
 		c.draw_colored_polygon(pts, Color(1, 1, 1, 0.07))
-	for p in m.portals:
-		var pv: Vector2 = to_map.call(p["pos"])
-		if not on_map.call(pv, 4.0):
-			if p["open"]: _edge_arrow(inner, inner.get_center(), pv, Color("8fe3c8"))
-			continue
-		var col := Color("8fe3c8") if p["open"] else Color(0.6, 0.65, 0.7, 0.6)
-		c.draw_arc(pv, 5, 0, TAU, 16, col, 2.0, true)
+	if m.exits:
+		for x in m.exits.list:
+			var pv: Vector2 = to_map.call(x.get("berth", x["pos"]))
+			var busy: bool = String(x["state"]) in ["called", "boarding", "charging", "open"]
+			if not on_map.call(pv, 4.0):
+				# off the map: an arrow for the loud ones (a called skiff, a charging uplink, an open lift)
+				if busy and x["kind"] != "hatch": _edge_arrow(inner, inner.get_center(), pv, Exits.color_of(x))
+				continue
+			_draw_exit_icon(pv, x, 1.0 if not riding else 0.8)
 	if not m.ship.is_empty() and not m.ship.get("gone", false):
 		var sa: Vector2 = to_map.call(m.ship["a"]); var sb: Vector2 = to_map.call(m.ship["b"])
 		c.draw_line(sa, sb, Color(1, 1, 1, 0.35), 2.0, true)
@@ -642,14 +634,10 @@ func _draw_clock_bar(sz: Vector2, mm: Rect2) -> void:
 	var r := Rect2(Vector2(mm.position.x, mm.end.y + 8), Vector2(maxf(mm.size.x, 196.0), 30))
 	mm_bottom = r.end.y
 	var left := m.length - m.time
-	var first_open := 1e9
-	for pt in m.portals:
-		if not pt["open"]: first_open = minf(first_open, pt["open_at"])
-	var any_open := m.portals.any(func(pt): return pt["open"])
 	var phase := ""; var pc := MUTED
-	if left < 30.0: phase = "ISLANDS FALLING"; pc = BAD
-	elif any_open: phase = "EXITS OPEN"; pc = Color("8fe3c8")
-	else: phase = "EXITS %s" % _fmt(first_open - m.time)
+	var xl: Array = m.exits.clock_line() if m.exits else ["", MUTED]
+	if left < 30.0 and (m.exits == null or m.exits.active_for(m.player.team if m.player else -9).is_empty()): phase = "ISLANDS FALLING"; pc = BAD
+	else: phase = String(xl[0]); pc = xl[1]
 	_rounded(r, Color(0.04, 0.05, 0.08, 0.86), 8)
 	_text(r.position + Vector2(10, 20), _fmt(left), 16, BAD if left < 30.0 else INK, big)
 	var pw := big.get_string_size(phase, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x
@@ -701,6 +689,81 @@ func _draw_waypoint(at: Vector3, label: String, col: Color) -> void:
 		c.draw_colored_polygon(PackedVector2Array([edge + d * 24.0, edge - d * 8.0 + perp * 15.0, edge - d * 8.0 - perp * 15.0]), Color(0, 0, 0, 0.5))
 		c.draw_colored_polygon(PackedVector2Array([edge + d * 20.0, edge - d * 6.0 + perp * 12.0, edge - d * 6.0 - perp * 12.0]), col)
 		_ctext(edge - d * 34.0, "%s  %dm" % [label, dist], 15, col, big)
+
+## An exit on the minimap: a little boat for a skiff dock, a diamond for a rift hatch, a walled square
+## with a mast for an outpost. Bright when it's usable, grey when not; a pulsing ring while it's going.
+func _draw_exit_icon(pv: Vector2, x: Dictionary, k := 1.0) -> void:
+	var col: Color = Exits.color_of(x)
+	var usable: bool = m.exits.live(x)
+	var st := String(x["state"])
+	if not usable: col = Color(0.55, 0.58, 0.64, 0.7)
+	var dark := Color(0, 0, 0, 0.7)
+	match String(x["kind"]):
+		"dock":
+			var hull := PackedVector2Array([pv + Vector2(-6, 1) * k, pv + Vector2(6, 1) * k, pv + Vector2(4, 5) * k, pv + Vector2(-4, 5) * k])
+			c.draw_colored_polygon(PackedVector2Array([pv + Vector2(-7, 0) * k, pv + Vector2(7, 0) * k, pv + Vector2(5, 6) * k, pv + Vector2(-5, 6) * k]), dark)
+			c.draw_colored_polygon(hull, col)
+			c.draw_colored_polygon(PackedVector2Array([pv + Vector2(0, -7) * k, pv + Vector2(5, 0) * k, pv + Vector2(0, 0) * k]), col)
+			c.draw_line(pv + Vector2(0, -7) * k, pv + Vector2(0, 1) * k, dark, 1.5)
+			if st == "closed":
+				c.draw_line(pv + Vector2(-6, -6) * k, pv + Vector2(6, 6) * k, Color(BAD, 0.8), 2.0)
+		"hatch":
+			var dm := PackedVector2Array([pv + Vector2(0, -5) * k, pv + Vector2(5, 0) * k, pv + Vector2(0, 5) * k, pv + Vector2(-5, 0) * k])
+			c.draw_colored_polygon(PackedVector2Array([pv + Vector2(0, -6.5) * k, pv + Vector2(6.5, 0) * k, pv + Vector2(0, 6.5) * k, pv + Vector2(-6.5, 0) * k]), dark)
+			c.draw_colored_polygon(dm, col if st == "open" or (m.player and m.player.rift_keys > 0) else Color(col, 0.55))
+			c.draw_circle(pv, 1.6 * k, dark)
+		"outpost":
+			var r := Rect2(pv - Vector2(5.5, 5.5) * k, Vector2(11, 11) * k)
+			c.draw_rect(r.grow(1.5), dark)
+			c.draw_rect(r, col, false, 2.0)
+			c.draw_circle(pv, 2.2 * k, col)
+			if st == "charging":
+				_arc(pv, 9.0 * k, float(x["prog"]), col, 2.0)
+	if st in ["called", "boarding", "charging", "open"]:
+		var ph := fmod(m.time * 1.2, 1.0)
+		c.draw_arc(pv, (8.0 + ph * 8.0) * k, 0, TAU, 24, Color(col, 0.8 * (1.0 - ph)), 2.0, true)
+
+## Over each exit nearby: its name and what it's doing. Your squad's own exit (a skiff you called, an
+## uplink you're charging) gets a waypoint from anywhere on the map.
+func _draw_exit_labels() -> void:
+	if m.exits == null or m.player == null or m.player.out or m.player.extracted:
+		return
+	var cam := m.cam
+	var p: Hunter = m.player
+	var mine: Dictionary = m.exits.active_for(p.team)
+	for x in m.exits.list:
+		var at: Vector3 = x["pos"]
+		var col: Color = Exits.color_of(x)
+		var d := p.flat_dist(at)
+		var st := String(x["state"])
+		var line := ""
+		match String(x["kind"]):
+			"dock":
+				match st:
+					"called": line = "Skiff inbound  %s" % _fmt(x["t"])
+					"boarding": line = "BOARDING  %ds" % int(ceil(x["t"]))
+					"gone": line = "Skiff away"
+					"closed": line = "Closed"
+					_: line = "Call skiff" if m.exits.callable(x) else ("Opens %s" % _fmt(float(x["open_at"]) - m.time) if m.time < float(x["open_at"]) else "")
+			"hatch":
+				line = "Open" if st == "open" else ("Sealed  ·  you have a key" if p.rift_keys > 0 else "Sealed")
+			"outpost":
+				match st:
+					"charging": line = "Uplink %d%%%s" % [int(x["prog"] * 100.0), "  ·  contested" if x["contested"] else ""]
+					"open": line = "LIFT OPEN  %ds" % int(ceil(x["t"]))
+					"spent": line = "Cooling down"
+					_: line = "Start uplink" if m.exits.startable(x) else ("Online in %s" % _fmt(float(x["open_at"]) - m.time))
+		var reach := 26.0 if x["kind"] == "hatch" else 44.0
+		if st in ["boarding", "open"]: reach = 70.0
+		var prompted: bool = not m.interact.is_empty() and m.interact.get("x") == x     # the prompt already says it
+		if d < reach and not cam.is_position_behind(at) and not prompted:
+			var lp := cam.unproject_position(at + Vector3(0, 3.4 if x["kind"] != "hatch" else 1.6, 0))
+			_ctext(lp, String(x["name"]), 13, col, big)
+			if line != "":
+				_ctext(lp + Vector2(0, 17), line, 12 if st not in ["boarding", "open"] else 16, INK if st not in ["boarding", "open"] else col, big)
+		if x == mine and d > 7.0 and not m.opts.get("tutorial", false):
+			var tgt: Vector3 = x.get("berth", at)
+			_draw_waypoint(tgt, "Skiff" if x["kind"] == "dock" else ("Lift" if st == "open" else "Uplink"), col)
 
 ## A small arrow on the minimap's edge pointing at something off the map.
 func _edge_arrow(inner: Rect2, from: Vector2, to: Vector2, col: Color) -> void:
@@ -1723,15 +1786,17 @@ func _draw_prompt(sz: Vector2, p: Hunter) -> void:
 			"loot": prog = p.box_t / Life.R["loot_time"]
 			"catch": prog = it["ent"].catch_prog
 			"chest": prog = it["chest"]["prog"]
+			"exit": prog = float(it["x"]["hold"].get(p.nid, 0.0)) / float(it["need"]) if it.has("need") else 0.0
 		var s: String = it["label"]
 		var w := body.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
 		_panel(Rect2(Vector2(sz.x * 0.5 - w * 0.5 - 16, y - 22), Vector2(w + 32, 32)))
 		_ctext(Vector2(sz.x * 0.5, y), s, 16, it.get("col", GOLD))
 		if prog > 0.0:
 			_bar(Rect2(Vector2(sz.x * 0.5 - w * 0.5 - 16, y + 12), Vector2(w + 32, 4)), prog, GOLD)
-	if p.extract_prog > 0.0:
-		_ctext(Vector2(sz.x * 0.5, sz.y * 0.36), "Extracting...", 26, Color("8fe3c8"), big)
-		_bar(Rect2(Vector2(sz.x * 0.5 - 120, sz.y * 0.36 + 12), Vector2(240, 8)), p.extract_prog, Color("8fe3c8"))
+	var st: Dictionary = m.exits.status_for(p) if m.exits else {}
+	if not st.is_empty():
+		_ctext(Vector2(sz.x * 0.5, sz.y * 0.2), String(st["text"]), 24, st["col"], big)
+		_bar(Rect2(Vector2(sz.x * 0.5 - 140, sz.y * 0.2 + 12), Vector2(280, 8)), clampf(float(st["prog"]), 0.0, 1.0), st["col"])
 
 func _draw_crosshair(p: Hunter) -> void:
 	var mp := c.get_local_mouse_position()
