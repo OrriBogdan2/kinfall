@@ -1310,6 +1310,8 @@ func _decorate() -> void:
 			if what == "":
 				what = "tree" if drng.randf() < 0.5 and not by_shrine else "rock"
 			if _pack_prop(packed, what, i, Vector3(x + 0.5, y, z + 0.5), drng):
+				if what in ["tree", "rock"]:
+					_undergrowth(packed, x, z, drng)
 				continue
 			if what == "tree":
 				var reg := int(islands[island[i]].get("region", 0)) if island[i] >= 0 and island[i] < islands.size() else 0
@@ -1318,6 +1320,8 @@ func _decorate() -> void:
 				n = Models.rock(drng, drng.randf_range(0.9, 1.25))
 			n.position = Vector3(x + 0.5, y, z + 0.5)
 			deco.add_child(n)
+	if Assets.on():
+		_cliff_rocks(packed, drng)
 	for key in packed:
 		var g: Dictionary = packed[key]
 		_chunked(deco, g["items"], g["mesh"], g["mat"], String(g["label"]), bool(g["shadows"]))
@@ -1432,9 +1436,63 @@ func _decorate() -> void:
 			isl.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 			deco.add_child(isl)
 		else:
-			var r := Models.rock(drng, drng.randf_range(0.4, 1.2))
+			var r: Node3D = null
+			if Assets.on():
+				r = Assets.prop("hexagon/mountain_" + ["A", "B", "C"][drng.randi_range(0, 2)], drng.randf_range(0.8, 2.2), false,
+					{"tint": Color.WHITE.lerp(side_c.lightened(0.2), 0.45), "bright": 1.05})
+				if r: r.rotation = Vector3(drng.randf_range(-0.3, 0.3), drng.randf() * TAU, drng.randf_range(-0.3, 0.3))
+			if r == null:
+				r = Models.rock(drng, drng.randf_range(0.4, 1.2))
 			r.position = at
 			deco.add_child(r)
+
+## A few knee-high things on open ground beside a tree or boulder (purely visual).
+func _undergrowth(groups: Dictionary, x: int, z: int, r: RandomNumberGenerator) -> void:
+	for _k in r.randi_range(0, 2):
+		var a := r.randf() * TAU
+		var d := r.randf_range(0.75, 1.35)
+		var p := Vector2(x + 0.5 + cos(a) * d, z + 0.5 + sin(a) * d)
+		var ix := int(floor(p.x)); var iz := int(floor(p.y))
+		if not inb(ix, iz):
+			continue
+		var j := idx(ix, iz)
+		if kind[j] != T_GROUND or bush.has(j) or paint.has(j) or stairs.has(j) or bridge.has(j) or level[j] != level[idx(x, z)] or edge_dist(ix, iz, 1) < 2:
+			continue
+		_pack_prop(groups, "under", j, Vector3(p.x, level[j] * LEVEL, p.y), r)
+
+## Boulders lodged in the cliffs just under an island's rim, so coastlines read as rock instead of a
+## clean cut. Purely visual: they sit in the air beside the edge, below the ground you stand on, and
+## stay clear of bridges, stairs, pads, updrafts and the sky train's loop.
+func _cliff_rocks(groups: Dictionary, r: RandomNumberGenerator) -> void:
+	var tc := Vector2.INF; var tr := 0.0
+	if not train_route.is_empty():
+		tc = train_route["center"]; tr = float(train_route["r"])
+	for z in h:
+		for x in w:
+			var i := idx(x, z)
+			if kind[i] == T_VOID or bridge.has(i) or stairs.has(i) or edge_dist(x, z, 1) != 1 or r.randf() > 0.16:
+				continue
+			var cp := Vector2(x + 0.5, z + 0.5)
+			if tc != Vector2.INF and absf(cp.distance_to(tc) - tr) < 4.5:
+				continue
+			var clear := true
+			for pd in pads:
+				if Vector2(pd["pos"].x, pd["pos"].z).distance_to(cp) < 3.0: clear = false
+			for u in updrafts:
+				if Vector2(u["pos"].x, u["pos"].z).distance_to(cp) < 3.0: clear = false
+			if not clear:
+				continue
+			for d in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				if inb(x + d.x, z + d.y) and kind[idx(x + d.x, z + d.y)] != T_VOID:
+					continue
+				var y := level[i] * LEVEL
+				var at := Vector3(cp.x + d.x * 0.55, 0.0, cp.y + d.y * 0.55)
+				if _pack_prop(groups, "cliff", i, at, r):
+					# drop it so its top sits a little under the lip
+					var t: Transform3D = _last_item[0]
+					t.origin.y += y - _last_top - r.randf_range(0.12, 0.7)
+					_last_item[0] = t
+				break
 
 ## Which look a tile's island has, for picking imported models: its authored biome, or on a
 ## generated map its region (meadow, autumn, frost, dry, blossom).
@@ -1457,13 +1515,16 @@ func _pack_prop(groups: Dictionary, what: String, i: int, p: Vector3, r: RandomN
 	var list: Array
 	match what:
 		"tree": list = Assets.trees(style)
-		"rock": list = Assets.rocks(style)
+		"rock", "cliff": list = Assets.rocks(style)
 		"ruin": list = Assets.PILLARS
 		"camp": list = Assets.CAMP
 		"pebble": list = Assets.PEBBLES
+		"under": list = Assets.under(style)
 		_: return false
 	return _pack_prop_variant(groups, what, i, p, r, Assets.pick(list, r))
 
+var _last_item: Array = []     # the [transform, colour] _pack_prop_variant last added, and its top
+var _last_top := 0.0
 func _pack_prop_variant(groups: Dictionary, what: String, i: int, p: Vector3, r: RandomNumberGenerator, v: Dictionary) -> bool:
 	var bio := _bio(i)
 	var am := Assets.mesh(String(v["m"]))
@@ -1475,14 +1536,19 @@ func _pack_prop_variant(groups: Dictionary, what: String, i: int, p: Vector3, r:
 	if what == "tree":
 		b = Basis(Vector3(r.randf_range(-1, 1), 0, r.randf_range(-1, 1)).normalized(), r.randf_range(0.0, 0.07)) * b
 	b = b.scaled(Vector3.ONE * s)
+	var sy := 1.0
 	if what == "rock":
-		b = b * Basis.from_scale(Vector3(1.0, r.randf_range(1.15, 1.5), 1.0))   # taller boulders, so cover reads as cover
+		sy = r.randf_range(1.15, 1.5)   # taller boulders, so cover reads as cover
+	elif what == "cliff":
+		sy = r.randf_range(1.3, 2.2)
+		b = b.scaled(Vector3.ONE * r.randf_range(1.2, 1.6))
+	b = b * Basis.from_scale(Vector3(1.0, sy, 1.0))
 	var tr := Transform3D(b, p + b * -Vector3(ab.position.x + ab.size.x * 0.5, ab.position.y + (0.05 if what != "pebble" else 0.0), ab.position.z + ab.size.z * 0.5))
 	var paint := String(v.get("paint", "own"))
 	var cfg := {"instanced": true, "bright": float(v.get("bright", 1.0))}
 	var col := Color.WHITE
 	var jit := r.randf_range(-0.07, 0.07)
-	if what == "tree" and paint != "own":
+	if what in ["tree", "under"] and paint != "own" and v.has("band"):
 		cfg["repaint"] = true
 		cfg["band"] = v["band"]
 		var leaf: Color = bio["leaf"]
@@ -1493,16 +1559,20 @@ func _pack_prop_variant(groups: Dictionary, what: String, i: int, p: Vector3, r:
 		# rocks, ruins, crates and bare trees: the texture's own colours, tinted toward the biome
 		cfg["color_tint"] = 1.0
 		var base: Color = v.get("tint", Color.WHITE)
-		if what in ["rock", "pebble"]:
+		if what in ["rock", "pebble"] or (what == "under" and not v.has("tint") and String(v["m"]).contains("rock")):
 			base = Color.WHITE.lerp(Color(bio["side"]).lightened(0.3), 0.35).lerp(Color(bio["top"]), 0.12)
+		elif what == "cliff":
+			base = Color.WHITE.lerp(Color(bio["side"]), 0.55)
 		elif what == "ruin":
 			base = Color("fff4e4").lerp(Color(bio["top"]), 0.2).lightened(0.15)
 		col = base.lightened(jit) if jit > 0.0 else base.darkened(-jit)
 	var key := String(v["m"]) + str(cfg)
 	if not groups.has(key):
 		groups[key] = {"mesh": am, "mat": Assets.material(Assets.pack_of(String(v["m"])), cfg), "items": [],
-			"label": String(v["m"]).get_file(), "shadows": what != "pebble"}
-	groups[key]["items"].append([tr, col])
+			"label": String(v["m"]).get_file(), "shadows": not what in ["pebble", "cliff", "under"]}
+	_last_item = [tr, col]
+	_last_top = (tr.basis * Vector3(0, ab.size.y, 0)).y
+	groups[key]["items"].append(_last_item)
 	return true
 
 ## The home island: one flat round island with room for the farm, house and portal.

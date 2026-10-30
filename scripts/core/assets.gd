@@ -102,8 +102,47 @@ const CAMP := [
 	{"m": "dungeon/barrel_large", "w": 1, "fp": [0.95, 1.05]},
 	{"m": "hexagon/resource_lumber", "w": 1, "fp": [1.1, 1.25]},
 	{"m": "dungeon/box_large", "w": 2, "fp": [1.0, 1.1]},
-	{"m": "hexagon/tent", "w": 1, "fp": [1.25, 1.35]},
+	{"m": "hexagon/barrel", "w": 1, "fp": [0.8, 0.9]},
 ]
+## Undergrowth at the foot of trees and boulders: knee-high saplings, stones and the odd bone, so
+## cover sits in a clump instead of standing alone. Too small to read as cover; no collision.
+const UNDER := {
+	"meadow": [
+		{"m": "hexagon/tree_single_A", "w": 3, "h": [0.45, 0.75], "paint": "green", "band": BAND_HEX_LEAF},
+		{"m": "hexagon/rock_single_B", "w": 2, "fp": [0.3, 0.5]},
+		{"m": "hexagon/rock_single_D", "w": 2, "fp": [0.3, 0.5]},
+	],
+	"bloom": [
+		{"m": "halloween/tree_pine_orange_small", "w": 3, "h": [0.5, 0.8], "paint": "leaf", "band": BAND_HW_PINE},
+		{"m": "hexagon/tree_single_A", "w": 2, "h": [0.45, 0.7], "paint": "green", "band": BAND_HEX_LEAF},
+		{"m": "hexagon/rock_single_B", "w": 1, "fp": [0.3, 0.5]},
+	],
+	"frost": [
+		{"m": "halloween/tree_pine_orange_small", "w": 2, "h": [0.5, 0.8], "paint": "leaf", "band": BAND_HW_PINE},
+		{"m": "hexagon/rock_single_C", "w": 3, "fp": [0.3, 0.55]},
+		{"m": "hexagon/rock_single_E", "w": 2, "fp": [0.3, 0.55]},
+	],
+	"ember": [
+		{"m": "halloween/tree_dead_small", "w": 2, "h": [0.6, 0.9], "paint": "own", "tint": Color("8a6a62"), "bright": 1.7},
+		{"m": "dungeon/rubble_half", "w": 2, "fp": [0.4, 0.6], "bright": 1.7},
+		{"m": "halloween/bone_A", "w": 1, "fp": [0.25, 0.35]},
+	],
+	"storm": [
+		{"m": "halloween/tree_dead_small", "w": 2, "h": [0.6, 0.9], "paint": "own", "tint": Color("b8bcd8"), "bright": 1.7},
+		{"m": "hexagon/rock_single_A", "w": 3, "fp": [0.3, 0.55]},
+		{"m": "hexagon/tree_single_B", "w": 2, "h": [0.45, 0.7], "paint": "green", "band": BAND_HEX_LEAF},
+	],
+	"gloom": [
+		{"m": "halloween/skull", "w": 1, "fp": [0.22, 0.28]},
+		{"m": "halloween/bone_A", "w": 2, "fp": [0.25, 0.35]},
+		{"m": "halloween/tree_pine_orange_small", "w": 2, "h": [0.5, 0.8], "paint": "leaf", "band": BAND_HW_PINE},
+		{"m": "hexagon/rock_single_A", "w": 2, "fp": [0.3, 0.5]},
+	],
+}
+
+static func under(style: String) -> Array:
+	return UNDER.get(style, UNDER["meadow"])
+
 ## Little stones scattered over the ground (no collision).
 const PEBBLES := [
 	{"m": "hexagon/rock_single_A", "w": 1, "fp": [0.18, 0.4]},
@@ -314,11 +353,11 @@ static func prop(id: String, size: float, by_height := false, cfg := {}) -> Node
 ## strike plays on from there. Kinds not listed keep their primitive models (the Puffbomb, the
 ## Glimmerkin); the Sentinel keeps its crystal on a pack pillar.
 const MOBS := {
-	"skitter": {"m": "skeletons/Skeleton_Minion", "h": 1.05, "r": "Skeleton_Blade",
+	"skitter": {"m": "skeletons/Skeleton_Minion", "h": 1.2, "r": "Skeleton_Blade",
 		"idle": "Idle", "walk": "Walking_D_Skeletons", "run": "Running_A", "attack": "1H_Melee_Attack_Stab", "hit": 0.42},
-	"spitter": {"m": "skeletons/Skeleton_Mage", "h": 1.3, "r": "Skeleton_Staff",
+	"spitter": {"m": "skeletons/Skeleton_Mage", "h": 1.45, "r": "Skeleton_Staff",
 		"idle": "Idle", "walk": "Walking_D_Skeletons", "run": "Walking_D_Skeletons", "attack": "Spellcast_Shoot", "hit": 0.45},
-	"brute": {"m": "skeletons/Skeleton_Warrior", "h": 1.75, "wide": 1.25, "r": "Skeleton_Axe", "l": "Skeleton_Shield_Large_A",
+	"brute": {"m": "skeletons/Skeleton_Warrior", "h": 1.95, "wide": 1.25, "r": "Skeleton_Axe", "l": "Skeleton_Shield_Large_A",
 		"idle": "2H_Melee_Idle", "walk": "Walking_D_Skeletons", "run": "Running_A", "attack": "2H_Melee_Attack_Chop", "hit": 0.5},
 	"warden": {"m": "skeletons/Skeleton_Warrior", "h": 1.75, "wide": 1.3, "r": "Skeleton_Axe", "l": "Skeleton_Shield_Large_A",
 		"idle": "2H_Melee_Idle", "walk": "Walking_D_Skeletons", "run": "Running_A", "attack": "2H_Melee_Attack_Chop", "hit": 0.5},
