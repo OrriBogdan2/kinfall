@@ -27,6 +27,8 @@ const GRAV := 26.0
 var pface := 0.0
 var walk_ph := 0.0
 var house_node: Node3D
+var rack_node: Node3D
+var rack_pick := ""
 var whistle_cd := 0.0
 var whistle_player: AudioStreamPlayer
 var kins: Array = []           # {rec, node, pos, vel, goal, t, emote, emote_t, hop}
@@ -112,6 +114,8 @@ func _ready() -> void:
 	world.set_block_rect(29, 32, 31, 33)
 	spots["pot"] = Vector3(42.5, 0, 27.5)
 	world.set_block_rect(42, 27, 42, 27)
+	spots["rack"] = Vector3(34.5, 0, 40.5)      # the glider rack, beside the portal
+	world.set_block_rect(34, 40, 34, 40)
 	for z in range(30, 38):
 		for x in range(43, 48):
 			world.paint_tile(x, z, Color("6b4a33"))
@@ -158,6 +162,10 @@ func _ready() -> void:
 	var pot := Models.cauldron(); pot.position = spots["pot"]; add_child(pot)
 	var stall := Models.stall(); stall.position = spots["stall"]; stall.rotation.y = PI * 0.5; add_child(stall)
 	var portal := Models.portal(UI.TEAL); portal.position = spots["portal"]; add_child(portal)
+	if visit.is_empty():
+		rack_node = _glider_rack()
+		rack_node.position = spots["rack"]
+		add_child(rack_node)
 	portal.get_node("Disc").visible = true
 	(portal.get_node("Beam") as CPUParticles3D).emitting = true
 	var drng := RandomNumberGenerator.new(); drng.seed = 77
@@ -190,6 +198,13 @@ func _ready() -> void:
 		ppos = lots[spawn]["door"]
 	player.position = ppos
 	cam.snap(ppos)
+	for a in dbg:
+		if a.begins_with("--rack-test"):
+			# test: open the glider rack (optionally on a skin: --rack-test=ember)
+			var pick := a.substr(12) if a.length() > 12 else ""
+			get_tree().create_timer(0.5).timeout.connect(func():
+				if pick != "": rack_pick = pick
+				_open_rack())
 	if "--whistle-test" in dbg:
 		# test: every kin but one is indoors, then you whistle
 		get_tree().create_timer(0.3).timeout.connect(func():
@@ -862,6 +877,121 @@ func _move_kin(d: float) -> void:
 			lbl.visible = k["emote_t"] > 0.0
 			lbl.position.y = 1.15 + (1.6 - k["emote_t"]) * 0.2
 
+# ---- the glider rack: skins for your glider, each with its own trail and sounds
+func _glider_rack() -> Node3D:
+	var n := Node3D.new()
+	var wood := Models.toon(Color("8a6242")); var dark := Models.toon(Color("4e3424"))
+	for sx in [-1.0, 1.0]:
+		Models.part(n, Models.cyl(0.06, 0.07, 1.9, 8), wood, Vector3(0.75 * sx, 0.95, 0))
+	Models.part(n, Models.cyl(0.05, 0.05, 1.7, 8), dark, Vector3(0, 1.85, 0), Vector3.ONE, Vector3(0, 0, PI / 2))
+	var can := MeshInstance3D.new(); can.name = "Canopy"
+	can.mesh = Gliders.mesh(Gliders.equipped(), Data.TEAM_COLORS[0], UI.ACCENT)
+	can.material_override = Models.vtoon_outlined()
+	can.position = Vector3(0, 1.75, 0); can.scale = Vector3.ONE * 0.75; can.rotation = Vector3(-0.35, 0, 0)
+	n.add_child(can)
+	var sign := Label3D.new(); sign.text = "Gliders"
+	sign.font = UI.big; sign.font_size = 40; sign.pixel_size = 0.012; sign.outline_size = 10
+	sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED; sign.position = Vector3(0, 2.35, 0)
+	n.add_child(sign)
+	return n
+
+func _open_rack() -> void:
+	if rack_pick == "": rack_pick = Gliders.equipped()
+	var v := _new_panel("Glider skins", 640)
+	# a preview of the picked skin, open and turning, trail and all
+	var svc := SubViewportContainer.new(); svc.stretch = true; svc.custom_minimum_size = Vector2(580, 170)
+	var vp := SubViewport.new(); vp.own_world_3d = true; vp.transparent_bg = true; vp.msaa_3d = Viewport.MSAA_2X
+	svc.add_child(vp)
+	var w3 := Node3D.new(); vp.add_child(w3)
+	Look.lights(w3, Color("fff1dc"), 1.0)
+	var holder := Node3D.new(); w3.add_child(holder)
+	var can := MeshInstance3D.new()
+	can.mesh = Gliders.mesh(rack_pick, Data.TEAM_COLORS[0], UI.ACCENT)
+	can.material_override = Models.vtoon_outlined()
+	holder.add_child(can)
+	var tr := Gliders.trail(rack_pick, Data.TEAM_COLORS[0], UI.ACCENT)
+	if tr: tr.position = Vector3(0, -0.05, 0.3); tr.local_coords = true; tr.direction = Vector3(0, -0.2, 1); holder.add_child(tr)
+	var pc := Camera3D.new(); pc.fov = 42
+	pc.transform = Transform3D(Basis(), Vector3(0, 2.35, 2.05)).looking_at(Vector3(0, -0.15, 0.05), Vector3.UP)
+	w3.add_child(pc)
+	holder.set_meta("spin", true)
+	svc.set_process(true)
+	var spin := func(): if is_instance_valid(holder): holder.rotation.y = sin(Time.get_ticks_msec() / 1400.0) * 0.6
+	svc.draw.connect(spin)
+	var ticker := Timer.new(); ticker.wait_time = 0.033; ticker.autostart = true; svc.add_child(ticker)
+	ticker.timeout.connect(func(): spin.call(); svc.queue_redraw())
+	v.add_child(svc)
+	var g := Gliders.get_skin(rack_pick)
+	var info := UI.hbox(10)
+	var it := UI.vbox(2); it.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	it.add_child(UI.title(String(g["name"]), 26))
+	var d := UI.label(String(g["desc"]), 14, UI.MUTED); d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	it.add_child(d)
+	info.add_child(it)
+	info.add_child(UI.button("Hear it", func(): _rack_sound(rack_pick), 110))
+	var own := Gliders.owned(rack_pick)
+	if own:
+		if Gliders.equipped() == rack_pick:
+			var eq := UI.label("Equipped", 15, UI.GOOD, UI.semi); eq.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			info.add_child(eq)
+		else:
+			info.add_child(UI.primary("Equip", func(): _rack_equip(rack_pick), 120))
+	elif g.has("unlock"):
+		var p := String(g["unlock"]).split(":")
+		var lk := UI.label("Earned at %s %s  (%d/%s)" % [p[1], p[0], Progress.stat(p[0]), p[1]], 14, Color("ffd79a"))
+		lk.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		info.add_child(lk)
+	else:
+		var cost := int(g["cost"])
+		var buy := UI.primary("Buy  ·  %d gems" % cost, func(): _rack_buy(rack_pick), 170)
+		buy.disabled = int(Save.d["gems"]) < cost
+		info.add_child(buy)
+	v.add_child(info)
+	v.add_child(UI.section("All gliders"))
+	var grid := GridContainer.new(); grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 8); grid.add_theme_constant_override("v_separation", 8)
+	for sk in Gliders.LIST:
+		var sid: String = sk["id"]
+		var label := String(sk["name"])
+		if Gliders.equipped() == sid: label = "✓ " + label
+		var b := UI.choice(label, sid == rack_pick, func(): rack_pick = sid; _rack_sound(sid); _open_rack(), 136)
+		if not Gliders.owned(sid):
+			b.modulate = Color(1, 1, 1, 0.62)
+			b.tooltip_text = ("%d gems" % int(sk["cost"])) if not sk.has("unlock") else "Earned, not bought"
+		b.clip_text = true
+		grid.add_child(b)
+	v.add_child(grid)
+
+func _rack_sound(id: String) -> void:
+	var ap := AudioStreamPlayer.new()
+	ap.stream = Gliders.sound(id, "open")
+	ap.volume_db = -4.0
+	add_child(ap)
+	ap.play()
+	ap.finished.connect(ap.queue_free)
+
+func _rack_buy(id: String) -> void:
+	var cost := int(Gliders.get_skin(id).get("cost", 0))
+	if int(Save.d["gems"]) < cost:
+		return
+	Save.d["gems"] = int(Save.d["gems"]) - cost
+	if not Save.d.has("gliders"): Save.d["gliders"] = []
+	Save.d["gliders"].append(id)
+	Sfx.play("unlock")
+	_toast("%s unlocked!" % Gliders.get_skin(id)["name"])
+	_rack_equip(id)
+
+func _rack_equip(id: String) -> void:
+	if not Save.d.has("look"): Save.d["look"] = Models.default_look()
+	Save.d["look"]["glider"] = id
+	Save.save_game()
+	_rack_sound(id)
+	if is_instance_valid(rack_node):
+		var can := rack_node.get_node_or_null("Canopy") as MeshInstance3D
+		if can: can.mesh = Gliders.mesh(id, Data.TEAM_COLORS[0], UI.ACCENT)
+	_refresh_top()
+	_open_rack()
+
 # ---- the whistle: press H at home and your kin come running, even from inside the house
 func _house_door() -> Vector3:
 	return spots["house"] + Vector3(0, 0, 2.1)
@@ -1077,7 +1207,8 @@ func _find_interact() -> void:
 	for i in gh_plots.size():
 		var d := p2.distance_to(Vector2(gh_plots[i].position.x, gh_plots[i].position.z))
 		if d < bd: bd = d; best = {"kind": "plot", "arr": "gh_plots", "i": i}
-	for nm in ["pot", "stall", "portal", "house", "ferry"]:
+	for nm in ["pot", "stall", "portal", "house", "ferry", "rack"]:
+		if not spots.has(nm) or (nm == "rack" and not visit.is_empty()): continue
 		var sp: Vector3 = spots[nm]
 		var reach := 2.6 if nm in ["house", "portal"] else 1.9
 		var d := p2.distance_to(Vector2(sp.x, sp.z + (2.0 if nm == "house" else 0.0)))
@@ -1208,6 +1339,7 @@ func _label_for(it: Dictionary) -> String:
 			if float(d.get("wt", 0.0)) <= 0.0: return "Water the %s" % cd["name"]
 			return "%s: watered, growing (%s)" % [cd["name"], _grow_left(it["arr"], d)]
 		"pot": return "Cook"
+		"rack": return "Glider skins"
 		"stall": return "Shop"
 		"portal": return "Start an expedition"
 		"house": return "Go inside"
@@ -1235,6 +1367,7 @@ func _use(it: Dictionary) -> void:
 		"lot": _open_lot(it["b"])
 		"bridge": _open_bridge(it["isle"])
 		"pot": _open_kitchen()
+		"rack": _open_rack()
 		"stall": _open_shop()
 		"portal": _open_expedition()
 		"house": Game.goto("interior", {"room": "house"})
