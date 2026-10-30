@@ -1,1366 +1,1407 @@
 {
-	"id": "skyreach",
-	"name": "Skyreach",
-	"size": 216,
-	"seed": 4242,
-	"notes": "Hand-made expedition map. The Heart sits in the middle, reached from three sides by narrow land bridges (the chokepoints) and from the east by a wind road. Four inner islands guard the bridges; eight outer islands make a safer ring joined by wind roads all the way round. Extraction gates open on the outer ring first and in the Heart last. Angles are in degrees around an island's centre: 0 = east, 90 = south, 180 = west, 270 = north. 'sheer' arcs are smooth cliffs you can't grab; every other rim has a stone lip you can. Perches (Stormspire, Frost Needle, Ember Spire, Gloom Eye) float high over the gaps: up by a one-way launch pad, or by riding a chain of updrafts (glide into the short column, then the tall one); each holds a top chest and looks down on a chokepoint, and glide routes run back down from it.",
-	"islands": [
-		{
-			"id": "heart",
-			"name": "The Heart",
-			"role": "heart",
-			"region": 0,
-			"poi": [
-				108,
-				108
-			],
-			"noise": 0.2,
-			"shapes": [
-				{
-					"circle": [
-						108,
-						108
-					],
-					"r": 15,
-					"lv": 0
-				},
-				{
-					"circle": [
-						119,
-						97
-					],
-					"r": 7,
-					"lv": 0
-				},
-				{
-					"circle": [
-						97,
-						119
-					],
-					"r": 7,
-					"lv": 0
-				},
-				{
-					"circle": [
-						108,
-						108
-					],
-					"r": 10.5,
-					"lv": 1
-				},
-				{
-					"circle": [
-						108,
-						108
-					],
-					"r": 5,
-					"lv": 2
-				}
-			],
-			"sheer": [
-				[
-					20,
-					70
-				],
-				[
-					200,
-					250
-				]
-			],
-			"walls": [
-				{
-					"ring": [
-						108,
-						108
-					],
-					"r": 7.5,
-					"gates": 4,
-					"gate_w": 2
-				}
-			],
-			"pillars": [
-				[
-					99,
-					99
-				],
-				[
-					117,
-					99
-				],
-				[
-					99,
-					117
-				],
-				[
-					117,
-					117
-				],
-				[
-					104,
-					96
-				],
-				[
-					112,
-					96
-				],
-				[
-					96,
-					104
-				],
-				[
-					96,
-					112
-				],
-				[
-					104,
-					120
-				],
-				[
-					112,
-					120
-				]
-			],
-			"bush": [
-				[
-					121,
-					114,
-					1.8
-				],
-				[
-					96,
-					120,
-					1.6
-				]
-			],
-			"biome": "gloom",
-			"danger": 2
-		},
-		{
-			"id": "keep",
-			"name": "Sunken Keep",
-			"role": "camp",
-			"region": 2,
-			"poi": [
-				108,
-				60
-			],
-			"noise": 0.08,
-			"shapes": [
-				{
-					"rect": [
-						96,
-						51,
-						120,
-						73
-					],
-					"lv": 0
-				},
-				{
-					"circle": [
-						108,
-						62
-					],
-					"r": 11,
-					"lv": 0
-				},
-				{
-					"rect": [
-						101,
-						55,
-						115,
-						66
-					],
-					"lv": 1
-				}
-			],
-			"sheer": [
-				[
-					235,
-					305
-				]
-			],
-			"walls": [
-				{
-					"box": [
-						102,
-						54,
-						114,
-						66
-					],
-					"gates": [
-						"s",
-						"n",
-						"e",
-						"w"
-					],
-					"gate_w": 3
-				}
-			],
-			"bush": [
-				[
-					98,
-					70,
-					1.6
-				],
-				[
-					119,
-					70,
-					1.6
-				]
-			],
-			"biome": "frost",
-			"danger": 1
-		},
-		{
-			"id": "quarry",
-			"name": "Old Quarry",
-			"role": "camp",
-			"region": 3,
-			"poi": [
-				63,
-				112
-			],
-			"noise": 0.2,
-			"shapes": [
-				{
-					"circle": [
-						60,
-						112
-					],
-					"r": 13,
-					"lv": 0
-				},
-				{
-					"circle": [
-						66,
-						124
-					],
-					"r": 5,
-					"lv": 0
-				},
-				{
-					"circle": [
-						48,
-						103
-					],
-					"r": 6,
-					"cut": true
-				},
-				{
-					"circle": [
-						56,
-						113
-					],
-					"r": 7.5,
-					"lv": 1
-				},
-				{
-					"circle": [
-						54,
-						114
-					],
-					"r": 3.8,
-					"lv": 2
-				}
-			],
-			"sheer": [
-				[
-					150,
-					215
-				]
-			],
-			"walls": [
-				{
-					"line": [
-						64,
-						103,
-						70,
-						103
-					]
-				},
-				{
-					"line": [
-						70,
-						103,
-						70,
-						107
-					]
-				},
-				{
-					"line": [
-						64,
-						121,
-						70,
-						121
-					]
-				},
-				{
-					"line": [
-						70,
-						117,
-						70,
-						121
-					]
-				}
-			],
-			"bush": [
-				[
-					52,
-					122,
-					1.7
-				]
-			],
-			"biome": "ember",
-			"danger": 1
-		},
-		{
-			"id": "shrine",
-			"name": "Windward Shrine",
-			"role": "shrine",
-			"region": 1,
-			"poi": [
-				156,
-				104
-			],
-			"noise": 0.2,
-			"shapes": [
-				{
-					"ellipse": [
-						156,
-						104
-					],
-					"rx": 12,
-					"rz": 8,
-					"rot": 20,
-					"lv": 0
-				},
-				{
-					"circle": [
-						158,
-						104
-					],
-					"r": 4.5,
-					"lv": 1
-				}
-			],
-			"sheer": [
-				[
-					325,
-					395
-				]
-			],
-			"bush": [
-				[
-					150,
-					112,
-					1.5
-				],
-				[
-					161,
-					96,
-					1.4
-				]
-			],
-			"biome": "storm",
-			"danger": 1
-		},
-		{
-			"id": "nest",
-			"name": "Bramble Nest",
-			"role": "nest",
-			"region": 4,
-			"poi": [
-				110,
-				157
-			],
-			"noise": 0.2,
-			"shapes": [
-				{
-					"circle": [
-						110,
-						156
-					],
-					"r": 11,
-					"lv": 0
-				},
-				{
-					"circle": [
-						100,
-						160
-					],
-					"r": 7,
-					"lv": 0
-				},
-				{
-					"circle": [
-						119,
-						161
-					],
-					"r": 6,
-					"lv": 0
-				},
-				{
-					"circle": [
-						102,
-						161
-					],
-					"r": 4.5,
-					"lv": 1
-				}
-			],
-			"sheer": [
-				[
-					55,
-					125
-				]
-			],
-			"bush": [
-				[
-					102,
-					150,
-					2.2
-				],
-				[
-					118,
-					151,
-					2.0
-				],
-				[
-					115,
-					163,
-					1.8
-				],
-				[
-					104,
-					163,
-					1.6
-				],
-				[
-					110,
-					147,
-					1.4
-				]
-			],
-			"biome": "bloom",
-			"danger": 1
-		},
-		{
-			"id": "skyport",
-			"name": "Skyport",
-			"role": "grove",
-			"region": 2,
-			"poi": [
-				108,
-				21
-			],
-			"noise": 0.2,
-			"drop": true,
-			"shapes": [
-				{
-					"ellipse": [
-						108,
-						22
-					],
-					"rx": 13,
-					"rz": 8,
-					"lv": 0
-				}
-			],
-			"sheer": [
-				[
-					200,
-					340
-				]
-			],
-			"bush": [
-				[
-					100,
-					26,
-					1.5
-				]
-			],
-			"biome": "frost",
-			"danger": 0
-		},
-		{
-			"id": "lantern",
-			"name": "Lantern Grove",
-			"role": "grove",
-			"region": 1,
-			"poi": [
-				56,
-				58
-			],
-			"noise": 0.2,
-			"drop": true,
-			"shapes": [
-				{
-					"circle": [
-						56,
-						58
-					],
-					"r": 11,
-					"lv": 0
-				},
-				{
-					"circle": [
-						48,
-						66
-					],
-					"r": 7,
-					"lv": 0
-				},
-				{
-					"circle": [
-						64,
-						50
-					],
-					"r": 6,
-					"lv": 0
-				},
-				{
-					"circle": [
-						53,
-						56
-					],
-					"r": 5.5,
-					"lv": 1
-				}
-			],
-			"sheer": [
-				[
-					180,
-					260
-				]
-			],
-			"bush": [
-				[
-					60,
-					64,
-					2.0
-				],
-				[
-					48,
-					62,
-					1.8
-				],
-				[
-					62,
-					50,
-					1.6
-				]
-			],
-			"biome": "gloom",
-			"danger": 0
-		},
-		{
-			"id": "gull",
-			"name": "Gull Rock",
-			"role": "camp",
-			"region": 2,
-			"poi": [
-				160,
-				54
-			],
-			"noise": 0.2,
-			"drop": true,
-			"shapes": [
-				{
-					"circle": [
-						160,
-						54
-					],
-					"r": 10,
-					"lv": 0
-				},
-				{
-					"ellipse": [
-						169,
-						47
-					],
-					"rx": 8,
-					"rz": 5,
-					"rot": -30,
-					"lv": 0
-				},
-				{
-					"circle": [
-						165,
-						50
-					],
-					"r": 5,
-					"lv": 1
-				}
-			],
-			"sheer": [
-				[
-					280,
-					350
-				]
-			],
-			"walls": [
-				{
-					"line": [
-						154,
-						60,
-						154,
-						64
-					]
-				},
-				{
-					"line": [
-						154,
-						64,
-						158,
-						64
-					]
-				}
-			],
-			"biome": "frost",
-			"danger": 0
-		},
-		{
-			"id": "fern",
-			"name": "Fernreach",
-			"role": "nest",
-			"region": 1,
-			"poi": [
-				196,
-				118
-			],
-			"noise": 0.2,
-			"drop": true,
-			"shapes": [
-				{
-					"ellipse": [
-						196,
-						118
-					],
-					"rx": 8,
-					"rz": 13,
-					"lv": 0
-				}
-			],
-			"sheer": [
-				[
-					-40,
-					40
-				]
-			],
-			"bush": [
-				[
-					192,
-					124,
-					1.8
-				],
-				[
-					199,
-					112,
-					1.6
-				]
-			],
-			"biome": "storm",
-			"danger": 0
-		},
-		{
-			"id": "still",
-			"name": "Stillwater",
-			"role": "shrine",
-			"region": 4,
-			"poi": [
-				160,
-				166
-			],
-			"noise": 0.2,
-			"drop": true,
-			"shapes": [
-				{
-					"circle": [
-						160,
-						166
-					],
-					"r": 11,
-					"lv": 0
-				},
-				{
-					"circle": [
-						170,
-						174
-					],
-					"r": 7,
-					"lv": 0
-				},
-				{
-					"circle": [
-						166,
-						171
-					],
-					"r": 5,
-					"lv": 1
-				}
-			],
-			"sheer": [
-				[
-					20,
-					100
-				]
-			],
-			"bush": [
-				[
-					154,
-					160,
-					1.8
-				],
-				[
-					168,
-					160,
-					1.4
-				]
-			],
-			"biome": "bloom",
-			"danger": 0
-		},
-		{
-			"id": "dawn",
-			"name": "Dawn Ledge",
-			"role": "grove",
-			"region": 4,
-			"poi": [
-				108,
-				199
-			],
-			"noise": 0.2,
-			"drop": true,
-			"shapes": [
-				{
-					"ellipse": [
-						108,
-						198
-					],
-					"rx": 13,
-					"rz": 8,
-					"lv": 0
-				}
-			],
-			"sheer": [
-				[
-					30,
-					150
-				]
-			],
-			"bush": [
-				[
-					102,
-					202,
-					1.5
-				]
-			],
-			"biome": "meadow",
-			"danger": 0
-		},
-		{
-			"id": "moss",
-			"name": "Mossfall",
-			"role": "grove",
-			"region": 0,
-			"poi": [
-				56,
-				164
-			],
-			"noise": 0.2,
-			"drop": true,
-			"shapes": [
-				{
-					"circle": [
-						56,
-						164
-					],
-					"r": 11,
-					"lv": 0
-				},
-				{
-					"circle": [
-						64,
-						172
-					],
-					"r": 6,
-					"lv": 0
-				},
-				{
-					"circle": [
-						48,
-						156
-					],
-					"r": 6,
-					"lv": 0
-				},
-				{
-					"circle": [
-						52,
-						166
-					],
-					"r": 5,
-					"lv": 1
-				}
-			],
-			"sheer": [
-				[
-					100,
-					190
-				]
-			],
-			"bush": [
-				[
-					60,
-					158,
-					2.0
-				],
-				[
-					50,
-					160,
-					1.6
-				],
-				[
-					62,
-					170,
-					1.6
-				]
-			],
-			"biome": "meadow",
-			"danger": 0
-		},
-		{
-			"id": "iron",
-			"name": "Ironbark",
-			"role": "camp",
-			"region": 3,
-			"poi": [
-				21,
-				112
-			],
-			"noise": 0.2,
-			"drop": true,
-			"shapes": [
-				{
-					"ellipse": [
-						20,
-						112
-					],
-					"rx": 7,
-					"rz": 12,
-					"lv": 0
-				}
-			],
-			"sheer": [
-				[
-					140,
-					220
-				]
-			],
-			"walls": [
-				{
-					"line": [
-						24,
-						106,
-						24,
-						109
-					]
-				},
-				{
-					"line": [
-						24,
-						115,
-						24,
-						118
-					]
-				}
-			],
-			"biome": "ember",
-			"danger": 0
-		},
-		{
-			"id": "spire",
-			"name": "Stormspire",
-			"role": "perch",
-			"biome": "storm",
-			"danger": 2,
-			"poi": [
-				128,
-				84
-			],
-			"noise": 0.1,
-			"perch": true,
-			"shapes": [
-				{
-					"circle": [
-						128,
-						84
-					],
-					"r": 3.6,
-					"lv": 12
-				}
-			],
-			"sheer": [],
-			"chests": [
-				[
-					128,
-					84,
-					2
-				]
-			]
-		},
-		{
-			"id": "needle",
-			"name": "Frost Needle",
-			"role": "perch",
-			"biome": "frost",
-			"danger": 2,
-			"poi": [
-				134,
-				40
-			],
-			"noise": 0.1,
-			"perch": true,
-			"shapes": [
-				{
-					"circle": [
-						134,
-						40
-					],
-					"r": 3.2,
-					"lv": 14
-				}
-			],
-			"sheer": [],
-			"chests": [
-				[
-					134,
-					40,
-					2
-				]
-			]
-		},
-		{
-			"id": "emberspire",
-			"name": "Ember Spire",
-			"role": "perch",
-			"biome": "ember",
-			"danger": 2,
-			"poi": [
-				82,
-				88
-			],
-			"noise": 0.1,
-			"perch": true,
-			"shapes": [
-				{
-					"circle": [
-						82,
-						88
-					],
-					"r": 3.6,
-					"lv": 12
-				}
-			],
-			"sheer": [],
-			"chests": [
-				[
-					82,
-					88,
-					2
-				]
-			]
-		},
-		{
-			"id": "eye",
-			"name": "Gloom Eye",
-			"role": "perch",
-			"biome": "gloom",
-			"danger": 2,
-			"poi": [
-				134,
-				132
-			],
-			"noise": 0.1,
-			"perch": true,
-			"shapes": [
-				{
-					"circle": [
-						134,
-						132
-					],
-					"r": 3.2,
-					"lv": 10
-				}
-			],
-			"sheer": [],
-			"chests": [
-				[
-					134,
-					132,
-					1
-				]
-			],
-			"weapon": [
-				133,
-				133
-			]
-		}
-	],
-	"bridges": [
-		{
-			"name": "North Span",
-			"a": "heart",
-			"b": "keep",
-			"from": [
-				108,
-				95
-			],
-			"to": [
-				108,
-				72
-			],
-			"r": 1.6
-		},
-		{
-			"name": "Quarry Causeway",
-			"a": "heart",
-			"b": "quarry",
-			"from": [
-				94.5,
-				108.5
-			],
-			"to": [
-				71.5,
-				111
-			],
-			"r": 1.5
-		},
-		{
-			"name": "Bramble Bridge",
-			"a": "heart",
-			"b": "nest",
-			"from": [
-				108.5,
-				122
-			],
-			"to": [
-				110,
-				146
-			],
-			"r": 1.1
-		},
-		{
-			"name": "Port Stair",
-			"a": "keep",
-			"b": "skyport",
-			"from": [
-				108,
-				52
-			],
-			"to": [
-				108,
-				29
-			],
-			"r": 1.3
-		},
-		{
-			"name": "Dawn Bridge",
-			"a": "nest",
-			"b": "dawn",
-			"from": [
-				110,
-				166
-			],
-			"to": [
-				108,
-				191
-			],
-			"r": 1.3
-		}
-	],
-	"winds": [
-		[
-			"heart",
-			"shrine",
-			"Wind Gap"
-		],
-		[
-			"lantern",
-			"keep"
-		],
-		[
-			"lantern",
-			"quarry"
-		],
-		[
-			"gull",
-			"keep"
-		],
-		[
-			"gull",
-			"shrine"
-		],
-		[
-			"still",
-			"nest"
-		],
-		[
-			"moss",
-			"nest"
-		],
-		[
-			"moss",
-			"quarry"
-		],
-		[
-			"lantern",
-			"skyport"
-		],
-		[
-			"skyport",
-			"gull"
-		],
-		[
-			"fern",
-			"still"
-		],
-		[
-			"still",
-			"dawn"
-		],
-		[
-			"dawn",
-			"moss"
-		],
-		[
-			"moss",
-			"iron"
-		],
-		[
-			"iron",
-			"lantern"
-		]
-	],
-	"pads": [
-		[
-			"fern",
-			"shrine"
-		],
-		[
-			"iron",
-			"quarry"
-		],
-		[
-			"gull",
-			"fern"
-		],
-		[
-			"heart",
-			"spire",
-			"up"
-		],
-		[
-			"gull",
-			"needle",
-			"up"
-		],
-		[
-			"quarry",
-			"emberspire",
-			"up"
-		],
-		[
-			"nest",
-			"eye",
-			"up"
-		]
-	],
-	"updrafts": [
-		{
-			"at": [
-				92,
-				92
-			],
-			"top": 2
-		},
-		{
-			"at": [
-				146,
-				92
-			],
-			"top": 2
-		},
-		{
-			"at": [
-				168,
-				116
-			],
-			"top": 2
-		},
-		{
-			"at": [
-				46,
-				98
-			],
-			"top": 3
-		},
-		{
-			"at": [
-				124,
-				172
-			],
-			"top": 1
-		},
-		{
-			"at": [
-				176,
-				64
-			],
-			"top": 2
-		},
-		{
-			"at": [
-				40,
-				176
-			],
-			"top": 2
-		},
-		{
-			"at": [
-				127,
-				93
-			],
-			"top": 6
-		},
-		{
-			"at": [
-				130,
-				89
-			],
-			"top": 14
-		},
-		{
-			"at": [
-				72,
-				100
-			],
-			"top": 6
-		},
-		{
-			"at": [
-				78,
-				92
-			],
-			"top": 14
-		},
-		{
-			"at": [
-				124,
-				124
-			],
-			"top": 8
-		},
-		{
-			"at": [
-				130,
-				128
-			],
-			"top": 12
-		},
-		{
-			"at": [
-				146,
-				48
-			],
-			"top": 8
-		},
-		{
-			"at": [
-				139,
-				43
-			],
-			"top": 16
-		}
-	],
-	"portals": [
-		[
-			106,
-			17
-		],
-		[
-			110,
-			203
-		],
-		[
-			16,
-			111
-		],
-		[
-			200,
-			121
-		],
-		[
-			108,
-			98
-		]
-	],
-	"chokepoints": [
-		"North Span",
-		"Quarry Causeway",
-		"Bramble Bridge",
-		"Port Stair",
-		"Dawn Bridge",
-		"Wind Gap"
-	],
-	"glides": [
-		[
-			"spire",
-			"keep"
-		],
-		[
-			"spire",
-			"heart"
-		],
-		[
-			"spire",
-			"shrine"
-		],
-		[
-			"needle",
-			"skyport"
-		],
-		[
-			"needle",
-			"keep"
-		],
-		[
-			"needle",
-			"gull"
-		],
-		[
-			"emberspire",
-			"heart"
-		],
-		[
-			"emberspire",
-			"quarry"
-		],
-		[
-			"emberspire",
-			"lantern"
-		],
-		[
-			"eye",
-			"heart"
-		],
-		[
-			"eye",
-			"nest"
-		],
-		[
-			"eye",
-			"still"
-		]
-	]
+ "id": "skyreach",
+ "name": "Skyreach",
+ "size": 216,
+ "seed": 4242,
+ "notes": "Hand-made expedition map. Big walkable regions: the Heart in the middle, four large regions around it (Frostkeep N, Stormreach E, Bloomwild S, Ember Quarry W), four calm corner islands and four outer landings. A ring road of wide bridges joins every region to its corners, so most of the map can be walked. Only six bridges and one wind road lead into the Heart: these are the chokepoints. Perches float over the four diagonal gaps; reach them by a one-way pad or an updraft chain and glide back down. Angles are degrees around an island's centre (0 = east, 90 = south); 'sheer' arcs can't be grabbed, every other rim has a stone lip. Generated by tools/make_skyreach.py.",
+ "islands": [
+  {
+   "id": "heart",
+   "name": "The Heart",
+   "role": "heart",
+   "region": 0,
+   "poi": [
+    108,
+    108
+   ],
+   "noise": 0.12,
+   "biome": "gloom",
+   "danger": 2,
+   "shapes": [
+    {
+     "circle": [
+      108,
+      108
+     ],
+     "r": 21,
+     "lv": 0
+    },
+    {
+     "circle": [
+      108,
+      108
+     ],
+     "r": 13,
+     "lv": 1
+    },
+    {
+     "circle": [
+      108,
+      108
+     ],
+     "r": 5.5,
+     "lv": 2
+    }
+   ],
+   "sheer": [
+    [
+     30,
+     60
+    ],
+    [
+     120,
+     150
+    ],
+    [
+     210,
+     240
+    ],
+    [
+     300,
+     330
+    ]
+   ],
+   "walls": [
+    {
+     "ring": [
+      108,
+      108
+     ],
+     "r": 8.5,
+     "gates": 4,
+     "gate_w": 2.5
+    }
+   ],
+   "pillars": [
+    [
+     98,
+     98
+    ],
+    [
+     118,
+     98
+    ],
+    [
+     98,
+     118
+    ],
+    [
+     118,
+     118
+    ],
+    [
+     108,
+     92
+    ],
+    [
+     108,
+     124
+    ],
+    [
+     92,
+     108
+    ],
+    [
+     124,
+     108
+    ]
+   ],
+   "bush": [
+    [
+     122,
+     120,
+     1.8
+    ],
+    [
+     94,
+     96,
+     1.8
+    ],
+    [
+     94,
+     121,
+     1.5
+    ],
+    [
+     122,
+     95,
+     1.5
+    ]
+   ],
+   "extras": [
+    [
+     108,
+     92,
+     "grove"
+    ],
+    [
+     108,
+     125,
+     "grove"
+    ]
+   ]
+  },
+  {
+   "id": "keep",
+   "name": "Frostkeep",
+   "role": "camp",
+   "region": 2,
+   "poi": [
+    108,
+    52
+   ],
+   "noise": 0.1,
+   "biome": "frost",
+   "danger": 1,
+   "shapes": [
+    {
+     "ellipse": [
+      108,
+      54
+     ],
+     "rx": 36,
+     "rz": 17,
+     "lv": 0
+    },
+    {
+     "rect": [
+      98,
+      45,
+      118,
+      60
+     ],
+     "lv": 1
+    },
+    {
+     "circle": [
+      130,
+      50
+     ],
+     "r": 6,
+     "lv": 1
+    }
+   ],
+   "sheer": [
+    [
+     60,
+     120
+    ]
+   ],
+   "walls": [
+    {
+     "box": [
+      101,
+      47,
+      115,
+      58
+     ],
+     "gates": [
+      "s",
+      "n",
+      "e",
+      "w"
+     ],
+     "gate_w": 3
+    }
+   ],
+   "bush": [
+    [
+     84,
+     60,
+     1.8
+    ],
+    [
+     134,
+     62,
+     1.6
+    ]
+   ],
+   "extras": [
+    [
+     82,
+     52,
+     "grove",
+     "Rimefield"
+    ],
+    [
+     134,
+     50,
+     "nest",
+     "Icewing Roost"
+    ]
+   ]
+  },
+  {
+   "id": "nest",
+   "name": "Bloomwild",
+   "role": "nest",
+   "region": 4,
+   "poi": [
+    108,
+    166
+   ],
+   "noise": 0.1,
+   "biome": "bloom",
+   "danger": 1,
+   "shapes": [
+    {
+     "ellipse": [
+      108,
+      162
+     ],
+     "rx": 36,
+     "rz": 17,
+     "lv": 0
+    },
+    {
+     "ellipse": [
+      92,
+      166
+     ],
+     "rx": 12,
+     "rz": 8,
+     "lv": 1
+    },
+    {
+     "circle": [
+      126,
+      168
+     ],
+     "r": 7,
+     "lv": 1
+    }
+   ],
+   "sheer": [
+    [
+     240,
+     300
+    ]
+   ],
+   "bush": [
+    [
+     100,
+     152,
+     2.0
+    ],
+    [
+     118,
+     156,
+     1.8
+    ],
+    [
+     80,
+     162,
+     1.8
+    ],
+    [
+     136,
+     158,
+     1.6
+    ]
+   ],
+   "extras": [
+    [
+     84,
+     162,
+     "grove",
+     "Petal Hollow"
+    ],
+    [
+     132,
+     160,
+     "camp",
+     "Thornwatch"
+    ]
+   ]
+  },
+  {
+   "id": "quarry",
+   "name": "Ember Quarry",
+   "role": "camp",
+   "region": 3,
+   "poi": [
+    54,
+    124
+   ],
+   "noise": 0.1,
+   "biome": "ember",
+   "danger": 1,
+   "shapes": [
+    {
+     "capsule": [
+      54,
+      90,
+      54,
+      126
+     ],
+     "r": 10,
+     "lv": 0
+    },
+    {
+     "circle": [
+      54,
+      88
+     ],
+     "r": 15,
+     "lv": 0
+    },
+    {
+     "circle": [
+      54,
+      128
+     ],
+     "r": 15,
+     "lv": 0
+    },
+    {
+     "circle": [
+      52,
+      128
+     ],
+     "r": 8,
+     "lv": 1
+    }
+   ],
+   "sheer": [
+    [
+     330,
+     30
+    ]
+   ],
+   "walls": [
+    {
+     "line": [
+      46,
+      120,
+      46,
+      126
+     ]
+    },
+    {
+     "line": [
+      60,
+      132,
+      60,
+      136
+     ]
+    }
+   ],
+   "bush": [
+    [
+     62,
+     84,
+     1.6
+    ],
+    [
+     44,
+     96,
+     1.6
+    ]
+   ],
+   "extras": [
+    [
+     54,
+     86,
+     "grove",
+     "Cinder Steps"
+    ]
+   ]
+  },
+  {
+   "id": "shrine",
+   "name": "Stormreach",
+   "role": "shrine",
+   "region": 1,
+   "poi": [
+    164,
+    108
+   ],
+   "noise": 0.1,
+   "biome": "storm",
+   "danger": 1,
+   "shapes": [
+    {
+     "capsule": [
+      162,
+      86,
+      162,
+      130
+     ],
+     "r": 15,
+     "lv": 0
+    },
+    {
+     "ellipse": [
+      165,
+      108
+     ],
+     "rx": 7,
+     "rz": 11,
+     "lv": 1
+    }
+   ],
+   "sheer": [
+    [
+     150,
+     210
+    ]
+   ],
+   "bush": [
+    [
+     154,
+     88,
+     1.6
+    ],
+    [
+     170,
+     128,
+     1.6
+    ]
+   ],
+   "extras": [
+    [
+     160,
+     84,
+     "camp",
+     "Static Field"
+    ],
+    [
+     160,
+     132,
+     "grove",
+     "Rainbreak"
+    ]
+   ]
+  },
+  {
+   "id": "lantern",
+   "name": "Lantern Hollow",
+   "role": "grove",
+   "region": 2,
+   "poi": [
+    44,
+    44
+   ],
+   "noise": 0.14,
+   "biome": "ember",
+   "danger": 0,
+   "shapes": [
+    {
+     "circle": [
+      44,
+      44
+     ],
+     "r": 17,
+     "lv": 0
+    },
+    {
+     "circle": [
+      40,
+      40
+     ],
+     "r": 7,
+     "lv": 1
+    }
+   ],
+   "sheer": [
+    [
+     30,
+     60
+    ]
+   ],
+   "bush": [
+    [
+     52,
+     52,
+     1.6
+    ]
+   ]
+  },
+  {
+   "id": "gull",
+   "name": "Gullcrest",
+   "role": "camp",
+   "region": 1,
+   "poi": [
+    172,
+    44
+   ],
+   "noise": 0.14,
+   "biome": "frost",
+   "danger": 0,
+   "shapes": [
+    {
+     "circle": [
+      172,
+      44
+     ],
+     "r": 17,
+     "lv": 0
+    },
+    {
+     "circle": [
+      176,
+      40
+     ],
+     "r": 7,
+     "lv": 1
+    }
+   ],
+   "sheer": [
+    [
+     120,
+     150
+    ]
+   ],
+   "bush": [
+    [
+     164,
+     52,
+     1.6
+    ]
+   ]
+  },
+  {
+   "id": "moss",
+   "name": "Mossmere",
+   "role": "grove",
+   "region": 3,
+   "poi": [
+    44,
+    172
+   ],
+   "noise": 0.14,
+   "biome": "bloom",
+   "danger": 0,
+   "shapes": [
+    {
+     "circle": [
+      44,
+      172
+     ],
+     "r": 17,
+     "lv": 0
+    },
+    {
+     "circle": [
+      40,
+      176
+     ],
+     "r": 7,
+     "lv": 1
+    }
+   ],
+   "sheer": [
+    [
+     300,
+     330
+    ]
+   ],
+   "bush": [
+    [
+     52,
+     164,
+     1.6
+    ]
+   ]
+  },
+  {
+   "id": "still",
+   "name": "Stillwater",
+   "role": "nest",
+   "region": 4,
+   "poi": [
+    172,
+    172
+   ],
+   "noise": 0.14,
+   "biome": "storm",
+   "danger": 0,
+   "shapes": [
+    {
+     "circle": [
+      172,
+      172
+     ],
+     "r": 17,
+     "lv": 0
+    },
+    {
+     "circle": [
+      176,
+      176
+     ],
+     "r": 7,
+     "lv": 1
+    }
+   ],
+   "sheer": [
+    [
+     210,
+     240
+    ]
+   ],
+   "bush": [
+    [
+     164,
+     164,
+     1.6
+    ]
+   ]
+  },
+  {
+   "id": "skyport",
+   "name": "Skyport",
+   "role": "grove",
+   "region": 2,
+   "poi": [
+    108,
+    17
+   ],
+   "noise": 0.12,
+   "biome": "frost",
+   "danger": 0,
+   "shapes": [
+    {
+     "circle": [
+      108,
+      17
+     ],
+     "r": 10,
+     "lv": 0
+    }
+   ],
+   "sheer": []
+  },
+  {
+   "id": "dawn",
+   "name": "Dawnrest",
+   "role": "grove",
+   "region": 4,
+   "poi": [
+    108,
+    199
+   ],
+   "noise": 0.12,
+   "biome": "bloom",
+   "danger": 0,
+   "shapes": [
+    {
+     "circle": [
+      108,
+      199
+     ],
+     "r": 10,
+     "lv": 0
+    }
+   ],
+   "sheer": []
+  },
+  {
+   "id": "iron",
+   "name": "Ironfall",
+   "role": "grove",
+   "region": 3,
+   "poi": [
+    16,
+    108
+   ],
+   "noise": 0.12,
+   "biome": "ember",
+   "danger": 0,
+   "shapes": [
+    {
+     "circle": [
+      16,
+      108
+     ],
+     "r": 10,
+     "lv": 0
+    }
+   ],
+   "sheer": []
+  },
+  {
+   "id": "fern",
+   "name": "Fernway",
+   "role": "grove",
+   "region": 1,
+   "poi": [
+    200,
+    108
+   ],
+   "noise": 0.12,
+   "biome": "storm",
+   "danger": 0,
+   "shapes": [
+    {
+     "circle": [
+      200,
+      108
+     ],
+     "r": 10,
+     "lv": 0
+    }
+   ],
+   "sheer": []
+  },
+  {
+   "id": "spire",
+   "name": "Stormspire",
+   "role": "perch",
+   "biome": "storm",
+   "danger": 2,
+   "poi": [
+    134,
+    82
+   ],
+   "noise": 0.08,
+   "perch": true,
+   "no_rocks": true,
+   "shapes": [
+    {
+     "circle": [
+      134,
+      82
+     ],
+     "r": 4.2,
+     "lv": 12
+    }
+   ],
+   "sheer": [],
+   "chests": [
+    [
+     134,
+     82,
+     2
+    ]
+   ]
+  },
+  {
+   "id": "needle",
+   "name": "Frost Needle",
+   "role": "perch",
+   "biome": "frost",
+   "danger": 2,
+   "poi": [
+    82,
+    82
+   ],
+   "noise": 0.08,
+   "perch": true,
+   "no_rocks": true,
+   "shapes": [
+    {
+     "circle": [
+      82,
+      82
+     ],
+     "r": 4.2,
+     "lv": 13
+    }
+   ],
+   "sheer": [],
+   "chests": [
+    [
+     82,
+     82,
+     2
+    ]
+   ]
+  },
+  {
+   "id": "emberspire",
+   "name": "Ember Spire",
+   "role": "perch",
+   "biome": "ember",
+   "danger": 2,
+   "poi": [
+    82,
+    134
+   ],
+   "noise": 0.08,
+   "perch": true,
+   "no_rocks": true,
+   "shapes": [
+    {
+     "circle": [
+      82,
+      134
+     ],
+     "r": 4.2,
+     "lv": 12
+    }
+   ],
+   "sheer": [],
+   "chests": [
+    [
+     82,
+     134,
+     2
+    ]
+   ]
+  },
+  {
+   "id": "eye",
+   "name": "Gloom Eye",
+   "role": "perch",
+   "biome": "gloom",
+   "danger": 2,
+   "poi": [
+    134,
+    134
+   ],
+   "noise": 0.08,
+   "perch": true,
+   "no_rocks": true,
+   "shapes": [
+    {
+     "circle": [
+      134,
+      134
+     ],
+     "r": 4.2,
+     "lv": 11
+    }
+   ],
+   "sheer": [],
+   "chests": [
+    [
+     134,
+     134,
+     2
+    ]
+   ]
+  }
+ ],
+ "bridges": [
+  {
+   "name": "North Span",
+   "a": "heart",
+   "b": "keep",
+   "from": [
+    106.0,
+    91.0
+   ],
+   "to": [
+    106.0,
+    67.2
+   ],
+   "r": 2.2
+  },
+  {
+   "name": "Frost Steps",
+   "a": "heart",
+   "b": "keep",
+   "from": [
+    120.7,
+    95.5
+   ],
+   "to": [
+    122.5,
+    65.8
+   ],
+   "r": 1.0
+  },
+  {
+   "name": "Bramble Bridge",
+   "a": "heart",
+   "b": "nest",
+   "from": [
+    110.0,
+    125.0
+   ],
+   "to": [
+    110.0,
+    148.8
+   ],
+   "r": 1.6
+  },
+  {
+   "name": "Thorn Walk",
+   "a": "heart",
+   "b": "nest",
+   "from": [
+    95.3,
+    120.5
+   ],
+   "to": [
+    93.5,
+    150.2
+   ],
+   "r": 1.0
+  },
+  {
+   "name": "Quarry Causeway",
+   "a": "heart",
+   "b": "quarry",
+   "from": [
+    91.0,
+    105.5
+   ],
+   "to": [
+    60.5,
+    104.6
+   ],
+   "r": 2.0
+  },
+  {
+   "name": "Storm Causeway",
+   "a": "heart",
+   "b": "shrine",
+   "from": [
+    125.0,
+    110.5
+   ],
+   "to": [
+    150.7,
+    111.3
+   ],
+   "r": 1.8
+  },
+  {
+   "name": "Lantern Road",
+   "a": "keep",
+   "b": "lantern",
+   "from": [
+    78.0,
+    49.8
+   ],
+   "to": [
+    56.6,
+    47.7
+   ],
+   "r": 1.6
+  },
+  {
+   "name": "Gull Road",
+   "a": "keep",
+   "b": "gull",
+   "from": [
+    138.0,
+    49.8
+   ],
+   "to": [
+    159.4,
+    47.7
+   ],
+   "r": 1.6
+  },
+  {
+   "name": "Moss Road",
+   "a": "nest",
+   "b": "moss",
+   "from": [
+    78.0,
+    166.2
+   ],
+   "to": [
+    56.6,
+    168.3
+   ],
+   "r": 1.6
+  },
+  {
+   "name": "Still Road",
+   "a": "nest",
+   "b": "still",
+   "from": [
+    138.0,
+    166.2
+   ],
+   "to": [
+    159.4,
+    168.3
+   ],
+   "r": 1.6
+  },
+  {
+   "name": "Quarry North Road",
+   "a": "quarry",
+   "b": "lantern",
+   "from": [
+    53.0,
+    76.8
+   ],
+   "to": [
+    49.1,
+    56.2
+   ],
+   "r": 1.4
+  },
+  {
+   "name": "Quarry South Road",
+   "a": "quarry",
+   "b": "moss",
+   "from": [
+    53.0,
+    139.2
+   ],
+   "to": [
+    49.1,
+    159.8
+   ],
+   "r": 1.4
+  },
+  {
+   "name": "Storm North Road",
+   "a": "shrine",
+   "b": "gull",
+   "from": [
+    163.0,
+    74.9
+   ],
+   "to": [
+    166.8,
+    56.2
+   ],
+   "r": 1.4
+  },
+  {
+   "name": "Storm South Road",
+   "a": "shrine",
+   "b": "still",
+   "from": [
+    163.0,
+    141.1
+   ],
+   "to": [
+    166.8,
+    159.8
+   ],
+   "r": 1.4
+  },
+  {
+   "name": "Port Stair",
+   "a": "keep",
+   "b": "skyport",
+   "from": [
+    108.0,
+    40.8
+   ],
+   "to": [
+    108.0,
+    23.5
+   ],
+   "r": 1.4
+  },
+  {
+   "name": "Dawn Bridge",
+   "a": "nest",
+   "b": "dawn",
+   "from": [
+    108.0,
+    175.2
+   ],
+   "to": [
+    108.0,
+    192.5
+   ],
+   "r": 1.4
+  },
+  {
+   "name": "Iron Rope",
+   "a": "quarry",
+   "b": "iron",
+   "from": [
+    47.5,
+    108.0
+   ],
+   "to": [
+    22.5,
+    108.0
+   ],
+   "r": 1.0
+  },
+  {
+   "name": "Fern Rope",
+   "a": "shrine",
+   "b": "fern",
+   "from": [
+    173.2,
+    108.0
+   ],
+   "to": [
+    193.5,
+    108.0
+   ],
+   "r": 1.0
+  }
+ ],
+ "winds": [
+  [
+   "heart",
+   "shrine",
+   "Wind Gap"
+  ],
+  [
+   "skyport",
+   "lantern"
+  ],
+  [
+   "skyport",
+   "gull"
+  ],
+  [
+   "dawn",
+   "moss"
+  ],
+  [
+   "dawn",
+   "still"
+  ],
+  [
+   "iron",
+   "lantern"
+  ],
+  [
+   "iron",
+   "moss"
+  ],
+  [
+   "fern",
+   "gull"
+  ],
+  [
+   "fern",
+   "still"
+  ]
+ ],
+ "pads": [
+  [
+   "heart",
+   "spire",
+   "up"
+  ],
+  [
+   "heart",
+   "needle",
+   "up"
+  ],
+  [
+   "heart",
+   "emberspire",
+   "up"
+  ],
+  [
+   "heart",
+   "eye",
+   "up"
+  ],
+  [
+   "keep",
+   "needle",
+   "up"
+  ],
+  [
+   "shrine",
+   "spire",
+   "up"
+  ],
+  [
+   "quarry",
+   "emberspire",
+   "up"
+  ],
+  [
+   "nest",
+   "eye",
+   "up"
+  ]
+ ],
+ "updrafts": [
+  {
+   "at": [
+    125,
+    91
+   ],
+   "top": 6
+  },
+  {
+   "at": [
+    134,
+    88
+   ],
+   "top": 14
+  },
+  {
+   "at": [
+    91,
+    91
+   ],
+   "top": 6
+  },
+  {
+   "at": [
+    88,
+    82
+   ],
+   "top": 15
+  },
+  {
+   "at": [
+    91,
+    125
+   ],
+   "top": 6
+  },
+  {
+   "at": [
+    82,
+    128
+   ],
+   "top": 14
+  },
+  {
+   "at": [
+    125,
+    125
+   ],
+   "top": 6
+  },
+  {
+   "at": [
+    128,
+    134
+   ],
+   "top": 13
+  },
+  {
+   "at": [
+    76,
+    28
+   ],
+   "top": 3
+  },
+  {
+   "at": [
+    140,
+    28
+   ],
+   "top": 3
+  },
+  {
+   "at": [
+    76,
+    188
+   ],
+   "top": 3
+  },
+  {
+   "at": [
+    140,
+    188
+   ],
+   "top": 3
+  },
+  {
+   "at": [
+    28,
+    76
+   ],
+   "top": 3
+  },
+  {
+   "at": [
+    28,
+    140
+   ],
+   "top": 3
+  },
+  {
+   "at": [
+    188,
+    76
+   ],
+   "top": 3
+  },
+  {
+   "at": [
+    188,
+    140
+   ],
+   "top": 3
+  }
+ ],
+ "portals": [
+  [
+   108,
+   17
+  ],
+  [
+   108,
+   199
+  ],
+  [
+   16,
+   108
+  ],
+  [
+   200,
+   108
+  ],
+  [
+   108,
+   100
+  ]
+ ],
+ "chokepoints": [
+  "North Span",
+  "Frost Steps",
+  "Bramble Bridge",
+  "Thorn Walk",
+  "Quarry Causeway",
+  "Storm Causeway",
+  "Wind Gap"
+ ],
+ "glides": [
+  [
+   "spire",
+   "heart"
+  ],
+  [
+   "spire",
+   "keep"
+  ],
+  [
+   "spire",
+   "shrine"
+  ],
+  [
+   "needle",
+   "heart"
+  ],
+  [
+   "needle",
+   "keep"
+  ],
+  [
+   "needle",
+   "quarry"
+  ],
+  [
+   "emberspire",
+   "heart"
+  ],
+  [
+   "emberspire",
+   "quarry"
+  ],
+  [
+   "emberspire",
+   "nest"
+  ],
+  [
+   "eye",
+   "heart"
+  ],
+  [
+   "eye",
+   "nest"
+  ],
+  [
+   "eye",
+   "shrine"
+  ]
+ ]
 }
