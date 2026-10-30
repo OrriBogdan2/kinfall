@@ -757,35 +757,40 @@ func _draw_glider_heat(p: Hunter) -> void:
 ## The ability row: kin throw, the active kin's two abilities, your weapon's utility, the bond
 ## ultimate in the middle, your dodge, tonics, and gear actives.
 func _draw_abilities(sz: Vector2, p: Hunter) -> void:
+	# the kit, left to right: Q glove · E kin ability · RMB weapon ability · R bond (big) · Shift dash ·
+	# C throw kin · 1 heal, with the passive glove as a small badge at the end
 	var s := 60.0
 	var gap := 12.0
 	var us := 72.0
 	var k: Kin = p.kin
-	var gear_n := 0
-	for gi in 2:
-		if not (p.gear[gi] as Dictionary).is_empty() and Gear.active(String(p.gear[gi]["id"])): gear_n += 1
 	var util: AbilityDef = p.runner.def_of("utility") if p.runner else null
-	var has_sec := util != null
-	var n_small := (3 if k else 0) + (1 if has_sec else 0) + 2
-	var total := n_small * s + us + n_small * gap + gear_n * (48.0 + 8.0) + (8.0 if gear_n > 0 else 0.0)
+	var g0: Dictionary = p.gear[0]
+	var g1: Dictionary = p.gear[1]
+	var n_small := 1 + (1 if k else 0) + (1 if util else 0) + 1 + (1 if k else 0) + 1
+	var total := n_small * s + us + n_small * gap + (44.0 if not g1.is_empty() else 0.0)
 	var x := sz.x * 0.5 - total * 0.5
 	var y := sz.y - 88.0
+	# Q: the active glove (an empty slot shows dim, so you know to look for one)
+	var qr := Rect2(Vector2(x, y), Vector2(s, s))
+	if not g0.is_empty() and Gear.ALL.has(String(g0["id"])):
+		var gd: Dictionary = Gear.ALL[String(g0["id"])]
+		var gcd := float(p.gear_cd[0])
+		_ab_slot("gear0", qr, Gear.icon_of(String(g0["id"])), Settings.key_cap("gear1"), gd["col"], gcd / float(gd["cd"]) if gcd > 0.0 else 0.0, gcd, gcd <= 0.0)
+	else:
+		_rounded(qr, Color(0.05, 0.06, 0.09, 0.55), 12, Color(1, 1, 1, 0.12), 1)
+		_ctext(qr.get_center() + Vector2(0, 5), "glove", 11, Color(MUTED, 0.6))
+		_keycap(Vector2(qr.get_center().x, qr.end.y + 2), Settings.key_cap("gear1"), Color(MUTED, 0.5))
+	x += s + gap
+	# E: your kin's ability
 	if k:
-		var kc: Color = Data.KIN[k.species]["color"]
-		var out_now: bool = k.state in ["active", "flying", "returning"]
-		var can_throw: bool = (k.state == "shoulder" and k.throw_cd <= 0.0) or out_now
-		_ab_slot("throw", Rect2(Vector2(x, y), Vector2(s, s)), "recall" if out_now else "throw", Settings.key_cap("throw"), kc, k.throw_cd / 1.0 if k.throw_cd > 0.0 else 0.0, k.throw_cd, can_throw, -1, 0, "Recall" if out_now else "")
+		var kd: AbilityDef = k.runner.def_of("k1")
+		if kd:
+			var rdy: bool = k.runner.is_ready("k1") and k.ready_to_fight() and k.state != "fused"
+			_ab_slot("k1", Rect2(Vector2(x, y), Vector2(s, s)), kd.icon, Settings.key_cap("signature"), kd.color, k.runner.cd_frac("k1"), k.runner.cd_left("k1") if not k.runner.is_ready("k1") else 0.0, rdy)
+			if not k.ready_to_fight():
+				_rounded(Rect2(Vector2(x, y), Vector2(s, s)), Color(0, 0, 0, 0.45), 12)
 		x += s + gap
-		for slot in ["k1", "k2"]:
-			var kd: AbilityDef = k.runner.def_of(slot)
-			var act := "signature" if slot == "k1" else "kin_skill"
-			if kd:
-				var rdy: bool = k.runner.is_ready(slot) and k.ready_to_fight() and k.state != "fused"
-				_ab_slot(slot, Rect2(Vector2(x, y), Vector2(s, s)), kd.icon, Settings.key_cap(act), kd.color, k.runner.cd_frac(slot), k.runner.cd_left(slot) if not k.runner.is_ready(slot) else 0.0, rdy)
-				if not k.ready_to_fight():
-					_rounded(Rect2(Vector2(x, y), Vector2(s, s)), Color(0, 0, 0, 0.45), 12)
-			x += s + gap
-	# right click: the weapon's utility
+	# right click: the weapon's ability
 	if util:
 		var sr := Rect2(Vector2(x, y), Vector2(s, s))
 		_ab_slot("sec", sr, util.icon, Settings.key_cap("secondary"), util.color, p.runner.cd_frac("utility"), p.runner.cd_left("utility") if not p.runner.is_ready("utility") else 0.0, p.runner.is_ready("utility"), p.runner.charges("utility") if util.charges > 1 else -1, util.charges if util.charges > 1 else 0)
@@ -807,29 +812,35 @@ func _draw_abilities(sz: Vector2, p: Hunter) -> void:
 		var fd: UltimateDef = p.fuse["def"]
 		_bar(Rect2(Vector2(ur.position.x, ur.end.y + 12), Vector2(us, 4)), clampf(float(p.fuse["t"]) / fd.time, 0.0, 1.0), fd.color)
 	elif k and not k.giant.is_empty():
-		var gd: UltimateDef = k.giant["def"]
-		_bar(Rect2(Vector2(ur.position.x, ur.end.y + 12), Vector2(us, 4)), clampf(float(k.giant["t"]) / gd.time, 0.0, 1.0), gd.color)
+		var gdu: UltimateDef = k.giant["def"]
+		_bar(Rect2(Vector2(ur.position.x, ur.end.y + 12), Vector2(us, 4)), clampf(float(k.giant["t"]) / gdu.time, 0.0, 1.0), gdu.color)
 	x += us + gap
 	var dmax := p.max_dashes()
 	var dcd := (1.0 - fposmod(p.dashes, 1.0)) if p.dashes < dmax else 0.0
 	_ab_slot("dash", Rect2(Vector2(x, y), Vector2(s, s)), "dash", Settings.key_cap("dash"), Color("bfe6ff"), dcd if p.dashes < 1.0 else 0.0, (1.0 - fposmod(p.dashes, 1.0)) * p.dash_regen() if p.dashes < 1.0 else 0.0, p.dashes >= 1.0, int(floor(p.dashes)), int(dmax))
 	x += s + gap
-	_ab_slot("tonic", Rect2(Vector2(x, y), Vector2(s, s)), "tonic", Settings.key_cap("tonic"), GOOD, 0.0, 0.0, p.tonics > 0, -1, 0)
-	_ctext(Vector2(x + s - 10, y + 18), "×%d" % p.tonics, 13, INK, big)
+	# C: throw / recall your kin
+	if k:
+		var kc: Color = Data.KIN[k.species]["color"]
+		var out_now: bool = k.state in ["active", "flying", "returning"]
+		var can_throw: bool = (k.state == "shoulder" and k.throw_cd <= 0.0) or out_now
+		_ab_slot("throw", Rect2(Vector2(x, y), Vector2(s, s)), "recall" if out_now else "throw", Settings.key_cap("throw"), kc, k.throw_cd / 1.0 if k.throw_cd > 0.0 else 0.0, k.throw_cd, can_throw, -1, 0, "Recall" if out_now else "")
+		x += s + gap
+	# 1: heal (a tonic for health; an armor kit once health is full)
+	var hurt := p.hp < p.max_hp - 0.5
+	var heal_ready := (p.tonics > 0 and hurt) or (p.armor_kits > 0 and p.armor < p.max_armor - 0.5)
+	var heal_col := GOOD if hurt or p.armor_kits <= 0 else ARMOR_COL
+	_ab_slot("tonic", Rect2(Vector2(x, y), Vector2(s, s)), "tonic" if hurt or p.armor_kits <= 0 else "fortify", Settings.key_cap("tonic"), heal_col, 0.0, 0.0, heal_ready, -1, 0)
+	_text(Vector2(x + s - 22, y + 16), "×%d" % p.tonics, 12, Color(GOOD, 0.95), big)
+	_text(Vector2(x + s - 22, y + 30), "×%d" % p.armor_kits, 12, Color(ARMOR_COL, 0.95), big)
 	x += s + gap
-	_ab_slot("kit", Rect2(Vector2(x, y), Vector2(s, s)), "fortify", Settings.key_cap("armor_kit"), ARMOR_COL, 0.0, 0.0, p.armor_kits > 0, -1, 0)
-	_ctext(Vector2(x + s - 10, y + 18), "×%d" % p.armor_kits, 13, INK, big)
-	x += s + gap + 8.0
-	# gear actives
-	for gi in 2:
-		var g: Dictionary = p.gear[gi]
-		if g.is_empty() or not Gear.active(String(g["id"])):
-			continue
-		var gd: Dictionary = Gear.ALL[String(g["id"])]
-		var gs := 48.0
-		var gcd := float(p.gear_cd[gi])
-		_ab_slot("gear%d" % gi, Rect2(Vector2(x, y + (s - gs)), Vector2(gs, gs)), String(g["id"]), Settings.key_cap("gear%d" % (gi + 1)), gd["col"], gcd / float(gd["cd"]) if gcd > 0.0 else 0.0, gcd, gcd <= 0.0)
-		x += gs + 8.0
+	# the passive glove: a small badge (hover it for what it does)
+	if not g1.is_empty() and Gear.ALL.has(String(g1["id"])):
+		var pg: Dictionary = Gear.ALL[String(g1["id"])]
+		var pr := Rect2(Vector2(x, y + s - 36.0), Vector2(36, 36))
+		_rounded(pr, Color(0.05, 0.06, 0.09, 0.85), 9, Color(pg["col"], 0.75), 1)
+		Icons.draw(c, Gear.icon_of(String(g1["id"])), pr.get_center(), 10.0, pg["col"])
+		hover_spots.append([pr, "gear1"])
 
 ## Your two kin: the active one big, the benched one small under it.
 func _draw_kin_card(sz: Vector2, p: Hunter) -> void:
@@ -993,14 +1004,17 @@ func _draw_kit(sz: Vector2, p: Hunter) -> void:
 	if p.kin:
 		var k: Kin = p.kin
 		var kcol: Color = Data.KIN[k.species]["color"]
-		for slot in ["k1", "k2"]:
-			var kd: AbilityDef = k.runner.def_of(slot)
-			if kd: lines.append([Settings.key_cap("signature" if slot == "k1" else "kin_skill"), kd.display_name, kd.desc, kd.color])
+		var kd1: AbilityDef = k.runner.def_of("k1")
+		if kd1: lines.append([Settings.key_cap("signature"), kd1.display_name, kd1.desc, kd1.color])
 		var ud := Ultimate.def_for(k)
 		if ud: lines.append([Settings.key_cap("ultimate"), ud.display_name + " (bond ultimate)", ud.desc + " Fill the bond meter by fighting together.", ud.color])
 		lines.append([Settings.key_cap("throw"), "Throw / recall " + String(k.rec.get("name", "your kin")), "Stuns what it hits; then your shots deal a combo. Press again to call it back.", kcol])
-		if p.kin2:
-			lines.append([Settings.key_cap("swap_kin"), "Swap to " + String((p.kin2 as Kin).rec.get("name", "your other kin")), "Your other kin, with its own abilities and ultimate.", Data.KIN[(p.kin2 as Kin).species]["color"]])
+	var g0: Dictionary = p.gear[0]
+	if not g0.is_empty() and Gear.ALL.has(String(g0["id"])):
+		var gdd: Dictionary = Gear.ALL[String(g0["id"])]
+		lines.append([Settings.key_cap("gear1"), String(gdd["name"]), String(gdd["desc"]), gdd["col"]])
+	else:
+		lines.append([Settings.key_cap("gear1"), "Glove (empty)", "Find gloves in chests, vaults and on bosses. An active glove goes here.", MUTED])
 	var w := 356.0
 	# each row: the key and name, then the description wrapped to the panel
 	var hs: Array = []
@@ -1356,7 +1370,7 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 			if g.is_empty(): return []
 			var gd: Dictionary = Gear.ALL[String(g["id"])]
 			out.append([gd["name"], gd["col"]])
-			out.append(["Gear active  ·  %s" % Settings.key_cap("gear%d" % (int(id.substr(4)) + 1)), MUTED, 12])
+			out.append(["Active glove  ·  %s" % Settings.key_cap("gear1") if int(id.substr(4)) == 0 else "Passive glove", MUTED, 12])
 			out.append([gd["desc"], INK, 14])
 			out.append([Gear.stat_text(String(g["id"]), int(g.get("rar", 1))), MUTED, 13])
 		"throw":
@@ -1376,12 +1390,12 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 			out.append(["%d of %d charges. One comes back every %s." % [int(floor(p.dashes)), int(p.max_dashes()), _secs(p.dash_regen())], MUTED, 13])
 		"kit":
 			out.append(["Armor kit", ARMOR_COL])
-			out.append(["Item  ·  %s" % Settings.key_cap("armor_kit"), MUTED, 12])
+			out.append(["Item  ·  %s (when your health is full)" % Settings.key_cap("tonic"), MUTED, 12])
 			out.append(["Repairs your armor to full. Armor takes 20%% off every hit while it lasts, and doesn't come back on its own. You're carrying %d." % p.armor_kits, INK, 14])
 		"tonic":
-			out.append(["Tonic", GOOD])
+			out.append(["Heal", GOOD])
 			out.append(["Item  ·  %s" % Settings.key_cap("tonic"), MUTED, 12])
-			out.append(["Heals 40%% of your health. Health doesn't come back on its own. You're carrying %d. Find more in chests, or cook them at home." % p.tonics, INK, 14])
+			out.append(["Drinks a tonic (40%% of your health) when you're hurt; with full health it uses an armor kit instead. Neither comes back on its own. Carrying %d tonics and %d kits." % [p.tonics, p.armor_kits], INK, 14])
 		"weapon":
 			var wp: Dictionary = p.wpn
 			var rc: Color = Data.RARITY[p.wrar]["color"] if p.wrar > 0 else Color("e6dccb")

@@ -992,7 +992,21 @@ func use_tonic() -> void:
 	drink_t = DRINK_TIME
 	m.sfx("pickup", pos, -6.0, 0.7)
 
-## Repairing armor with a kit (2): the same kind of short channel as a tonic.
+## 1: heal. One key for both consumables: a tonic when you're hurt, otherwise an armor kit when
+## your armor is down. Pressing it with nothing to fix (or nothing to use) buzzes.
+func use_heal() -> void:
+	if drink_t > 0.0 or kit_t > 0.0:
+		return
+	if tonics > 0 and hp < max_hp - 0.5:
+		use_tonic()
+	elif armor_kits > 0 and armor < max_armor - 0.5:
+		use_kit()
+	else:
+		_ab_feedback("tonic", "deny")
+		return
+	_ab_feedback("tonic", "cast")
+
+## Repairing armor with a kit: the same kind of short channel as a tonic.
 var armor_kits := 1
 var finish_t := 0.0             # holding interact over a downed enemy (until the stomp commits)
 var stomp: Dictionary = {}      # committed stomp on an enemy wisp: {o, t, hits} (see Life)
@@ -1119,10 +1133,12 @@ func sim(dt: float) -> void:
 	for gi in 2:
 		gear_cd[gi] = maxf(0.0, float(gear_cd[gi]) - dt)
 		if inp.get("gear%d" % (gi + 1), false):
-			m.use_gear(self, gi)
+			if (gear[gi] as Dictionary).is_empty() or float(gear_cd[gi]) > 0.0 or not Gear.active(String(gear[gi].get("id", ""))):
+				_ab_feedback("gear%d" % gi, "deny")
+			else:
+				m.use_gear(self, gi)
 	if inp["sig"]: use_kin_ability("k1")
-	if inp["skill"]: use_kin_ability("k2")
-	if inp["swap"]: swap_kin()
+	# (a kin's second ability and mid-fight kin swaps are retired from the kit; bots don't press them)
 	if inp["sec"] and runner and runner.has_slot("utility"):
 		if runner.use("utility"):
 			used["utility"] = int(used.get("utility", 0)) + 1
@@ -1130,7 +1146,7 @@ func sim(dt: float) -> void:
 		else:
 			_ab_feedback("sec", "deny")
 	if inp["reload"]: start_reload()
-	if inp["tonic"]: use_tonic()
+	if inp["tonic"]: use_heal()
 	if inp.get("kit", false): use_kit()
 	_tick_drink(dt)
 	_tick_kit(dt)

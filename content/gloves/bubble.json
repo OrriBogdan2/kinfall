@@ -1,0 +1,18 @@
+{
+ "name": "Bubble Glove",
+ "cd": 20,
+ "col": "8ad8ff",
+ "stats": {
+  "armor": 5
+ },
+ "icon": "brightshield",
+ "desc": "Wrap yourself in a bubble that soaks up 45 damage for 3s.",
+ "effects": [
+  {
+   "type": "shield",
+   "amount": 45.0,
+   "time": 3.0
+  }
+ ],
+ "id": "bubble"
+}

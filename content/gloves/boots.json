@@ -1,0 +1,11 @@
+{
+ "name": "Swift Glove",
+ "cd": 0,
+ "col": "8fd16a",
+ "stats": {
+  "speed": 0.1
+ },
+ "icon": "dash",
+ "desc": "10% faster on foot.",
+ "id": "boots"
+}

@@ -1,0 +1,11 @@
+{
+ "name": "Ledge Glove",
+ "cd": 40,
+ "col": "ffd27a",
+ "stats": {
+  "heat": 0.15
+ },
+ "icon": "platform",
+ "desc": "Pop a floating platform under your feet for 8s. Your rescue over the abyss.",
+ "id": "platform"
+}

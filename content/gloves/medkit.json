@@ -1,0 +1,11 @@
+{
+ "name": "Mending Glove",
+ "cd": 28,
+ "col": "8fe0a0",
+ "stats": {
+  "armor": 10
+ },
+ "icon": "medkit",
+ "desc": "Heal 40 health and 20 armor.",
+ "id": "medkit"
+}

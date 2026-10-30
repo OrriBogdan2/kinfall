@@ -263,8 +263,8 @@ func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String
 		kins.append(k)
 		ents_by_id[k.nid] = k
 		h.kin = k
-	if not kin_rec2.is_empty() and not kin_rec.is_empty():
-		# everyone brings two kin: the second waits on the bench until you swap (X)
+	if TWO_KIN and not kin_rec2.is_empty() and not kin_rec.is_empty():
+		# (retired) everyone brought two kin: the second waited on the bench until you swapped
 		var k2 := Kin.new()
 		k2.init_kin(self, id + "k2", kin_rec2["species"], kin_rec2, h)
 		add_child(k2)
@@ -274,6 +274,9 @@ func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String
 		ents_by_id[k2.nid] = k2
 		h.kin2 = k2
 	return h
+
+## One kin per expedition: a short, readable kit. Flip back on to bring a benched second kin again.
+const TWO_KIN := false
 
 func my_kit() -> Dictionary:
 	return {"weapon": String(opts.get("weapon", Save.d.get("weapon", ""))), "perk": ""}
@@ -632,6 +635,15 @@ func _spawn_breakables() -> void:
 			q.y = world.ground_at(q.x, q.z)
 			if t[1] == "weapon": spawn_weapon("sniper", 2, q, "", false)
 			else: _add_break(t[1], q)
+		# a glove rack: a row of gloves to try (actives go in your Q slot, passives in the other)
+		var gi := 0
+		for gid in ["blink", "quake", "bubble", "grapple", "frost", "power_core"]:
+			var q2: Vector3 = player.pos + Vector3(-3.0 + gi * 1.2, 0, -2.4)
+			gi += 1
+			if world.is_void(q2.x, q2.z) or world.is_block(q2.x, q2.z):
+				continue
+			q2.y = world.ground_at(q2.x, q2.z)
+			spawn_gear(gid, 2, q2)
 	# the weapons lying in the open are the same for everyone in an online match
 	var wr := RandomNumberGenerator.new(); wr.seed = seed_val * 31 + 7
 	var keys: Array = Data.weapon_ids()
@@ -671,7 +683,7 @@ func spawn_gear(gid: String, rar: int, at: Vector3) -> void:
 func _take_gear(h: Hunter, wp: Dictionary) -> void:
 	wpicks.erase(wp)
 	(wp["node"] as Node3D).queue_free()
-	var slot := 0 if h.gear[0].is_empty() else (1 if h.gear[1].is_empty() else 1)
+	var slot := Gear.slot_of(String(wp["gear"]))      # actives go in the Q slot, passives in the other
 	var old: Dictionary = h.gear[slot]
 	h.gear[slot] = {"id": wp["gear"], "rar": int(wp["rar"])}
 	h.gear_cd[slot] = 0.0
@@ -684,7 +696,7 @@ func _take_gear(h: Hunter, wp: Dictionary) -> void:
 	fx.ring(h.pos, 1.4, col, 0.35)
 	if h == player and hud:
 		var g: Dictionary = Gear.ALL[wp["gear"]]
-		hud.toast("%s  ·  %s%s" % [g["name"], Gear.stat_text(wp["gear"], int(wp["rar"])), ("  ·  " + Settings.key_cap("gear%d" % (slot + 1))) if Gear.active(wp["gear"]) else ""], col)
+		hud.toast("%s  ·  %s%s" % [g["name"], Gear.stat_text(wp["gear"], int(wp["rar"])), ("  ·  " + Settings.key_cap("gear1")) if Gear.active(wp["gear"]) else "  ·  passive"], col)
 
 ## Fire the active on a gear slot.
 func use_gear(h: Hunter, slot: int) -> void:
@@ -698,6 +710,13 @@ func use_gear(h: Hunter, slot: int) -> void:
 	h.gear_cd[slot] = float(gd["cd"])
 	var col: Color = gd["col"]
 	h.reveal_t = maxf(h.reveal_t, 0.6)
+	if h == player:
+		h._ab_feedback("gear0", "cast")
+	if gd.has("effects"):
+		# newer gloves are built from the same effect blocks as abilities
+		Effects.run(gd["effects"], h, {})
+		sfx("skill", h.pos, -4.0, 1.0)
+		return
 	match gid:
 		"jump_pad":
 			var d := h.aim_dir()
@@ -2312,7 +2331,7 @@ func _gather_input() -> void:
 	if paused:
 		player.inp["move"] = Vector2.ZERO
 	player.inp["interact"] = Input.is_action_pressed("interact")
-	# hold Space, or the back side mouse button (Mouse 4), in the air to glide; Mouse 4 never jumps
+	# hold Space or Mouse 5 (Mouse 4 works too) in the air to glide; the mouse buttons never jump
 	player.inp["glide"] = (Input.is_action_pressed("jump") or Input.is_action_pressed("glide")) and not paused
 	player.inp["dash_hold"] = Input.is_action_pressed("dash") and bool(Settings.get_v("dash_hold"))
 	var quick: bool = Settings.get_v("cast_on_press")
@@ -2334,10 +2353,12 @@ func _gather_input() -> void:
 				choose_perk(pi)
 			elif not Input.is_physical_key_pressed(KEY_1 + pi):
 				_perk_keys_down.erase(pi)
-	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["armor_kit", "kit"], ["throw", "throw"], ["kin_skill", "skill"], ["ultimate", "ult"], ["secondary", "sec"], ["gear1", "gear1"], ["gear2", "gear2"], ["swap_kin", "swap"]]:
-		if a[0] in ["tonic", "armor_kit"] and (not perk_offer.is_empty() or not _perk_keys_down.is_empty()):
-			continue       # 1 and 2 pick a perk while a choice is open
-		var aimable: bool = a[0] in ["signature", "ultimate", "kin_skill"] and not quick
+	# the kit: Q glove, E kin ability, C throw kin, R bond, 1 heal (the second kin ability, kin swap
+	# and the separate armor-kit key are retired)
+	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["ultimate", "ult"], ["secondary", "sec"], ["gear1", "gear1"]]:
+		if a[0] == "tonic" and (not perk_offer.is_empty() or not _perk_keys_down.is_empty()):
+			continue       # 1, 2 and 3 pick a perk while a choice is open
+		var aimable: bool = a[0] in ["signature", "ultimate"] and not quick
 		if aimable:
 			# hold to see where it will land, let go to cast it
 			if Input.is_action_just_pressed(a[0]) and not paused:
@@ -2691,7 +2712,10 @@ func _update_interact(dt: float) -> void:
 					bd = d
 					var gd: Dictionary = Gear.ALL[wp["gear"]]
 					var rn: String = String(Data.RARITY[int(wp["rar"])]["name"]) + " " if int(wp["rar"]) > 1 else ""
-					best = {"kind": "weapon", "wp": wp, "label": "Press %s to take %s%s  (%s)" % [Settings.key_cap("interact"), rn, gd["name"], Gear.stat_text(wp["gear"], int(wp["rar"]))], "col": gd["col"]}
+					var gslot := Gear.slot_of(String(wp["gear"]))
+					var cur: Dictionary = h.gear[gslot]
+					var swap_txt := ("  ·  replaces " + String(Gear.ALL[String(cur["id"])]["name"])) if not cur.is_empty() and Gear.ALL.has(String(cur["id"])) else ""
+					best = {"kind": "weapon", "wp": wp, "label": "Press %s to take %s%s  (%s glove%s: %s)%s" % [Settings.key_cap("interact"), rn, gd["name"], "active" if gslot == 0 else "passive", ("  ·  " + Settings.key_cap("gear1")) if gslot == 0 else "", Gear.stat_text(wp["gear"], int(wp["rar"])), swap_txt], "col": gd["col"]}
 				elif d < bd and absf(h.pos.y - float(wp["pos"].y)) < 1.2:
 					bd = d
 					var r: Dictionary = Data.RARITY[int(wp["rar"])]
@@ -2899,7 +2923,7 @@ const TUT := [
 	["land", "Steer with %K to choose where you land"],
 	["move", "Walk around with %K"],
 	["dash", "Press %K to dash"],
-	["glide", "Press %K to jump. Hold it (or Mouse 4) in the air to glide"],
+	["glide", "Press %K to jump, then hold Mouse 5 (or Space) in the air to glide. Mouse 5 is the easy way"],
 	["exdash", "Jump, then press %K in the air for a long dash"],
 	["shoot", "%W"],
 	["utility", "Press %K: %A"],
@@ -2916,11 +2940,11 @@ var tut_used0 := {}
 
 # ---- training area
 ## [id, what to do, the action whose key it uses ("" for none)]
-const TRAIN := [["move", "Walk around", "up"], ["dash", "Dash", "dash"], ["glide", "Jump, then hold it (or Mouse 4) in the air to glide", "jump"],
-	["shoot", "Shoot a target dummy", "fire"], ["ability", "Use your kin's first ability", "signature"], ["ult", "Fill the bond meter and use your bond ultimate", "ultimate"],
-	["secondary", "Use your right-click utility", "secondary"], ["swap", "Swap to your other kin", "swap_kin"],
-	["crouch", "Crouch: slower, steadier aim, harder to spot", "crouch"],
-	["throw", "Throw your kin at a dummy", "throw"], ["kinskill", "Use your kin's second ability", "kin_skill"], ["combo", "Land a combo: shoot a foe your kin just stunned or rooted", "fire"], ["tonic", "Drink a tonic to heal", "tonic"],
+const TRAIN := [["move", "Walk around", "up"], ["dash", "Dash", "dash"], ["glide", "Jump, then hold Mouse 5 or Space in the air to glide", "jump"],
+	["shoot", "Shoot a target dummy", "fire"], ["ability", "Use your kin's ability", "signature"], ["ult", "Fill the bond meter and use your bond ultimate", "ultimate"],
+	["secondary", "Use your weapon ability (right click)", "secondary"], ["glove", "Use your glove (pick one up from the rack first)", "gear1"],
+	["crouch", "Sneak: slower, steadier aim, harder to spot", "crouch"],
+	["throw", "Throw your kin at a dummy", "throw"], ["combo", "Land a combo: shoot a foe your kin just stunned or rooted", "fire"], ["tonic", "Heal (tonic, or armor kit when health is full)", "tonic"],
 	["stagger", "Stagger a big dummy: hit it with an ability while it has a purple ring", "signature"],
 	["smash", "Break a crate or pot", "fire"], ["weapon", "Take a found weapon off the ground", "interact"],
 	["ledge", "Dash off an edge and float back up", ""]]
@@ -2950,13 +2974,12 @@ func _update_training(dt: float) -> void:
 		"glide": player.gliding and not player.dropping,
 		"shoot": player.dmg_done > 0.0,
 		"ability": player.kin != null and (player.kin as Kin).runner.has_slot("k1") and not (player.kin as Kin).runner.is_ready("k1"),
-		"swap": player.kin2 != null and train.get("_swapped", false),
+		"glove": float(player.gear_cd[0]) > 0.0,
 		"combo": int(player.stats.get("combos", 0)) > 0,
 		"crouch": player.crouch,
 		"secondary": player.runner != null and player.runner.has_slot("utility") and not player.runner.is_ready("utility"),
 		"ult": was_ult and player.ult < 0.5,
 		"throw": player.kin != null and player.kin.st_throws > 0,
-		"kinskill": player.kin != null and (player.kin as Kin).runner.has_slot("k2") and not (player.kin as Kin).runner.is_ready("k2"),
 		"tonic": player.tonics < int(train.get("_tonics", player.tonics)),
 		"ledge": player.grap.size() > 0 or player.mantle_k() > 0.0,
 		"smash": train.get("_smash", false),

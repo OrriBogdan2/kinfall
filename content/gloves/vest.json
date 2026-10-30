@@ -1,0 +1,11 @@
+{
+ "name": "Plated Glove",
+ "cd": 0,
+ "col": "b0e4ff",
+ "stats": {
+  "armor": 25
+ },
+ "icon": "brightshield",
+ "desc": "25 more armor.",
+ "id": "vest"
+}

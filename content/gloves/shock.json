@@ -1,0 +1,11 @@
+{
+ "name": "Shock Glove",
+ "cd": 16,
+ "col": "fff27a",
+ "stats": {
+  "dmg": 0.05
+ },
+ "icon": "shock",
+ "desc": "Blast everything around you away. Great for knocking rivals off the edge.",
+ "id": "shock"
+}

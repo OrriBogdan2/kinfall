@@ -1,0 +1,30 @@
+{
+ "name": "Quake Glove",
+ "cd": 18,
+ "col": "ff9a5a",
+ "stats": {
+  "dmg": 0.04
+ },
+ "icon": "quake",
+ "desc": "Punch the ground: after a short wind-up, everyone close is thrown into the air.",
+ "effects": [
+  {
+   "type": "telegraph",
+   "radius": 2.8,
+   "time": 0.35,
+   "at": "self",
+   "color": "ff9a5a"
+  },
+  {
+   "type": "area",
+   "radius": 2.8,
+   "dmg": 14.0,
+   "lift": 9.0,
+   "kb": 3.0,
+   "at": "self",
+   "delay": 0.35,
+   "color": "ff9a5a"
+  }
+ ],
+ "id": "quake"
+}

@@ -1,0 +1,25 @@
+{
+ "name": "Blink Glove",
+ "cd": 14,
+ "col": "c9a0ff",
+ "stats": {
+  "speed": 0.03
+ },
+ "icon": "blink",
+ "desc": "Blink 5 tiles toward the cursor. Never into the abyss.",
+ "effects": [
+  {
+   "type": "burst",
+   "color": "c9a0ff"
+  },
+  {
+   "type": "blink",
+   "distance": 5.0
+  },
+  {
+   "type": "burst",
+   "color": "c9a0ff"
+  }
+ ],
+ "id": "blink"
+}

@@ -1981,7 +1981,7 @@ func _open_expedition() -> void:
 		v.add_child(UI.section("Kin you bring"))
 		v.add_child(_kin_pick_row("Partner", ak, "active"))
 		var k2 := Save.second_kin()
-		if Save.d["roster"].size() > 1:
+		if Match.TWO_KIN and Save.d["roster"].size() > 1:
 			v.add_child(_kin_pick_row("Second", k2, "active2"))
 		if float(ak["trust"]) < 30.0:
 			v.add_child(UI.label("%s doesn't trust you much yet and may refuse risky throws. Spend time with it, or feed it a Mindmint treat." % ak["name"], 13, UI.BAD))

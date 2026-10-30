@@ -62,21 +62,22 @@ func _setup_input() -> void:
 	_key("left", [KEY_A, KEY_LEFT]); _key("right", [KEY_D, KEY_RIGHT])
 	_key("fire", [], MOUSE_BUTTON_LEFT)
 	_key("secondary", [], MOUSE_BUTTON_RIGHT) # your hero's right-click ability
-	# match keys: Q and E your kin's two abilities, RMB your hero's secondary, R the bond ultimate,
-	# Shift dash, Space jump and glide, Ctrl sneak, F interact, C throw / recall your kin, X swap
-	# kin, 1 tonic, 2 and 3 your gear actives.
-	_key("signature", [KEY_Q])                # your active kin's first ability
-	_key("kin_skill", [KEY_E])                # your active kin's second ability (Supervive: E is an ability)
+	# match keys (one short kit, like Supervive): LMB weapon, RMB weapon ability, Shift dash, Space
+	# jump and glide (Mouse 5 glides too), Q your active glove, E your kin's ability,
+	# C or middle mouse throw / recall your kin, R the bond ultimate, 1 heal, F interact, Ctrl sneak.
+	_key("signature", [KEY_E])                # your kin's ability
+	_key("kin_skill", [])                     # a kin's second ability: retired from the kit (data kept)
 	_key("interact", [KEY_F])                 # catch, open, pick up, finish a downed enemy (Supervive: F)
-	_key("armor_kit", [KEY_2])                # repair your armor (Supervive: 2)
-	_key("gear1", [KEY_3])                    # active on your first piece of gear
-	_key("gear2", [KEY_4])                    # active on your second piece of gear
+	_key("armor_kit", [])                     # merged into heal (1)
+	_key("gear1", [KEY_Q])                    # your active glove
+	_key("gear2", [])                         # the second glove slot is passive: no key
 	_key("crouch", [KEY_CTRL])                # sneak: slower, quieter, and you see further
-	_key("throw", [KEY_C])                    # throw your kin, or call it back
-	_key("swap_kin", [KEY_X])                 # swap which of your two kin is active
+	_key("throw", [KEY_C], MOUSE_BUTTON_MIDDLE)  # throw your kin, or call it back (C or middle mouse)
+	_key("swap_kin", [])                      # one kin per expedition now; kept so old code paths compile
 	_key("dash", [KEY_SHIFT])
 	_key("jump", [KEY_SPACE])
-	_key("glide", [], MOUSE_BUTTON_XBUTTON1)  # hold the back side mouse button (Mouse 4) to glide, like holding Space in the air
+	_key("glide", [], MOUSE_BUTTON_XBUTTON2)  # hold Mouse 5 (the front side button) in the air to glide, like holding Space; never jumps
+	_key("glide", [], MOUSE_BUTTON_XBUTTON1)  # Mouse 4 glides too (not advertised)
 	_key("reload", [])                        # reloading is automatic
 	_key("ultimate", [KEY_R])                 # bond ultimate, when the bond meter is full
 	_key("tonic", [KEY_1])

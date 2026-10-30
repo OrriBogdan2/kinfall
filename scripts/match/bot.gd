@@ -144,6 +144,10 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 			a["abil_t"] = randf_range(0.4, 1.0) * (1.0 + (1.0 - abil) * 4.0)
 			_use_sig(m, h, tgt)
 			_use_sec(m, h, tgt)
+			# the active glove (Q), now and then, more often on harder bots
+			if h.gear_cd[0] <= 0.0 and not (h.gear[0] as Dictionary).is_empty() and Gear.active(String(h.gear[0]["id"])) and randf() < abil * 0.45:
+				h.inp["aim"] = Vector3(tgt.pos.x, tgt.pos.y, tgt.pos.z)
+				inp["gear1"] = true
 	else:
 		a["tgt"] = null
 		var goal: Vector3 = a["goal"]

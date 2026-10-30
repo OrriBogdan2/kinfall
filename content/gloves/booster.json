@@ -1,0 +1,12 @@
+{
+ "name": "Glider Glove",
+ "cd": 0,
+ "col": "6ac0ff",
+ "stats": {
+  "glide_speed": 0.2,
+  "heat": 0.2
+ },
+ "icon": "updraft",
+ "desc": "Glide 20% faster and longer.",
+ "id": "booster"
+}
