@@ -361,8 +361,8 @@ save('portal', mix(tone(200, 600, d, (1.0, 0.1)) * swell(n, 0.25, 0.45) * 0.5, t
      rms_db=-20, lp=2400)
 save('revive', mix(bell(523, 0.5, 0.01, 0.14), at(bell(659, 0.5, 0.01, 0.14), 0.13), at(bell(784, 0.8, 0.01, 0.3), 0.26)), rms_db=-20, lp=3400)
 # ui: short, soft ticks
-save('click', tone(820, 650, 0.05, (1.0, 0.1)) * env(N(0.05), 0.004, 0.01), rms_db=-24, lp=3000)
-save('hover', tone(1050, 980, 0.04) * env(N(0.04), 0.004, 0.008), rms_db=-29, lp=3000)
+save('click', tone(820, 650, 0.05, (1.0, 0.1)) * env(N(0.05), 0.004, 0.01), rms_db=-22, lp=3000)
+save('hover', tone(1050, 980, 0.04) * env(N(0.04), 0.004, 0.008), rms_db=-25, lp=3000)
 def knock(f):
     return mix(tone(f, f * 0.75, 0.08, (1.0, 0.15)) * env(N(0.08), 0.003, 0.018), bpf(noise(0.08), 400, 1400) * env(N(0.08), 0.003, 0.012) * 0.6)
 save('build', cat(knock(300), gap(0.09), knock(270), gap(0.09), knock(330)), rms_db=-22, lp=2000)
