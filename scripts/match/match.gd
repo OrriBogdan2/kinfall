@@ -284,6 +284,13 @@ func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String
 		h.kin2 = k2
 	return h
 
+## How high the player is over the ground under them (over the abyss: over the last ground they stood on).
+func player_altitude() -> float:
+	if player == null:
+		return 0.0
+	var g := world.ground_at(player.pos.x, player.pos.z) if not world.is_void(player.pos.x, player.pos.z) else player.last_gy
+	return maxf(0.0, player.pos.y - g)
+
 ## One kin per expedition: a short, readable kit. Flip back on to bring a benched second kin again.
 const TWO_KIN := false
 
@@ -809,6 +816,41 @@ func use_gear(h: Hunter, slot: int) -> void:
 		"shock":
 			Abil._blast(h, h.pos, 3.4, 12.0, 13.0, col, 5.0, "gear")
 			shake(0.3, h.pos)
+		"rocket":
+			# straight up: a column of thrust that also cools your glider, so you can keep going
+			var d := h.aim_dir()
+			h.vel = Vector3(h.vel.x * 0.5 + d.x * 2.0, 17.0, h.vel.z * 0.5 + d.y * 2.0)
+			h.grounded = false
+			h.glide_cd = 0.0
+			h.shot_down = false
+			h.roll_t = 0.0
+			h.glide_fuel = minf(1.0, h.glide_fuel + 0.5)
+			fx.burst(h.pos + Vector3(0, 0.2, 0), col, 26, 6.0, 0.5, -1.0, 1.2, Vector3.DOWN, 30.0)
+			sfx("glide", h.pos, 0.0, 0.7)
+		"skyhook":
+			# hook a point toward the cursor and swing up to it: onto a ledge above you if there is
+			# one there, otherwise straight up into the air
+			var d := h.aim_dir()
+			var aim: Vector3 = h.inp.get("aim", h.pos)
+			var reach := clampf(Vector2(aim.x - h.pos.x, aim.z - h.pos.z).length(), 2.0, 9.0)
+			var tx := h.pos.x + d.x * reach; var tz := h.pos.z + d.y * reach
+			var gy := world.ground_at(tx, tz)
+			var to := Vector3(h.pos.x + d.x * 3.0, h.pos.y + 8.0, h.pos.z + d.y * 3.0)
+			if gy > World.VOID + 1.0 and not world.is_block(tx, tz) and gy > h.pos.y - 1.0:
+				to = Vector3(tx, gy + 1.2, tz)
+			h.launch_to(to, 0.55)
+			h.glide_cd = 0.0
+			fx.bolt(h.pos + Vector3(0, 1.2, 0), to, Color(col, 0.9))
+			sfx("throw", h.pos, -2.0, 0.7)
+		"hover":
+			# a second jump in the air (or a big hop on the ground) and the glider ready right after
+			h.vel.y = maxf(h.vel.y, 11.0)
+			h.grounded = false
+			h.glide_cd = 0.0
+			h.roll_t = 0.0
+			fx.ring(h.pos, 1.2, col, 0.3)
+			fx.burst(h.pos, col, 14, 3.0, 0.4, 2.0, 1.0, Vector3.DOWN, 50.0)
+			sfx("jump", h.pos, -2.0, 1.3)
 
 func _update_gear_fx(dt: float) -> void:
 	for gp in gpads.duplicate():
@@ -2326,6 +2368,10 @@ func _process(delta: float) -> void:
 			# the camera only eases back while gliding, so jumps and falls never change the framing
 			# sneaking (Ctrl) pulls the camera well back for a wide look around [Supervive]
 			cam.zoom_to = 1.25 if player.gliding else (1.45 if player.crouch and player.grounded else 1.0)
+			# high up, the camera pulls back with your altitude so you can still read the ground
+			var alt := player_altitude()
+			if alt > 4.0:
+				cam.zoom_to *= 1.0 + clampf((alt - 4.0) / 24.0, 0.0, 0.7)
 			cam.top_to = 0.0
 		cam.follow(player.prev.lerp(player.pos, alpha), delta, not player.dropping)
 	elif player and (player.downed or player.out):

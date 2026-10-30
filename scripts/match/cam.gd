@@ -100,7 +100,9 @@ func follow(p: Vector3, delta: float, mouse_lead := true) -> void:
 		pan = pan.lerp(want_pan, 1.0 - exp(-float(fm[3]) * delta))
 	if follow_mode == "dynamic" and mouse_lead:
 		pan = want_pan
-	var want := Vector3(p.x, p.y * 0.6, p.z)
+	# the focus sits a little below you (so the ground reads), but never more than 4m below, so even
+	# far up in the sky you stay on screen
+	var want := Vector3(p.x, maxf(p.y * 0.6, p.y - 4.0), p.z)
 	# across follows briskly; up and down follows softer, so falls and glides don't jolt the view
 	var kxz := 1.0 - exp(-8.0 * delta)
 	var ky := 1.0 - exp(-3.5 * delta)

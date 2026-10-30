@@ -525,6 +525,26 @@ var dash_held := 0.0
 ## beat of the launch) it breaks the pad flight into a dash. Jump out of a ground dash keeps half
 ## its speed. Dash in the air and keep holding glide and the glider opens again as the dash ends.
 var dash_buf := 0.0
+var air_peak := 0.0              # the highest point of this time in the air (for skyfall landings)
+const SKYFALL_H := 8.0           # drop at least this far, fast, onto rivals and you land a skyfall
+
+## Height pays off: come down hard from 8m+ (not gliding gently, not the opening drop) and the
+## landing slams everyone close: damage that grows with the height and a pop into the air.
+func _skyfall(drop: float, fall_v: float) -> void:
+	if drop < SKYFALL_H or fall_v > -6.0 or dropping or downed or remote:
+		return
+	var k := clampf((drop - SKYFALL_H) / 16.0, 0.0, 1.0)
+	var any := false
+	for f in m.foes_of(team):
+		if flat_dist(f) < 2.4 + f.r and absf(f.pos.y - pos.y) < 2.0:
+			any = true
+	m.fx.dust(pos, 10)
+	if not any:
+		return
+	Abil._blast(self, pos, 2.4, 10.0 + 16.0 * k, 7.0, Color("ffd27a"), 7.0, "skyfall")
+	m.fx.word(pos + Vector3(0, 2.2, 0), "SKYFALL", Color("ffd27a"), true)
+	m.shake(0.45, pos)
+	add_stat("skyfalls")
 var move_kind := "dash"          # what the current roll is: "dash" (Shift) or "rush" (an ability or glove)
 const DASH_BUFFER := 0.18
 const DASH_JUMP_CARRY := 0.55
@@ -1104,6 +1124,8 @@ func sim(dt: float) -> void:
 				inp[k] = false
 		return
 	tick_status(dt)
+	if grounded:
+		air_peak = pos.y
 	for k in ["dash_buf", "hit_heat_t", "ex_cd", "reveal_t", "inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t", "sick_t"]:
 		set(k, maxf(0.0, get(k) - dt))
 	if shield_t > 0.0:
@@ -1433,11 +1455,14 @@ func _physics(dt: float) -> void:
 	if not grounded:
 		var fv := vel.y
 		pos.y += vel.y * dt
+		air_peak = maxf(air_peak, pos.y)
 		if g > World.VOID + 1.0 and vel.y <= 0.0 and pos.y <= g and pos.y > g - 1.25:
 			pos.y = g
 			vel.y = 0.0
 			grounded = true
 			fly_t = 0.0
+			_skyfall(air_peak - g, fv)
+			air_peak = g
 			if gliding:
 				gliding = false
 				m.fx.dust(pos, 5)

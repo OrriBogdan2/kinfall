@@ -1480,6 +1480,11 @@ func _draw_overhead(p: Hunter) -> void:
 			c.draw_colored_polygon(inner, STAMINA_COL)
 		elif fill > 0.0:
 			c.draw_arc(cpt, 3.0, -PI * 0.5, -PI * 0.5 + TAU * fill, 10, Color(STAMINA_COL, 0.6), 2.0)
+	# high up: a small readout of how far above the ground you are
+	var alt := m.player_altitude() if p == m.player else 0.0
+	if alt > 6.0 and not p.grounded:
+		_ctext(sp + Vector2(-w * 0.5 - 30, 8), "%dm" % int(round(alt)), 13, Color("bfe6ff"), big)
+		c.draw_colored_polygon(PackedVector2Array([sp + Vector2(-w * 0.5 - 30, -10), sp + Vector2(-w * 0.5 - 35, -3), sp + Vector2(-w * 0.5 - 25, -3)]), Color("bfe6ff"))
 	if p.reload_t > 0.0:
 		# reloading: a filling ring beside your head, and the word under your bars
 		var rf := 1.0 - p.reload_t / float(p.wpn["reload"])
