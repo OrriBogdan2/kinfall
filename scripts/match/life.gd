@@ -12,7 +12,7 @@ const R := {
 	"bleed_out": 15.0,          # [patch] seconds a wisp lasts on its own
 	"revive_radius": 1.6,       # [est] a teammate this close revives you
 	"revive_time": 4.0,         # [wiki "a few seconds"] [est]
-	"revive_hp": 0.33,          # [est]
+	"revive_hp": 0.25,          # [design] back on your feet with a quarter of your health
 	"extra_reviver": 0.5,       # each extra teammate on you: +50% speed [design]
 	"stomp_mult": 4.0,          # [wiki] an enemy on a wisp drains it this much faster and blocks the revive
 	"execute_time": 3.0,        # [footage] (old: hold interact on an enemy wisp; now the stomp below)
@@ -21,9 +21,9 @@ const R := {
 	"stomp_cycle": 0.7,         # one foot-lift-and-slam
 	"kin_revive_time": 8.0,     # [design] your kin pulling you up (as long as Supervive's Guardian Angel self-revive)
 	"box_revive_time": 5.0,     # [est] teammate holds interact at your deathbox
-	"box_revive_hp": 0.5,       # [design]
+	"box_revive_hp": 0.25,      # [design] same as a wisp revive
 	"soul_time": 90.0,          # [design] box revive window
-	"loot_time": 1.0,           # [design] hold interact to take everything from a box
+	"loot_time": 1.0,           # [design] bots: hold interact to take everything from a box (you get a loot window)
 	"beacon_time": 6.0,         # [patch 1.0]
 	"beacon_radius": 2.2,
 	"beacon_count": 6,
@@ -174,9 +174,19 @@ static func drop_box(m: Match, h: Hunter, why: String) -> Dictionary:
 		if old["owner"] == h: old["soul_until"] = 0.0
 	var at := box_spot(m, h, why)
 	var b := {"owner": h, "team": h.team, "pos": at, "gems": h.gems, "seeds": h.seeds.duplicate(), "caught": h.caught.duplicate(true),
-		"tonics": maxi(0, h.tonics - h.free_tonics), "kits": h.armor_kits, "soul_until": m.time + R["soul_time"], "prog": {}, "node": null, "empty": false}
+		"tonics": maxi(0, h.tonics - h.free_tonics), "kits": h.armor_kits, "soul_until": m.time + R["soul_time"], "prog": {}, "node": null, "empty": false,
+		"gear": [], "weapon": {}}
 	h.tonics = mini(h.tonics, h.free_tonics)
 	h.armor_kits = 0
+	# your gloves and any weapon you found go in the box too (Supervive: the box holds everything)
+	for g in h.gear:
+		if not (g as Dictionary).is_empty():
+			(b["gear"] as Array).append((g as Dictionary).duplicate())
+	h.gear = [{}, {}]
+	if h.has_method("refresh_gear"): h.refresh_gear()
+	if h.wrar > 0:
+		b["weapon"] = {"wid": h.wid, "rar": h.wrar}
+		h.equip(String(Data.CLASSES[h.cls]["weapon"]), 0)
 	if at == Vector3.INF:
 		# nowhere to put it: the abyss keeps it
 		return b
@@ -199,8 +209,124 @@ static func soul_here(m: Match, b: Dictionary) -> bool:
 	var o: Hunter = b["owner"]
 	return o != null and o.out and not o.gone and m.time < float(b["soul_until"])
 
+# ------------------------------------------------------------------ what's in a box, item by item
+## Everything in a box as a list for the loot window: [{key, i, name, sub, icon, col, upgrade}].
+static func box_items(m: Match, h: Hunter, b: Dictionary) -> Array:
+	var out: Array = []
+	if int(b["gems"]) > 0:
+		out.append({"key": "gems", "name": "%d gems" % int(b["gems"]), "sub": "Treasure", "icon": "gem", "col": Color("ffd36a"), "upgrade": true})
+	for s in b["seeds"]:
+		var cd: Dictionary = Data.CROPS.get(s, {})
+		out.append({"key": "seeds", "i": s, "name": "%d %s seed%s" % [int(b["seeds"][s]), cd.get("name", s), "" if int(b["seeds"][s]) == 1 else "s"], "sub": "Seeds", "icon": "seed", "col": cd.get("color", Color("8fe0a0")), "upgrade": true})
+	for i in (b["caught"] as Array).size():
+		var rec: Dictionary = b["caught"][i]
+		var sp: Dictionary = Data.KIN.get(String(rec.get("species", "")), {})
+		out.append({"key": "caught", "i": i, "name": "%s the %s" % [rec.get("name", "Kin"), sp.get("name", "kin")], "sub": "Kin", "icon": "paw", "col": sp.get("color", Color("ffb0d0")), "upgrade": true})
+	if int(b["tonics"]) > 0:
+		out.append({"key": "tonics", "name": "%d tonic%s" % [int(b["tonics"]), "" if int(b["tonics"]) == 1 else "s"], "sub": "Heals", "icon": "tonic", "col": Color("ff8a9a"), "upgrade": true})
+	if int(b["kits"]) > 0:
+		out.append({"key": "kits", "name": "%d armor kit%s" % [int(b["kits"]), "" if int(b["kits"]) == 1 else "s"], "sub": "Repairs armor", "icon": "medkit", "col": Color("9ad0ff"), "upgrade": true})
+	for i in (b.get("gear", []) as Array).size():
+		var g: Dictionary = b["gear"][i]
+		var gd: Dictionary = Gear.ALL.get(String(g["id"]), {})
+		var r: Dictionary = Data.RARITY[clampi(int(g["rar"]), 0, Data.RARITY.size() - 1)]
+		var slot := Gear.slot_of(String(g["id"]))
+		var cur: Dictionary = h.gear[slot]
+		var up := cur.is_empty() or int(g["rar"]) > int(cur["rar"])
+		out.append({"key": "gear", "i": i, "name": "%s%s" % [(String(r["name"]) + " ") if int(g["rar"]) > 1 else "", gd.get("name", g["id"])],
+			"sub": ("Active glove (%s)  ·  " % Settings.key_cap("gear1") if slot == 0 else "Passive glove  ·  ") + Gear.stat_text(String(g["id"]), int(g["rar"])),
+			"icon": Gear.icon_of(String(g["id"])), "col": r["color"], "upgrade": up})
+	var w: Dictionary = b.get("weapon", {})
+	if not w.is_empty():
+		var r2: Dictionary = Data.RARITY[clampi(int(w["rar"]), 0, Data.RARITY.size() - 1)]
+		var up2 := int(w["rar"]) > h.wrar
+		out.append({"key": "weapon", "name": Data.weapon_stats(String(w["wid"]), int(w["rar"]))["name"], "sub": "+%d%% damage" % int(round((float(r2["dmg"]) - 1.0) * 100.0)),
+			"icon": String(w["wid"]), "col": r2["color"], "upgrade": up2})
+	return out
+
+## Takes one thing out of a box. Swapping gloves or weapons leaves yours in the box in its place.
+static func take_item(m: Match, h: Hunter, b: Dictionary, it: Dictionary) -> void:
+	match String(it["key"]):
+		"gems":
+			h.gems += int(b["gems"]); b["gems"] = 0
+		"seeds":
+			var s: String = it["i"]
+			h.seeds[s] = int(h.seeds.get(s, 0)) + int(b["seeds"].get(s, 0))
+			(b["seeds"] as Dictionary).erase(s)
+		"caught":
+			var i := int(it["i"])
+			if i < (b["caught"] as Array).size():
+				var rec: Dictionary = b["caught"][i]
+				(b["caught"] as Array).remove_at(i)
+				if h == m.player and String(rec.get("lost_from", "")) == "you":
+					m.give_kin(h, rec)
+					m.add_feed("%s is back with you!" % rec.get("name", "Your kin"))
+				else:
+					h.caught.append(rec)
+					if String(rec.get("lost_from", "")) != "" and String(rec.get("lost_from", "")) != h.pname:
+						h.stolen_carry = true
+		"tonics":
+			h.tonics += int(b["tonics"]); b["tonics"] = 0
+		"kits":
+			h.armor_kits += int(b["kits"]); b["kits"] = 0
+		"gear":
+			var gi := int(it["i"])
+			if gi < (b["gear"] as Array).size():
+				var g: Dictionary = b["gear"][gi]
+				(b["gear"] as Array).remove_at(gi)
+				var slot := Gear.slot_of(String(g["id"]))
+				var old: Dictionary = h.gear[slot]
+				h.gear[slot] = g.duplicate()
+				h.gear_cd[slot] = 0.0
+				h.refresh_gear()
+				if not old.is_empty():
+					(b["gear"] as Array).append(old)
+		"weapon":
+			var w: Dictionary = b["weapon"]
+			var old_w := {"wid": h.wid, "rar": h.wrar}
+			h.equip(String(w["wid"]), int(w["rar"]))
+			b["weapon"] = old_w if int(old_w["rar"]) > 0 else {}
+	m.sfx("pickup", b["pos"], -4.0, 0.9)
+	_settle_box(b)
+
+## Smart loot (press interact again with a box open): every gem, seed, kin and consumable, and the
+## gloves or weapon only where they beat what you've got. Returns how many things it took.
+static func smart_loot(m: Match, h: Hunter, b: Dictionary) -> int:
+	var n := 0
+	var guard := 0
+	while guard < 30:
+		guard += 1
+		var took := false
+		for it in box_items(m, h, b):
+			if it["upgrade"]:
+				take_item(m, h, b, it)
+				n += 1
+				took = true
+				break
+		if not took:
+			break
+	if n > 0:
+		m.fx.burst(b["pos"] + Vector3(0, 0.6, 0), Color("ffd36a"), 14, 3.0, 0.4)
+	return n
+
+static func _settle_box(b: Dictionary) -> void:
+	b["empty"] = int(b["gems"]) <= 0 and (b["seeds"] as Dictionary).is_empty() and (b["caught"] as Array).is_empty() \
+		and int(b["tonics"]) <= 0 and int(b["kits"]) <= 0 and (b.get("gear", []) as Array).is_empty() and (b.get("weapon", {}) as Dictionary).is_empty()
+	_refresh_box(b)
+
 ## Takes everything in a box.
 static func loot_box(m: Match, h: Hunter, b: Dictionary) -> void:
+	# gloves and a found weapon: the owner gets theirs back; anyone else only takes upgrades
+	if (b["owner"] as Hunter) == h:
+		for g in (b.get("gear", []) as Array).duplicate():
+			take_item(m, h, b, {"key": "gear", "i": (b["gear"] as Array).find(g)})
+		if not (b.get("weapon", {}) as Dictionary).is_empty():
+			take_item(m, h, b, {"key": "weapon"})
+	else:
+		for it in box_items(m, h, b):
+			if it["key"] in ["gear", "weapon"] and it["upgrade"]:
+				take_item(m, h, b, it)
+				break
 	h.gems += int(b["gems"])
 	for s in b["seeds"]:
 		h.seeds[s] = int(h.seeds.get(s, 0)) + int(b["seeds"][s])
@@ -218,8 +344,7 @@ static func loot_box(m: Match, h: Hunter, b: Dictionary) -> void:
 	_kin_from_box(m, h, b)
 	var got := int(b["gems"])
 	b["gems"] = 0; b["seeds"] = {}; b["caught"] = []; b["tonics"] = 0; b["kits"] = 0
-	b["empty"] = true
-	_refresh_box(b)
+	_settle_box(b)
 	m.sfx("pickup", b["pos"], -2.0, 0.9)
 	m.fx.burst(b["pos"] + Vector3(0, 0.6, 0), Color("ffd36a"), 14, 3.0, 0.4)
 	if h == m.player and m.hud:

@@ -784,6 +784,7 @@ var _h_down := false
 
 func _hud_tick(delta: float) -> void:
 	_track_mates(m.player, delta)
+	_loot_tick(delta)
 	glider_hit_t = maxf(0.0, glider_hit_t - delta)
 	# G folds the training guide and the kit panel away (and back)
 	var hd := Input.is_physical_key_pressed(KEY_G)
@@ -1952,3 +1953,130 @@ func _draw_world_hover(sz: Vector2, p: Hunter) -> void:
 		var hh := _wrapped_h(String(lines[i][0]), w - 24, 13)
 		c.draw_multiline_string(body, Vector2(pos.x + 12, y + 13), String(lines[i][0]), HORIZONTAL_ALIGNMENT_LEFT, w - 24, 13, -1, lines[i][1])
 		y += hh + 3.0
+
+# ------------------------------------------------------------------ the deathbox loot window
+## Pressing interact at a deathbox opens this: everything inside, each with its icon and rarity
+## colour, "upgrade" marked where it beats what you've got. Click one to take it (swapping a glove
+## or weapon leaves yours in the box); press interact again, or Smart loot, to grab everything
+## worth having. Walking away, going down or emptying the box closes it.
+var loot_open = null          # the box Dictionary, or null
+var loot_panel: PanelContainer
+var loot_sig := ""
+
+func loot_is(b: Dictionary) -> bool:
+	return loot_open != null and is_same(loot_open, b)
+
+func mouse_on_ui() -> bool:
+	if loot_panel == null or not is_instance_valid(loot_panel) or not loot_panel.visible:
+		return false
+	return loot_panel.get_global_rect().grow(6.0).has_point(loot_panel.get_global_mouse_position())
+
+func open_loot(b: Dictionary) -> void:
+	loot_open = b
+	loot_sig = ""
+	Sfx.play("whoosh", null, -10.0, 0.05, 1.3)
+	_build_loot()
+	if loot_panel: UI.pop_in(loot_panel)
+
+func close_loot() -> void:
+	loot_open = null
+	if loot_panel and is_instance_valid(loot_panel):
+		loot_panel.queue_free()
+	loot_panel = null
+
+func _loot_tick(_delta: float) -> void:
+	if loot_open == null:
+		return
+	var p: Hunter = m.player
+	var b: Dictionary = loot_open
+	if p == null or p.out or p.downed or b.get("empty", true) or p.flat_dist(b["pos"]) > 2.4 or not m.boxes.has(b):
+		close_loot()
+		return
+	# rebuild only when what's in it (or what you're holding) changes
+	var sig := str(Life.box_items(m, p, b).map(func(it): return [it["name"], it["upgrade"]])) + str(p.gear) + p.wid + str(p.wrar)
+	if sig != loot_sig:
+		_build_loot()
+
+func _build_loot() -> void:
+	var p: Hunter = m.player
+	var b: Dictionary = loot_open
+	if loot_panel and is_instance_valid(loot_panel):
+		loot_panel.queue_free()
+	var items: Array = Life.box_items(m, p, b)
+	loot_sig = str(items.map(func(it): return [it["name"], it["upgrade"]])) + str(p.gear) + p.wid + str(p.wrar)
+	var pc := PanelContainer.new()
+	pc.theme = UI.theme()
+	pc.mouse_filter = Control.MOUSE_FILTER_STOP
+	var bc: Color = Life.box_color(b)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.06, 0.065, 0.1, 0.95)
+	sb.set_corner_radius_all(14)
+	sb.border_color = Color(bc, 0.8); sb.set_border_width_all(2); sb.border_width_top = 4
+	sb.content_margin_left = 14; sb.content_margin_right = 14; sb.content_margin_top = 12; sb.content_margin_bottom = 12
+	sb.shadow_color = Color(0, 0, 0, 0.5); sb.shadow_size = 18
+	pc.add_theme_stylebox_override("panel", sb)
+	var v := UI.vbox(6); pc.add_child(v)
+	var o: Hunter = b["owner"]
+	var head := UI.hbox(8); v.add_child(head)
+	head.add_child(Icons.Glyph.new("gem", bc, 18.0))
+	var t := UI.title(("Your deathbox" if o == p else "%s's deathbox" % o.pname), 22, INK)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	var cl := UI.button("✕", func(): close_loot(), 36)
+	cl.flat = true
+	head.add_child(cl)
+	if items.is_empty():
+		v.add_child(UI.label("Empty.", 14, MUTED))
+	for it in items:
+		var row := UI.hbox(8)
+		var rp := PanelContainer.new()
+		var rs := StyleBoxFlat.new()
+		rs.bg_color = Color(it["col"], 0.12 if it["upgrade"] else 0.06)
+		rs.set_corner_radius_all(9)
+		rs.border_color = Color(it["col"], 0.55 if it["upgrade"] else 0.2); rs.border_width_left = 3
+		rs.content_margin_left = 8; rs.content_margin_right = 8; rs.content_margin_top = 5; rs.content_margin_bottom = 5
+		rp.add_theme_stylebox_override("panel", rs)
+		rp.add_child(row)
+		row.add_child(Icons.Glyph.new(String(it["icon"]), it["col"], 24.0))
+		var col := UI.vbox(0); col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var nm := UI.label(String(it["name"]), 15, INK, UI.semi)
+		nm.autowrap_mode = TextServer.AUTOWRAP_OFF
+		col.add_child(nm)
+		var sub := UI.label(String(it["sub"]), 12, MUTED)
+		sub.autowrap_mode = TextServer.AUTOWRAP_OFF
+		sub.clip_text = true
+		sub.custom_minimum_size.x = 210
+		col.add_child(sub)
+		row.add_child(col)
+		if it["key"] in ["gear", "weapon"]:
+			var tag := UI.label("UPGRADE" if it["upgrade"] else "WORSE", 11, GOOD if it["upgrade"] else MUTED, UI.caps)
+			tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			row.add_child(tag)
+		var itc: Dictionary = it
+		var take := UI.button("Swap" if it["key"] in ["gear", "weapon"] else "Take", func():
+			if loot_open != null and m.player:
+				Life.take_item(m, m.player, loot_open, itc)
+				if (loot_open as Dictionary).get("empty", false): close_loot()
+				else: _build_loot(), 76)
+		take.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(take)
+		v.add_child(rp)
+	var foot := UI.hbox(8); v.add_child(foot)
+	var sm := UI.primary("Smart loot  (%s)" % Settings.key_cap("interact"), func():
+		if loot_open != null and m.player:
+			var got := Life.smart_loot(m, m.player, loot_open)
+			toast_small(("Smart looted %d thing%s" % [got, "" if got == 1 else "s"]) if got > 0 else "Nothing here beats what you've got", Color("ffd36a"))
+			close_loot(), 200)
+	foot.add_child(sm)
+	var hint := UI.label("Takes everything useful; leaves worse gear", 12, MUTED)
+	hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	foot.add_child(hint)
+	pc.custom_minimum_size.x = 430
+	add_child(pc)
+	loot_panel = pc
+	# to the right of centre, clear of your hunter and the ability bar
+	await get_tree().process_frame
+	if is_instance_valid(pc):
+		var vs := pc.get_viewport_rect().size
+		pc.position = Vector2(vs.x * 0.5 + 90.0, maxf(90.0, vs.y * 0.5 - pc.size.y * 0.5 - 40.0))
+

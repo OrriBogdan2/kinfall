@@ -2444,7 +2444,7 @@ func _gather_input() -> void:
 			player.inp["move"] = Vector2(best.x - player.pos.x, best.z - player.pos.z).normalized()
 	player.inp["aim"] = _mouse_aim()
 	player.inp["aim_y"] = aim_y      # the height of whatever you're pointing at (shots climb or dip to it)
-	player.inp["fire"] = Input.is_action_pressed("fire") and not paused
+	player.inp["fire"] = Input.is_action_pressed("fire") and not paused and not (hud and hud.mouse_on_ui())
 	if paused:
 		player.inp["move"] = Vector2.ZERO
 	player.inp["interact"] = Input.is_action_pressed("interact")
@@ -2834,10 +2834,15 @@ func _update_interact(dt: float) -> void:
 					best = {"kind": "boxrev", "box": b, "label": "Hold %s to bring %s back" % [Settings.key_cap("interact"), o.pname], "col": Color("9ee2a0")}
 					break
 				if not b["empty"]:
-					best = {"kind": "loot", "box": b, "label": "Hold %s to loot %s" % [Settings.key_cap("interact"), "your box" if o == h else o.pname + "'s box"], "col": Life.box_color(b)}
+					var whose: String = "your box" if o == h else o.pname + "'s box"
+					var open_now: bool = h == player and hud != null and hud.loot_is(b)
+					var lt := ("Press %s again to smart loot  ·  click items to take them" % Settings.key_cap("interact")) if open_now else ("Press %s to open %s  ·  twice to smart loot" % [Settings.key_cap("interact"), whose])
+					best = {"kind": "loot", "box": b, "label": lt if h == player else "Hold %s to loot %s" % [Settings.key_cap("interact"), whose], "col": Life.box_color(b)}
 					break
 		if best.get("kind", "") not in ["boxrev", "loot"] or not want:
 			h.box_t = 0.0
+		if not want:
+			h.set_meta("loot_hold", false)
 		# 2. catch a dazed wild kin (not in training: practice kin go home with nobody)
 		if best.is_empty() and not opts.get("training", false):
 			for k in kins:
@@ -2890,6 +2895,17 @@ func _update_interact(dt: float) -> void:
 				h.finish_t += dt
 				if h.finish_t >= Life.R["stomp_commit"]:
 					Life.start_stomp(self, h, o)
+			"loot" when h == player and hud:
+				# press to open the box's loot window; press again (with it open) to smart loot
+				if not bool(h.get_meta("loot_hold", false)):
+					h.set_meta("loot_hold", true)
+					var b0: Dictionary = best["box"]
+					if hud.loot_is(b0):
+						var got := Life.smart_loot(self, h, b0)
+						hud.toast_small(("Smart looted %d thing%s" % [got, "" if got == 1 else "s"]) if got > 0 else "Nothing here beats what you've got", Color("ffd36a"))
+						if b0["empty"] or got > 0: hud.close_loot()
+					else:
+						hud.open_loot(b0)
 			"boxrev", "loot":
 				var b: Dictionary = best["box"]
 				# taking a hit breaks the channel
