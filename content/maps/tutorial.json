@@ -1,0 +1,25 @@
+{
+ "id": "tutorial",
+ "name": "First Flight",
+ "size": 80,
+ "seed": 77,
+ "notes": "The tutorial island group: a flat starter meadow, a low rise across a wide bridge (one clean step up, for climbing), and the gate isle you glide or walk to. No rocks, no hazards, nothing random.",
+ "islands": [
+  {"id": "rise", "name": "Lookout Rise", "role": "grove", "region": 0, "poi": [60, 28], "noise": 0.06, "biome": "meadow", "danger": 0, "no_rocks": true,
+   "shapes": [{"circle": [60, 30], "r": 11, "lv": 0}, {"circle": [62, 27], "r": 5, "lv": 1}], "sheer": [], "bush": [[54, 36, 1.4]]},
+  {"id": "meadow", "name": "Starter Meadow", "role": "grove", "region": 1, "poi": [24, 40], "noise": 0.06, "biome": "meadow", "danger": 0, "no_rocks": true,
+   "shapes": [{"circle": [24, 40], "r": 14, "lv": 0}], "sheer": [], "bush": [[16, 48, 1.6]]},
+  {"id": "gate", "name": "Gate Isle", "role": "grove", "region": 2, "poi": [56, 62], "noise": 0.06, "biome": "meadow", "danger": 0, "no_rocks": true,
+   "shapes": [{"circle": [56, 62], "r": 9, "lv": 0}], "sheer": []}
+ ],
+ "bridges": [
+  {"name": "Meadow Bridge", "a": "meadow", "b": "rise", "from": [34, 36], "to": [52, 32], "r": 2.0},
+  {"name": "Gate Bridge", "a": "rise", "b": "gate", "from": [58, 38], "to": [57, 56], "r": 1.6}
+ ],
+ "winds": [["meadow", "gate"]],
+ "pads": [],
+ "updrafts": [{"at": [40, 54], "top": 2}],
+ "portals": [[57, 64]],
+ "chokepoints": [],
+ "glides": []
+}

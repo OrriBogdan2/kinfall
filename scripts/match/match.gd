@@ -119,8 +119,12 @@ func start(o: Dictionary) -> void:
 	world.biome = T["biome"].duplicate()
 	world.clouds = T["clouds"]
 	add_child(world)
-	# real expeditions are on a hand-made map; the tutorial and training keep a small generated one
-	var layout := World.load_layout(String(o.get("map", World.layout_for_tier(tier)))) if big and not o.get("procedural", false) else {}
+	# real expeditions are on a hand-made map, and so is the tutorial (a small calm one); training keeps a generated one
+	var layout := {}
+	if big and not o.get("procedural", false):
+		layout = World.load_layout(String(o.get("map", World.layout_for_tier(tier))))
+	elif o.get("tutorial", false):
+		layout = World.load_layout("tutorial")
 	if not layout.is_empty():
 		world.generate_authored(layout, seed_val)
 	else:
@@ -128,7 +132,7 @@ func start(o: Dictionary) -> void:
 	world.build_meshes()
 	fx = Fx.new(); fx.name = "Fx"; add_child(fx)
 	fields = Fields.new(self)
-	if world.layout_id != "":
+	if world.layout_id != "" and not o.get("tutorial", false):
 		biomes = BiomeRun.new(self)
 		if biomes.active():
 			biomes.decorate()
