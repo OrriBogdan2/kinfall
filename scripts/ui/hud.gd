@@ -137,15 +137,36 @@ func _draw_all() -> void:
 		for i in 6:
 			var inset := i * 14.0
 			c.draw_rect(Rect2(Vector2(inset, inset), sz - Vector2(inset, inset) * 2.0), Color(0.8, 0.1, 0.08, a * (0.12 - i * 0.018)), false, 14.0)
+	# abyss danger [footage]: sinking below island level darkens the screen from the edges with a cold
+	# tint, more the closer you get to the kill depth and the emptier your glider; near the bottom it
+	# pulses red with a quickening heartbeat. It fades away as you climb back up or catch an updraft.
+	var want_a := 0.0
 	if p and not p.out and not p.grounded and p.over_void():
-		# [footage] the screen washes purple as you sink below island level, deeper the further down
 		var depth := p.last_gy - p.pos.y
 		if depth > 0.0:
-			abyss_a = lerpf(abyss_a, clampf(depth / 8.0, 0.0, 1.0) * 0.55, 0.15)
-	else:
-		abyss_a = lerpf(abyss_a, 0.0, 0.15)
+			var to_kill := maxf(1.0, p.last_gy + 14.0)
+			want_a = clampf(depth / to_kill, 0.0, 1.0)
+			want_a = clampf(want_a * (1.0 + 0.7 * (1.0 - p.glide_fuel)) + (0.12 if p.glide_fuel <= 0.001 else 0.0), 0.0, 1.0)
+	abyss_a = lerpf(abyss_a, want_a, 1.0 - exp(-6.0 * get_process_delta_time()))
 	if abyss_a > 0.005:
-		c.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.55, 0.1, 0.55, abyss_a))
+		var red := clampf((abyss_a - 0.5) * 2.0, 0.0, 1.0)
+		var rate := 2.0 + red * 5.0
+		abyss_pulse += get_process_delta_time() * rate
+		var pulse := pow(0.5 + 0.5 * sin(abyss_pulse * TAU), 3.0)
+		# a soft cold wash over everything, then a heavy vignette that closes in from the edges
+		c.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.08, 0.04, 0.16, abyss_a * 0.28))
+		var rings := 9
+		for i in rings:
+			var inset := i * minf(sz.x, sz.y) * 0.035 * (0.6 + abyss_a)
+			var a := abyss_a * (0.34 - float(i) * 0.034)
+			if a <= 0.0: break
+			var col := Color(0.04, 0.02, 0.1).lerp(Color(0.35, 0.02, 0.04), red * pulse)
+			c.draw_rect(Rect2(Vector2(inset, inset), sz - Vector2(inset, inset) * 2.0), Color(col, a), false, minf(sz.x, sz.y) * 0.04)
+		if red > 0.0 and p == m.player:
+			var beat := int(floor(abyss_pulse))
+			if beat != abyss_beat:
+				abyss_beat = beat
+				Sfx.play("thump", null, -14.0 + red * 8.0, 0.0, 0.7 + red * 0.15)
 	if p and not p.downed and not p.out and p.hp < p.max_hp * 0.35:
 		var pulse := 0.5 + 0.5 * sin(m.time * 6.0)
 		for i in 5:
@@ -154,8 +175,12 @@ func _draw_all() -> void:
 	if flash_t > 0.0:
 		c.draw_rect(Rect2(Vector2.ZERO, sz), Color(flash_col, flash_col.a * flash_t * (0.3 if Settings.get_v("reduce_flashes") else 1.0)))
 	if p and (p.out or p.downed) and m.killcam_text != "":
-		_ctext(Vector2(sz.x * 0.5, sz.y * 0.22), m.killcam_text, 22, Color("ff9a8a"), big)
+		_ctext(Vector2(sz.x * 0.5, maxf(sz.y * 0.22, 104.0 + alerts_h)), m.killcam_text, 22, Color("ff9a8a"), big)
 	_draw_top(sz)
+	if p and not m.duel:
+		_draw_alerts(sz, p)
+	else:
+		alerts_h = 0.0
 	_draw_feed(sz)
 	_draw_minimap(sz)
 	if p and not p.out and not p.extracted:
@@ -193,7 +218,7 @@ func _draw_all() -> void:
 		_draw_scores(sz)
 	if p and not p.out and not p.extracted:
 		_draw_hover_tip(sz, p)
-		if hover_id == "":
+		if hover_id == "" and m.perk_offer.is_empty():
 			_draw_world_hover(sz, p)
 
 func _draw_world_labels() -> void:
@@ -238,22 +263,28 @@ func _draw_world_labels() -> void:
 		_ctext(bp, "Revive beacon" + ("  ·  contested" if bc["contested"] else ""), 12, Color("8fffc0"), big)
 		if float(bc["prog"]) > 0.0:
 			_bar(Rect2(bp + Vector2(-40, 6), Vector2(80, 5)), float(bc["prog"]), Color("8fffc0"))
+	_draw_wisp_rings()
 	for h in m.hunters:
 		if h == m.player or h.out or h.extracted or not h.model or not h.model.visible or h.unseen:
 			continue
 		var sp := cam.unproject_position(h.position + Vector3(0, 2.35, 0))
 		if cam.is_position_behind(h.position):
 			continue
-		var tc: Color = Data.TEAM_COLORS[h.team % Data.TEAM_COLORS.size()]
-		var ally: bool = m.player and h.team == m.player.team
-		_ctext(sp + Vector2(0, -12), h.pname, 16, tc if not ally else GOOD, big)
-		if h.downed:
-			_bar(Rect2(sp + Vector2(-26, -2), Vector2(52, 5)), h.down_hp / Data.MATCH["down_hp"], BAD)
-			_ctext(sp + Vector2(0, 14), "DOWN", 12, BAD, big)
-			if h.revive > 0.0:
-				_arc(sp + Vector2(0, 30), 10, h.revive, GOOD, 3.0)
-		else:
-			_vitals(sp + Vector2(0, 4), 64.0, h, (HP_LOW if not ally else GOOD) if h.hp < h.max_hp * 0.35 else (tc if not ally else GOOD), 0.0)
+		_nameplate(sp, h)
+	# someone basing to a teammate: a ring filling round them, and a marker on where they'll appear
+	for h in m.hunters:
+		if h.base_t <= 0.0 or h.out or (h.unseen and h != m.player) or cam.is_position_behind(h.position):
+			continue
+		var bsp: Vector2 = cam.unproject_position(h.position + Vector3(0, 0.2, 0))
+		var bf: float = 1.0 - h.base_t / Hunter.BASE_TIME
+		c.draw_arc(bsp, 26.0, 0, TAU, 40, Color(0.56, 0.89, 0.78, 0.25), 3.0, true)
+		_arc(bsp, 26.0, bf, Color("8fe3c8"), 4.0)
+		_ctext(bsp + Vector2(0, 44), "BASING  %.1f" % h.base_t, 12, Color("8fe3c8"), big)
+		var to: Hunter = h.base_to
+		if to and is_instance_valid(to) and not cam.is_position_behind(to.position):
+			var tsp := cam.unproject_position(to.position + Vector3(0, 3.0, 0))
+			_ctext(tsp, "%s incoming" % h.pname.substr(0, 10), 12, Color("8fe3c8"), big)
+			c.draw_arc(cam.unproject_position(to.position + Vector3(0, 0.1, 0)), 22.0, 0, TAU, 32, Color(0.56, 0.89, 0.78, 0.4 + 0.3 * sin(m.time * 8.0)), 2.0, true)
 	for mb in m.mobs:
 		if mb.dead or cam.is_position_behind(mb.position):
 			continue
@@ -266,9 +297,26 @@ func _draw_world_labels() -> void:
 		elif mb.stag_open > 0.0:
 			var a := 0.75 + 0.25 * sin(m.time * 12.0)
 			_ctext(sp + Vector2(0, -12), "STAGGERABLE", 17, Color(0.85, 0.6, 1.0, a), big)
-		if mb.hp < mb.max_hp:
+		# compact bar; rare and mutated monsters (mb.rarity, mb.mutations) wear a tinted frame and
+		# little icons for their mutations, and always show their bar
+		var rare: bool = int(mb.rarity) > 0 or not mb.mutations.is_empty()
+		if mb.hp < mb.max_hp or rare:
 			var bw := 64.0 if mb.mkind in ["brute", "warden"] else 48.0
-			_bar(Rect2(sp + Vector2(-bw * 0.5, 0), Vector2(bw, 6)), mb.hp / mb.max_hp, Color("e0b0ff") if mb.stagger_t > 0.0 else Color("ff8a6a"))
+			var br := Rect2(sp + Vector2(-bw * 0.5, 0), Vector2(bw, 6))
+			var bfrac := clampf(mb.hp / mb.max_hp, 0.0, 1.0)
+			if rare:
+				var rc: Color = Data.RARITY[clampi(int(mb.rarity), 0, Data.RARITY.size() - 1)]["color"]
+				_rounded(br.grow(3.0), Color(0, 0, 0, 0), 5, rc, 2)
+				var mx: float = sp.x - mb.mutations.size() * 7.0 + 7.0
+				for mu in mb.mutations:
+					c.draw_circle(Vector2(mx, sp.y - 8), 6.0, Color(0.03, 0.03, 0.05, 0.85))
+					Icons.draw(c, String(mu.get("icon", "burst")) if mu is Dictionary else String(mu), Vector2(mx, sp.y - 8), 3.6, rc)
+					mx += 14.0
+			var ct := _chip_of(mb, bfrac)
+			_bar(br, bfrac, Color("e0b0ff") if mb.stagger_t > 0.0 else Color("ff8a6a"))
+			if ct > bfrac:
+				c.draw_rect(Rect2(br.position + Vector2(bw * bfrac, 0), Vector2(bw * (ct - bfrac), 6)), Color(1.0, 0.95, 0.88, 0.8))
+			_status_row(sp + Vector2(0, 16), mb)
 	# found weapons: name and rarity when you're close enough to care
 	var pp: Vector3 = m.player.pos if m.player else cam.focus
 	for wp in m.wpicks:
@@ -277,7 +325,13 @@ func _draw_world_labels() -> void:
 			continue
 		var r: Dictionary = Data.RARITY[int(wp["rar"])]
 		var sp := cam.unproject_position(wpos + Vector3(0, 1.45, 0))
-		_ctext(sp, String(Data.weapon_stats(String(wp["wid"]), int(wp["rar"]))["name"]), 16, r["color"], big)
+		if wp.has("gear") and Gear.ALL.has(String(wp["gear"])):
+			# a glove: its name, and which slot it goes in
+			var gd: Dictionary = Gear.ALL[String(wp["gear"])]
+			_ctext(sp, String(gd["name"]), 15, gd["col"], big)
+			_ctext(sp + Vector2(0, 14), ("active  ·  " + Settings.key_cap("gear1")) if Gear.active(String(wp["gear"])) else "passive", 11, Color(INK, 0.75))
+		else:
+			_ctext(sp, String(Data.weapon_stats(String(wp["wid"]), int(wp["rar"]))["name"]), 16, r["color"], big)
 	for k in m.kins:
 		if k.dead or not k.visible or k.state == "shoulder" or cam.is_position_behind(k.position):
 			continue
@@ -296,6 +350,8 @@ func _draw_world_labels() -> void:
 func _draw_bubbles() -> void:
 	var cam := m.cam
 	for b in m.bubbles:
+		if not is_instance_valid(b["ent"]):
+			continue
 		var k: Kin = b["ent"]
 		if k.dead:
 			continue
@@ -341,22 +397,36 @@ func _draw_pings(sz: Vector2) -> void:
 			c.draw_colored_polygon(PackedVector2Array([edge + d * 14, edge - d * 8 + n * 10, edge - d * 8 - n * 10]), col)
 
 func _draw_top(sz: Vector2) -> void:
+	if m.duel:
+		_draw_duel(sz)
+		return
 	if m.opts.get("training", false):
 		var rr := Rect2(Vector2(sz.x * 0.5 - 220, 12), Vector2(440, 54))
 		_panel(rr, Color(0.06, 0.07, 0.1, 0.88), 12)
 		_ctext(Vector2(sz.x * 0.5, 34), "TRAINING AREA", 12, Color("8fe3c8"))
 		_ctext(Vector2(sz.x * 0.5, 56), "Nothing can hurt you here  ·  Esc to leave", 15, INK)
-		# the checklist
-		var lines: Array = m.train_rows()
-		var box := Rect2(Vector2(sz.x - 346, 16), Vector2(330, 34 + lines.size() * 24))
+		# the checklist: only what's left (up to six), with a count; H folds it away
+		var all_rows: Array = m.train_rows()
+		var left: Array = all_rows.filter(func(t): return not m.train.has(t[0]))
+		var n_done := all_rows.size() - left.size()
+		if guide_hidden:
+			var pill := Rect2(Vector2(sz.x - 196, 16), Vector2(180, 30))
+			_panel(pill, Color(0.06, 0.07, 0.1, 0.8), 10)
+			_text(pill.position + Vector2(12, 20), "Guide %d/%d  ·  G to show" % [n_done, all_rows.size()], 13, MUTED)
+			return
+		var shown: Array = left.slice(0, 6)
+		var box := Rect2(Vector2(sz.x - 346, 16), Vector2(330, 58 + maxi(1, shown.size()) * 24))
 		_panel(box, Color(0.06, 0.07, 0.1, 0.82), 12)
 		_text(box.position + Vector2(14, 24), "Try everything", 15, GOLD, big)
-		for i in lines.size():
-			var t: Array = lines[i]
-			var done: bool = m.train.has(t[0])
+		_text(box.position + Vector2(box.size.x - 120, 24), "%d / %d done" % [n_done, all_rows.size()], 12, MUTED)
+		if shown.is_empty():
+			_text(box.position + Vector2(14, 50), "All done. Try the duel room!", 13, GOOD)
+		for i in shown.size():
+			var t: Array = shown[i]
 			var key := ("[%s]  " % Settings.key_cap(t[2])) if t[2] != "" else ""
 			if t[0] == "move": key = "[%s%s%s%s]  " % [Settings.key_cap("up"), Settings.key_cap("left"), Settings.key_cap("down"), Settings.key_cap("right")]
-			_text(box.position + Vector2(14, 50 + i * 24), ("✓  " if done else "○  ") + key + String(t[1]), 13, GOOD if done else INK)
+			_text(box.position + Vector2(14, 50 + i * 24), ("→  " if i == 0 else "○  ") + key + String(t[1]), 13, GOLD if i == 0 else INK)
+		_text(box.position + Vector2(14, box.size.y - 10), "G hides the guide and your kit", 11, Color(MUTED, 0.8))
 		return
 	if m.opts.get("tutorial", false):
 		var txt: String = m.tut_text
@@ -391,6 +461,33 @@ func _draw_top(sz: Vector2) -> void:
 		if not h.out and not h.extracted: teams[h.team] = true
 	_text(Vector2(r.end.x + 12, 34), "%d squads left" % teams.size(), 14, MUTED)
 
+## The duel room: what you're up against at the top, and your numbers on the right.
+func _draw_duel(sz: Vector2) -> void:
+	var d: Duel = m.duel
+	var rr := Rect2(Vector2(sz.x * 0.5 - 260, 12), Vector2(520, 58))
+	_panel(rr, Color(0.06, 0.07, 0.1, 0.88), 12)
+	_ctext(Vector2(sz.x * 0.5, 32), "DUEL ROOM  ·  ROUND %d" % d.round_n, 12, Color("ff9a8a"))
+	_ctext(Vector2(sz.x * 0.5, 56), "%s bot  ·  %s class  ·  %s  ·  %s  ·  %s" % [d.pick_text("diff"), d.pick_text("cls"), d.pick_text("weapon"), d.pick_text("glove") if d.glove != "" else "no glove", d.pick_text("mode")], 15, INK)
+	if guide_hidden:
+		return
+	var st: Dictionary = d.stats
+	var shots := maxi(1, int(st["shots"]))
+	var rows := [
+		["Damage dealt", "%d" % int(st["dealt"]), GOOD],
+		["Damage taken", "%d" % int(st["taken"]), Color("ff8a7a")],
+		["Shots landed", "%d / %d  (%d%%)" % [int(st["hits"]), int(st["shots"]), int(round(100.0 * int(st["hits"]) / shots)) if int(st["shots"]) > 0 else 0], INK],
+		["Shots dodged", "%d / %d" % [int(st["dodged"]), int(st["bot_shots"])], Color("9af0ff")],
+		["Knocks", "%d  -  %d" % [int(st["knocks"]), int(st["knocked"])], GOLD],
+	]
+	var box := Rect2(Vector2(sz.x - 286, 16), Vector2(270, 40 + rows.size() * 24 + 28))
+	_panel(box, Color(0.06, 0.07, 0.1, 0.82), 12)
+	_text(box.position + Vector2(14, 24), "Your numbers", 15, GOLD, big)
+	for i in rows.size():
+		var y := box.position.y + 50 + i * 24
+		_text(Vector2(box.position.x + 14, y), String(rows[i][0]), 13, MUTED)
+		_text(Vector2(box.position.x + 140, y), String(rows[i][1]), 14, rows[i][2], big)
+	_text(Vector2(box.position.x + 14, box.end.y - 12), "B bot setup  ·  X reset  ·  G hide", 11, Color(MUTED, 0.85))
+
 func _draw_feed(sz: Vector2) -> void:
 	var y := 36.0
 	for f in m.feed:
@@ -405,6 +502,7 @@ func _draw_minimap(sz: Vector2) -> void:
 	var riding: bool = m.player != null and (m.player.riding or m.player.dropping)
 	var s := 340.0 if riding else 210.0
 	var r := Rect2(Vector2(16, 16), Vector2(s, s))
+	mm_bottom = r.end.y
 	_panel(r, Color(0.05, 0.06, 0.09, 0.78), 12)
 	var w := m.world
 	var inner := Rect2(r.position + Vector2(8, 8), r.size - Vector2(16, 16))
@@ -466,12 +564,15 @@ func _draw_minimap(sz: Vector2) -> void:
 			c.draw_circle(pv, 2.5, Color(col, a))
 		else:
 			_edge_arrow(inner, inner.get_center(), pv, Color(col, a))
-	# your squad, with an arrow for anyone off the edge
+	# your squad, with an arrow for anyone off the edge (a dead teammate shows at their deathbox)
 	for h in m.hunters:
-		if h.out or h.extracted or m.player == null or h.team != m.player.team:
+		if m.player == null or h.team != m.player.team:
 			continue
-		var pv: Vector2 = to_map.call(h.pos)
-		var col := INK if h == m.player else (BAD if h.downed else GOOD)
+		var mst := _mate_state(h) if h != m.player else ["ALIVE", INK, h.pos, ""]
+		if mst[2] == Vector3.INF or (h == m.player and (h.out or h.extracted)):
+			continue
+		var pv: Vector2 = to_map.call(mst[2])
+		var col: Color = INK if h == m.player else mst[1]
 		if not on_map.call(pv, 3.0):
 			_edge_arrow(inner, inner.get_center(), pv, col)
 			continue
@@ -677,7 +778,27 @@ func _ab_slot(id: String, rect: Rect2, icon: String, key: String, col: Color, cd
 		var k := 1.0 - fl / 0.35
 		_rounded(rect.grow(2.0 + k * 8.0), Color(0, 0, 0, 0), 14, Color(col, 1.0 - k), 3)
 
+var guide_hidden := false
+var abyss_pulse := 0.0
+var abyss_beat := -1
+var glider_hit_t := 0.0
+var glider_hit_amt := 0.0
+
+## A hit drained your glider: flash the meter and show how much went.
+func glider_hit(amount: float) -> void:
+	glider_hit_amt = (glider_hit_amt if glider_hit_t > 0.0 else 0.0) + amount
+	glider_hit_t = 0.5
+var _h_down := false
+
 func _hud_tick(delta: float) -> void:
+	_track_mates(m.player, delta)
+	_loot_tick(delta)
+	glider_hit_t = maxf(0.0, glider_hit_t - delta)
+	# G folds the training guide and the kit panel away (and back)
+	var hd := Input.is_physical_key_pressed(KEY_G)
+	if hd and not _h_down and (m.opts.get("training", false) or m.opts.get("duel", false)):
+		guide_hidden = not guide_hidden
+	_h_down = hd
 	for id in slot_fx.keys():
 		slot_fx[id]["t"] = float(slot_fx[id]["t"]) + delta
 		if float(slot_fx[id]["t"]) > 0.4: slot_fx.erase(id)
@@ -751,6 +872,11 @@ func _draw_glider_heat(p: Hunter) -> void:
 	var gcol := Color("ffd27a").lerp(Color("ff5a3a"), clampf(heat * 1.2 - 0.2, 0.0, 1.0))
 	if hot: gcol = gcol.lerp(Color.WHITE, 0.35 + 0.35 * sin(m.time * 14.0))
 	var a := 1.0 if p.gliding else 0.6
+	# a hit just drained it (2x): the ring flashes red and shows the chunk it lost
+	if glider_hit_t > 0.0:
+		var hk := glider_hit_t / 0.5
+		c.draw_arc(cpt, 19.0, 0.0, TAU, 32, Color(1.0, 0.25, 0.2, 0.8 * hk), 3.0, true)
+		_ctext(cpt + Vector2(0, -24), "-%d%%" % int(round(glider_hit_amt * 100.0)), 13, Color(1.0, 0.45, 0.35, hk), big)
 	c.draw_circle(cpt, 15.0, Color(0.03, 0.03, 0.05, 0.75 * a))
 	c.draw_arc(cpt, 11.0, 0.0, TAU, 32, Color(1, 1, 1, 0.14 * a), 4.0, true)
 	if heat > 0.005:
@@ -764,35 +890,40 @@ func _draw_glider_heat(p: Hunter) -> void:
 ## The ability row: kin throw, the active kin's two abilities, your weapon's utility, the bond
 ## ultimate in the middle, your dodge, tonics, and gear actives.
 func _draw_abilities(sz: Vector2, p: Hunter) -> void:
+	# the kit, left to right: Q glove · E kin ability · RMB weapon ability · R bond (big) · Shift dash ·
+	# C throw kin · 1 heal, with the passive glove as a small badge at the end
 	var s := 60.0
 	var gap := 12.0
 	var us := 72.0
 	var k: Kin = p.kin
-	var gear_n := 0
-	for gi in 2:
-		if not (p.gear[gi] as Dictionary).is_empty() and Gear.active(String(p.gear[gi]["id"])): gear_n += 1
 	var util: AbilityDef = p.runner.def_of("utility") if p.runner else null
-	var has_sec := util != null
-	var n_small := (3 if k else 0) + (1 if has_sec else 0) + 2
-	var total := n_small * s + us + n_small * gap + gear_n * (48.0 + 8.0) + (8.0 if gear_n > 0 else 0.0)
+	var g0: Dictionary = p.gear[0]
+	var g1: Dictionary = p.gear[1]
+	var n_small := 1 + (1 if k else 0) + (1 if util else 0) + 1 + (1 if k else 0) + 1
+	var total := n_small * s + us + n_small * gap + (44.0 if not g1.is_empty() else 0.0)
 	var x := sz.x * 0.5 - total * 0.5
 	var y := sz.y - 88.0
+	# Q: the active glove (an empty slot shows dim, so you know to look for one)
+	var qr := Rect2(Vector2(x, y), Vector2(s, s))
+	if not g0.is_empty() and Gear.ALL.has(String(g0["id"])):
+		var gd: Dictionary = Gear.ALL[String(g0["id"])]
+		var gcd := float(p.gear_cd[0])
+		_ab_slot("gear0", qr, Gear.icon_of(String(g0["id"])), Settings.key_cap("gear1"), gd["col"], gcd / float(gd["cd"]) if gcd > 0.0 else 0.0, gcd, gcd <= 0.0)
+	else:
+		_rounded(qr, Color(0.05, 0.06, 0.09, 0.55), 12, Color(1, 1, 1, 0.12), 1)
+		_ctext(qr.get_center() + Vector2(0, 5), "glove", 11, Color(MUTED, 0.6))
+		_keycap(Vector2(qr.get_center().x, qr.end.y + 2), Settings.key_cap("gear1"), Color(MUTED, 0.5))
+	x += s + gap
+	# E: your kin's ability
 	if k:
-		var kc: Color = Data.KIN[k.species]["color"]
-		var out_now: bool = k.state in ["active", "flying", "returning"]
-		var can_throw: bool = (k.state == "shoulder" and k.throw_cd <= 0.0) or out_now
-		_ab_slot("throw", Rect2(Vector2(x, y), Vector2(s, s)), "recall" if out_now else "throw", Settings.key_cap("throw"), kc, k.throw_cd / 1.0 if k.throw_cd > 0.0 else 0.0, k.throw_cd, can_throw, -1, 0, "Recall" if out_now else "")
+		var kd: AbilityDef = k.runner.def_of("k1")
+		if kd:
+			var rdy: bool = k.runner.is_ready("k1") and k.ready_to_fight() and k.state != "fused"
+			_ab_slot("k1", Rect2(Vector2(x, y), Vector2(s, s)), kd.icon, Settings.key_cap("signature"), kd.color, k.runner.cd_frac("k1"), k.runner.cd_left("k1") if not k.runner.is_ready("k1") else 0.0, rdy)
+			if not k.ready_to_fight():
+				_rounded(Rect2(Vector2(x, y), Vector2(s, s)), Color(0, 0, 0, 0.45), 12)
 		x += s + gap
-		for slot in ["k1", "k2"]:
-			var kd: AbilityDef = k.runner.def_of(slot)
-			var act := "signature" if slot == "k1" else "kin_skill"
-			if kd:
-				var rdy: bool = k.runner.is_ready(slot) and k.ready_to_fight() and k.state != "fused"
-				_ab_slot(slot, Rect2(Vector2(x, y), Vector2(s, s)), kd.icon, Settings.key_cap(act), kd.color, k.runner.cd_frac(slot), k.runner.cd_left(slot) if not k.runner.is_ready(slot) else 0.0, rdy)
-				if not k.ready_to_fight():
-					_rounded(Rect2(Vector2(x, y), Vector2(s, s)), Color(0, 0, 0, 0.45), 12)
-			x += s + gap
-	# right click: the weapon's utility
+	# right click: the weapon's ability
 	if util:
 		var sr := Rect2(Vector2(x, y), Vector2(s, s))
 		_ab_slot("sec", sr, util.icon, Settings.key_cap("secondary"), util.color, p.runner.cd_frac("utility"), p.runner.cd_left("utility") if not p.runner.is_ready("utility") else 0.0, p.runner.is_ready("utility"), p.runner.charges("utility") if util.charges > 1 else -1, util.charges if util.charges > 1 else 0)
@@ -814,29 +945,40 @@ func _draw_abilities(sz: Vector2, p: Hunter) -> void:
 		var fd: UltimateDef = p.fuse["def"]
 		_bar(Rect2(Vector2(ur.position.x, ur.end.y + 12), Vector2(us, 4)), clampf(float(p.fuse["t"]) / fd.time, 0.0, 1.0), fd.color)
 	elif k and not k.giant.is_empty():
-		var gd: UltimateDef = k.giant["def"]
-		_bar(Rect2(Vector2(ur.position.x, ur.end.y + 12), Vector2(us, 4)), clampf(float(k.giant["t"]) / gd.time, 0.0, 1.0), gd.color)
+		var gdu: UltimateDef = k.giant["def"]
+		_bar(Rect2(Vector2(ur.position.x, ur.end.y + 12), Vector2(us, 4)), clampf(float(k.giant["t"]) / gdu.time, 0.0, 1.0), gdu.color)
 	x += us + gap
 	var dmax := p.max_dashes()
 	var dcd := (1.0 - fposmod(p.dashes, 1.0)) if p.dashes < dmax else 0.0
 	_ab_slot("dash", Rect2(Vector2(x, y), Vector2(s, s)), "dash", Settings.key_cap("dash"), Color("bfe6ff"), dcd if p.dashes < 1.0 else 0.0, (1.0 - fposmod(p.dashes, 1.0)) * p.dash_regen() if p.dashes < 1.0 else 0.0, p.dashes >= 1.0, int(floor(p.dashes)), int(dmax))
 	x += s + gap
-	_ab_slot("tonic", Rect2(Vector2(x, y), Vector2(s, s)), "tonic", Settings.key_cap("tonic"), GOOD, 0.0, 0.0, p.tonics > 0, -1, 0)
-	_ctext(Vector2(x + s - 10, y + 18), "×%d" % p.tonics, 13, INK, big)
+	# C: throw / recall your kin
+	if k:
+		var kc: Color = Data.KIN[k.species]["color"]
+		var out_now: bool = k.state in ["active", "flying", "returning"]
+		var can_throw: bool = (k.state == "shoulder" and k.throw_cd <= 0.0) or out_now
+		_ab_slot("throw", Rect2(Vector2(x, y), Vector2(s, s)), "recall" if out_now else "throw", Settings.key_cap("throw"), kc, k.throw_cd / 1.0 if k.throw_cd > 0.0 else 0.0, k.throw_cd, can_throw, -1, 0, "Recall" if out_now else "")
+		x += s + gap
+	# 1: heal (a tonic for health; an armor kit once health is full)
+	var hurt := p.hp < p.max_hp - 0.5
+	var heal_ready := (p.tonics > 0 and hurt) or (p.armor_kits > 0 and p.armor < p.max_armor - 0.5)
+	var heal_col := GOOD if hurt or p.armor_kits <= 0 else ARMOR_COL
+	_ab_slot("tonic", Rect2(Vector2(x, y), Vector2(s, s)), "tonic" if hurt or p.armor_kits <= 0 else "fortify", Settings.key_cap("tonic"), heal_col, 0.0, 0.0, heal_ready, -1, 0)
+	_text(Vector2(x + s - 22, y + 16), "×%d" % p.tonics, 12, Color(GOOD, 0.95), big)
+	_text(Vector2(x + s - 22, y + 30), "×%d" % p.armor_kits, 12, Color(ARMOR_COL, 0.95), big)
 	x += s + gap
-	_ab_slot("kit", Rect2(Vector2(x, y), Vector2(s, s)), "fortify", Settings.key_cap("armor_kit"), ARMOR_COL, 0.0, 0.0, p.armor_kits > 0, -1, 0)
-	_ctext(Vector2(x + s - 10, y + 18), "×%d" % p.armor_kits, 13, INK, big)
-	x += s + gap + 8.0
-	# gear actives
-	for gi in 2:
-		var g: Dictionary = p.gear[gi]
-		if g.is_empty() or not Gear.active(String(g["id"])):
-			continue
-		var gd: Dictionary = Gear.ALL[String(g["id"])]
-		var gs := 48.0
-		var gcd := float(p.gear_cd[gi])
-		_ab_slot("gear%d" % gi, Rect2(Vector2(x, y + (s - gs)), Vector2(gs, gs)), String(g["id"]), Settings.key_cap("gear%d" % (gi + 1)), gd["col"], gcd / float(gd["cd"]) if gcd > 0.0 else 0.0, gcd, gcd <= 0.0)
-		x += gs + 8.0
+	# B: base to a teammate (squads only)
+	if m.hunters.any(func(o): return o != p and o.team == p.team):
+		var brr := Rect2(Vector2(x, y + s - 40.0), Vector2(40, 40))
+		_ab_slot("base", brr, "swap", Settings.key_cap("base"), Color("8fe3c8"), p.base_cd / Hunter.BASE_CD if p.base_cd > 0.0 else 0.0, p.base_cd, p.base_cd <= 0.0 and p.base_t <= 0.0)
+		x += 48.0
+	# the passive glove: a small badge (hover it for what it does)
+	if not g1.is_empty() and Gear.ALL.has(String(g1["id"])):
+		var pg: Dictionary = Gear.ALL[String(g1["id"])]
+		var pr := Rect2(Vector2(x, y + s - 36.0), Vector2(36, 36))
+		_rounded(pr, Color(0.05, 0.06, 0.09, 0.85), 9, Color(pg["col"], 0.75), 1)
+		Icons.draw(c, Gear.icon_of(String(g1["id"])), pr.get_center(), 10.0, pg["col"])
+		hover_spots.append([pr, "gear1"])
 
 ## Your two kin: the active one big, the benched one small under it.
 func _draw_kin_card(sz: Vector2, p: Hunter) -> void:
@@ -921,21 +1063,349 @@ func _draw_weapon(sz: Vector2, p: Hunter) -> void:
 	_text(r.position + Vector2(16, r.size.y - 8), "%d gems · %d seeds · %d kin" % [p.gems, seeds, p.caught.size()], 12, GOLD if p.gems > 0 else MUTED)
 
 ## Your squadmates down the left side.
+## A teammate's state, for the squad frames, markers and arrows: [label, colour, where to point,
+## timer text]. Alive, a downed wisp, dead (with the soul window at their deathbox), gone, or out.
+func _mate_state(h: Hunter) -> Array:
+	if h.extracted:
+		return ["EXTRACTED", Color("8fe3c8"), Vector3.INF, ""]
+	if h.out:
+		var b: Dictionary = Life.box_of(m, h)
+		if h.gone or b.is_empty():
+			return ["DEAD", Color("8a8f9e"), Vector3.INF, ""]
+		var left := float(b.get("soul_until", 0.0)) - m.time
+		if left > 0.0:
+			return ["DEATHBOX", Color("ff6a5a"), b.get("pos", h.pos), "%d:%02d" % [int(left) / 60, int(left) % 60]]
+		return ["DEAD", Color("8a8f9e"), b.get("pos", h.pos), ""]
+	if h.downed:
+		return ["WISP", Color("ffb36a"), h.pos, ""]
+	return ["ALIVE", GOOD, h.pos, ""]
+
+## Portraits, one per hunter, rendered once (and a greyed copy for the fallen).
+var portraits := {}       # nid -> SubViewport
+var portraits_grey := {}  # nid -> ImageTexture
+
+func portrait(h: Hunter) -> Texture2D:
+	if not portraits.has(h.nid):
+		var look: Dictionary = Save.d.get("look", {}) if h.ctrl == "local" else h.bot_look
+		var vp := Portraits.make(h.cls, Data.TEAM_COLORS[h.team % Data.TEAM_COLORS.size()], h.wid, look)
+		add_child(vp)
+		portraits[h.nid] = vp
+	return (portraits[h.nid] as SubViewport).get_texture()
+
+func portrait_grey(h: Hunter) -> Texture2D:
+	if not portraits_grey.has(h.nid):
+		var g := Portraits.grey(portrait(h))
+		if g == null:
+			return portrait(h)
+		portraits_grey[h.nid] = g
+	return portraits_grey[h.nid]
+
+## A portrait in a rounded frame. state: "" alive, "down" (red pulse), "dead" (grey + X), "out" (check).
+func _draw_portrait(r: Rect2, h: Hunter, state: String, border: Color) -> void:
+	_rounded(r.grow(2.0), Color(0.02, 0.02, 0.04, 0.95), 8)
+	var col: Color = Data.TEAM_COLORS[h.team % Data.TEAM_COLORS.size()]
+	c.draw_rect(r, Color(col.darkened(0.55), 0.9))
+	if state == "dead":
+		c.draw_texture_rect(portrait_grey(h), r, false, Color(0.8, 0.8, 0.85, 0.85))
+		var k := r.size.x * 0.2
+		for pair in [[r.position + Vector2(k, k), r.end - Vector2(k, k)], [Vector2(r.end.x - k, r.position.y + k), Vector2(r.position.x + k, r.end.y - k)]]:
+			c.draw_line(pair[0], pair[1], Color(0, 0, 0, 0.7), 9.0, true)
+			c.draw_line(pair[0], pair[1], Color("ff5a4a"), 5.0, true)
+	else:
+		c.draw_texture_rect(portrait(h), r, false)
+	if state == "down":
+		var pulse := 0.5 + 0.5 * sin(m.time * 8.0)
+		c.draw_rect(r, Color(0.9, 0.1, 0.05, 0.15 + 0.2 * pulse))
+		c.draw_rect(r.grow(1.0), Color(1.0, 0.25, 0.15, 0.55 + 0.45 * pulse), false, 2.5)
+	elif state == "out":
+		c.draw_rect(r, Color(0.05, 0.15, 0.12, 0.45))
+		var a := r.position + r.size * Vector2(0.25, 0.52)
+		var b := r.position + r.size * Vector2(0.43, 0.7)
+		var d := r.position + r.size * Vector2(0.76, 0.3)
+		c.draw_polyline(PackedVector2Array([a, b, d]), Color("8fe3c8"), 5.0, true)
+	else:
+		c.draw_rect(r.grow(1.0), Color(border, 0.8), false, 1.5)
+
+## Seconds a wisp has left at the normal bleed rate.
+func _bleed_left(h: Hunter) -> float:
+	return h.down_hp / (Data.MATCH["down_hp"] / Life.R["bleed_out"])
+
+var mm_bottom := 226.0    # where the minimap ends (it grows while you ride in)
+
+## Your squad, stacked under the minimap: portrait, name, armor over segmented health, status icons.
+## A knocked teammate pulses red with their bleed-out timer; a dead one is greyed with an X and the
+## time left to bring them back from their deathbox; one who got out wears a check mark.
 func _draw_squad(sz: Vector2, p: Hunter) -> void:
-	var y := sz.y * 0.42
+	var y := mm_bottom + 10.0
+	var w := 210.0
 	for h in m.hunters:
-		if h == p or h.team != p.team or h.out:
+		if h == p or h.team != p.team:
 			continue
-		var r := Rect2(Vector2(16, y), Vector2(190, 40))
-		_rounded(r, Color(0.05, 0.06, 0.09, 0.75), 10)
-		_text(r.position + Vector2(10, 17), h.pname, 13, GOOD if not h.downed else HP_LOW, big)
-		if h.downed:
-			_text(r.position + Vector2(10 + big.get_string_size(h.pname, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + 8, 17), "DOWN", 12, HP_LOW, big)
-			_bar(Rect2(r.position + Vector2(10, 26), Vector2(170, 5)), h.down_hp / Data.MATCH["down_hp"], HP_LOW)
+		var st := _mate_state(h)
+		var lbl := String(st[0])
+		var r := Rect2(Vector2(16, y), Vector2(w, 60))
+		var down := lbl == "WISP"
+		var pulse := 0.5 + 0.5 * sin(m.time * 8.0)
+		_rounded(r, Color(0.05, 0.06, 0.09, 0.84), 10, Color(st[1], 0.35 + (0.5 * pulse if down else 0.0)), 2 if down else 1)
+		var pr := Rect2(r.position + Vector2(6, 6), Vector2(48, 48))
+		var pst := ""
+		match lbl:
+			"WISP": pst = "down"
+			"DEATHBOX", "DEAD": pst = "dead"
+			"EXTRACTED": pst = "out"
+		_draw_portrait(pr, h, pst, _unit_col(h))
+		var tx := pr.end.x + 8.0
+		var tw := r.end.x - 8.0 - tx
+		_text(Vector2(tx, r.position.y + 19), h.pname.substr(0, 13), 14, INK if lbl == "ALIVE" else Color(INK, 0.7), big)
+		# how far, on the right of the name row
+		var at: Vector3 = st[2]
+		if at != Vector3.INF and lbl != "DEAD":
+			var dist_txt := "%dm" % int(round(Vector2(at.x - p.pos.x, at.z - p.pos.z).length()))
+			_text(Vector2(r.end.x - 8 - body.get_string_size(dist_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 11).x, r.position.y + 18), dist_txt, 11, MUTED, body)
+		match lbl:
+			"ALIVE":
+				if h.max_armor > 0.5:
+					_seg_bar(Rect2(Vector2(tx, r.position.y + 27), Vector2(tw, 4)), h.armor, h.max_armor, 0.0, ARMOR_COL, 25.0)
+				var frac := clampf(h.hp / h.max_hp, 0.0, 1.0)
+				_seg_bar(Rect2(Vector2(tx, r.position.y + 34), Vector2(tw, 8)), h.hp, h.max_hp, _chip_of(h, frac), HP_COL if frac > 0.35 else HP_LOW, 25.0)
+				if _has_status(h):
+					_status_row(Vector2(tx + tw * 0.5, r.position.y + 52), h)
+			"WISP":
+				var left := _bleed_left(h)
+				var stp: bool = h.get_meta("stomped", false)
+				_bar(Rect2(Vector2(tx, r.position.y + 28), Vector2(tw, 6)), h.down_hp / Data.MATCH["down_hp"], (Color("ff2a1a") if stp else Color("ff6a4a")).lerp(Color.WHITE, (0.5 if stp else 0.25) * pulse))
+				_text(Vector2(tx, r.position.y + 51), ("STOMPED  %ds" if stp else "KNOCKED  %ds") % int(ceil(left)), 13, Color("ff4a3a") if stp else Color("ff8a6a"), big)
+				if h.revive > 0.0:
+					_arc(Vector2(r.end.x - 16, r.position.y + 46), 8, h.revive, GOOD, 3.0)
+			"DEATHBOX":
+				_text(Vector2(tx, r.position.y + 37), "DEAD", 13, Color("ff6a5a"), big)
+				_text(Vector2(tx, r.position.y + 53), "Deathbox  %s" % String(st[3]), 12, Color("ffb0a0"))
+			"EXTRACTED":
+				_text(Vector2(tx, r.position.y + 42), "EXTRACTED", 13, Color("8fe3c8"), big)
+			_:
+				_text(Vector2(tx, r.position.y + 42), "ELIMINATED", 13, MUTED, big)
+		y += 66
+	_draw_squad_markers(sz, p)
+
+func _has_status(e: Ent) -> bool:
+	return e.stun_t > 0.0 or e.root_t > 0.0 or e.slow_t > 0.0 or e.burn_t > 0.0 or e.guard_t > 0.0 \
+		or (e is Hunter and ((e as Hunter).shield > 0.0 or (e as Hunter).weak_t > 0.0))
+
+## Ally alerts, top centre under the timer. A teammate getting knocked gets a big card (their face,
+## name, bleed-out countdown, and how far and which way); it turns green if they're picked up, red if
+## they're lost, then fades. Smaller cards for a teammate eliminated or revived from their deathbox.
+var mate_last := {}       # nid -> last squad state label
+var alerts: Array = []    # {h, kind, t}
+
+func _track_mates(p: Hunter, delta: float) -> void:
+	for a in alerts.duplicate():
+		a["t"] = float(a["t"]) + delta
+		var life := 999.0 if a["kind"] == "knocked" else 2.6
+		if float(a["t"]) > life or (a["kind"] == "knocked" and not is_instance_valid(a["h"])) or (a["kind"] == "knocked" and not (a["h"] as Hunter).downed and float(a["t"]) > 1.0):
+			alerts.erase(a)
+	if p == null:
+		return
+	for h in m.hunters:
+		if h == p or h.team != p.team:
+			continue
+		var now := String(_mate_state(h)[0])
+		var was := String(mate_last.get(h.nid, now))
+		mate_last[h.nid] = now
+		if now == was:
+			continue
+		var card = null
+		for a in alerts:
+			if a["h"] == h and a["kind"] == "knocked":
+				card = a
+		if now == "WISP":
+			if card == null:
+				alerts.append({"h": h, "kind": "knocked", "t": 0.0})
+			Sfx.play("warn", null, -4.0, 0.0, 0.8)
+		elif was == "WISP" and now == "ALIVE":
+			if card: card["kind"] = "revived"; card["t"] = 0.0
+			else: alerts.append({"h": h, "kind": "revived", "t": 0.0})
+			Sfx.play("revive", null, -6.0)
+		elif (now == "DEATHBOX" or now == "DEAD") and was in ["WISP", "ALIVE"]:
+			if card: card["kind"] = "eliminated"; card["t"] = 0.0
+			else: alerts.append({"h": h, "kind": "eliminated", "t": 0.0, "small": true})
+			Sfx.play("warn", null, -8.0, 0.0, 0.6)
+		elif was == "DEATHBOX" and now == "ALIVE":
+			alerts.append({"h": h, "kind": "revived", "t": 0.0, "small": true})
+			Sfx.play("revive", null, -6.0)
+		elif was == "DEATHBOX" and now == "DEAD":
+			alerts.append({"h": h, "kind": "lost", "t": 0.0, "small": true})
+	while alerts.size() > 3:
+		alerts.pop_front()
+
+var alerts_h := 0.0       # how much room the alerts take (tips sit below them)
+
+func _draw_alerts(sz: Vector2, p: Hunter) -> void:
+	var y := 82.0
+	alerts_h = 0.0
+	for a in alerts:
+		var h: Hunter = a["h"]
+		var kind := String(a["kind"])
+		var t := float(a["t"])
+		var fade := 1.0 if kind == "knocked" else clampf((2.6 - t) / 0.6, 0.0, 1.0)
+		var pop := clampf(t / 0.15, 0.0, 1.0)
+		var small: bool = a.get("small", false)
+		var w := 300.0 if not small else 236.0
+		var hh := 70.0 if not small else 44.0
+		var r := Rect2(Vector2(sz.x * 0.5 - w * 0.5, y + (1.0 - pop) * -10.0), Vector2(w, hh))
+		var col := Color("ff5a3a")
+		var title := "ALLY KNOCKED"
+		match kind:
+			"revived": col = GOOD; title = "ALLY REVIVED"
+			"eliminated": col = BAD; title = "ALLY ELIMINATED"
+			"lost": col = MUTED; title = "WISP LOST"
+		var pulse := 0.5 + 0.5 * sin(m.time * 8.0) if kind == "knocked" else 0.0
+		_rounded(r, Color(0.06, 0.03, 0.04, 0.9 * fade), 10, Color(col, (0.6 + 0.4 * pulse) * fade), 2)
+		var ps := hh - 12.0
+		var pr := Rect2(r.position + Vector2(6, 6), Vector2(ps, ps))
+		var pst := "down" if kind == "knocked" else ("dead" if kind in ["eliminated", "lost"] else "")
+		if fade > 0.05:
+			_draw_portrait(pr, h, pst, col)
+		var tx := pr.end.x + 10.0
+		if small:
+			_text(Vector2(tx, r.position.y + 19), title, 12, Color(col, fade), big)
+			_text(Vector2(tx, r.position.y + 36), h.pname.substr(0, 16), 14, Color(INK, fade), big)
 		else:
-			_bar(Rect2(r.position + Vector2(10, 22), Vector2(170, 3)), h.armor / maxf(1.0, h.max_armor), ARMOR_COL)
-			_bar(Rect2(r.position + Vector2(10, 27), Vector2(170, 6)), h.hp / h.max_hp, HP_COL)
-		y += 46
+			_text(Vector2(tx, r.position.y + 21), title, 13, Color(col, fade), big)
+			_text(Vector2(tx, r.position.y + 42), h.pname.substr(0, 16), 17, Color(INK, fade), big)
+			if kind == "knocked":
+				_text(Vector2(tx, r.position.y + 61), "%ds to revive" % int(ceil(_bleed_left(h))), 12, Color("ffb0a0"))
+				# which way, and how far
+				var dv := Vector2(h.pos.x - p.pos.x, h.pos.z - p.pos.z)
+				var ctr := Vector2(r.end.x - 34, r.position.y + 30)
+				var ang := _screen_dir(dv)
+				var tip := ctr + Vector2.from_angle(ang) * 13.0
+				var side := Vector2.from_angle(ang + PI * 0.5) * 7.0
+				var back := ctr - Vector2.from_angle(ang) * 6.0
+				c.draw_circle(ctr, 17.0, Color(0, 0, 0, 0.35))
+				c.draw_colored_polygon(PackedVector2Array([tip, back + side, back - side]), col)
+				_ctext(Vector2(ctr.x, r.position.y + 63), "%dm" % int(round(dv.length())), 12, INK, big)
+			else:
+				_text(Vector2(tx, r.position.y + 61), "Back on their feet" if kind == "revived" else "Get to their deathbox", 12, Color(MUTED, fade))
+		y += hh + 8.0
+		alerts_h += hh + 8.0
+
+## A ground direction as a screen angle, using the camera's view.
+func _screen_dir(dv: Vector2) -> float:
+	var cam := m.cam
+	if cam == null or m.player == null:
+		return dv.angle()
+	var a := cam.unproject_position(m.player.position)
+	var b := cam.unproject_position(m.player.position + Vector3(dv.x, 0, dv.y).normalized() * 3.0)
+	return (b - a).angle()
+
+## Supervive-style nameplate over another hunter: a class badge and the name, armor segments over a
+## segmented health bar (each tick is a fixed chunk of health), a white chip that drains after a hit,
+## and a row of status icons. Allies wear their team colour, enemies hostile red. No mana anywhere.
+const HOSTILE := Color("ff5a4a")
+var chip := {}            # nid -> trailing health fraction (the white chip after a hit)
+
+func _unit_col(h: Hunter) -> Color:
+	if m.player and h.team != m.player.team:
+		return HOSTILE
+	return Data.TEAM_COLORS[h.team % Data.TEAM_COLORS.size()] if h != m.player else p_team_col()
+
+func p_team_col() -> Color:
+	return Data.TEAM_COLORS[m.player.team % Data.TEAM_COLORS.size()] if m.player else GOOD
+
+func _chip_of(e: Ent, frac: float) -> float:
+	var was := float(chip.get(e.nid, frac))
+	var t := maxf(frac, move_toward(was, frac, get_process_delta_time() * 0.6))
+	chip[e.nid] = t
+	return t
+
+func _nameplate(sp: Vector2, h: Hunter) -> void:
+	if not sp.is_finite():
+		return
+	var col := _unit_col(h)
+	var w := 70.0
+	var x0 := sp.x - w * 0.5
+	# badge + name
+	var cc: Color = Data.CLASSES.get(h.cls, {}).get("color", INK)
+	var bc := Vector2(x0 - 10, sp.y - 16)
+	c.draw_circle(bc, 7.5, Color(0.03, 0.03, 0.05, 0.9))
+	c.draw_arc(bc, 7.5, 0, TAU, 18, col, 1.6, true)
+	_ctext(bc + Vector2(0, 4), String(h.cls).substr(0, 1).to_upper(), 10, cc, big)
+	_text(Vector2(x0 + 2, sp.y - 11), h.pname.substr(0, 14), 13, col.lerp(Color.WHITE, 0.25), big)
+	if h.downed:
+		var stomped: bool = h.get_meta("stomped", false)
+		var pulse := 0.5 + 0.5 * sin(m.time * 14.0)
+		var bcol := Color("ff3a2a").lerp(Color.WHITE, 0.3 * pulse) if stomped else Color("ffb36a")
+		_seg_bar(Rect2(Vector2(x0, sp.y - 2), Vector2(w, 6)), h.down_hp, Data.MATCH["down_hp"], 0.0, bcol, 25.0)
+		var revs: Array = h.get_meta("revivers", [])
+		if stomped:
+			var sts: Array = h.get_meta("stompers", [])
+			_ctext(sp + Vector2(0, 16), "STOMPED  ·  %s" % (sts[0] as Hunter).pname if not sts.is_empty() else "STOMPED", 11, bcol, big)
+		elif h.revive > 0.0 and not revs.is_empty():
+			_ctext(sp + Vector2(0, 16), "%s reviving  %d%%" % [(revs[0] as Hunter).pname, int(h.revive * 100.0)], 11, GOOD, big)
+		else:
+			_ctext(sp + Vector2(0, 16), "DOWN", 11, Color("ffb36a"), big)
+		return
+	if h.max_armor > 0.5:
+		_seg_bar(Rect2(Vector2(x0, sp.y - 4), Vector2(w, 3)), h.armor, h.max_armor, 0.0, ARMOR_COL, 25.0)
+	var frac := clampf(h.hp / h.max_hp, 0.0, 1.0)
+	_seg_bar(Rect2(Vector2(x0, sp.y + 2), Vector2(w, 7)), h.hp, h.max_hp, _chip_of(h, frac), col if frac > 0.35 else col.lerp(Color.WHITE, 0.2 + 0.2 * sin(m.time * 9.0)), 25.0)
+	if h.shield > 0.0:
+		c.draw_rect(Rect2(Vector2(x0, sp.y + 2), Vector2(w * clampf(h.shield / 120.0, 0.0, 1.0), 7)), Color(0.85, 0.93, 1.0, 0.5))
+	_status_row(Vector2(sp.x, sp.y + 19), h)
+
+## Little icons for what's happening to someone: stunned, rooted, slowed, burning, shielded, braced.
+func _status_row(at: Vector2, e: Ent) -> void:
+	var icons: Array = []
+	if e.stun_t > 0.0: icons.append(["concussion", Color("fff27a")])
+	if e.root_t > 0.0: icons.append(["binding", Color("8fe0a0")])
+	if e.slow_t > 0.0: icons.append(["snare", Color("9ae8ff")])
+	if e.burn_t > 0.0: icons.append(["fireball", Color("ff9a5a")])
+	if e is Hunter and (e as Hunter).shield > 0.0: icons.append(["brightshield", Color("d8ecff")])
+	if e.guard_t > 0.0: icons.append(["anchor", Color("f2e6cf")])
+	if e is Hunter and (e as Hunter).weak_t > 0.0: icons.append(["swap", Color("ffb36a"), (e as Hunter).weak_t])
+	var x := at.x - icons.size() * 8.0 + 8.0
+	for ic in icons:
+		c.draw_circle(Vector2(x, at.y), 7.0, Color(0.03, 0.03, 0.05, 0.85))
+		Icons.draw(c, String(ic[0]), Vector2(x, at.y), 4.2, ic[1])
+		if ic.size() > 2:
+			_ctext(Vector2(x, at.y + 17), "%.1f" % float(ic[2]), 10, ic[1], big)
+		x += 16.0
+
+## Teammates you can't see on screen get an arrow at the screen edge (with distance, coloured by
+## how they're doing); a dead teammate's deathbox gets a marker while their soul can still be saved.
+func _draw_squad_markers(sz: Vector2, p: Hunter) -> void:
+	var cam := m.cam
+	var inner := Rect2(Vector2(70, 90), sz - Vector2(140, 220))
+	for h in m.hunters:
+		if h == p or h.team != p.team:
+			continue
+		var st := _mate_state(h)
+		var at: Vector3 = st[2]
+		if at == Vector3.INF:
+			continue
+		var col: Color = st[1]
+		var wp := at + Vector3(0, 2.4, 0)
+		var dist := int(round(Vector2(at.x - p.pos.x, at.z - p.pos.z).length()))
+		var behind := cam.is_position_behind(wp)
+		var sp := cam.unproject_position(wp)
+		if not behind and inner.has_point(sp):
+			if String(st[0]) == "DEATHBOX":
+				# the overhead label doesn't exist for the dead: mark the box
+				_ctext(sp + Vector2(0, -6), "%s  ·  %s" % [h.pname.substr(0, 12), st[3]], 14, col, big)
+				c.draw_circle(sp + Vector2(0, 8), 5.0, col)
+			continue
+		var ctr := sz * 0.5
+		var d := (sp - ctr) * (-1.0 if behind else 1.0)
+		if d.length() < 1.0: continue
+		d = d.normalized()
+		var t := minf(inner.size.x * 0.5 / maxf(0.001, absf(d.x)), inner.size.y * 0.5 / maxf(0.001, absf(d.y)))
+		var e := ctr + d * t
+		var side := Vector2(-d.y, d.x)
+		c.draw_colored_polygon(PackedVector2Array([e + d * 16.0, e - d * 6.0 + side * 11.0, e - d * 6.0 - side * 11.0]), col)
+		var lbl := "%s %dm" % [h.pname.substr(0, 10), dist]
+		if String(st[0]) == "WISP": lbl = "%s DOWN %dm" % [h.pname.substr(0, 10), dist]
+		elif String(st[0]) == "DEATHBOX": lbl = "%s's box %s" % [h.pname.substr(0, 10), st[3]]
+		_ctext(e - d * 26.0 + Vector2(0, 5), lbl, 13, col, big)
 
 ## Red arcs around the middle of the screen pointing at whoever just hit you.
 func _draw_hurt_dirs(sz: Vector2) -> void:
@@ -982,7 +1452,7 @@ func _draw_ship_prompt(sz: Vector2) -> void:
 
 ## For the first seconds of every match: what each of your buttons does.
 func _draw_kit(sz: Vector2, p: Hunter) -> void:
-	if not Settings.get_v("tips") or m.opts.get("tutorial", false) or p.out:
+	if not Settings.get_v("tips") or m.opts.get("tutorial", false) or p.out or guide_hidden or not m.perk_offer.is_empty():
 		return
 	var show_t := 14.0 if not m.opts.get("training", false) else 1e9
 	var t := m.time - kit_t0
@@ -1000,14 +1470,17 @@ func _draw_kit(sz: Vector2, p: Hunter) -> void:
 	if p.kin:
 		var k: Kin = p.kin
 		var kcol: Color = Data.KIN[k.species]["color"]
-		for slot in ["k1", "k2"]:
-			var kd: AbilityDef = k.runner.def_of(slot)
-			if kd: lines.append([Settings.key_cap("signature" if slot == "k1" else "kin_skill"), kd.display_name, kd.desc, kd.color])
+		var kd1: AbilityDef = k.runner.def_of("k1")
+		if kd1: lines.append([Settings.key_cap("signature"), kd1.display_name, kd1.desc, kd1.color])
 		var ud := Ultimate.def_for(k)
 		if ud: lines.append([Settings.key_cap("ultimate"), ud.display_name + " (bond ultimate)", ud.desc + " Fill the bond meter by fighting together.", ud.color])
 		lines.append([Settings.key_cap("throw"), "Throw / recall " + String(k.rec.get("name", "your kin")), "Stuns what it hits; then your shots deal a combo. Press again to call it back.", kcol])
-		if p.kin2:
-			lines.append([Settings.key_cap("swap_kin"), "Swap to " + String((p.kin2 as Kin).rec.get("name", "your other kin")), "Your other kin, with its own abilities and ultimate.", Data.KIN[(p.kin2 as Kin).species]["color"]])
+	var g0: Dictionary = p.gear[0]
+	if not g0.is_empty() and Gear.ALL.has(String(g0["id"])):
+		var gdd: Dictionary = Gear.ALL[String(g0["id"])]
+		lines.append([Settings.key_cap("gear1"), String(gdd["name"]), String(gdd["desc"]), gdd["col"]])
+	else:
+		lines.append([Settings.key_cap("gear1"), "Glove (empty)", "Find gloves in chests, vaults and on bosses. An active glove goes here.", MUTED])
 	var w := 356.0
 	# each row: the key and name, then the description wrapped to the panel
 	var hs: Array = []
@@ -1018,8 +1491,17 @@ func _draw_kit(sz: Vector2, p: Hunter) -> void:
 		total += 26.0 + dh + 8.0
 	var bottom := sz.y - 120.0
 	var box := Rect2(Vector2(sz.x - w - 16, bottom - total), Vector2(w, total))
+	var compact := false
 	if m.opts.get("training", false):
-		box.position.y = 240
+		# in training it stays up, so it lives on the left under the minimap, clear of the checklist;
+		# on a short screen it drops the descriptions rather than run into your kin card
+		box.position = Vector2(16, 240)
+		if total > sz.y - 240 - 124:
+			compact = true
+			hs = []
+			for l in lines: hs.append(28.0)
+			total = 34.0 + 28.0 * lines.size() + 4.0
+		box.size.y = total
 	_panel(box, Color(0.06, 0.07, 0.1, 0.82 * a), 12)
 	_text(box.position + Vector2(14, 22), "Your kit", 14, Color(GOLD, a), big)
 	var y := box.position.y + 34
@@ -1030,7 +1512,8 @@ func _draw_kit(sz: Vector2, p: Hunter) -> void:
 		c.draw_style_box(ks, Rect2(Vector2(box.position.x + 14, y), Vector2(kw + 12, 20)))
 		c.draw_string(big, Vector2(box.position.x + 20, y + 15), l[0], HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color(0.07, 0.06, 0.08, a))
 		_text(Vector2(box.position.x + 34 + kw, y + 15), l[1], 14, Color(INK, a))
-		c.draw_multiline_string(body, Vector2(box.position.x + 14, y + 38), String(l[2]), HORIZONTAL_ALIGNMENT_LEFT, w - 28, 12, -1, Color(MUTED, a))
+		if not compact:
+			c.draw_multiline_string(body, Vector2(box.position.x + 14, y + 38), String(l[2]), HORIZONTAL_ALIGNMENT_LEFT, w - 28, 12, -1, Color(MUTED, a))
 		y += float(hs[i])
 
 ## Perks you've picked up this run: a row of little badges over your health bar, with stacks.
@@ -1083,7 +1566,7 @@ func _draw_perk_offer(sz: Vector2) -> void:
 
 func _draw_prompt(sz: Vector2, p: Hunter) -> void:
 	var it := m.interact
-	var y := sz.y - 128.0
+	var y := sz.y - 222.0
 	if not it.is_empty():
 		var prog := 0.0
 		match it["kind"]:
@@ -1147,12 +1630,18 @@ func _draw_downed(sz: Vector2, p: Hunter) -> void:
 	var who := "You're a wisp: %ds left. A teammate or your kin standing on you brings you back. Enemies can stomp or execute you." % int(ceil(left))
 	if p.kin and p.kin.state == "fainted":
 		who = "You're a wisp: %ds left, and your kin is out cold. Only a teammate standing on you can bring you back." % int(ceil(left))
-	if p.get_meta("stomped", false):
-		who = "An enemy is standing on you! You're draining fast."
-	_ctext(Vector2(sz.x * 0.5, sz.y * 0.32 + 28), who, 16, INK)
-	_bar(Rect2(Vector2(sz.x * 0.5 - 140, sz.y * 0.32 + 44), Vector2(280, 8)), p.down_hp / Data.MATCH["down_hp"], BAD)
+	var stomped: bool = p.get_meta("stomped", false)
+	if stomped:
+		var sts: Array = p.get_meta("stompers", [])
+		who = "%s is on you! You're pinned and draining %.1fx faster. Drift away!" % [(sts[0] as Hunter).pname if not sts.is_empty() else "An enemy", Life.R["stomp_mult"]]
+		_edge_pulse(sz, Color(1.0, 0.1, 0.05), 0.35 + 0.3 * (0.5 + 0.5 * sin(m.time * 9.0)))
+	_ctext(Vector2(sz.x * 0.5, sz.y * 0.32 + 28), who, 16, Color("ff7a6a") if stomped else INK)
+	_bar(Rect2(Vector2(sz.x * 0.5 - 140, sz.y * 0.32 + 44), Vector2(280, 8)), p.down_hp / Data.MATCH["down_hp"], Color("ff2a1a").lerp(Color.WHITE, 0.3 * (0.5 + 0.5 * sin(m.time * 14.0))) if stomped else BAD)
 	if p.revive > 0.0:
 		_bar(Rect2(Vector2(sz.x * 0.5 - 140, sz.y * 0.32 + 58), Vector2(280, 8)), p.revive, GOOD)
+		var revs: Array = p.get_meta("revivers", [])
+		if not revs.is_empty():
+			_ctext(Vector2(sz.x * 0.5, sz.y * 0.32 + 84), "%s is reviving you  %d%%" % [(revs[0] as Hunter).pname, int(p.revive * 100.0)], 15, GOOD, big)
 
 ## Dead, but your team's still in it.
 func _draw_dead(sz: Vector2, p: Hunter) -> void:
@@ -1196,7 +1685,7 @@ func _draw_tip(sz: Vector2, t: Dictionary) -> void:
 	var text: String = t["text"]
 	var w := minf(560.0, body.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x + 40.0)
 	var lines := body.get_multiline_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, w - 40.0, 16)
-	var r := Rect2(Vector2(sz.x * 0.5 - w * 0.5, 84), Vector2(w, lines.y + 34))
+	var r := Rect2(Vector2(sz.x * 0.5 - w * 0.5, 84 + alerts_h), Vector2(w, lines.y + 34))
 	_panel(r, Color(0.98, 0.95, 0.88, 0.94 * a), 12)
 	c.draw_multiline_string(body, r.position + Vector2(20, 28), text, HORIZONTAL_ALIGNMENT_LEFT, w - 40.0, 16, -1, Color(0.1, 0.09, 0.12, a))
 
@@ -1213,7 +1702,7 @@ func _draw_overhead(p: Hunter) -> void:
 	var w := 84.0
 	var frac := clampf(p.hp / p.max_hp, 0.0, 1.0)
 	head_hp = maxf(frac, lerpf(head_hp, frac, 0.06))
-	_vitals(sp, w, p, GOOD if frac > 0.35 else BAD, head_hp, true)
+	_vitals(sp, w, p, p_team_col().lerp(Color.WHITE, 0.15) if frac > 0.35 else BAD, head_hp, true)
 	# stamina: one yellow pip per dash under the bars, the next one filling as it recharges
 	var n := int(p.max_dashes()) + 1
 	for i in n:
@@ -1227,6 +1716,12 @@ func _draw_overhead(p: Hunter) -> void:
 			c.draw_colored_polygon(inner, STAMINA_COL)
 		elif fill > 0.0:
 			c.draw_arc(cpt, 3.0, -PI * 0.5, -PI * 0.5 + TAU * fill, 10, Color(STAMINA_COL, 0.6), 2.0)
+	_status_row(sp + Vector2(0, 30), p)
+	# high up: a small readout of how far above the ground you are
+	var alt := m.player_altitude() if p == m.player else 0.0
+	if alt > 6.0 and not p.grounded:
+		_ctext(sp + Vector2(-w * 0.5 - 30, 8), "%dm" % int(round(alt)), 13, Color("bfe6ff"), big)
+		c.draw_colored_polygon(PackedVector2Array([sp + Vector2(-w * 0.5 - 30, -10), sp + Vector2(-w * 0.5 - 35, -3), sp + Vector2(-w * 0.5 - 25, -3)]), Color("bfe6ff"))
 	if p.reload_t > 0.0:
 		# reloading: a filling ring beside your head, and the word under your bars
 		var rf := 1.0 - p.reload_t / float(p.wpn["reload"])
@@ -1363,7 +1858,7 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 			if g.is_empty(): return []
 			var gd: Dictionary = Gear.ALL[String(g["id"])]
 			out.append([gd["name"], gd["col"]])
-			out.append(["Gear active  ·  %s" % Settings.key_cap("gear%d" % (int(id.substr(4)) + 1)), MUTED, 12])
+			out.append(["Active glove  ·  %s" % Settings.key_cap("gear1") if int(id.substr(4)) == 0 else "Passive glove", MUTED, 12])
 			out.append([gd["desc"], INK, 14])
 			out.append([Gear.stat_text(String(g["id"]), int(g.get("rar", 1))), MUTED, 13])
 		"throw":
@@ -1383,12 +1878,17 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 			out.append(["%d of %d charges. One comes back every %s." % [int(floor(p.dashes)), int(p.max_dashes()), _secs(p.dash_regen())], MUTED, 13])
 		"kit":
 			out.append(["Armor kit", ARMOR_COL])
-			out.append(["Item  ·  %s" % Settings.key_cap("armor_kit"), MUTED, 12])
+			out.append(["Item  ·  %s (when your health is full)" % Settings.key_cap("tonic"), MUTED, 12])
 			out.append(["Repairs your armor to full. Armor takes 20%% off every hit while it lasts, and doesn't come back on its own. You're carrying %d." % p.armor_kits, INK, 14])
+		"base":
+			out.append(["Base to a teammate", Color("8fe3c8")])
+			out.append(["Squads  ·  %s" % Settings.key_cap("base"), MUTED, 12])
+			out.append(["A 3s channel to the teammate nearest your cursor. Stand still: moving, attacking or any damage interrupts it. You arrive weakened for 3s: half damage, and your crowd control, healing and shields are halved.", INK, 14])
+			out.append(["Cooldown %ds%s" % [int(Hunter.BASE_CD), ("  ·  ready in %ds" % int(ceil(p.base_cd))) if p.base_cd > 0.0 else "  ·  ready"], MUTED, 13])
 		"tonic":
-			out.append(["Tonic", GOOD])
+			out.append(["Heal", GOOD])
 			out.append(["Item  ·  %s" % Settings.key_cap("tonic"), MUTED, 12])
-			out.append(["Heals 40%% of your health. Health doesn't come back on its own. You're carrying %d. Find more in chests, or cook them at home." % p.tonics, INK, 14])
+			out.append(["Drinks a tonic (40%% of your health) when you're hurt; with full health it uses an armor kit instead. Neither comes back on its own. Carrying %d tonics and %d kits." % [p.tonics, p.armor_kits], INK, 14])
 		"weapon":
 			var wp: Dictionary = p.wpn
 			var rc: Color = Data.RARITY[p.wrar]["color"] if p.wrar > 0 else Color("e6dccb")
@@ -1512,4 +2012,213 @@ func _draw_map_labels(w: World, inner: Rect2, view: Rect2, k: float, overview: b
 		else:
 			var col := Color("ffd2f0") if String(lb.get("role", "")) == "heart" else INK
 			_ctext(pv + Vector2(0, 4), nm, 13 if overview else 11, col, big)
+
+# ------------------------------------------------------------------ the deathbox loot window
+## Pressing interact at a deathbox opens this: everything inside, each with its icon and rarity
+## colour, "upgrade" marked where it beats what you've got. Click one to take it (swapping a glove
+## or weapon leaves yours in the box); press interact again, or Smart loot, to grab everything
+## worth having. Walking away, going down or emptying the box closes it.
+var loot_open = null          # the box Dictionary, or null
+var loot_panel: PanelContainer
+var loot_sig := ""
+
+func loot_is(b: Dictionary) -> bool:
+	return loot_open != null and is_same(loot_open, b)
+
+func mouse_on_ui() -> bool:
+	if loot_panel == null or not is_instance_valid(loot_panel) or not loot_panel.visible:
+		return false
+	return loot_panel.get_global_rect().grow(6.0).has_point(loot_panel.get_global_mouse_position())
+
+func open_loot(b: Dictionary) -> void:
+	loot_open = b
+	loot_sig = ""
+	Sfx.play("whoosh", null, -10.0, 0.05, 1.3)
+	_build_loot()
+	if loot_panel: UI.pop_in(loot_panel)
+
+func close_loot() -> void:
+	loot_open = null
+	if loot_panel and is_instance_valid(loot_panel):
+		loot_panel.queue_free()
+	loot_panel = null
+
+func _loot_tick(_delta: float) -> void:
+	if loot_open == null:
+		return
+	var p: Hunter = m.player
+	var b: Dictionary = loot_open
+	if p == null or p.out or p.downed or b.get("empty", true) or p.flat_dist(b["pos"]) > 2.4 or not m.boxes.has(b):
+		close_loot()
+		return
+	# rebuild only when what's in it (or what you're holding) changes
+	var sig := str(Life.box_items(m, p, b).map(func(it): return [it["name"], it["upgrade"]])) + str(p.gear) + p.wid + str(p.wrar)
+	if sig != loot_sig:
+		_build_loot()
+
+func _build_loot() -> void:
+	var p: Hunter = m.player
+	var b: Dictionary = loot_open
+	if loot_panel and is_instance_valid(loot_panel):
+		loot_panel.queue_free()
+	var items: Array = Life.box_items(m, p, b)
+	loot_sig = str(items.map(func(it): return [it["name"], it["upgrade"]])) + str(p.gear) + p.wid + str(p.wrar)
+	var pc := PanelContainer.new()
+	pc.theme = UI.theme()
+	pc.mouse_filter = Control.MOUSE_FILTER_STOP
+	var bc: Color = Life.box_color(b)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.06, 0.065, 0.1, 0.95)
+	sb.set_corner_radius_all(14)
+	sb.border_color = Color(bc, 0.8); sb.set_border_width_all(2); sb.border_width_top = 4
+	sb.content_margin_left = 14; sb.content_margin_right = 14; sb.content_margin_top = 12; sb.content_margin_bottom = 12
+	sb.shadow_color = Color(0, 0, 0, 0.5); sb.shadow_size = 18
+	pc.add_theme_stylebox_override("panel", sb)
+	var v := UI.vbox(6); pc.add_child(v)
+	var o: Hunter = b["owner"]
+	var head := UI.hbox(8); v.add_child(head)
+	head.add_child(Icons.Glyph.new("gem", bc, 18.0))
+	var t := UI.title(("Your deathbox" if o == p else "%s's deathbox" % o.pname), 22, INK)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	var cl := UI.button("✕", func(): close_loot(), 36)
+	cl.flat = true
+	head.add_child(cl)
+	if items.is_empty():
+		v.add_child(UI.label("Empty.", 14, MUTED))
+	var list := UI.vbox(6)
+	if items.size() > 5:
+		var sc := ScrollContainer.new()
+		sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		sc.custom_minimum_size.y = 5 * 60.0
+		list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		sc.add_child(list)
+		v.add_child(sc)
+	else:
+		v.add_child(list)
+	for it in items:
+		var row := UI.hbox(8)
+		var rp := PanelContainer.new()
+		var rs := StyleBoxFlat.new()
+		rs.bg_color = Color(it["col"], 0.12 if it["upgrade"] else 0.06)
+		rs.set_corner_radius_all(9)
+		rs.border_color = Color(it["col"], 0.55 if it["upgrade"] else 0.2); rs.border_width_left = 3
+		rs.content_margin_left = 8; rs.content_margin_right = 8; rs.content_margin_top = 5; rs.content_margin_bottom = 5
+		rp.add_theme_stylebox_override("panel", rs)
+		rp.add_child(row)
+		row.add_child(Icons.Glyph.new(String(it["icon"]), it["col"], 24.0))
+		var col := UI.vbox(0); col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var nm := UI.label(String(it["name"]), 15, INK, UI.semi)
+		nm.autowrap_mode = TextServer.AUTOWRAP_OFF
+		col.add_child(nm)
+		var sub := UI.label(String(it["sub"]), 12, MUTED)
+		sub.autowrap_mode = TextServer.AUTOWRAP_OFF
+		sub.clip_text = true
+		sub.custom_minimum_size.x = 210
+		col.add_child(sub)
+		row.add_child(col)
+		if it["key"] in ["gear", "weapon"]:
+			var tag := UI.label("UPGRADE" if it["upgrade"] else "WORSE", 11, GOOD if it["upgrade"] else MUTED, UI.caps)
+			tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			row.add_child(tag)
+		var itc: Dictionary = it
+		var take := UI.button("Swap" if it["key"] in ["gear", "weapon"] else "Take", func():
+			if loot_open != null and m.player:
+				Life.take_item(m, m.player, loot_open, itc)
+				if (loot_open as Dictionary).get("empty", false): close_loot()
+				else: _build_loot(), 76)
+		take.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(take)
+		list.add_child(rp)
+	var foot := UI.hbox(8); v.add_child(foot)
+	var sm := UI.primary("Smart loot  (%s)" % Settings.key_cap("interact"), func():
+		if loot_open != null and m.player:
+			var got := Life.smart_loot(m, m.player, loot_open)
+			toast_small(("Smart looted %d thing%s" % [got, "" if got == 1 else "s"]) if got > 0 else "Nothing here beats what you've got", Color("ffd36a"))
+			close_loot(), 200)
+	foot.add_child(sm)
+	var hint := UI.label("Takes everything useful; leaves worse gear", 12, MUTED)
+	hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	foot.add_child(hint)
+	pc.custom_minimum_size.x = 430
+	add_child(pc)
+	loot_panel = pc
+	# to the right of centre, clear of your hunter and the ability bar
+	await get_tree().process_frame
+	if is_instance_valid(pc):
+		var vs := pc.get_viewport_rect().size
+		pc.position = Vector2(vs.x * 0.5 + 90.0, maxf(90.0, vs.y * 0.5 - pc.size.y * 0.5 - 40.0))
+
+# ------------------------------------------------------------------ wisp and deathbox revive rings
+## A ring on the ground round every wisp you can see, the size of the revive range: green and
+## filling as a teammate brings them up (both teams see it), red and pulsing while an enemy is
+## standing on it. Near a downed teammate you get a "step in" cue with how far off you are; on top
+## of an enemy wisp you get "Standing on <name>". Deathbox revives get the same ring.
+func _ground_ring(at: Vector3, r: float, col: Color, width: float, frac := 1.0, start := -PI * 0.5) -> void:
+	var cam := m.cam
+	var n := 40
+	var pts := PackedVector2Array()
+	var steps := maxi(2, int(ceil(n * clampf(frac, 0.0, 1.0))))
+	for i in steps + 1:
+		var a := start + TAU * frac * float(i) / float(steps)
+		var wp := at + Vector3(cos(a) * r, 0.08, sin(a) * r)
+		if cam.is_position_behind(wp):
+			return
+		pts.append(cam.unproject_position(wp))
+	c.draw_polyline(pts, col, width, true)
+
+func _draw_wisp_rings() -> void:
+	var p: Hunter = m.player
+	var rr: float = Life.R["revive_radius"]
+	for o in m.hunters:
+		if not o.downed or o.out or (o.unseen and o != p) or m.cam.is_position_behind(o.position):
+			continue
+		var stomped: bool = o.get_meta("stomped", false)
+		var pulse := 0.5 + 0.5 * sin(m.time * 10.0)
+		if stomped:
+			_ground_ring(o.pos, rr * (1.0 + 0.08 * pulse), Color(1.0, 0.18, 0.1, 0.55 + 0.35 * pulse), 4.0)
+			_ground_ring(o.pos, rr * 0.55, Color(1.0, 0.3, 0.2, 0.35 * pulse), 2.5)
+		else:
+			var ally: bool = p != null and o.team == p.team
+			var base := GOOD if ally else Color("ffb36a")
+			_ground_ring(o.pos, rr, Color(base, 0.35), 2.0)
+			if o.revive > 0.0:
+				_ground_ring(o.pos, rr, Color(GOOD, 0.95), 5.0, o.revive)
+		if p == null or p.out or p.downed or p == o:
+			continue
+		var d := p.flat_dist(o)
+		var lp := m.cam.unproject_position(o.pos + Vector3(0, 0.1, 0)) + Vector2(0, 30)
+		if o.team == p.team and not stomped and d > rr and d < 9.0:
+			_ctext(lp, "Step in to revive  ·  %.1fm" % (d - rr), 13, GOOD, big)
+	# you, standing on an enemy wisp
+	if p and not p.out and p.has_meta("standing_on") and m.time - float(p.get_meta("standing_at", -9.0)) < 0.15:
+		var o2 = p.get_meta("standing_on")
+		if is_instance_valid(o2) and (o2 as Hunter).downed:
+			var sz := c.size
+			var s := "Standing on %s  ·  they drain %.1fx faster and can barely move" % [(o2 as Hunter).pname, Life.R["stomp_mult"]]
+			var w := body.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+			_rounded(Rect2(Vector2(sz.x * 0.5 - w * 0.5 - 14, sz.y * 0.5 + 70), Vector2(w + 28, 28)), Color(0.12, 0.02, 0.02, 0.85), 8, Color(1, 0.3, 0.2, 0.7), 2)
+			_ctext(Vector2(sz.x * 0.5, sz.y * 0.5 + 89), s, 15, Color("ff8a7a"))
+	# deathbox revives in progress
+	for b in m.boxes:
+		if m.time - float(b.get("rev_at", -9.0)) > 0.15 or m.cam.is_position_behind(b["pos"]):
+			continue
+		var by = b.get("rev_by")
+		_ground_ring(b["pos"], 1.6, Color(GOOD, 0.3), 2.0)
+		_ground_ring(b["pos"], 1.6, Color(GOOD, 0.95), 5.0, float(b.get("rev_prog", 0.0)))
+		var bp := m.cam.unproject_position(b["pos"] + Vector3(0, 2.0, 0))
+		var o3: Hunter = b["owner"]
+		_ctext(bp, "%s bringing back %s  %d%%" % [(by as Hunter).pname if is_instance_valid(by) else "Someone", o3.pname, int(float(b.get("rev_prog", 0.0)) * 100.0)], 12, GOOD, big)
+
+## A soft coloured glow round the screen edges (danger to you).
+func _edge_pulse(sz: Vector2, col: Color, a: float) -> void:
+	var bands := 6
+	for i in bands:
+		var t := float(i) / bands
+		var w := 70.0 * (1.0 - t)
+		var cc := Color(col, a * (1.0 - t) * 0.35)
+		c.draw_rect(Rect2(Vector2.ZERO, Vector2(sz.x, w)), cc)
+		c.draw_rect(Rect2(Vector2(0, sz.y - w), Vector2(sz.x, w)), cc)
+		c.draw_rect(Rect2(Vector2.ZERO, Vector2(w, sz.y)), cc)
+		c.draw_rect(Rect2(Vector2(sz.x - w, 0), Vector2(w, sz.y)), cc)
 

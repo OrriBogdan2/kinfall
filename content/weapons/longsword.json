@@ -1,37 +1,37 @@
 {
-	"id": "longsword",
-	"name": "Longsword",
-	"classes": [
-		"medium"
-	],
-	"primary": {
-		"melee": true,
-		"dmg": 6.35,
-		"combo_dmg": [
-			6.35,
-			6.35,
-			10.22
-		],
-		"rate": 0.28,
-		"combo_reset": 0.7,
-		"speed": 40,
-		"mag": 1,
-		"reload": 0.1,
-		"kb": 1.5,
-		"spread": 0.0,
-		"range": 2.4,
-		"arc": 140.0,
-		"tip_bonus": 0.25,
-		"lunge": 0.8,
-		"kb_influence": 0.3,
-		"charge_time": 0.8,
-		"charged_dmg": 22.1,
-		"charged_lunge": 3.0,
-		"charged_kb": 5.0,
-		"size": 0.22,
-		"color": "#fff0b0",
-		"sfx": "dash",
-		"desc": "A wide 3-hit combo, stronger on the tip of the blade. Hold 0.8s for a lunging strike."
-	},
-	"utility": "rising_cut"
+ "id": "longsword",
+ "name": "Longsword",
+ "classes": [
+  "medium"
+ ],
+ "primary": {
+  "melee": true,
+  "dmg": 6.35,
+  "combo_dmg": [
+   6.35,
+   6.35,
+   10.22
+  ],
+  "rate": 0.28,
+  "combo_reset": 0.7,
+  "speed": 40,
+  "mag": 1,
+  "reload": 0.1,
+  "kb": 1.5,
+  "spread": 0.0,
+  "range": 2.7,
+  "arc": 140.0,
+  "tip_bonus": 0.25,
+  "kb_influence": 0.3,
+  "charge_time": 0.8,
+  "charged_dmg": 22.1,
+  "charged_kb": 5.0,
+  "size": 0.22,
+  "color": "#fff0b0",
+  "sfx": "dash",
+  "desc": "A wide 3-hit combo, stronger on the tip of the blade. Hold 0.8s for a long-reaching thrust.",
+  "charged_reach": 3.8,
+  "charged_arc": 50.0
+ },
+ "utility": "rising_cut"
 }

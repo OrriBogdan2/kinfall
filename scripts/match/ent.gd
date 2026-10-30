@@ -119,6 +119,14 @@ func hurt(dmg: float, by: Ent, opts := {}) -> float:
 		if "knock_steer" in self:
 			set("knock_steer", float(opts.get("kbi", 0.3)))
 		impulse(opts["kb"], opts.get("lift", -1.0))
+	# recall weakness (just based to a teammate): the crowd control you apply is half as strong
+	var cc_k := 1.0
+	var cred = by.owner_h if by is Kin and by.owner_h else by
+	if cred and "weak_t" in cred and float(cred.weak_t) > 0.0:
+		cc_k = 0.5
+		opts = opts.duplicate()
+		for st0 in ["slow", "root", "stun"]:
+			if opts.has(st0): opts[st0] = float(opts[st0]) * cc_k
 	if opts.get("burn", 0.0) > 0.0:
 		burn_t = maxf(burn_t, 3.0); burn_dps = maxf(burn_dps, float(opts["burn"])); burn_by = by
 	if opts.get("slow", 0.0) > 0.0:

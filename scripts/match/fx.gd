@@ -61,11 +61,15 @@ func _ready() -> void:
 		add_child(l)
 		num_pool.append(l)
 
+## Readability: every particle burst is thinned out, so effects mark what happened without
+## burying the fight under confetti.
+const PARTICLES := 0.6
+
 func burst(at: Vector3, col: Color, amount := 14, speed := 4.0, life := 0.5, grav := 12.0, size := 1.0, dir := Vector3.UP, spread := 180.0) -> void:
 	var p := bursts[bi]
 	bi = (bi + 1) % bursts.size()
 	p.global_position = at
-	p.amount = amount
+	p.amount = maxi(3, int(round(amount * PARTICLES)))
 	p.color = col
 	p.lifetime = life
 	p.initial_velocity_min = speed * 0.5
@@ -107,6 +111,18 @@ func ghost(at: Vector3, yaw: float, col: Color, scl: float) -> void:
 func number(at: Vector3, v: float, col: Color, crit: bool, prefix := "") -> void:
 	if v < 0.5 or (prefix == "" and not Settings.get_v("damage_numbers")):
 		return
+	# rapid hits on the same spot (a minigun, a burn ticking, pellets) add up on one number instead
+	# of spraying a new one for every tick
+	for n in nums:
+		if n.has("val") and float(n["t"]) < 0.4 and String(n["pre"]) == prefix and (n["base"] as Vector3).distance_to(at) < 1.3:
+			n["val"] = float(n["val"]) + v
+			var ln: Label3D = n["node"]
+			ln.text = prefix + str(int(round(float(n["val"]))))
+			if crit:
+				ln.modulate = col; ln.font_size = 64
+			ln.scale = Vector3.ONE * (1.7 if crit else 1.4)
+			n["t"] = minf(float(n["t"]), 0.12)
+			return
 	var l: Label3D = num_pool.pop_front()
 	num_pool.append(l)
 	for n in nums:
@@ -118,7 +134,7 @@ func number(at: Vector3, v: float, col: Color, crit: bool, prefix := "") -> void
 	l.global_position = at + Vector3(rng.randf_range(-0.3, 0.3), 0, rng.randf_range(-0.2, 0.2))
 	l.visible = true
 	l.scale = Vector3.ONE * (1.6 if crit else 1.25)
-	nums.append({"node": l, "t": 0.0, "vel": Vector3(rng.randf_range(-0.6, 0.6), 3.2, 0)})
+	nums.append({"node": l, "t": 0.0, "vel": Vector3(rng.randf_range(-0.6, 0.6), 3.2, 0), "val": v, "pre": prefix, "base": at})
 
 ## A short word that floats up (COMBO, an ability's name, BOND READY).
 func word(at: Vector3, txt: String, col: Color, big := false) -> void:

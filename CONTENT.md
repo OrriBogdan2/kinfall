@@ -28,7 +28,7 @@ Colours are hex strings, times are seconds, distances are tiles.
   leaves, sparks, pebbles, wind, drips, prism, spores, rings or moondust. The six built-in species have
   hand-built animal bodies instead (scripts/match/kin_models.gd); a new species uses these parts unless it
   gets a builder there too. `wing` (optional) colours wing membranes.
-- `abilities`: one or two ability ids. The first is Q, the second V.
+- `abilities`: one or two ability ids. The first is the kin's ability on E. The second is kept for later (the current kit has one kin ability) and is only cast by the kin itself when auto-cast is on.
 - `ultimate`: an ultimate id (R).
 - `ai`: the species' fighting temperament, mixed 50/50 with each kin's own traits. Aggression chases further and
   uses attacks more; loyalty stays close and goes after whoever hurts its hunter; caution backs off when hurt.
@@ -85,3 +85,27 @@ Open `tests/kin_gallery.tscn` and press F6 to see it next to the others.
 
 `content/weapons/<id>.json` (primary fire and an optional `utility` ability) and `content/classes/<id>.json`
 (the class `dodge` ability).
+
+
+## A new glove: `content/gloves/<id>.json`
+
+Gloves are found on the run (chests, vaults, bosses) and last one expedition. A glove with a `cd`
+above 0 is an **active** glove and goes in the Q slot; one with `cd` 0 is **passive** and goes in the
+other slot. Picking one up replaces the glove in its slot.
+
+```json
+{
+ "id": "quake", "name": "Quake Glove", "cd": 18, "col": "ff9a5a", "icon": "quake",
+ "stats": {"dmg": 0.04},
+ "desc": "Punch the ground: after a short wind-up, everyone close is thrown into the air.",
+ "effects": [
+  {"type": "telegraph", "radius": 2.8, "time": 0.35, "at": "self", "color": "ff9a5a"},
+  {"type": "area", "radius": 2.8, "dmg": 14, "lift": 9, "kb": 3, "at": "self", "delay": 0.35, "color": "ff9a5a"}
+ ]
+}
+```
+
+- `stats`: `speed`, `glide_speed`, `heat`, `armor`, `dmg`, `cdr` (scaled up by rarity).
+- `effects`: the same building blocks abilities use (see `scripts/combat/effects.gd`). The older
+  actives (jump pad, gust, platform, smoke, mending, seeker, shock) are coded in `Match.use_gear`.
+- `icon`: any id from `scripts/ui/icons.gd`.

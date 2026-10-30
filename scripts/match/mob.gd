@@ -113,6 +113,23 @@ func _tick_stagger(dt: float) -> void:
 		stag_next = randf_range(9.0, 13.0)
 		m.on_stag_open(self)
 
+## Readability: only a couple of monsters press the attack on any one target at a time. The rest
+## hang back at a distance, circling and waiting for a gap, so a fight is one or two clear threats
+## instead of a swarm. Bosses always engage.
+const MAX_ENGAGED := 2
+var engaged := false
+## Hooks for rarer monsters (biomes, mutations): 0 common up to the top rarity in Data.RARITY, and
+## a list of mutations, each an icon id or {icon, name}. The HUD tints the bar frame and shows them.
+var rarity := 0
+var mutations: Array = []
+
+func _engaged_on(t: Ent) -> int:
+	var n := 0
+	for mb in m.mobs:
+		if mb != self and not mb.dead and mb.engaged and mb.tgt == t:
+			n += 1
+	return n
+
 func _find_target() -> Ent:
 	var best: Ent = null; var bd := 7.5 if st == "idle" else 11.0
 	for h in m.hunters:
@@ -173,6 +190,7 @@ func sim(dt: float) -> void:
 		"chase":
 			if tgt == null or tgt.dead or not tgt.hittable() or (tgt is Hunter and not tgt.targetable()) or flat_dist(camp) > 13.0:
 				tgt = _find_target()
+				engaged = false
 				if tgt == null:
 					st = "idle"
 					wish = dir_to(camp) * spd
@@ -183,13 +201,21 @@ func sim(dt: float) -> void:
 				if flat_dist(tgt) > 12.0: tgt = null; st = "idle"
 			elif tgt:
 				var d := flat_dist(tgt)
+				if not engaged:
+					engaged = mkind in ["warden", "sentinel"] or _engaged_on(tgt) < MAX_ENGAGED
 				var want: float = md["range"] * (0.85 if mkind != "spitter" else 0.9)
 				if mkind == "sentinel": want = 1e9
-				if d > want:
+				if not engaged:
+					# waiting its turn: keep a few steps off and circle, never attacking
+					var hold := maxf(4.5, float(md["range"]) + 2.5)
+					var to_t := dir_to(tgt)
+					var side := Vector2(-to_t.y, to_t.x) * (1.0 if int(nid.hash()) % 2 == 0 else -1.0)
+					wish = (to_t * clampf(d - hold, -1.0, 1.0) + side * 0.45) * spd * 0.6
+				elif d > want:
 					wish = dir_to(tgt) * spd
 				elif mkind == "spitter" and d < 3.0:
 					wish = -dir_to(tgt) * spd
-				if d <= md["range"] + tgt.r and cd <= 0.0 and m.world.los(pos, tgt.pos, pos.y + 0.8) and not m.opts.get("training", false):
+				if engaged and d <= md["range"] + tgt.r and cd <= 0.0 and m.world.los(pos, tgt.pos, pos.y + 0.8) and not m.opts.get("training", false):
 					_begin_attack()
 		"windup":
 			if tgt and md["attack"] in ["lunge", "spit", "volley"]:
@@ -267,13 +293,13 @@ func _strike() -> void:
 			st = "lunge"; st_t = 0.2; lunge_hit = {}
 		"spit":
 			st = "recover"; st_t = 0.5
-			m.spawn_shot(self, pos + Vector3(atk_dir.x * 0.6, 0.8, atk_dir.y * 0.6), atk_dir * 11.0, md["dmg"] * dmg_mult, 8.5 / 11.0, 0.22, Color("b6ff6a"), {"mob": true, "kb": 2.0})
+			m.spawn_shot(self, pos + Vector3(atk_dir.x * 0.6, 0.8, atk_dir.y * 0.6), atk_dir * 8.5, md["dmg"] * dmg_mult, 8.5 / 8.5, 0.32, Color("b6ff6a"), {"mob": true, "kb": 2.0})
 			m.sfx("thump", pos, -8.0, 1.4)
 		"volley":
 			st = "recover"; st_t = 0.6
 			for k in [-0.2, 0.0, 0.2]:
 				var d := atk_dir.rotated(k)
-				m.spawn_shot(self, pos + Vector3(d.x * 0.6, 1.0, d.y * 0.6), d * 12.5, md["dmg"] * dmg_mult, 10.5 / 12.5, 0.18, Color("8ae8ff"), {"mob": true, "kb": 2.5})
+				m.spawn_shot(self, pos + Vector3(d.x * 0.6, 1.0, d.y * 0.6), d * 9.5, md["dmg"] * dmg_mult, 10.5 / 9.5, 0.28, Color("8ae8ff"), {"mob": true, "kb": 2.5})
 			m.sfx("rifle", pos, -6.0, 1.5)
 		"fuse":
 			# a puffbomb goes off and takes itself with it

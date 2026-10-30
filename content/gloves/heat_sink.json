@@ -1,0 +1,11 @@
+{
+ "name": "Cooling Glove",
+ "cd": 0,
+ "col": "ff9a5a",
+ "stats": {
+  "heat": 0.45
+ },
+ "icon": "breeze",
+ "desc": "Your glider holds 45% more heat.",
+ "id": "heat_sink"
+}

@@ -55,6 +55,8 @@ var pings: Array = []       # {pos, col, t}
 var bubbles: Array = []     # {ent, text, t, cat}
 var interact := {}          # what F would do right now for the local player
 var paused := false
+var duel: Duel = null
+var shot_n := 0          # the duel room: you and one sparring bot (opts "duel")
 var slowmo := 0.0
 var slow_k := 0.35
 var killcam_text := ""
@@ -70,7 +72,7 @@ var aim_ring: MeshInstance3D
 var muzzle_light: OmniLight3D
 var collapse_warned := false
 var rng := RandomNumberGenerator.new()
-var pending_input := {"dash": false, "jump": false, "sig": false, "reload": false, "tonic": false, "kit": false, "throw": false, "skill": false, "ult": false, "sec": false, "gear1": false, "gear2": false, "swap": false}
+var pending_input := {"base": false, "dash": false, "jump": false, "sig": false, "reload": false, "tonic": false, "kit": false, "throw": false, "skill": false, "ult": false, "sec": false, "gear1": false, "gear2": false, "swap": false}
 var zones: Array = []      # hero areas: dome, sanctuary, well
 var fields: Fields = null  # patches made by kin abilities (Thorn Patch)
 var _bond_cb: Callable
@@ -156,10 +158,11 @@ func start(o: Dictionary) -> void:
 		Net.begin_match("kf-" + String(o["net"]["mid"]), String(o["net"]["host"]), self)
 	_spawn_pads_and_portals()
 	_spawn_hunters()
-	if not opts.get("tutorial", false):
+	if not opts.get("tutorial", false) and not opts.get("duel", false):
 		_spawn_mobs()        # the tutorial brings its own monsters, one step at a time
-	_spawn_chests()
-	if not world.train_route.is_empty():
+	if not opts.get("duel", false):
+		_spawn_chests()
+	if not world.train_route.is_empty() and not opts.get("duel", false):
 		skytrain = SkyTrain.new()
 		skytrain.name = "SkyTrain"
 		add_child(skytrain)
@@ -180,7 +183,8 @@ func start(o: Dictionary) -> void:
 		player.teleport(b0 + Vector3(2.2, 0, 0.6))
 		spawn_weapon("sniper", 3, b0 + Vector3(1.6, 0, 1.8), "", false)
 		spawn_weapon("smg", 4, b0 + Vector3(3.0, 0, 1.6), "", false)
-	_spawn_wild()
+	if not opts.get("duel", false):
+		_spawn_wild()
 	var Hud = load("res://scripts/ui/hud.gd")
 	hud = Hud.new()
 	hud.name = "Hud"
@@ -190,6 +194,11 @@ func start(o: Dictionary) -> void:
 		hud.toast("Steer to choose where you land", Color("f3eee2"))
 	if player:
 		cam.snap(player.pos)
+	if opts.get("duel", false) and player:
+		duel = Duel.new()
+		duel.setup(self)
+		duel.attach_keys()
+		hud.toast("Duel room  ·  B sets up the bot  ·  X resets", Color("f3eee2"))
 	_build_aim()
 	Input.mouse_mode = Input.MOUSE_MODE_HIDDEN
 	set_process(true)
@@ -286,8 +295,8 @@ func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String
 		kins.append(k)
 		ents_by_id[k.nid] = k
 		h.kin = k
-	if not kin_rec2.is_empty() and not kin_rec.is_empty():
-		# everyone brings two kin: the second waits on the bench until you swap (X)
+	if TWO_KIN and not kin_rec2.is_empty() and not kin_rec.is_empty():
+		# (retired) everyone brought two kin: the second waited on the bench until you swapped
 		var k2 := Kin.new()
 		k2.init_kin(self, id + "k2", kin_rec2["species"], kin_rec2, h)
 		add_child(k2)
@@ -297,6 +306,31 @@ func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String
 		ents_by_id[k2.nid] = k2
 		h.kin2 = k2
 	return h
+
+## Who B would take you to: the teammate nearest the cursor on screen (alive, standing, not out).
+func base_target(h: Hunter) -> Hunter:
+	var mates: Array = hunters.filter(func(o): return o != h and o.team == h.team and not o.out and not o.downed and not o.extracted and not o.dropping and not o.riding)
+	if mates.is_empty():
+		return null
+	if h != player or mates.size() == 1:
+		return mates[0]
+	var mp := get_viewport().get_mouse_position()
+	var best: Hunter = mates[0]; var bd := 1e9
+	for o in mates:
+		var sp := cam.unproject_position(o.pos) if not cam.is_position_behind(o.pos) else Vector2(1e6, 1e6)
+		var d := sp.distance_to(mp)
+		if d < bd: bd = d; best = o
+	return best
+
+## How high the player is over the ground under them (over the abyss: over the last ground they stood on).
+func player_altitude() -> float:
+	if player == null:
+		return 0.0
+	var g := world.ground_at(player.pos.x, player.pos.z) if not world.is_void(player.pos.x, player.pos.z) else player.last_gy
+	return maxf(0.0, player.pos.y - g)
+
+## One kin per expedition: a short, readable kit. Flip back on to bring a benched second kin again.
+const TWO_KIN := false
 
 func my_kit() -> Dictionary:
 	return {"weapon": String(opts.get("weapon", Save.d.get("weapon", ""))), "perk": ""}
@@ -660,6 +694,33 @@ func _spawn_breakables() -> void:
 			q.y = world.ground_at(q.x, q.z)
 			if t[1] == "weapon": spawn_weapon("sniper", 2, q, "", false)
 			else: _add_break(t[1], q)
+		# a glove rack: a row of gloves to try (actives go in your Q slot, passives in the other)
+		var gi := 0
+		for gid in ["blink", "quake", "bubble", "grapple", "frost", "power_core"]:
+			var q2: Vector3 = player.pos + Vector3(-4.5 + gi * 1.8, 0, -2.6)
+			gi += 1
+			if world.is_void(q2.x, q2.z) or world.is_block(q2.x, q2.z):
+				continue
+			q2.y = world.ground_at(q2.x, q2.z)
+			spawn_gear(gid, 2, q2)
+		# the way into the duel room: a glowing pad next to where you start
+		if not opts.get("duel", false):
+			for off in [Vector3(3.6, 0, 2.6), Vector3(-3.6, 0, 2.6), Vector3(3.6, 0, -1.0), Vector3(0, 0, 4.0)]:
+				var dq: Vector3 = player.pos + off
+				if world.is_void(dq.x, dq.z) or world.is_block(dq.x, dq.z):
+					continue
+				dq.y = world.ground_at(dq.x, dq.z)
+				duel_pad = dq
+				var pad := Models.jump_pad(Color("ff8a7a"))
+				pad.position = dq
+				add_child(pad)
+				var lbl := Label3D.new()
+				lbl.text = "DUEL ROOM\n%s to enter" % Settings.key_cap("interact")
+				lbl.font = UI.big; lbl.font_size = 40; lbl.pixel_size = 0.01; lbl.outline_size = 12
+				lbl.modulate = Color("ffb0a0"); lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED; lbl.no_depth_test = true
+				lbl.position = dq + Vector3(0, 2.0, 0)
+				add_child(lbl)
+				break
 	# the weapons lying in the open are the same for everyone in an online match
 	var wr := RandomNumberGenerator.new(); wr.seed = seed_val * 31 + 7
 	var keys: Array = Data.weapon_ids()
@@ -699,7 +760,7 @@ func spawn_gear(gid: String, rar: int, at: Vector3) -> void:
 func _take_gear(h: Hunter, wp: Dictionary) -> void:
 	wpicks.erase(wp)
 	(wp["node"] as Node3D).queue_free()
-	var slot := 0 if h.gear[0].is_empty() else (1 if h.gear[1].is_empty() else 1)
+	var slot := Gear.slot_of(String(wp["gear"]))      # actives go in the Q slot, passives in the other
 	var old: Dictionary = h.gear[slot]
 	h.gear[slot] = {"id": wp["gear"], "rar": int(wp["rar"])}
 	h.gear_cd[slot] = 0.0
@@ -712,7 +773,7 @@ func _take_gear(h: Hunter, wp: Dictionary) -> void:
 	fx.ring(h.pos, 1.4, col, 0.35)
 	if h == player and hud:
 		var g: Dictionary = Gear.ALL[wp["gear"]]
-		hud.toast("%s  ·  %s%s" % [g["name"], Gear.stat_text(wp["gear"], int(wp["rar"])), ("  ·  " + Settings.key_cap("gear%d" % (slot + 1))) if Gear.active(wp["gear"]) else ""], col)
+		hud.toast("%s  ·  %s%s" % [g["name"], Gear.stat_text(wp["gear"], int(wp["rar"])), ("  ·  " + Settings.key_cap("gear1")) if Gear.active(wp["gear"]) else "  ·  passive"], col)
 
 ## Fire the active on a gear slot.
 func use_gear(h: Hunter, slot: int) -> void:
@@ -726,6 +787,13 @@ func use_gear(h: Hunter, slot: int) -> void:
 	h.gear_cd[slot] = float(gd["cd"])
 	var col: Color = gd["col"]
 	h.reveal_t = maxf(h.reveal_t, 0.6)
+	if h == player:
+		h._ab_feedback("gear0", "cast")
+	if gd.has("effects"):
+		# newer gloves are built from the same effect blocks as abilities
+		Effects.run(gd["effects"], h, {})
+		sfx("skill", h.pos, -4.0, 1.0)
+		return
 	match gid:
 		"jump_pad":
 			var d := h.aim_dir()
@@ -791,6 +859,41 @@ func use_gear(h: Hunter, slot: int) -> void:
 		"shock":
 			Abil._blast(h, h.pos, 3.4, 12.0, 13.0, col, 5.0, "gear")
 			shake(0.3, h.pos)
+		"rocket":
+			# straight up: a column of thrust that also cools your glider, so you can keep going
+			var d := h.aim_dir()
+			h.vel = Vector3(h.vel.x * 0.5 + d.x * 2.0, 17.0, h.vel.z * 0.5 + d.y * 2.0)
+			h.grounded = false
+			h.glide_cd = 0.0
+			h.shot_down = false
+			h.roll_t = 0.0
+			h.glide_fuel = minf(1.0, h.glide_fuel + 0.5)
+			fx.burst(h.pos + Vector3(0, 0.2, 0), col, 26, 6.0, 0.5, -1.0, 1.2, Vector3.DOWN, 30.0)
+			sfx("glide", h.pos, 0.0, 0.7)
+		"skyhook":
+			# hook a point toward the cursor and swing up to it: onto a ledge above you if there is
+			# one there, otherwise straight up into the air
+			var d := h.aim_dir()
+			var aim: Vector3 = h.inp.get("aim", h.pos)
+			var reach := clampf(Vector2(aim.x - h.pos.x, aim.z - h.pos.z).length(), 2.0, 9.0)
+			var tx := h.pos.x + d.x * reach; var tz := h.pos.z + d.y * reach
+			var gy := world.ground_at(tx, tz)
+			var to := Vector3(h.pos.x + d.x * 3.0, h.pos.y + 8.0, h.pos.z + d.y * 3.0)
+			if gy > World.VOID + 1.0 and not world.is_block(tx, tz) and gy > h.pos.y - 1.0:
+				to = Vector3(tx, gy + 1.2, tz)
+			h.launch_to(to, 0.55)
+			h.glide_cd = 0.0
+			fx.bolt(h.pos + Vector3(0, 1.2, 0), to, Color(col, 0.9))
+			sfx("throw", h.pos, -2.0, 0.7)
+		"hover":
+			# a second jump in the air (or a big hop on the ground) and the glider ready right after
+			h.vel.y = maxf(h.vel.y, 11.0)
+			h.grounded = false
+			h.glide_cd = 0.0
+			h.roll_t = 0.0
+			fx.ring(h.pos, 1.2, col, 0.3)
+			fx.burst(h.pos, col, 14, 3.0, 0.4, 2.0, 1.0, Vector3.DOWN, 50.0)
+			sfx("jump", h.pos, -2.0, 1.3)
 
 func _update_gear_fx(dt: float) -> void:
 	for gp in gpads.duplicate():
@@ -1111,7 +1214,7 @@ func foes_of(team: int) -> Array:
 func dmg_mult(h: Hunter) -> float:
 	if h == null: return 1.0
 	var bot_k := float((h.ai.get("diff", {}) as Dictionary).get("dmg", 1.0)) if h.ctrl == "bot" and h != player else 1.0
-	return bot_k * (1.25 if h.bless_t > 0.0 else 1.0) * (1.0 + h.gear_stat("dmg")) * h.fuse_mod("dmg") * (Life.R["sickness_dmg"] if h.sick_t > 0.0 else 1.0)
+	return bot_k * (0.5 if h.weak_t > 0.0 else 1.0) * (1.25 if h.bless_t > 0.0 else 1.0) * (1.0 + h.gear_stat("dmg")) * h.fuse_mod("dmg") * (Life.R["sickness_dmg"] if h.sick_t > 0.0 else 1.0)
 
 func sfx(n: String, p = null, vol := 0.0, pitch := 1.0) -> void:
 	Sfx.play(n, p, vol, 0.07, pitch)
@@ -1174,8 +1277,14 @@ func on_damage(target: Ent, by: Ent, d: float, o: Dictionary) -> void:
 	if crit: col = Color("ffd23f") if not armor_hit else Color("b0e4ff")
 	if target == player: col = Color("ff6a5a")
 	elif target is Kin and target.owner_h == player: col = Color("ffa08a")
-	if mine or (player and target.flat_dist(player) < 12.0):
+	# only numbers that involve you: other fights nearby don't spray digits over yours
+	if mine:
 		fx.number(target.pos + Vector3(0, 1.5 if target is Hunter else 1.0, 0), d, col, crit)
+	# impact: a short freeze on heavy hits you deal or take (scaled by the hit, never on chip damage)
+	if mine and src != "burn":
+		var kbv: Vector2 = o.get("kb", Vector2.ZERO) if o.get("kb", null) is Vector2 else Vector2.ZERO
+		if d >= 18.0 or kbv.length() >= 7.0 or o.get("stun", 0.0) > 0.0:
+			freeze_frame(clampf(0.025 + d * 0.0011 + kbv.length() * 0.003, 0.03, 0.075))
 	if credit == player and target != player and src != "burn":
 		sfx("crit" if crit else "hit", target.pos, -4.0 if crit else -6.0, 1.25 if armor_hit else randf_range(0.92, 1.08))
 		if hud: hud.hitmarker(crit, armor_hit)
@@ -1450,6 +1559,13 @@ func on_fell(e: Ent) -> void:
 		if e.out:
 			return
 		sfx("fall", e.pos, 0.0)
+		if duel and e == duel.bot:
+			# knocked off the island in the duel room: that's a knock, then a fresh round
+			duel.stats["knocks"] = int(duel.stats["knocks"]) + 1
+			duel.round_n += 1
+			hud.toast("Off the edge! Round to you", Color("8fe3c8"))
+			duel.reset()
+			return
 		if e == player and S_dev_god():
 			var back: Vector3 = e.ai.get("land", world.spawns[0] if world.spawns.size() > 0 else world.random_ground())
 			e.teleport(back)
@@ -1739,7 +1855,7 @@ func on_wild_dazed(k: Kin) -> void:
 func on_stag_open(mb: Mob) -> void:
 	if player and not player.out and player.flat_dist(mb) < 14.0:
 		sfx("warn", mb.pos, -10.0, 1.5)
-		_tip("stagger", "A purple ring means %s can be staggered. Hit it with an ability (%s, %s or your kin's %s) for a big hit, a long stun and your cooldown back." % [mb.md["name"], Settings.key_cap("signature"), Settings.key_cap("ultimate"), Settings.key_cap("kin_skill")])
+		_tip("stagger", "A purple ring means %s can be staggered. Hit it with an ability (%s, %s or %s) for a big hit, a long stun and your cooldown back." % [mb.md["name"], Settings.key_cap("signature"), Settings.key_cap("ultimate"), Settings.key_cap("gear1")])
 
 ## Someone landed an ability in a stagger window. Runs where the monster lives (the host online).
 var stag_n := 0
@@ -1857,6 +1973,8 @@ func _update_vision() -> void:
 func _exit_tree() -> void:
 	RenderingServer.global_shader_parameter_set("vis_on", 0.0)
 	if biomes: biomes.free_up()
+	if duel:
+		duel.teardown()
 	if _bond_cb.is_valid() and CombatBus.hit_landed.is_connected(_bond_cb):
 		CombatBus.hit_landed.disconnect(_bond_cb)
 	if _combo_cb.is_valid() and CombatBus.status_applied.is_connected(_combo_cb):
@@ -1965,8 +2083,19 @@ func spawn_shot(by: Ent, at: Vector3, v2: Vector2, dmg: float, life: float, size
 		mi = null          # a melee strike is invisible; the swing has its own effect
 	if mi:
 		mi.visible = true
-		mi.material_override.set_shader_parameter("color", col)
-		mi.scale = Vector3.ONE * size * 2.0
+		# readability: what can hurt you is the brightest, hottest thing on screen; your own and your
+		# team's shots are smaller and dimmer so they never hide an incoming one
+		var vis_col := col
+		var vis_size := size * 2.0
+		if player and by.team != player.team:
+			vis_col = col.lerp(Color("ff5a3a"), 0.35)
+			vis_col.a = 1.0
+			vis_size *= 1.3
+		elif player:
+			vis_col = Color(col, 0.5)
+			vis_size *= 0.85
+		mi.material_override.set_shader_parameter("color", vis_col)
+		mi.scale = Vector3.ONE * vis_size
 		mi.global_position = at
 	if not extra.has("dy") and not extra.get("mob", false) and not extra.get("cos", false) and not extra.get("melee", false):
 		var src: Hunter = by as Hunter if by is Hunter else ((by as Kin).owner_h as Hunter if by is Kin and (by as Kin).owner_h else null)
@@ -1980,7 +2109,10 @@ func spawn_shot(by: Ent, at: Vector3, v2: Vector2, dmg: float, life: float, size
 				extra["y0"] = at.y
 				extra["gmax"] = maxf(src.pos.y, float(src.inp["aim_y"]))
 	var team := by.team
-	shots.append({"pos": at, "vel": v2, "dmg": dmg, "team": team, "by": by, "life": life, "r": size, "col": col, "x": extra, "node": mi, "prev": at, "start": at})
+	if duel and not extra.get("cos", false):
+		duel.note_shot(by)
+	shot_n += 1
+	shots.append({"sid": shot_n, "pos": at, "vel": v2, "dmg": dmg, "team": team, "by": by, "life": life, "r": size, "col": col, "x": extra, "node": mi, "prev": at, "start": at})
 	if net_on and not extra.get("cos", false) and not extra.get("melee", false) and not by.remote:
 		net_event(["s", _r(at.x), _r(at.y), _r(at.z), _r(v2.x), _r(v2.y), snappedf(life, 0.01), snappedf(size, 0.01), col.to_html(false), float(extra.get("boom", 0.0)), team, 1 if extra.get("mob", false) else 0])
 	if by is Hunter and not extra.get("melee", false):
@@ -2285,7 +2417,12 @@ func _process(delta: float) -> void:
 		else:
 			# high in the air or out over the abyss the camera pulls back so you can see where you'll land
 			# the camera only eases back while gliding, so jumps and falls never change the framing
-			cam.zoom_to = 1.25 if player.gliding else 1.0
+			# sneaking (Ctrl) pulls the camera well back for a wide look around [Supervive]
+			cam.zoom_to = 1.25 if player.gliding else (1.45 if player.crouch and player.grounded else 1.0)
+			# high up, the camera pulls back with your altitude so you can still read the ground
+			var alt := player_altitude()
+			if alt > 4.0:
+				cam.zoom_to *= 1.0 + clampf((alt - 4.0) / 24.0, 0.0, 0.7)
 			cam.top_to = 0.0
 		cam.follow(player.prev.lerp(player.pos, alpha), delta, not player.dropping)
 	elif player and (player.downed or player.out):
@@ -2344,11 +2481,11 @@ func _gather_input() -> void:
 			player.inp["move"] = Vector2(best.x - player.pos.x, best.z - player.pos.z).normalized()
 	player.inp["aim"] = _mouse_aim()
 	player.inp["aim_y"] = aim_y      # the height of whatever you're pointing at (shots climb or dip to it)
-	player.inp["fire"] = Input.is_action_pressed("fire") and not paused
+	player.inp["fire"] = Input.is_action_pressed("fire") and not paused and not (hud and hud.mouse_on_ui())
 	if paused:
 		player.inp["move"] = Vector2.ZERO
 	player.inp["interact"] = Input.is_action_pressed("interact")
-	# hold Space, or the back side mouse button (Mouse 4), in the air to glide; Mouse 4 never jumps
+	# hold Space or Mouse 5 (Mouse 4 works too) in the air to glide; the mouse buttons never jump
 	player.inp["glide"] = (Input.is_action_pressed("jump") or Input.is_action_pressed("glide")) and not paused
 	player.inp["dash_hold"] = Input.is_action_pressed("dash") and bool(Settings.get_v("dash_hold"))
 	var quick: bool = Settings.get_v("cast_on_press")
@@ -2370,10 +2507,14 @@ func _gather_input() -> void:
 				choose_perk(pi)
 			elif not Input.is_physical_key_pressed(KEY_1 + pi):
 				_perk_keys_down.erase(pi)
-	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["armor_kit", "kit"], ["throw", "throw"], ["kin_skill", "skill"], ["ultimate", "ult"], ["secondary", "sec"], ["gear1", "gear1"], ["gear2", "gear2"], ["swap_kin", "swap"]]:
-		if a[0] in ["tonic", "armor_kit"] and (not perk_offer.is_empty() or not _perk_keys_down.is_empty()):
-			continue       # 1 and 2 pick a perk while a choice is open
-		var aimable: bool = a[0] in ["signature", "ultimate", "kin_skill"] and not quick
+	# the kit: Q glove, E kin ability, C throw kin, R bond, 1 heal (the second kin ability, kin swap
+	# and the separate armor-kit key are retired)
+	if Input.is_action_just_pressed("base") and not paused and duel == null:
+		pending_input["base"] = true
+	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["ultimate", "ult"], ["secondary", "sec"], ["gear1", "gear1"]]:
+		if a[0] == "tonic" and (not perk_offer.is_empty() or not _perk_keys_down.is_empty()):
+			continue       # 1, 2 and 3 pick a perk while a choice is open
+		var aimable: bool = a[0] in ["signature", "ultimate"] and not quick
 		if aimable:
 			# hold to see where it will land, let go to cast it
 			if Input.is_action_just_pressed(a[0]) and not paused:
@@ -2439,6 +2580,44 @@ func step(dt: float) -> void:
 				x.ctrl = "idle"
 				eliminate(x, null, "knocked out")
 				break
+	if opts.get("mates_demo", false) and player:
+		# test: the squad UI. One teammate gets knocked, one dies into a deathbox, and the first is
+		# picked back up a few seconds later (frames under the minimap and the ally alerts up top)
+		var mates: Array = hunters.filter(func(x): return x.team == player.team and x != player)
+		if time < 0.05:
+			for i in mates.size():
+				var x: Hunter = mates[i]
+				x.ctrl = "idle"
+				x.teleport(world.free_spot_near(player.pos + Vector3(-4.0 + 3.0 * i, 0, -3.0 + 1.5 * i), [player.pos], 1.2, 0.4, 10.0))
+		if mates.size() >= 3:
+			if time > 1.0 and time < 1.1 and not mates[0].downed: knock(mates[0], null, {})
+			if mates[0].downed and not opts.has("mates_revive") or (opts.has("mates_revive") and time < float(opts.get("mates_revive", 0.0))): mates[0].revive = 0.0
+			if time > 1.6 and time < 1.7 and not mates[1].out: eliminate(mates[1], null, "knocked out")
+			if time > 1.2: mates[2].hp = mates[2].max_hp * 0.4; mates[2].armor = mates[2].max_armor * 0.5; mates[2].slow_t = 2.0
+			if opts.has("mates_revive") and time > float(opts["mates_revive"]) and mates[0].downed:
+				revive_hunter(mates[0], player)
+			# test: an enemy standing on the knocked teammate (the stomp signal), kept alive for the shot
+			if opts.get("stomp_demo", false) and mates[0].downed and time > 1.3:
+				mates[0].down_hp = maxf(mates[0].down_hp, 55.0)
+				for e in hunters:
+					if e.team != player.team and not e.out:
+						e.ctrl = "idle"
+						e.teleport(mates[0].pos + Vector3(0.4, 0, 0.2))
+						break
+			# test: walk up to the dead teammate's deathbox and open the loot window
+			if opts.get("loot_demo", false) and time > 2.0 and not has_meta("loot_demo_done") and hud:
+				set_meta("loot_demo_done", true)
+				var lb: Dictionary = Life.box_of(self, mates[1])
+				if not lb.is_empty():
+					var ids: Array = Gear.ALL.keys()
+					if ids.size() > 1:
+						(lb["gear"] as Array).append({"id": String(ids[0]), "rar": 3})
+						(lb["gear"] as Array).append({"id": String(ids[1]), "rar": 1})
+					lb["weapon"] = {"wid": "sniper", "rar": 2}
+					lb["gems"] = int(lb.get("gems", 0)) + 25
+					lb["empty"] = false
+					player.teleport(lb["pos"] + Vector3(0.8, 0, 0.6))
+					hud.open_loot(lb)
 	if opts.get("ledge_demo", false) and player and time < 0.05:
 		# test: start just off the edge of your island, a few metres below the lip
 		var p0 := player.pos
@@ -2532,6 +2711,9 @@ func step(dt: float) -> void:
 		player.inp["glide"] = true
 		player.inp["move"] = Vector2(1, 0.3).normalized()
 	if player and not player.out:
+		if pending_input["base"]:
+			pending_input["base"] = false
+			player.start_base(base_target(player))
 		for k in ["dash", "jump", "sig", "reload", "tonic", "kit", "ult", "sec", "gear1", "gear2", "skill", "swap"]:
 			if pending_input[k]:
 				player.inp[k] = true
@@ -2545,6 +2727,9 @@ func step(dt: float) -> void:
 	if skytrain: skytrain.tick(dt)
 	if opts.has("train_demo") and skytrain and player:
 		_train_demo()
+	if duel:
+		duel.after_think()
+		duel.tick(dt)
 	for h in hunters: h.sim(dt)
 	if opts.get("autoplay", false) and int(time * 60.0) % 15 == 0:
 		for h in hunters:
@@ -2587,7 +2772,7 @@ func step(dt: float) -> void:
 		if opts.get("tut_test", false):
 			_tut_drive()
 		_update_tutorial(dt)
-	if opts.get("training", false):
+	if opts.get("training", false) and duel == null:
 		_update_training(dt)
 	_update_rules(dt)
 	if net_on:
@@ -2698,6 +2883,12 @@ func _update_interact(dt: float) -> void:
 				if o.remote:
 					_rev_out[o.nid] = float(_rev_out.get(o.nid, 0.0)) + dt / Life.R["revive_time"]
 					o.revive += dt / Life.R["revive_time"]
+				if h == player and best.is_empty():
+					# your own revive bar, so you know it's working (and when it's blocked)
+					if o.get_meta("stomped", false):
+						best = {"kind": "revive", "ent": o, "label": "An enemy is standing on %s: revive blocked. Knock them off!" % o.pname, "col": Color("ff6a5a")}
+					else:
+						best = {"kind": "revive", "ent": o, "label": "Reviving %s  ·  stay in the ring" % o.pname, "col": Color("9ee2a0")}
 			elif not o.remote:
 				best = {"kind": "finish", "ent": o, "label": "Hold %s to stomp %s  (you'll be locked in)" % [Settings.key_cap("interact"), o.pname], "col": Color("ff8a6a")}
 		if not want or best.get("kind", "") != "finish":
@@ -2712,10 +2903,15 @@ func _update_interact(dt: float) -> void:
 					best = {"kind": "boxrev", "box": b, "label": "Hold %s to bring %s back" % [Settings.key_cap("interact"), o.pname], "col": Color("9ee2a0")}
 					break
 				if not b["empty"]:
-					best = {"kind": "loot", "box": b, "label": "Hold %s to loot %s" % [Settings.key_cap("interact"), "your box" if o == h else o.pname + "'s box"], "col": Life.box_color(b)}
+					var whose: String = "your box" if o == h else o.pname + "'s box"
+					var open_now: bool = h == player and hud != null and hud.loot_is(b)
+					var lt := ("Press %s again to smart loot  ·  click items to take them" % Settings.key_cap("interact")) if open_now else ("Press %s to open %s  ·  twice to smart loot" % [Settings.key_cap("interact"), whose])
+					best = {"kind": "loot", "box": b, "label": lt if h == player else "Hold %s to loot %s" % [Settings.key_cap("interact"), whose], "col": Life.box_color(b)}
 					break
 		if best.get("kind", "") not in ["boxrev", "loot"] or not want:
 			h.box_t = 0.0
+		if not want:
+			h.set_meta("loot_hold", false)
 		# 2. catch a dazed wild kin (not in training: practice kin go home with nobody)
 		if best.is_empty() and not opts.get("training", false):
 			for k in kins:
@@ -2731,7 +2927,10 @@ func _update_interact(dt: float) -> void:
 					bd = d
 					var gd: Dictionary = Gear.ALL[wp["gear"]]
 					var rn: String = String(Data.RARITY[int(wp["rar"])]["name"]) + " " if int(wp["rar"]) > 1 else ""
-					best = {"kind": "weapon", "wp": wp, "label": "Press %s to take %s%s  (%s)" % [Settings.key_cap("interact"), rn, gd["name"], Gear.stat_text(wp["gear"], int(wp["rar"]))], "col": gd["col"]}
+					var gslot := Gear.slot_of(String(wp["gear"]))
+					var cur: Dictionary = h.gear[gslot]
+					var swap_txt := ("  ·  replaces " + String(Gear.ALL[String(cur["id"])]["name"])) if not cur.is_empty() and Gear.ALL.has(String(cur["id"])) else ""
+					best = {"kind": "weapon", "wp": wp, "label": "Press %s to take %s%s  (%s glove%s: %s)%s" % [Settings.key_cap("interact"), rn, gd["name"], "active" if gslot == 0 else "passive", ("  ·  " + Settings.key_cap("gear1")) if gslot == 0 else "", Gear.stat_text(wp["gear"], int(wp["rar"])), swap_txt], "col": gd["col"]}
 				elif d < bd and absf(h.pos.y - float(wp["pos"].y)) < 1.2:
 					bd = d
 					var r: Dictionary = Data.RARITY[int(wp["rar"])]
@@ -2765,6 +2964,17 @@ func _update_interact(dt: float) -> void:
 				h.finish_t += dt
 				if h.finish_t >= Life.R["stomp_commit"]:
 					Life.start_stomp(self, h, o)
+			"loot" when h == player and hud:
+				# press to open the box's loot window; press again (with it open) to smart loot
+				if not bool(h.get_meta("loot_hold", false)):
+					h.set_meta("loot_hold", true)
+					var b0: Dictionary = best["box"]
+					if hud.loot_is(b0):
+						var got := Life.smart_loot(self, h, b0)
+						hud.toast_small(("Smart looted %d thing%s" % [got, "" if got == 1 else "s"]) if got > 0 else "Nothing here beats what you've got", Color("ffd36a"))
+						if b0["empty"] or got > 0: hud.close_loot()
+					else:
+						hud.open_loot(b0)
 			"boxrev", "loot":
 				var b: Dictionary = best["box"]
 				# taking a hit breaks the channel
@@ -2772,6 +2982,11 @@ func _update_interact(dt: float) -> void:
 					h.box_t = 0.0
 				h.box_t += dt
 				var need: float = Life.R["box_revive_time"] if best["kind"] == "boxrev" else Life.R["loot_time"]
+				if best["kind"] == "boxrev":
+					# everyone can see a deathbox revive going up (and who's doing it)
+					b["rev_prog"] = h.box_t / need
+					b["rev_by"] = h
+					b["rev_at"] = time
 				if h.box_t >= need:
 					h.box_t = 0.0
 					if best["kind"] == "boxrev": Life.box_revive(self, b, h)
@@ -2952,7 +3167,7 @@ const TUT := [
 	["land", "Steer with %K to choose where you land"],
 	["move", "Walk around with %K"],
 	["dash", "Press %K to dash"],
-	["glide", "Press %K to jump. Hold it (or Mouse 4) in the air to glide"],
+	["glide", "Press %K to jump, then hold Mouse 5 (or Space) in the air to glide. Mouse 5 is the easy way"],
 	["exdash", "Jump, then press %K in the air for a long dash"],
 	["shoot", "%W"],
 	["utility", "Press %K: %A"],
@@ -2969,20 +3184,30 @@ var tut_used0 := {}
 
 # ---- training area
 ## [id, what to do, the action whose key it uses ("" for none)]
-const TRAIN := [["move", "Walk around", "up"], ["dash", "Dash", "dash"], ["glide", "Jump, then hold it (or Mouse 4) in the air to glide", "jump"],
-	["shoot", "Shoot a target dummy", "fire"], ["ability", "Use your kin's first ability", "signature"], ["ult", "Fill the bond meter and use your bond ultimate", "ultimate"],
-	["secondary", "Use your right-click utility", "secondary"], ["swap", "Swap to your other kin", "swap_kin"],
-	["crouch", "Crouch: slower, steadier aim, harder to spot", "crouch"],
-	["throw", "Throw your kin at a dummy", "throw"], ["kinskill", "Use your kin's second ability", "kin_skill"], ["combo", "Land a combo: shoot a foe your kin just stunned or rooted", "fire"], ["tonic", "Drink a tonic to heal", "tonic"],
+const TRAIN := [["move", "Walk around", "up"], ["dash", "Dash", "dash"], ["glide", "Jump, then hold Mouse 5 or Space in the air to glide", "jump"],
+	["shoot", "Shoot a target dummy", "fire"], ["ability", "Use your kin's ability", "signature"], ["ult", "Fill the bond meter and use your bond ultimate", "ultimate"],
+	["secondary", "Use your weapon ability (right click)", "secondary"], ["glove", "Use your glove (pick one up from the rack first)", "gear1"],
+	["crouch", "Sneak: slower, steadier aim, harder to spot", "crouch"],
+	["throw", "Throw your kin at a dummy", "throw"], ["combo", "Land a combo: shoot a foe your kin just stunned or rooted", "fire"], ["tonic", "Heal (tonic, or armor kit when health is full)", "tonic"],
 	["stagger", "Stagger a big dummy: hit it with an ability while it has a purple ring", "signature"],
 	["smash", "Break a crate or pot", "fire"], ["weapon", "Take a found weapon off the ground", "interact"],
 	["ledge", "Dash off an edge and float back up", ""]]
 var train := {}
 var train_t := 0.0
 
+var duel_pad := Vector3.INF
+
+## The training pad that takes you to the duel room.
+static func duel_opts() -> Dictionary:
+	return {"training": true, "duel": true, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 5151, "no_drop": true}
+
 func _update_training(dt: float) -> void:
 	if player == null:
 		return
+	if duel_pad != Vector3.INF and player.flat_dist(duel_pad) < 1.3 and not player.downed:
+		if Input.is_action_just_pressed("interact") and not paused:
+			Game.start_match(duel_opts())
+			return
 	train_t += dt
 	if player.downed and train_t > 2.0:
 		revive_hunter(player, null)
@@ -3003,13 +3228,12 @@ func _update_training(dt: float) -> void:
 		"glide": player.gliding and not player.dropping,
 		"shoot": player.dmg_done > 0.0,
 		"ability": player.kin != null and (player.kin as Kin).runner.has_slot("k1") and not (player.kin as Kin).runner.is_ready("k1"),
-		"swap": player.kin2 != null and train.get("_swapped", false),
+		"glove": float(player.gear_cd[0]) > 0.0,
 		"combo": int(player.stats.get("combos", 0)) > 0,
 		"crouch": player.crouch,
 		"secondary": player.runner != null and player.runner.has_slot("utility") and not player.runner.is_ready("utility"),
 		"ult": was_ult and player.ult < 0.5,
 		"throw": player.kin != null and player.kin.st_throws > 0,
-		"kinskill": player.kin != null and (player.kin as Kin).runner.has_slot("k2") and not (player.kin as Kin).runner.is_ready("k2"),
 		"tonic": player.tonics < int(train.get("_tonics", player.tonics)),
 		"ledge": player.grap.size() > 0 or player.mantle_k() > 0.0,
 		"smash": train.get("_smash", false),
@@ -4146,7 +4370,7 @@ func _tips() -> void:
 		return
 	_tip("move", "WASD to move, aim with the mouse, hold left click to shoot. Shift dashes, Space jumps. Hold Space in the air to glide.")
 	if _tip_t > 14.0:
-		_tip("ability", "%s and %s are your kin's abilities. Fighting together fills the bond meter, and %s calls your kin's bond ultimate." % [Settings.key_cap("signature"), Settings.key_cap("kin_skill"), Settings.key_cap("ultimate")])
+		_tip("ability", "%s is your kin's ability. Fighting together fills the bond meter, and %s calls your kin's bond ultimate." % [Settings.key_cap("signature"), Settings.key_cap("ultimate")])
 	if player.ult >= 1.0 and player.kin:
 		var ud := Ultimate.def_for(player.kin)
 		if ud: _tip("ult", "Your bond is full. %s calls %s." % [Settings.key_cap("ultimate"), ud.display_name])
@@ -4163,7 +4387,7 @@ func _tips() -> void:
 	if k.state == "active":
 		var a1 := k.runner.def_of("k1")
 		var a2 := k.runner.def_of("k2")
-		_tip("skill", "%s uses %s's %s and %s its %s. Stun or root a foe with your kin, then shoot it for a combo. %s calls it back to your shoulder." % [Settings.key_cap("signature"), k.rec.get("name", "your kin"), a1.display_name if a1 else "ability", Settings.key_cap("kin_skill"), a2.display_name if a2 else "other ability", Settings.key_cap("throw")])
+		_tip("skill", "%s uses %s's %s. Stun or root a foe with your kin, then shoot it for a combo. %s throws it, and again calls it back to your shoulder." % [Settings.key_cap("signature"), k.rec.get("name", "your kin"), a1.display_name if a1 else "ability", Settings.key_cap("throw")])
 	if not interact.is_empty() and interact["kind"] == "catch":
 		_tip("catch", "Hold " + Settings.key_cap("interact") + " to catch it. Caught kin only come home if you extract.")
 	if portals.any(func(p): return p["open"]):
@@ -4344,6 +4568,27 @@ func _update_aim(alpha: float) -> void:
 			aim_ring.global_position = Vector3(at.x + t.x, g + 0.06, at.z + t.y)
 			var col: Color = Data.KIN[k.species]["color"]
 			aim_ring.material_override.set_shader_parameter("color", Color(col, 0.6))
+	elif k and k.state == "active" and k.runner.is_ready("k1") and k.ready_to_fight():
+		# your kin's ability lands at the cursor, as far as it can reach from the kin: a faint ring
+		# shows where it would go (clamped to its reach) so cursor distance reads as range
+		var kd: AbilityDef = k.runner.def_of("k1")
+		if kd:
+			var spec: Array = kd.aim_spec()
+			if String(spec[0]) == "area":
+				var from_p: Vector3 = k.pos if kd.from == "kin" else at
+				var t2 := Vector2(aim.x - from_p.x, aim.z - from_p.z)
+				var reach := float(spec[1])
+				var clamped := t2.length() > reach
+				if clamped:
+					t2 = t2.normalized() * reach
+				var g2 := world.ground_at(from_p.x + t2.x, from_p.z + t2.y)
+				if g2 > World.VOID + 1.0:
+					aim_ring.visible = true
+					aim_ring.global_position = Vector3(from_p.x + t2.x, g2 + 0.06, from_p.z + t2.y)
+					aim_ring.scale = Vector3.ONE * maxf(0.6, float(spec[2]) / 0.6)
+					aim_ring.material_override.set_shader_parameter("color", Color(kd.color, 0.35 if clamped else 0.22))
+	if not (k and k.state == "active"):
+		aim_ring.scale = Vector3.ONE
 	if p.muzzle_t > 0.0:
 		var dir2 := p.aim_dir()
 		muzzle_light.global_position = Vector3(at.x + dir2.x * 0.8, at.y + 1.0, at.z + dir2.y * 0.8)

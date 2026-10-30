@@ -1,0 +1,22 @@
+{
+ "name": "Ward Glove",
+ "cd": 18,
+ "col": "f2e6cf",
+ "stats": {
+  "armor": 8
+ },
+ "icon": "anchor",
+ "desc": "Brace yourself: take 60% less damage for 1.5s.",
+ "effects": [
+  {
+   "type": "guard",
+   "amount": 0.6,
+   "time": 1.5
+  },
+  {
+   "type": "burst",
+   "color": "f2e6cf"
+  }
+ ],
+ "id": "ward"
+}
