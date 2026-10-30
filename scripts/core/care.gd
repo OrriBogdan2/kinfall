@@ -15,6 +15,17 @@ const DECAY := {"food": 1.5, "energy": 0.7, "joy": 0.6, "clean": 0.45}
 ## What an expedition takes out of the kin that went.
 const MATCH_COST := {"food": -26.0, "energy": -34.0, "clean": -30.0}
 
+## Starving: hours a kin has spent with nothing in it (food at zero), real time, at home or away.
+## Each stage keeps the ones before it. A meal takes 4 hours off; being fed (food over 20) undoes it
+## three times as fast as it built up. Feeders keep it from ever starting.
+const STARVE := {"weak": 6.0, "refuse": 18.0, "sick": 30.0, "dead": 72.0}
+const STARVE_INFO := {
+	"starving": ["Starving", "Hasn't eaten in a while. Feed it, or fill a feeder."],
+	"weak": ["Weak from hunger", "Slow, and weaker on expeditions. Losing trust in you."],
+	"refuse": ["Too weak to go out", "Won't come on expeditions until it's eaten."],
+	"sick": ["Sick from hunger", "Ill and miserable. It won't last much longer without food."],
+}
+
 const STATS := {
 	"power": {"name": "Power", "col": Color("ff7a5a"), "desc": "+0.4% damage a point", "drill": "Dummy strikes"},
 	"guard": {"name": "Guard", "col": Color("e6c26a"), "desc": "+0.5% health a point", "drill": "Brace and hold"},
@@ -83,7 +94,11 @@ static func tick(rec: Dictionary, secs: float, sleeping := false) -> void:
 	ensure(rec)
 	var mins := secs / 60.0
 	var nd: Dictionary = rec["needs"]
+	var f0 := float(nd["food"])
+	var rate := DECAY["food"] / 60.0 * (0.5 if sleeping else 1.0)
 	nd["food"] = clampf(float(nd["food"]) - DECAY["food"] * mins * (0.5 if sleeping else 1.0), 0.0, 100.0)
+	# the part of this stretch spent with nothing in it counts toward starving
+	starve_step(rec, secs, maxf(0.0, secs - f0 / maxf(0.0001, rate)) if float(nd["food"]) <= 0.0 else 0.0)
 	nd["clean"] = clampf(float(nd["clean"]) - DECAY["clean"] * mins * (0.2 if sleeping else 1.0), 0.0, 100.0)
 	if sleeping:
 		nd["energy"] = clampf(float(nd["energy"]) + 9.0 * mins, 0.0, 100.0)
@@ -92,22 +107,70 @@ static func tick(rec: Dictionary, secs: float, sleeping := false) -> void:
 	# a hungry, grubby or worn-out kin gets glum faster
 	var glum := 1.0 + (1.0 if float(nd["food"]) < 25.0 else 0.0) + (0.5 if float(nd["clean"]) < 20.0 else 0.0) + (0.5 if float(nd["energy"]) < 15.0 else 0.0)
 	nd["joy"] = clampf(float(nd["joy"]) - DECAY["joy"] * mins * glum * (0.3 if sleeping else 1.0), 0.0, 100.0)
+	if starve_h(rec) >= STARVE["sick"]:
+		# sick from hunger: no energy and no joy to speak of
+		nd["energy"] = minf(float(nd["energy"]), 35.0)
+		nd["joy"] = minf(float(nd["joy"]), 25.0)
 	rec["needs_t"] = Time.get_unix_time_from_system()
 
-## The time you were away: it sleeps a lot of it off, and nothing drops below a floor.
-static func catch_up(rec: Dictionary) -> void:
+## The time you were away: it sleeps a lot of it off, and nothing drops below a floor (unless it
+## was already hungry when you left). Returns the time away beyond half a day (up to two weeks):
+## Econ.catch_up_all runs that slowly, hour by hour, with the feeders.
+static func catch_up(rec: Dictionary) -> float:
 	ensure(rec)
-	var gone := clampf(Time.get_unix_time_from_system() - float(rec["needs_t"]), 0.0, 12.0 * 3600.0)
+	var all := clampf(Time.get_unix_time_from_system() - float(rec["needs_t"]), 0.0, 14.0 * 86400.0)
+	var gone := minf(all, 12.0 * 3600.0)
 	if gone > 30.0:
 		var nd: Dictionary = rec["needs"]
 		var floors := {"food": 25.0, "joy": 30.0, "clean": 25.0}
 		var before := {}
 		for k in floors: before[k] = float(nd[k])
+		var st0 := float(rec.get("starve", 0.0))
 		tick(rec, gone * 0.5, true)
 		tick(rec, minf(gone * 0.5, 1800.0), false)
 		for k in floors:
 			nd[k] = maxf(float(nd[k]), minf(float(before[k]), floors[k]))
+		# the floor means it found enough to get by; one that was already empty starved the whole time
+		var st1 := st0 + gone if float(before["food"]) <= 0.5 else minf(float(rec.get("starve", 0.0)), st0)
+		if st1 > 0.0: rec["starve"] = st1
+		else: rec.erase("starve")
 	rec["needs_t"] = Time.get_unix_time_from_system()
+	return maxf(0.0, all - 12.0 * 3600.0)
+
+# ------------------------------------------------------------------ starving
+static func starve_h(rec: Dictionary) -> float:
+	return float(rec.get("starve", 0.0)) / 3600.0
+
+## "" (fine), "starving", "weak", "refuse", "sick" or "dead".
+static func starve_stage(rec: Dictionary) -> String:
+	var h := starve_h(rec)
+	if h >= STARVE["dead"]: return "dead"
+	if h >= STARVE["sick"]: return "sick"
+	if h >= STARVE["refuse"]: return "refuse"
+	if h >= STARVE["weak"]: return "weak"
+	if float(rec.get("starve", 0.0)) > 0.0 and need(rec, "food") <= 0.5: return "starving"
+	return ""
+
+## secs of time passing; zero_secs of it with an empty belly (defaults to all of it if food is 0).
+static func starve_step(rec: Dictionary, secs: float, zero_secs := -1.0) -> void:
+	var z := zero_secs if zero_secs >= 0.0 else (secs if need(rec, "food") <= 0.5 else 0.0)
+	var st := float(rec.get("starve", 0.0))
+	if z > 0.0:
+		if st / 3600.0 >= STARVE["weak"]:
+			# weak and still hungry: it trusts you a little less every few hours
+			rec["trust"] = clampf(float(rec.get("trust", 0.0)) - z / 10800.0, 0.0, 100.0)
+		st += z
+	elif need(rec, "food") > 20.0 and st > 0.0:
+		st = maxf(0.0, st - secs * 3.0)
+	if st > 0.0: rec["starve"] = st
+	else: rec.erase("starve")
+
+## It just ate: a meal takes four hours off the starve clock.
+static func fed(rec: Dictionary) -> void:
+	if rec.has("starve"):
+		var st := maxf(0.0, float(rec["starve"]) - 4.0 * 3600.0)
+		if st > 0.0: rec["starve"] = st
+		else: rec.erase("starve")
 
 ## Overall condition, 0 to 100.
 static func condition(rec: Dictionary) -> float:
@@ -116,6 +179,8 @@ static func condition(rec: Dictionary) -> float:
 	return float(nd["food"]) * 0.3 + float(nd["energy"]) * 0.25 + float(nd["joy"]) * 0.3 + float(nd["clean"]) * 0.15
 
 static func condition_name(rec: Dictionary) -> String:
+	var ss := starve_stage(rec)
+	if ss != "" and ss != "dead": return String(STARVE_INFO[ss][0])
 	var c := condition(rec)
 	if c >= 75.0: return "In great shape"
 	if c >= 50.0: return "Doing fine"
@@ -138,6 +203,8 @@ static func match_mods(rec: Dictionary) -> Dictionary:
 	var st: Dictionary = rec["stats"]
 	var c := condition(rec)
 	var cm := 1.1 if c >= 75.0 else (1.0 if c >= 50.0 else (0.92 if c >= 28.0 else 0.82))
+	if starve_h(rec) >= STARVE["weak"]:
+		cm *= 0.85        # weak from hunger
 	var trust := float(rec.get("trust", 50.0))
 	var bond := 1.1 if trust >= 90.0 else 1.0
 	return {
@@ -243,6 +310,7 @@ static func feed(rec: Dictionary, f: String) -> Dictionary:
 	var was := need(rec, "food")
 	change(rec, "food", fill)
 	change(rec, "joy", joy)
+	fed(rec)
 	out["hungry"] = was < 35.0
 	return out
 
@@ -269,6 +337,10 @@ static func breed(a: Dictionary, b: Dictionary, rng: RandomNumberGenerator, sp :
 static func shimmer_col(c: Color) -> Color:
 	var h := fposmod(c.h + 0.45, 1.0)
 	return Color.from_hsv(h, clampf(c.s * 0.85 + 0.1, 0.0, 1.0), clampf(c.v * 1.05 + 0.05, 0.0, 1.0), c.a)
+
+## A kin back from the Soul Shrine: its colours washed pale and cool, like moonlight.
+static func ghost_col(c: Color) -> Color:
+	return c.lerp(Color("cfeff0"), 0.55).lerp(Color("9ff0e0"), 0.12)
 
 ## The Kindex: what you've seen, caught and grown.
 static func dex_mark(species: String, what: String, extra := "") -> void:
