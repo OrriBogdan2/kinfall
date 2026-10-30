@@ -305,6 +305,8 @@ func _draw_bubbles() -> void:
 		if cam.is_position_behind(at):
 			continue
 		var sp := cam.unproject_position(at)
+		if not (is_finite(sp.x) and is_finite(sp.y)) or absf(sp.x) > 1e5 or absf(sp.y) > 1e5:
+			continue
 		var a := clampf((2.6 - b["t"]) * 3.0, 0.0, 1.0) * clampf(b["t"] * 8.0, 0.0, 1.0)
 		var s: String = b["text"]
 		var tw := body.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
@@ -591,8 +593,8 @@ func _sweep(center: Vector2, radius: float, frac: float, col: Color) -> void:
 ## you know it comes back), a thick health bar in 25-point chunks with a pale trail for damage just
 ## taken, and little shield and cross marks so it's clear which is which.
 func _vitals(sp: Vector2, w: float, h: Hunter, hp_col: Color, trail: float, numbers := false) -> void:
-	if not sp.is_finite():
-		return
+	if not sp.is_finite() or absf(sp.x) > 20000.0 or absf(sp.y) > 20000.0:
+		return      # (far off screen: a polygon that big can't be triangulated)
 	var x0 := sp.x - w * 0.5
 	if h.max_armor > 0.5:
 		var ar := Rect2(Vector2(x0, sp.y - 9), Vector2(w, 4))

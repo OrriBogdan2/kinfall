@@ -56,7 +56,14 @@ func teleport(p: Vector3) -> void:
 	position = p
 
 func ground() -> float:
-	return m.world.ground_at(pos.x, pos.z)
+	var g: float = m.world.ground_at(pos.x, pos.z)
+	var st = m.get("skytrain")
+	if st:
+		# the sky train's cars are ground too; riding one under a bridge, the bridge is overhead, not underfoot
+		var d: float = st.deck_y(pos)
+		if d > World.VOID + 1.0 and (g < d or g > pos.y + 0.9):
+			g = d
+	return g
 
 ## The height shots and blasts aim at to hit this body. (A hunter who has dropped below an
 ## island's lip is hit through the balloon floating at ground level above them.)
@@ -64,7 +71,10 @@ func hit_y() -> float:
 	return pos.y
 
 func over_void() -> bool:
-	return m.world.is_void(pos.x, pos.z)
+	if not m.world.is_void(pos.x, pos.z):
+		return false
+	var st = m.get("skytrain")
+	return not (st and st.deck_y(pos, 3.0) > World.VOID + 1.0)
 
 func flat_dist(o) -> float:
 	var p: Vector3 = o.pos if o is Ent else o

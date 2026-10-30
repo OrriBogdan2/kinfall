@@ -44,6 +44,8 @@ func _ready() -> void:
 		if a == "--life-demo": opts["life_demo"] = true; opts["no_drop"] = true; opts["squad"] = 3; opts["teams"] = 3
 		if a.begins_with("--length="): opts["length"] = float(a.substr(9))
 		if a == "--no-drop": opts["no_drop"] = true
+		if a == "--train-demo": opts["train_demo"] = true; opts["no_drop"] = true
+		if a.begins_with("--train-demo="): opts["train_demo"] = a.substr(13); opts["no_drop"] = true
 		if a.begins_with("--aim-demo="): opts["aim_demo"] = a.substr(11); opts["no_drop"] = true
 		if a == "--ring-demo": opts["ring_demo"] = true; opts["no_drop"] = true
 		if a == "--wall-demo": opts["wall_demo"] = true; opts["no_drop"] = true

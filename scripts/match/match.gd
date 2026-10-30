@@ -7,6 +7,7 @@ const DT := 1.0 / 60.0
 
 var opts := {}
 var world: World
+var skytrain: SkyTrain = null   # the loop train, on maps that have one
 var fx: Fx
 var cam: CamRig
 var hud: Node = null
@@ -158,6 +159,11 @@ func start(o: Dictionary) -> void:
 	if not opts.get("tutorial", false):
 		_spawn_mobs()        # the tutorial brings its own monsters, one step at a time
 	_spawn_chests()
+	if not world.train_route.is_empty():
+		skytrain = SkyTrain.new()
+		skytrain.name = "SkyTrain"
+		add_child(skytrain)
+		skytrain.setup(self)
 	Life.place_beacons(self)
 	_spawn_breakables()
 	for rg in world.rings:
@@ -1896,6 +1902,9 @@ func _update_pickups(dt: float) -> void:
 		p["t"] += dt
 		var pos: Vector3 = p["pos"]
 		var g := world.ground_at(pos.x, pos.z)
+		if skytrain:
+			var dk := skytrain.deck_y(pos, 0.6)
+			if dk > World.VOID + 1.0 and (g < dk or g > pos.y + 0.9): g = dk
 		var v: Vector3 = p["vel"]
 		var grabbed := false
 		if p["t"] > 0.5:
@@ -2533,6 +2542,9 @@ func step(dt: float) -> void:
 	for h in hunters:
 		if h.ctrl == "bot" and not h.remote and not h.out and not h.extracted:
 			bot_brain.think(self, h, dt)
+	if skytrain: skytrain.tick(dt)
+	if opts.has("train_demo") and skytrain and player:
+		_train_demo()
 	for h in hunters: h.sim(dt)
 	if opts.get("autoplay", false) and int(time * 60.0) % 15 == 0:
 		for h in hunters:
@@ -2845,11 +2857,14 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 	if t >= 1 and h and not h.remote:
 		offer_perks(h, "chest")
 	var n_gems: int = [randi_range(4, 6), randi_range(7, 9), randi_range(11, 14)][t]
+	var n_pick := pickups.size(); var n_w := wpicks.size()
+	# a crate on the sky train pops its loot gently, so it lands on the car and rides along
+	var soft = Vector3(randf_range(-0.8, 0.8), 4.5, randf_range(-0.8, 0.8)) if c.has("ride") else null
 	for i in n_gems:
-		drop("gem", c["pos"] + Vector3(0, 0.8, 0), int(round((3 + t) * float(T["loot"]))))
+		drop("gem", c["pos"] + Vector3(0, 0.8, 0), int(round((3 + t) * float(T["loot"]))), "", "", soft)
 	var seeds_n: int = [1 if randf() < 0.6 else 0, 1, 2][t]
 	for i in seeds_n:
-		drop("seed", c["pos"] + Vector3(0, 0.8, 0), randi_range(1, 2), Data.pick_seed())
+		drop("seed", c["pos"] + Vector3(0, 0.8, 0), randi_range(1, 2), Data.pick_seed(), "", soft)
 	if not from_net and randf() < [0.25, 0.6, 1.0][t]:
 		var keys: Array = Data.weapon_ids()
 		var a := randf() * TAU
@@ -2861,6 +2876,15 @@ func _open_chest(h: Hunter, c: Dictionary, from_net := false) -> void:
 	if h and not h.remote and h.tonics < 5 and randf() < [0.35, 0.7, 1.0][t]:
 		h.tonics += 1
 		if h == player: hud.toast("+1 tonic", Color("8ff0a0"))
+	if c.has("ride"):
+		for i in range(n_pick, pickups.size()): pickups[i]["ride"] = int(c["ride"])
+		for i in range(n_w, wpicks.size()):
+			# weapons and gear land on the deck, close to the crate
+			var wp: Dictionary = wpicks[i]
+			var off := Vector3(randf_range(-0.7, 0.7), 0.0, randf_range(-1.2, 1.2))
+			var t3: Transform3D = skytrain.cur[int(c["ride"])]
+			wp["pos"] = t3 * off; wp["ride"] = int(c["ride"])
+			(wp["node"] as Node3D).position = wp["pos"]
 
 # ------------------------------------------------------------------ perks found on the run
 var perk_offer: Dictionary = {}    # the local player's open choice: {ids, src}
@@ -3264,6 +3288,35 @@ func _tut_drive() -> void:
 					goto.call(c["pos"]); p.inp["interact"] = true; break
 		"goexit", "extract":
 			if portals.size() > 0: goto.call(portals[portals.size() - 1]["pos"])
+
+## Test hook (--train-demo): ride the sky train from a stop; "--train-demo=track" stands you on the
+## track ahead of the engine instead, "--train-demo=view" watches it from a pier.
+func _train_demo() -> void:
+	var mode := String(opts["train_demo"]) if opts["train_demo"] is String else "ride"
+	var st := skytrain
+	if time < DT * 1.5:
+		cam.zoom_to = 0.8
+		if mode == "track":
+			# a stretch of open track ahead, level with the islands (not down under a bridge)
+			var ps := st.head_s + 20.0
+			while ps < st.head_s + 120.0 and not (world.train_at(ps).y > -0.01 and world.train_at(ps - 6.0).y > -0.01 and world.is_void(world.train_at(ps).x, world.train_at(ps).z)):
+				ps += 1.0
+			opts["train_pin"] = world.train_at(ps)
+			player.teleport(opts["train_pin"])
+		elif mode == "view":
+			var t: Transform3D = st.cur[2]
+			player.teleport(world.free_spot_near(t.origin - t.basis.x * 4.0, [], 1.0, 0.4, 6.0))
+		else:
+			var t2: Transform3D = st.cur[2]
+			player.teleport(t2.origin + Vector3(0, 0.05, 0))
+		player.grounded = true
+	if mode == "track" and not player.downed and not player.out:
+		# stand on the rails (pinned there: the track has no floor of its own) and wait for the engine
+		player.pos = opts["train_pin"]; player.vel = Vector3.ZERO; player.grounded = true
+		player.inp["move"] = Vector2.ZERO
+	if int(time * 60.0) % 60 == 0:
+		var t3: Transform3D = st.cur[2]
+		print("TRAIN t=%.1f head=%.1f v=%.1f player=(%.1f,%.2f,%.1f) car2=(%.1f,%.2f,%.1f) grounded=%d hp=%.0f downed=%d out=%d" % [time, st.head_s, st.head_v, player.pos.x, player.pos.y, player.pos.z, t3.origin.x, t3.origin.y, t3.origin.z, int(player.grounded), player.hp, int(player.downed), int(player.out)])
 
 ## Open ground a given distance from the player on the same island.
 func _tut_spot(dist: float, ang0: float) -> Vector3:

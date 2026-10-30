@@ -1226,8 +1226,8 @@
   },
   {
    "at": [
-    91,
-    91
+    93,
+    89
    ],
    "top": 6
   },
@@ -1254,8 +1254,8 @@
   },
   {
    "at": [
-    125,
-    125
+    127,
+    123
    ],
    "top": 6
   },
@@ -1323,6 +1323,28 @@
    "top": 3
   }
  ],
+ "train": {
+  "center": [
+   108,
+   108
+  ],
+  "r": 30,
+  "stations": [
+   52,
+   151,
+   220,
+   331
+  ],
+  "names": [
+   "Thornwatch Stop",
+   "Petal Stop",
+   "Cinder Stop",
+   "Static Stop"
+  ],
+  "cars": 4,
+  "speed": 8.0,
+  "dwell": 6.0
+ },
  "portals": [
   [
    108,
