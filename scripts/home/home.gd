@@ -27,6 +27,8 @@ const GRAV := 26.0
 var pface := 0.0
 var walk_ph := 0.0
 var house_node: Node3D
+var rack_node: Node3D
+var rack_pick := ""
 var whistle_cd := 0.0
 var whistle_player: AudioStreamPlayer
 var kins: Array = []           # {rec, node, pos, vel, goal, t, emote, emote_t, hop}
@@ -112,6 +114,8 @@ func _ready() -> void:
 	world.set_block_rect(29, 32, 31, 33)
 	spots["pot"] = Vector3(42.5, 0, 27.5)
 	world.set_block_rect(42, 27, 42, 27)
+	spots["rack"] = Vector3(34.5, 0, 40.5)      # the glider rack, beside the portal
+	world.set_block_rect(34, 40, 34, 40)
 	for z in range(30, 38):
 		for x in range(43, 48):
 			world.paint_tile(x, z, Color("6b4a33"))
@@ -158,6 +162,10 @@ func _ready() -> void:
 	var pot := Models.cauldron(); pot.position = spots["pot"]; add_child(pot)
 	var stall := Models.stall(); stall.position = spots["stall"]; stall.rotation.y = PI * 0.5; add_child(stall)
 	var portal := Models.portal(UI.TEAL); portal.position = spots["portal"]; add_child(portal)
+	if visit.is_empty():
+		rack_node = _glider_rack()
+		rack_node.position = spots["rack"]
+		add_child(rack_node)
 	portal.get_node("Disc").visible = true
 	(portal.get_node("Beam") as CPUParticles3D).emitting = true
 	var drng := RandomNumberGenerator.new(); drng.seed = 77
@@ -190,6 +198,15 @@ func _ready() -> void:
 		ppos = lots[spawn]["door"]
 	player.position = ppos
 	cam.snap(ppos)
+	if "--expedition-test" in dbg:
+		get_tree().create_timer(0.5).timeout.connect(_open_expedition)
+	for a in dbg:
+		if a.begins_with("--rack-test"):
+			# test: open the glider rack (optionally on a skin: --rack-test=ember)
+			var pick := a.substr(12) if a.length() > 12 else ""
+			get_tree().create_timer(0.5).timeout.connect(func():
+				if pick != "": rack_pick = pick
+				_open_rack())
 	if "--whistle-test" in dbg:
 		# test: every kin but one is indoors, then you whistle
 		get_tree().create_timer(0.3).timeout.connect(func():
@@ -582,7 +599,7 @@ func _update_music(d: float) -> void:
 func _on_new_track(name: String) -> void:
 	if not is_inside_tree() or root_ui == null:
 		return
-	_toast("New track: %s" % Data.MUSIC.get(name, {}).get("name", name))
+	pass     # tracks join the music list in the house quietly; no popup every time a new one plays
 
 func _update_sky(d: float) -> void:
 	_update_music(d)
@@ -770,8 +787,8 @@ func _move_kin(d: float) -> void:
 			elif Vector2(tpos.x - pos.x, tpos.z + 1.0 - pos.z).length() < 0.6:
 				k.erase("task")
 				var pd: Dictionary = Save.d[tk[0]][tk[1]]
-				if pd["crop"] != "" and float(pd.get("wt", 0.0)) <= 0.0:
-					_water(tk[0], tk[1])
+				if pd["crop"] != "" and (float(pd.get("wt", 0.0)) <= 0.0 or int(pd.get("wet", 2)) < 2):
+					_water(tk[0], tk[1], "kin")
 					_emote(k, "♪")
 					rec["trust"] = minf(100.0, float(rec["trust"]) + (0.07 if int(rec.get("pining", 0)) > 0 else 0.2))
 				k["t"] = randf_range(1.0, 2.0)
@@ -861,6 +878,121 @@ func _move_kin(d: float) -> void:
 			var lbl: Label3D = k["emote"]
 			lbl.visible = k["emote_t"] > 0.0
 			lbl.position.y = 1.15 + (1.6 - k["emote_t"]) * 0.2
+
+# ---- the glider rack: skins for your glider, each with its own trail and sounds
+func _glider_rack() -> Node3D:
+	var n := Node3D.new()
+	var wood := Models.toon(Color("8a6242")); var dark := Models.toon(Color("4e3424"))
+	for sx in [-1.0, 1.0]:
+		Models.part(n, Models.cyl(0.06, 0.07, 1.9, 8), wood, Vector3(0.75 * sx, 0.95, 0))
+	Models.part(n, Models.cyl(0.05, 0.05, 1.7, 8), dark, Vector3(0, 1.85, 0), Vector3.ONE, Vector3(0, 0, PI / 2))
+	var can := MeshInstance3D.new(); can.name = "Canopy"
+	can.mesh = Gliders.mesh(Gliders.equipped(), Data.TEAM_COLORS[0], UI.ACCENT)
+	can.material_override = Models.vtoon_outlined()
+	can.position = Vector3(0, 1.75, 0); can.scale = Vector3.ONE * 0.75; can.rotation = Vector3(-0.35, 0, 0)
+	n.add_child(can)
+	var sign := Label3D.new(); sign.text = "Gliders"
+	sign.font = UI.big; sign.font_size = 40; sign.pixel_size = 0.012; sign.outline_size = 10
+	sign.billboard = BaseMaterial3D.BILLBOARD_ENABLED; sign.position = Vector3(0, 2.35, 0)
+	n.add_child(sign)
+	return n
+
+func _open_rack() -> void:
+	if rack_pick == "": rack_pick = Gliders.equipped()
+	var v := _new_panel("Glider skins", 640)
+	# a preview of the picked skin, open and turning, trail and all
+	var svc := SubViewportContainer.new(); svc.stretch = true; svc.custom_minimum_size = Vector2(580, 170)
+	var vp := SubViewport.new(); vp.own_world_3d = true; vp.transparent_bg = true; vp.msaa_3d = Viewport.MSAA_2X
+	svc.add_child(vp)
+	var w3 := Node3D.new(); vp.add_child(w3)
+	Look.lights(w3, Color("fff1dc"), 1.0)
+	var holder := Node3D.new(); w3.add_child(holder)
+	var can := MeshInstance3D.new()
+	can.mesh = Gliders.mesh(rack_pick, Data.TEAM_COLORS[0], UI.ACCENT)
+	can.material_override = Models.vtoon_outlined()
+	holder.add_child(can)
+	var tr := Gliders.trail(rack_pick, Data.TEAM_COLORS[0], UI.ACCENT)
+	if tr: tr.position = Vector3(0, -0.05, 0.3); tr.local_coords = true; tr.direction = Vector3(0, -0.2, 1); holder.add_child(tr)
+	var pc := Camera3D.new(); pc.fov = 42
+	pc.transform = Transform3D(Basis(), Vector3(0, 2.35, 2.05)).looking_at(Vector3(0, -0.15, 0.05), Vector3.UP)
+	w3.add_child(pc)
+	holder.set_meta("spin", true)
+	svc.set_process(true)
+	var spin := func(): if is_instance_valid(holder): holder.rotation.y = sin(Time.get_ticks_msec() / 1400.0) * 0.6
+	svc.draw.connect(spin)
+	var ticker := Timer.new(); ticker.wait_time = 0.033; ticker.autostart = true; svc.add_child(ticker)
+	ticker.timeout.connect(func(): spin.call(); svc.queue_redraw())
+	v.add_child(svc)
+	var g := Gliders.get_skin(rack_pick)
+	var info := UI.hbox(10)
+	var it := UI.vbox(2); it.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	it.add_child(UI.title(String(g["name"]), 26))
+	var d := UI.label(String(g["desc"]), 14, UI.MUTED); d.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	it.add_child(d)
+	info.add_child(it)
+	info.add_child(UI.button("Hear it", func(): _rack_sound(rack_pick), 110))
+	var own := Gliders.owned(rack_pick)
+	if own:
+		if Gliders.equipped() == rack_pick:
+			var eq := UI.label("Equipped", 15, UI.GOOD, UI.semi); eq.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			info.add_child(eq)
+		else:
+			info.add_child(UI.primary("Equip", func(): _rack_equip(rack_pick), 120))
+	elif g.has("unlock"):
+		var p := String(g["unlock"]).split(":")
+		var lk := UI.label("Earned at %s %s  (%d/%s)" % [p[1], p[0], Progress.stat(p[0]), p[1]], 14, Color("ffd79a"))
+		lk.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		info.add_child(lk)
+	else:
+		var cost := int(g["cost"])
+		var buy := UI.primary("Buy  ·  %d gems" % cost, func(): _rack_buy(rack_pick), 170)
+		buy.disabled = int(Save.d["gems"]) < cost
+		info.add_child(buy)
+	v.add_child(info)
+	v.add_child(UI.section("All gliders"))
+	var grid := GridContainer.new(); grid.columns = 4
+	grid.add_theme_constant_override("h_separation", 8); grid.add_theme_constant_override("v_separation", 8)
+	for sk in Gliders.LIST:
+		var sid: String = sk["id"]
+		var label := String(sk["name"])
+		if Gliders.equipped() == sid: label = "✓ " + label
+		var b := UI.choice(label, sid == rack_pick, func(): rack_pick = sid; _rack_sound(sid); _open_rack(), 136)
+		if not Gliders.owned(sid):
+			b.modulate = Color(1, 1, 1, 0.62)
+			b.tooltip_text = ("%d gems" % int(sk["cost"])) if not sk.has("unlock") else "Earned, not bought"
+		b.clip_text = true
+		grid.add_child(b)
+	v.add_child(grid)
+
+func _rack_sound(id: String) -> void:
+	var ap := AudioStreamPlayer.new()
+	ap.stream = Gliders.sound(id, "open")
+	ap.volume_db = -4.0
+	add_child(ap)
+	ap.play()
+	ap.finished.connect(ap.queue_free)
+
+func _rack_buy(id: String) -> void:
+	var cost := int(Gliders.get_skin(id).get("cost", 0))
+	if int(Save.d["gems"]) < cost:
+		return
+	Save.d["gems"] = int(Save.d["gems"]) - cost
+	if not Save.d.has("gliders"): Save.d["gliders"] = []
+	Save.d["gliders"].append(id)
+	Sfx.play("unlock")
+	_toast("%s unlocked!" % Gliders.get_skin(id)["name"])
+	_rack_equip(id)
+
+func _rack_equip(id: String) -> void:
+	if not Save.d.has("look"): Save.d["look"] = Models.default_look()
+	Save.d["look"]["glider"] = id
+	Save.save_game()
+	_rack_sound(id)
+	if is_instance_valid(rack_node):
+		var can := rack_node.get_node_or_null("Canopy") as MeshInstance3D
+		if can: can.mesh = Gliders.mesh(id, Data.TEAM_COLORS[0], UI.ACCENT)
+	_refresh_top()
+	_open_rack()
 
 # ---- the whistle: press H at home and your kin come running, even from inside the house
 func _house_door() -> Vector3:
@@ -1077,7 +1209,8 @@ func _find_interact() -> void:
 	for i in gh_plots.size():
 		var d := p2.distance_to(Vector2(gh_plots[i].position.x, gh_plots[i].position.z))
 		if d < bd: bd = d; best = {"kind": "plot", "arr": "gh_plots", "i": i}
-	for nm in ["pot", "stall", "portal", "house", "ferry"]:
+	for nm in ["pot", "stall", "portal", "house", "ferry", "rack"]:
+		if not spots.has(nm) or (nm == "rack" and not visit.is_empty()): continue
 		var sp: Vector3 = spots[nm]
 		var reach := 2.6 if nm in ["house", "portal"] else 1.9
 		var d := p2.distance_to(Vector2(sp.x, sp.z + (2.0 if nm == "house" else 0.0)))
@@ -1206,8 +1339,10 @@ func _label_for(it: Dictionary) -> String:
 			var cd: Dictionary = Data.CROPS[d["crop"]]
 			if int(d["stage"]) >= int(cd["grow"]): return "Harvest the %s" % cd["name"]
 			if float(d.get("wt", 0.0)) <= 0.0: return "Water the %s" % cd["name"]
+			if int(d.get("wet", 2)) < 2: return "Water the %s (the rain only soaked it)" % cd["name"]
 			return "%s: watered, growing (%s)" % [cd["name"], _grow_left(it["arr"], d)]
 		"pot": return "Cook"
+		"rack": return "Glider skins"
 		"stall": return "Shop"
 		"portal": return "Start an expedition"
 		"house": return "Go inside"
@@ -1235,6 +1370,7 @@ func _use(it: Dictionary) -> void:
 		"lot": _open_lot(it["b"])
 		"bridge": _open_bridge(it["isle"])
 		"pot": _open_kitchen()
+		"rack": _open_rack()
 		"stall": _open_shop()
 		"portal": _open_expedition()
 		"house": Game.goto("interior", {"room": "house"})
@@ -1364,10 +1500,10 @@ func _treat_name(t: String) -> String:
 		if Data.CROPS[k]["use"] == t: return Data.CROPS[k]["name"]
 	return t
 
-func _new_panel(title_txt: String, width := 520.0) -> VBoxContainer:
+func _new_panel(title_txt: String, width := 520.0, scroll := false) -> VBoxContainer:
 	var prev := panel_open
 	_close_panel()
-	var pb := UI.scroll_panel(title_txt, width, _close_panel)
+	var pb := UI.scroll_panel(title_txt, width, _close_panel, "Close", scroll)
 	var p: PanelContainer = pb[0]
 	var v: VBoxContainer = pb[1]
 	panel_host.add_child(p)
@@ -1414,8 +1550,13 @@ func _refresh_day1() -> void:
 		return
 	day1_box = Progress.day1_box()
 	root_ui.add_child(day1_box)
+	if is_instance_valid(panel_host):
+		root_ui.move_child(day1_box, panel_host.get_index())     # menus open on top of it
 
 func _open_welcome() -> void:
+	# shown once: marked seen as soon as it opens, however it's closed
+	Save.d["tutorial"]["home"] = true
+	Save.save_game()
 	var kn: String = Save.active_kin().get("name", "your kin")
 	var v := _new_panel("Welcome home", 560)
 	v.add_child(UI.label("This little island is yours. %s lives here with you now, and it remembers everything you do together." % kn, 17))
@@ -1469,12 +1610,15 @@ func _farm_tick() -> void:
 				continue
 			var wt := float(d.get("wt", 0.0))
 			if wt <= 0.0 and raining:
-				_water(arr, i, false)
+				_water(arr, i, "rain")
 				continue
 			if wt > 0.0 and now - wt >= Data.WATER_TIME * (0.5 if arr == "gh_plots" else 1.0):
 				d["stage"] = int(d["stage"]) + 1
-				d["care"] = int(d.get("care", 0)) + 1
+				# rain only makes it wet; watering it yourself (or a farmhand kin) is what counts as tending
+				if int(d.get("wet", 2)) >= 2:
+					d["care"] = int(d.get("care", 0)) + 1
 				d["wt"] = 0.0
+				d["wet"] = 0
 				var pn: Node3D = nodes[i]
 				fx.burst(pn.position + Vector3(0, 0.5, 0), Color("8fd16a"), 8, 1.6)
 				_refresh_plot(arr, i)
@@ -1488,19 +1632,29 @@ func _dry_plot() -> Array:
 		var nodes: Array = plots if arr == "plots" else gh_plots
 		for i in mini(nodes.size(), Save.d[arr].size()):
 			var d: Dictionary = Save.d[arr][i]
-			if d["crop"] != "" and float(d.get("wt", 0.0)) <= 0.0 and int(d["stage"]) < int(Data.CROPS[d["crop"]]["grow"]):
+			if d["crop"] != "" and (float(d.get("wt", 0.0)) <= 0.0 or int(d.get("wet", 2)) < 2) and int(d["stage"]) < int(Data.CROPS[d["crop"]]["grow"]):
 				if arr == "plots" or _isle_open("orchard"):
 					return [arr, i]
 	return []
 
-func _water(arr: String, i: int, by_hand := true) -> void:
+## Watering. who: "you" (by hand), "kin" (a farmhand) or "rain". Rain makes a plant wet so it
+## grows; by hand (or a farmhand) it's also tended, which is what earns the bigger harvest. A plant
+## the rain already soaked can still be watered by hand to tend it, without restarting its growth.
+func _water(arr: String, i: int, who = "you") -> void:
+	if typeof(who) == TYPE_BOOL: who = "you" if who else "rain"
 	var d: Dictionary = Save.d[arr][i]
-	d["wt"] = Time.get_unix_time_from_system()
+	var already := float(d.get("wt", 0.0)) > 0.0
+	if not already:
+		d["wt"] = Time.get_unix_time_from_system()
+	d["wet"] = 1 if who == "rain" else 2
 	var pn: Node3D = _plot_node(arr, i)
-	if by_hand:
+	if who == "you":
 		_day1("water")
 		Sfx.play("plant", null, -6.0, 0.1, 1.4)
 		fx.burst(pn.position + Vector3(0, 0.8, 0), Color("7ac8ff"), 14, 2.0)
+		if already:
+			fx.burst(pn.position + Vector3(0, 0.9, 0), Color("bfefff"), 10, 2.4)
+			_toast("Tended! Rain only soaks it; your watering counts toward a bigger harvest.")
 	_refresh_plot(arr, i)
 	Save.save_game()
 
@@ -1524,12 +1678,12 @@ func _open_plot(arr: String, i: int) -> void:
 			fx.burst(pn.position + Vector3(0, 0.6, 0), cd["color"], 18 + n * 4, 3.0)
 			Sfx.play("harvest")
 			_toast("%d %s%s%s" % [n, cd["name"], "" if n == 1 else "s", extra])
-			d["crop"] = ""; d["stage"] = 0; d["care"] = 0; d["wt"] = 0.0
+			d["crop"] = ""; d["stage"] = 0; d["care"] = 0; d["wt"] = 0.0; d["wet"] = 0
 			_refresh_plot(arr, i)
 			Save.save_game()
 			_refresh_top()
 			return
-		if float(d.get("wt", 0.0)) <= 0.0:
+		if float(d.get("wt", 0.0)) <= 0.0 or int(d.get("wet", 2)) < 2:
 			_water(arr, i)
 			return
 		var v := _new_panel(cd["name"], 440)
@@ -2225,34 +2379,72 @@ func _weapon() -> String:
 
 func _open_expedition() -> void:
 	_day1("portal")
-	var v := _new_panel("Expedition", 720)
-	var cd: Dictionary = Data.CLASSES[Data.class_of_save()]
-	var w := _weapon()
-	var hc := UI.card(UI.CARD, 12, 14)
-	var hrow := UI.hbox(12); hc.add_child(hrow)
-	var hv := UI.vbox(4); hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hv.add_child(UI.title("%s class  ·  %s" % [cd["name"], Data.weapon_stats(w)["name"]], 24, cd["color"]))
-	hv.add_child(UI.label("%d health  ·  right click %s  ·  %s" % [int(cd["hp"]), (Content.ability(Content.weapon(w).utility).display_name if Content.weapon(w) and Content.weapon(w).utility != "" and Content.ability(Content.weapon(w).utility) else "weapon utility"),
-		"perks found on the run"], 14, UI.MUTED))
-	hrow.add_child(hv)
-	hrow.add_child(UI.button("Class and loadout", _open_loadout, 200))
-	v.add_child(hc)
+	var v := _new_panel("Expedition", 900, true)
+	var cur_c := Data.class_of_save()
+	var cols := UI.hbox(18)
+	v.add_child(cols)
+	# left: who you are (class, weapon, kin)
+	var left := UI.vbox(8); left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(left)
+	left.add_child(UI.section("Class"))
+	var crow := UI.hbox(6)
+	for c in ["light", "medium", "heavy"]:
+		var cd: Dictionary = Data.CLASSES[c]
+		var ck: String = c
+		var cb := UI.choice(String(cd["name"]), c == cur_c, func():
+			Save.d["cls"] = ck
+			Save.d["weapon"] = Data.CLASSES[ck]["weapon"]
+			Save.save_game()
+			_refresh_player_model()
+			_open_expedition(), 120)
+		cb.tooltip_text = "%d health  ·  %d dash%s\n%s" % [cd["hp"], cd["dashes"], "es" if cd["dashes"] > 1 else "", cd["desc"]]
+		crow.add_child(cb)
+	left.add_child(crow)
+	var ccd: Dictionary = Data.CLASSES[cur_c]
+	var cl := UI.label("%d health  ·  %d dash%s  ·  %s" % [ccd["hp"], ccd["dashes"], "es" if ccd["dashes"] > 1 else "", "light frame" if cur_c == "light" else ("hard to push" if cur_c == "heavy" else "all-rounder")], 13, ccd["color"])
+	cl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	left.add_child(cl)
+	left.add_child(UI.section("Weapon"))
+	var wr := UI.hbox(6)
+	var cur_w := _weapon()
+	for w in ccd["weapons"]:
+		var wd: Dictionary = Data.weapon_stats(w)
+		var wk: String = w
+		var wb := UI.choice(String(wd["name"]), w == cur_w, func():
+			Save.d["weapon"] = wk
+			Save.save_game()
+			_refresh_player_model()
+			_open_expedition(), 120)
+		var wu := Content.weapon(w)
+		var un: String = Content.ability(wu.utility).display_name if wu and wu.utility != "" and Content.ability(wu.utility) else ""
+		var stat_s := ("Melee: %s damage per hit, reach %.1f" % [str(snappedf(float(wd["dmg"]), 0.1)), float(wd["range"])]) if wd.get("melee", false) else ("%s damage%s, %d per mag, range %d" % [str(snappedf(float(wd["dmg"]), 0.1)), (" x%d" % int(wd["pellets"])) if wd.has("pellets") else "", int(wd["mag"]), int(wd["range"])])
+		wb.tooltip_text = (String(wd.get("desc", "")) + "\n" if wd.has("desc") else "") + stat_s + ("\nRight click: " + un if un != "" else "")
+		wr.add_child(wb)
+	left.add_child(wr)
+	var wdef := Content.weapon(cur_w)
+	var ud: AbilityDef = Content.ability(wdef.utility) if wdef and wdef.utility != "" else null
+	if ud:
+		var ul := UI.label("Right click: %s" % ud.display_name, 13, UI.MUTED)
+		ul.tooltip_text = ud.desc
+		ul.mouse_filter = Control.MOUSE_FILTER_PASS
+		left.add_child(ul)
 	var ak := Save.active_kin()
 	if not ak.is_empty():
-		v.add_child(UI.section("Kin you bring"))
-		v.add_child(_kin_pick_row("Partner", ak, "active"))
-		var k2 := Save.second_kin()
+		left.add_child(UI.section("Kin you bring"))
+		left.add_child(_kin_pick_row("Partner", ak, "active"))
 		if Save.d["roster"].size() > 1:
-			v.add_child(_kin_pick_row("Second", k2, "active2"))
+			left.add_child(_kin_pick_row("Second", Save.second_kin(), "active2"))
 		if float(ak["trust"]) < 30.0:
-			v.add_child(UI.label("%s doesn't trust you much yet and may refuse risky throws. Spend time with it, or feed it a Mindmint treat." % ak["name"], 13, UI.BAD))
-		var risk := UI.label("If you go down for good, the kin you bring are left behind. Unclaimed ones end up at the Ransom House; rivals may take the rest. Very trusting kin sometimes find their own way home.", 13, UI.MUTED)
-		risk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		v.add_child(risk)
+			var tl := UI.label("%s doesn't trust you much yet and may refuse risky throws." % ak["name"], 13, UI.BAD)
+			tl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			left.add_child(tl)
 	if Save.d.get("treat", "") != "":
-		v.add_child(UI.label("Treat: " + _treat_name(Save.d["treat"]), 14, UI.GOLD))
-	v.add_child(UI.section("Where"))
-	var tiers := UI.hbox(8)
+		left.add_child(UI.label("Treat: " + _treat_name(Save.d["treat"]), 13, UI.GOLD))
+	# right: where you're going and how
+	var right := UI.vbox(8); right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(right)
+	right.add_child(UI.section("Where"))
+	var tiers := UI.vbox(6)
 	var ex := int(Save.d.get("extracts", 0))
 	for i in Data.TIERS.size():
 		var td: Dictionary = Data.TIERS[i]
@@ -2260,26 +2452,41 @@ func _open_expedition() -> void:
 		var ti := i
 		var label_t: String = td["name"]
 		if locked:
-			label_t = "%s (make it out %d more time%s)" % [td["name"], int(td["unlock"]) - ex, "" if int(td["unlock"]) - ex == 1 else "s"]
+			label_t = "%s  ·  make it out %d more time%s" % [td["name"], int(td["unlock"]) - ex, "" if int(td["unlock"]) - ex == 1 else "s"]
 		var b := UI.choice(label_t, exp_tier == i and not locked, func(): exp_tier = ti; _open_expedition())
 		b.disabled = locked
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 		tiers.add_child(b)
-	v.add_child(tiers)
+	right.add_child(tiers)
 	var tsel: Dictionary = Data.TIERS[exp_tier]
-	v.add_child(UI.label(tsel["desc"], 14, UI.BAD if tsel["risk_kin"] else UI.MUTED))
-	v.add_child(UI.section("Match"))
-	var modes := UI.hbox(8)
-	for m in [["solo", "Solo · 20 hunters"], ["duo", "Duos · 10 squads"], ["trio", "Trios · 7 squads"]]:
+	var tdl := UI.label(tsel["desc"], 13, UI.BAD if tsel["risk_kin"] else UI.MUTED)
+	tdl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	right.add_child(tdl)
+	right.add_child(UI.section("Match"))
+	var modes := UI.hbox(6)
+	for m in [["solo", "Solo"], ["duo", "Duos"], ["trio", "Trios"]]:
 		var mk: String = m[0]
-		var b := UI.choice(m[1], exp_mode == mk, func(): exp_mode = mk; _open_expedition())
+		var b := UI.choice(m[1], exp_mode == mk, func(): exp_mode = mk; _open_expedition(), 90)
+		b.tooltip_text = {"solo": "20 hunters, every one for themselves", "duo": "10 squads of two", "trio": "7 squads of three"}[mk]
 		modes.add_child(b)
-	v.add_child(modes)
+	right.add_child(modes)
+	if not ak.is_empty():
+		var risk := UI.label("Go down for good and the kin you bring are left behind (the Ransom House holds the unclaimed ones).", 12, UI.MUTED)
+		risk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		right.add_child(risk)
+	# bottom: go
 	var go := UI.hbox(10)
-	go.add_child(UI.primary("Start expedition", _confirm_start, 220))
-	go.add_child(UI.button("Training area", _start_training, 180))
+	var start_b := UI.primary("Start expedition", _confirm_start, 240)
+	go.add_child(start_b)
+	go.add_child(UI.button("Training area", _start_training, 170))
 	if Bridge.net_available():
 		go.add_child(UI.button("Play online with friends", func(): Game.goto("lobby", {"cls": Data.class_of_save(), "tier": exp_tier}), 240))
 	v.add_child(go)
+	start_b.grab_focus.call_deferred()
+
+## The old separate loadout page now lives inside the expedition panel.
+func _open_loadout() -> void:
+	_open_expedition()
 
 ## One row of the expedition loadout: which kin, with ‹ › to change it.
 func _kin_pick_row(label_t: String, rec: Dictionary, key: String) -> Control:
@@ -2303,14 +2510,25 @@ func _kin_pick_row(label_t: String, rec: Dictionary, key: String) -> Control:
 		info.add_child(UI.label("Bring only your partner. Nothing else at risk.", 12, UI.MUTED))
 	else:
 		var sp: Dictionary = Data.KIN[rec["species"]]
-		info.add_child(UI.label("%s: %s the %s  ·  level %d  ·  trust %d" % [label_t, rec["name"], sp["name"], int(rec.get("level", 1)), int(rec["trust"])], 16, sp["color"], UI.big))
+		var nl := UI.label("%s the %s" % [rec["name"], sp["name"]], 16, sp["color"], UI.big)
+		nl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		nl.clip_text = true
+		info.add_child(nl)
+		var sl := UI.label("%s  ·  level %d  ·  trust %d" % [label_t, int(rec.get("level", 1)), int(rec["trust"])], 12, UI.MUTED)
+		sl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		info.add_child(sl)
 		var names: Array = []
 		for aid in sp.get("abilities", []):
 			var ad := Content.ability(String(aid))
 			if ad: names.append(ad.display_name)
 		var ud := Content.ultimate(String(sp.get("ultimate", "")))
 		var keys := ("%s / %s / %s" % [Settings.key_cap("signature"), Settings.key_cap("kin_skill"), Settings.key_cap("ultimate")]) if key == "active" else ("swap in with %s" % Settings.key_cap("swap_kin"))
-		info.add_child(UI.label("%s  ·  %s  ·  bond: %s" % [keys, ", ".join(names), ud.display_name if ud else "-"], 12, UI.MUTED))
+		var al := UI.label("%s  ·  %s  ·  bond: %s" % [keys, ", ".join(names), ud.display_name if ud else "-"], 12, UI.MUTED)
+		al.autowrap_mode = TextServer.AUTOWRAP_OFF
+		al.clip_text = true
+		al.tooltip_text = al.text
+		al.mouse_filter = Control.MOUSE_FILTER_PASS
+		info.add_child(al)
 	row.add_child(info)
 	row.add_child(UI.button("›", func(): cycle.call(1), 40))
 	return card
@@ -2726,62 +2944,6 @@ func _open_hall() -> void:
 	v.add_child(kr)
 
 # ---- class and loadout
-func _open_loadout() -> void:
-	var v := _new_panel("Class and loadout", 780)
-	var cur_c := Data.class_of_save()
-	var cols := UI.hbox(10)
-	for c in ["light", "medium", "heavy"]:
-		var cd: Dictionary = Data.CLASSES[c]
-		var ck: String = c
-		var col := UI.vbox(6); col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var b := UI.choice(String(cd["name"]), c == cur_c, func():
-			Save.d["cls"] = ck
-			Save.d["weapon"] = Data.CLASSES[ck]["weapon"]
-			Save.save_game()
-			_refresh_player_model()
-			_open_loadout())
-		col.add_child(b)
-		var hl := UI.label("%d health  ·  %d dash%s  ·  %s" % [cd["hp"], cd["dashes"], "es" if cd["dashes"] > 1 else "", "light frame" if c == "light" else ("hard to push" if c == "heavy" else "all-rounder")], 13, UI.MUTED)
-		hl.autowrap_mode = TextServer.AUTOWRAP_OFF
-		col.add_child(hl)
-		var dl := UI.label(String(cd["desc"]), 13, cd["color"] if c == cur_c else UI.MUTED)
-		dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		col.add_child(dl)
-		cols.add_child(col)
-	v.add_child(cols)
-	var hd: Dictionary = Data.CLASSES[cur_c]
-	var det := UI.card(UI.CARD, 12, 14)
-	var dv := UI.vbox(5); det.add_child(dv)
-	var cw0 := _weapon()
-	var wdef := Content.weapon(cw0)
-	var ud: AbilityDef = Content.ability(wdef.utility) if wdef and wdef.utility != "" else null
-	if ud:
-		dv.add_child(UI.label("Right click (from your weapon)  %s: %s" % [ud.display_name, ud.desc], 14))
-	var kn := UI.label("Left and right click come from your weapon; Q, E and R come from the kin you bring, so the same class plays differently with every pair of kin.", 13, UI.MUTED)
-	kn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	dv.add_child(kn)
-	v.add_child(det)
-	v.add_child(UI.section("Weapon"))
-	var wr := UI.hbox(8)
-	var cur_w := _weapon()
-	for w in hd["weapons"]:
-		var wd: Dictionary = Data.weapon_stats(w)
-		var wk: String = w
-		var wb := UI.choice(String(wd["name"]), w == cur_w, func():
-			Save.d["weapon"] = wk
-			Save.save_game()
-			_refresh_player_model()
-			_open_loadout())
-		var wu := Content.weapon(w)
-		var un: String = Content.ability(wu.utility).display_name if wu and wu.utility != "" and Content.ability(wu.utility) else ""
-		var stat_s := ("Melee: %s damage per hit, reach %.1f" % [str(snappedf(float(wd["dmg"]), 0.1)), float(wd["range"])]) if wd.get("melee", false) else ("%s damage%s, %d per mag, range %d" % [str(snappedf(float(wd["dmg"]), 0.1)), (" x%d" % int(wd["pellets"])) if wd.has("pellets") else "", int(wd["mag"]), int(wd["range"])])
-		wb.tooltip_text = (String(wd.get("desc", "")) + "\n" if wd.has("desc") else "") + stat_s + ("\nRight click: " + un if un != "" else "")
-		wr.add_child(wb)
-	v.add_child(wr)
-	v.add_child(UI.section("Perks"))
-	v.add_child(UI.label("Perks aren't brought from home any more. You find them out there: pray at a shrine, open a rare chest or bring down a big monster and choose one of three. They stack, and they last until the expedition ends.", 14, UI.MUTED))
-	v.add_child(UI.button("Back to the expedition", _open_expedition, 240))
-
 func _refresh_player_model() -> void:
 	var at := player.position
 	var rot := player.rotation

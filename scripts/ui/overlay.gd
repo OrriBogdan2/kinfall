@@ -96,7 +96,7 @@ func ctx_now() -> String:
 	return "title"
 
 # ------------------------------------------------------------------ pages
-func _page(name: String, title_txt: String, width := 620.0) -> VBoxContainer:
+func _page(name: String, title_txt: String, width := 620.0, scroll := false) -> VBoxContainer:
 	for ch in host.get_children():
 		ch.queue_free()
 	if page != "" and page != name and not stack.has(page):
@@ -109,7 +109,7 @@ func _page(name: String, title_txt: String, width := 620.0) -> VBoxContainer:
 		var s = Game.main.screen_node()
 		if s and s.has_method("on_menu_opened"):
 			s.on_menu_opened()
-	var pb := UI.scroll_panel(title_txt, width, back, "Back" if stack.size() > 0 else "Close")
+	var pb := UI.scroll_panel(title_txt, width, back, "Back" if stack.size() > 0 else "Close", scroll)
 	host.add_child(pb[0])
 	return pb[1]
 
@@ -186,7 +186,7 @@ func open_settings() -> void:
 	_show_settings()
 
 func _show_settings() -> void:
-	var v := _page("settings", "Settings", 680)
+	var v := _page("settings", "Settings", 680, true)
 	var tabs := UI.hbox(6)
 	for t in ["Audio", "Video", "Controls", "Gameplay", "Accessibility"]:
 		var tn: String = t
@@ -424,13 +424,20 @@ func open_saves() -> void:
 				h.add_child(UI.label("Playing", 14, UI.GOLD))
 			else:
 				h.add_child(UI.button("Play", func(): _play_slot(sn), 90))
-			if n == Save.slot:
-				pass
-			elif delete_armed == n:
-				h.add_child(UI.button("Really delete?", func():
+			if delete_armed == n:
+				var playing: bool = n == Save.slot
+				h.add_child(UI.button("Yes, delete it" if playing else "Really delete?", func():
 					delete_armed = -1
 					Save.delete_slot(sn)
-					open_saves(), 150))
+					if playing:
+						# that was the save in play: start over from the title, on this now-empty slot
+						Save.save_game()
+						close()
+						Game.goto("title")
+					else:
+						open_saves(), 150))
+				if playing:
+					col.add_child(UI.label("This is the save you're playing. Deleting it takes you back to the title.", 13, UI.BAD))
 			else:
 				h.add_child(UI.button("Delete", func():
 					delete_armed = sn

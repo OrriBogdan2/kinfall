@@ -128,7 +128,8 @@ static func random_look(rng: RandomNumberGenerator = null) -> Dictionary:
 	var race := int(R.call(RACES.size()))
 	var skin: int = int(RACES[race]["skin"]) if int(R.call(3)) > 0 else int(R.call(LOOK_SKIN.size()))
 	if race == 0: skin = int(R.call(8))
-	return {"race": race, "body": R.call(3), "gender": R.call(2), "face": R.call(LOOK_FACES.size()), "skin": skin,
+	var gl := "classic" if int(R.call(5)) < 3 else String(Gliders.LIST[int(R.call(Gliders.LIST.size()))]["id"])
+	return {"glider": gl, "race": race, "body": R.call(3), "gender": R.call(2), "face": R.call(LOOK_FACES.size()), "skin": skin,
 		"hair": R.call(LOOK_HAIRS.size()), "hair_col": R.call(LOOK_HAIR.size()), "detail": R.call(LOOK_DETAILS.size()),
 		"outfit": R.call(LOOK_OUTFITS.size())}
 
@@ -338,10 +339,16 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 	var glider := Node3D.new(); glider.name = "Glider"; glider.position = Vector3(0, 0.62, 0.12); glider.visible = false
 	torso.add_child(glider)
 	var canopy := MeshInstance3D.new()
-	canopy.mesh = glider_mesh(Color("f3eee2"), team_col, hero_col)
+	var gskin := String(appearance.get("glider", "classic"))
+	canopy.mesh = Gliders.mesh(gskin, team_col, hero_col)
 	canopy.material_override = vtoon_outlined()
 	canopy.position = Vector3(0, 1.05, 0.02)
 	glider.add_child(canopy)
+	glider.set_meta("skin", gskin)
+	var gtrail := Gliders.trail(gskin, team_col, hero_col)
+	if gtrail:
+		gtrail.position = Vector3(0, 1.0, 0.3)
+		glider.add_child(gtrail)
 	var m_line := toon(Color("5a4636"), false)
 	for sx in [-1.0, -0.4, 0.4, 1.0]:
 		part(glider, cyl(0.008, 0.008, 1.0, 4), m_line, Vector3(0.42 * sx, 0.55, 0), Vector3.ONE, Vector3(0, 0, -0.62 * sx))

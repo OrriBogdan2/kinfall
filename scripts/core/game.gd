@@ -249,8 +249,10 @@ func apply_result(r: Dictionary) -> Dictionary:
 				continue
 			p["stage"] = mini(before_s + (2 if arr == "gh_plots" else 1), grow)
 			if float(p.get("wt", 0.0)) > 0.0:
-				p["care"] = int(p.get("care", 0)) + 1
+				if int(p.get("wet", 2)) >= 2:     # rain-soaked only still grows, but isn't tended
+					p["care"] = int(p.get("care", 0)) + 1
 				p["wt"] = 0.0
+				p["wet"] = 0
 			if int(p["stage"]) == grow:
 				out["crops_ready"] += 1
 	Save.save_game()
