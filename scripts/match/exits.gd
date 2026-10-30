@@ -509,7 +509,8 @@ func _tick_outpost(x: Dictionary, dt: float) -> void:
 			for h in m.hunters:
 				if not _live(h) or h.downed or not in_yard(x, h):
 					continue
-				if h.team == team: squad += 1
+				# truce partners share the yard: they hold it with you rather than contest it
+				if h.team == team or (m.truce and m.truce.allied(team, h.team)): squad += 1
 				else: foes[h.team] = int(foes.get(h.team, 0)) + 1
 			x["contested"] = not foes.is_empty()
 			if squad > 0 and foes.is_empty():
@@ -740,6 +741,12 @@ func status_for(p: Hunter) -> Dictionary:
 func bot_goal(h: Hunter, leaving: bool) -> Array:
 	var team := h.team
 	var mine := active_for(team)
+	# in a truce, a partner squad's way out is ours too: escort them there and leave together
+	if mine.is_empty() and m.truce:
+		for pt in m.truce.partners(team):
+			var px := active_for(pt)
+			if not px.is_empty() and (leaving or h.flat_dist(px.get("berth", px["pos"])) < 60.0):
+				mine = px; break
 	if not mine.is_empty():
 		match String(mine["state"]):
 			"called", "boarding": return [mine["berth"], "board"]

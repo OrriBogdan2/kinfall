@@ -89,6 +89,7 @@ func _setup_input() -> void:
 	_key("details", [KEY_C])                  # at home: a kin's details
 	_key("whistle", [KEY_H])                  # at home: whistle, and your kin come running
 	_key("inventory", [KEY_I])                # your things
+	_key("emote", [KEY_T])                    # in a match: hold for the emote wheel (truce, deal, no...); T talks to kin at home
 
 func goto(screen: String, opts := {}) -> void:
 	match_opts = opts

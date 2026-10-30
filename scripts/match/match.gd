@@ -43,6 +43,7 @@ var tut_down_t := 0.0
 var tut_wait := 0.0
 var tut_throws0 := 0
 var exits: Exits = null     # the ways out: skiff docks, rift hatches, outpost uplinks (see Exits)
+var truce: Truce = null     # emotes and truces between squads (see Truce)
 var time := 0.0
 var acc := 0.0
 var player: Hunter = null
@@ -268,6 +269,7 @@ func _spawn_pads_and_exits() -> void:
 		pd["arc"] = arc
 	exits = Exits.new()
 	exits.setup(self)
+	truce = Truce.new(self)
 
 func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String, kin_rec: Dictionary, at: Vector3, kit := {}, kin_rec2 := {}) -> Hunter:
 	var h := Hunter.new()
@@ -1257,6 +1259,7 @@ func add_feed(t: String) -> void:
 
 # ------------------------------------------------------------------ events
 func on_damage(target: Ent, by: Ent, d: float, o: Dictionary) -> void:
+	if truce: truce.on_damage(target, by, d)
 	var tags: Array = o.get("tags", [])
 	if tags.is_empty():
 		tags = [String(o.get("src", "primary")) if o.get("src", "") != "" else "primary"]
@@ -2816,6 +2819,7 @@ func step(dt: float) -> void:
 		_watch_death()
 	_update_dex(dt)
 	if exits: exits.tick(dt)
+	if truce: truce.tick(dt)
 	_update_events()
 	_update_zones(dt)
 	fields.tick(dt)
@@ -4288,6 +4292,9 @@ func _net_ev(x, from: String) -> void:
 				_rev_out.erase(who.nid)
 		"xc":
 			if exits: exits.net_in(x)
+		"emo":
+			var eh: Hunter = ents_by_id.get(String(x[1]), null) as Hunter
+			if truce and eh: truce.emote(eh, String(x[2]), true)
 		"ext":
 			who = ents_by_id.get(String(x[1]), null)
 			if who is Hunter and not who.extracted:

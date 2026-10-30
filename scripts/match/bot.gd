@@ -328,6 +328,8 @@ func _choose(m: Match, h: Hunter) -> void:
 	for o in m.hunters:
 		if o.team == h.team or not o.targetable():
 			continue
+		if m.truce and m.truce.holds(h, o):
+			continue
 		if o is Hunter and not m.can_see(h.team, o):
 			continue
 		var d := h.flat_dist(o)
@@ -352,7 +354,7 @@ func _choose(m: Match, h: Hunter) -> void:
 	# finish off downed rivals before their kin or team picks them up
 	if best == null:
 		for o in m.hunters:
-			if o.team != h.team and o.downed and not o.out and h.flat_dist(o) < 11.0 and m.world.los(h.pos, o.pos, h.pos.y + 0.95):
+			if o.team != h.team and o.downed and not o.out and h.flat_dist(o) < 11.0 and m.world.los(h.pos, o.pos, h.pos.y + 0.95) and not (m.truce and m.truce.holds(h, o)):
 				best = o; break
 	# angry wild kin also count
 	if best == null:
@@ -385,6 +387,14 @@ func _choose(m: Match, h: Hunter) -> void:
 		for b in m.boxes:
 			if not b["empty"] and h.flat_dist(b["pos"]) < 14.0 and not (b["owner"].team == h.team and Life.soul_here(m, b)):
 				goal = b["pos"]; gk = "box"; break
+	# someone asked us to follow them (a Follow me emote from a teammate or truce partner)
+	if goal == Vector3.INF and a.has("follow"):
+		var fw: Dictionary = a["follow"]
+		var fh: Hunter = fw["h"]
+		if m.time < float(fw["until"]) and is_instance_valid(fh) and not fh.out and not fh.extracted:
+			if h.flat_dist(fh) > 3.0: goal = fh.pos; gk = "follow"
+		else:
+			a.erase("follow")
 	if goal == Vector3.INF and m.exits and not m.exits.list.is_empty():
 		# heading home: late in the match, with a good haul, or just because
 		if not a.get("leave", false) and randf() < 0.0015:

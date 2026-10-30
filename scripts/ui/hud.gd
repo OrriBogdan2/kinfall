@@ -33,6 +33,7 @@ func setup(match_node: Match) -> void:
 	_build_minimap()
 
 func _process(delta: float) -> void:
+	_tick_wheel()
 	hit_t = maxf(0.0, hit_t - delta)
 	_hud_tick(delta)
 	flash_t = maxf(0.0, flash_t - delta * 4.0)
@@ -216,6 +217,8 @@ func _draw_all() -> void:
 		_draw_tip(sz, tips[0])
 	if Input.is_action_pressed("scores"):
 		_draw_scores(sz)
+	if wheel_open:
+		_draw_wheel()
 	if p and not p.out and not p.extracted:
 		_draw_hover_tip(sz, p)
 		if hover_id == "" and m.perk_offer.is_empty():
@@ -255,6 +258,7 @@ func _draw_world_labels() -> void:
 	if m.opts.get("tutorial", false) and m.tut_target != Vector3.INF and m.player and not m.player.out:
 		_draw_waypoint(m.tut_target, m.tut_label, Color("8fe3c8"))
 	_draw_exit_labels()
+	_draw_truce_marks()
 	for bc in m.beacons:
 		if bc["used"] or cam.is_position_behind(bc["pos"]):
 			continue
@@ -599,6 +603,21 @@ func _draw_minimap(sz: Vector2) -> void:
 			c.draw_circle(pv, 2.5, Color(col, a))
 		else:
 			_edge_arrow(inner, inner.get_center(), pv, Color(col, a))
+	# truce partners you can see (white), and anyone who just broke a truce (red, seen by all)
+	if m.truce and m.player:
+		for h in m.hunters:
+			if h.team == m.player.team or h.out or h.extracted or h.riding:
+				continue
+			var tv: Vector2 = to_map.call(h.pos)
+			if m.truce.is_marked(h):
+				var ph := fmod(m.time * 1.5, 1.0)
+				if on_map.call(tv, 3.0):
+					c.draw_circle(tv, 4.0, BAD)
+					c.draw_arc(tv, 5.0 + ph * 8.0, 0, TAU, 20, Color(BAD, 1.0 - ph), 2.0, true)
+				else: _edge_arrow(inner, inner.get_center(), tv, BAD)
+			elif m.truce.allied(m.player.team, h.team) and not h.unseen and on_map.call(tv, 3.0):
+				c.draw_circle(tv, 4.5, Color(0, 0, 0, 0.6))
+				c.draw_circle(tv, 3.5, Color("f4f1e6"))
 	# your squad, with an arrow for anyone off the edge (a dead teammate shows at their deathbox)
 	for h in m.hunters:
 		if m.player == null or h.team != m.player.team:
@@ -1809,6 +1828,12 @@ func _draw_crosshair(p: Hunter) -> void:
 		c.draw_line(mp + d * gap, mp + d * (gap + 7.0), Color(0, 0, 0, 0.6), 4.0)
 		c.draw_line(mp + d * gap, mp + d * (gap + 7.0), col, 2.0)
 	c.draw_circle(mp, 1.6, col)
+	# aiming at a truce partner: a reminder before you break it
+	if m.truce and not m.truce.pacts.is_empty():
+		var ph: Hunter = m.truce.partner_at(p.inp["aim"], p.team)
+		if ph and not ph.unseen:
+			_flag(mp + Vector2(-58, 30), 0.7, Color("f4f1e6"))
+			_ctext(mp + Vector2(6, 36), "Truce with %s  ·  shooting breaks it" % ph.pname, 13, Color("f4f1e6"), big)
 	var ck := p.charge_k()
 	if ck > 0.0:
 		# a sword's charge: fills, then flashes when it's ready to release
@@ -2273,6 +2298,8 @@ func loot_is(b: Dictionary) -> bool:
 	return loot_open != null and is_same(loot_open, b)
 
 func mouse_on_ui() -> bool:
+	if wheel_open:
+		return true
 	if loot_panel == null or not is_instance_valid(loot_panel) or not loot_panel.visible:
 		return false
 	return loot_panel.get_global_rect().grow(6.0).has_point(loot_panel.get_global_mouse_position())
@@ -2469,3 +2496,100 @@ func _edge_pulse(sz: Vector2, col: Color, a: float) -> void:
 		c.draw_rect(Rect2(Vector2.ZERO, Vector2(w, sz.y)), cc)
 		c.draw_rect(Rect2(Vector2(sz.x - w, 0), Vector2(w, sz.y)), cc)
 
+
+# ------------------------------------------------------------------ emotes and truces
+var wheel_open := false
+var wheel_at := Vector2.ZERO
+var wheel_sel := -1
+
+## Hold the emote key: a wheel opens at the cursor; point at an emote and let go to use it.
+func _tick_wheel() -> void:
+	var p: Hunter = m.player
+	var can: bool = m.truce != null and p != null and not p.out and not p.extracted and not p.riding and not m.paused and m.duel == null
+	var held := can and Input.is_action_pressed("emote")
+	var n := Truce.EMOTES.size()
+	if held and not wheel_open:
+		wheel_open = true
+		var sz := c.size
+		wheel_at = c.get_local_mouse_position().clamp(Vector2(150, 150), sz - Vector2(150, 150))
+		wheel_sel = -1
+		Sfx.play("click", null, -14.0, 0.02, 1.3)
+	elif held:
+		var d := c.get_local_mouse_position() - wheel_at
+		var s := -1 if d.length() < 26.0 else int(round(fposmod(atan2(d.y, d.x) + PI / 2.0, TAU) / (TAU / n))) % n
+		if s != wheel_sel and s >= 0: Sfx.play("click", null, -18.0, 0.02, 1.6)
+		wheel_sel = s
+	elif wheel_open:
+		wheel_open = false
+		if wheel_sel >= 0 and can:
+			m.truce.emote(p, String(Truce.EMOTES[wheel_sel]["id"]))
+		wheel_sel = -1
+
+func _draw_wheel() -> void:
+	var n := Truce.EMOTES.size()
+	var R := 98.0
+	c.draw_circle(wheel_at, R + 44.0, Color(0.03, 0.04, 0.07, 0.6))
+	c.draw_arc(wheel_at, R + 44.0, 0, TAU, 48, Color(1, 1, 1, 0.12), 2.0, true)
+	for i in n:
+		var a := -PI / 2.0 + TAU * i / n
+		var pos := wheel_at + Vector2(cos(a), sin(a)) * R
+		var e: Dictionary = Truce.EMOTES[i]
+		var on := i == wheel_sel
+		var rr := 33.0 if on else 27.0
+		c.draw_circle(pos, rr, Color(e["col"], 0.32) if on else Color(0.09, 0.1, 0.15, 0.95))
+		c.draw_arc(pos, rr, 0, TAU, 28, e["col"], 3.0 if on else 1.5, true)
+		if e["id"] == "truce":
+			_flag(pos + Vector2(-7, -16), 0.9, e["col"])
+			_ctext(pos + Vector2(0, 16), String(e["name"]), 13, e["col"], big)
+		else:
+			_ctext(pos + Vector2(0, 5), String(e["name"]), 14 if String(e["name"]).length() < 7 else 12, e["col"], big)
+	var mid := "Emote"
+	var p: Hunter = m.player
+	if p and m.truce.offers.has(p.team):
+		mid = "Offer from %s" % (m.truce.offers[p.team]["by"] as Hunter).pname
+	_ctext(wheel_at + Vector2(0, 5), mid, 12 if mid.length() > 6 else 13, Color("f4f1e6") if mid != "Emote" else MUTED, big)
+
+## A little white flag (k scales it), pole at p.
+func _flag(p: Vector2, k: float, col: Color) -> void:
+	c.draw_line(p, p + Vector2(0, 22) * k, Color(0, 0, 0, 0.6), 3.0 * k)
+	c.draw_line(p, p + Vector2(0, 22) * k, Color("c9b39a"), 1.6 * k)
+	var w := sin(m.time * 6.0) * 1.5
+	c.draw_colored_polygon(PackedVector2Array([p + Vector2(1, 0) * k, p + Vector2(14, 2 + w) * k, p + Vector2(13, 8 + w) * k, p + Vector2(1, 9) * k]), col)
+
+## Over heads: emote bubbles from anyone you can see, a white flag on truce partners, and a red
+## mark on whoever just broke a truce.
+func _draw_truce_marks() -> void:
+	if m.truce == null or m.player == null:
+		return
+	var cam := m.cam
+	var me: Hunter = m.player
+	for s in m.truce.shown:
+		var h: Hunter = s["h"]
+		if h.out or h.extracted or (h != me and h.team != me.team and (h.unseen or not h.visible)):
+			continue
+		if cam.is_position_behind(h.position):
+			continue
+		var e := Truce.emote_def(String(s["id"]))
+		var a := clampf((Truce.BUBBLE_T - float(s["t"])) * 2.0, 0.0, 1.0) * clampf(float(s["t"]) * 8.0, 0.0, 1.0)
+		var sp := cam.unproject_position(h.position + Vector3(0, 3.3, 0)) + Vector2(0, -6.0 * minf(1.0, float(s["t"]) * 4.0))
+		var label := String(e["name"])
+		var w := big.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x + (40.0 if e["id"] == "truce" else 22.0)
+		var r := Rect2(sp - Vector2(w * 0.5, 15), Vector2(w, 28))
+		_rounded(r, Color(0.05, 0.06, 0.09, 0.88 * a), 12, Color(e["col"], 0.8 * a), 2)
+		c.draw_colored_polygon(PackedVector2Array([sp + Vector2(-6, 13), sp + Vector2(6, 13), sp + Vector2(0, 21)]), Color(0.05, 0.06, 0.09, 0.88 * a))
+		if e["id"] == "truce":
+			_flag(r.position + Vector2(12, 3), 0.95, Color(e["col"], a))
+			_text(r.position + Vector2(30, 20), label, 15, Color(e["col"], a), big)
+		else:
+			_ctext(sp + Vector2(0, 5), label, 15, Color(e["col"], a), big)
+	if m.truce.pacts.is_empty() and m.truce.marked.is_empty():
+		return
+	for h in m.hunters:
+		if h.team == me.team or h.out or h.extracted or h.unseen or not h.visible or cam.is_position_behind(h.position):
+			continue
+		var tp := cam.unproject_position(h.position + Vector3(0, 2.55, 0))
+		if m.truce.is_marked(h):
+			_ctext(tp + Vector2(0, -2), "BROKE THE TRUCE", 12, BAD, big)
+		elif m.truce.allied(me.team, h.team):
+			_flag(tp + Vector2(-26, -14), 0.65, Color("f4f1e6"))
+			_text(tp + Vector2(-14, -2), "truce", 11, Color("f4f1e6"), big)
