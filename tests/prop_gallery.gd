@@ -12,14 +12,14 @@ func _ready() -> void:
 	ground.mesh = pm
 	ground.material_override = Models.toon(Color("dfe8ee"), false)
 	add_child(ground)
-	var items: Array = [Models.chest(0), Models.chest(1), Models.chest(2), Models.shrine(), Models.nest(), Models.portal(Color("8fe3c8")), Models.jump_pad(Color("ffd25a")), Models.gem(), Models.tonic()]
+	var items: Array = [Models.chest(0), Models.chest(1), Models.chest(2), Models.breakable("crate"), Models.breakable("barrel"), Models.shrine(), Models.nest(), Models.portal(Color("8fe3c8")), Models.jump_pad(Color("ffd25a")), Models.gem(), Models.tonic()]
 	for i in items.size():
 		var n: Node3D = items[i]
 		n.position = Vector3((i - (items.size() - 1) * 0.5) * 2.6, 0, 0)
 		add_child(n)
-	(items[2].get_node("Body/Lid") as Node3D).rotation.x = 1.9
+	(items[2].get_node("Body/Lid") as Node3D).rotation.x = 1.9; (items[0].get_node("Body/Lid") as Node3D).rotation.x = 0.6
 	var cam := Camera3D.new()
-	cam.position = Vector3(0, 5.0, 8.0)
+	cam.position = Vector3(0, 7.0, 13.0)
 	cam.rotation = Vector3(-0.55, 0, 0)
 	cam.fov = 60
 	add_child(cam)

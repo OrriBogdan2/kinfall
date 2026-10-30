@@ -213,7 +213,7 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 	depth.resize(w * h); depth.fill(0.0)
 	islands.clear(); pads.clear(); spawns.clear(); portal_spots.clear(); chest_spots.clear(); camp_spots.clear(); wild_spots.clear()
 	links.clear(); rings.clear(); winds.clear(); updrafts.clear()
-	sheer.clear(); lip.clear(); labels.clear(); layout_id = ""; authored_portals.clear(); train_route = {}
+	sheer.clear(); lip.clear(); labels.clear(); layout_id = ""; authored_portals.clear(); train_route = {}; props.clear()
 	var shape := FastNoiseLite.new(); shape.seed = seed_val; shape.frequency = 0.09
 	var terr := FastNoiseLite.new(); terr.seed = seed_val + 7; terr.frequency = 0.07
 	# island centres: a big heart island in the middle and a ring of outer islands around it,
@@ -420,6 +420,7 @@ func _place_stairs() -> void:
 var wall_mat: ShaderMaterial = null   # walls fade where they hide the player
 var walls := {}           # tile index -> true: built stone walls (drawn as walls, not rocks)
 var bush := {}            # tile index -> true: tall grass you can hide in
+var props := {}           # blocker tile index -> what stands there: "ruin" (an old pillar) or "camp" (crates); else a tree or rock
 
 func _wall_at(q: Vector2i, ii: int) -> void:
 	if inb(q.x, q.y) and kind[idx(q.x, q.y)] == T_GROUND and island[idx(q.x, q.y)] == ii and edge_dist(q.x, q.y, 3) >= 3:
@@ -739,11 +740,12 @@ func _clear_around(p: Vector3, rad: float) -> void:
 				kind[idx(x, z)] = T_GROUND
 
 ## Rocks set out in a pattern around a point of interest, as cover.
-func _pillars(p: Vector3, offs: Array) -> void:
+func _pillars(p: Vector3, offs: Array, what := "") -> void:
 	for o in offs:
 		var x := int(floor(p.x + o.x)); var z := int(floor(p.z + o.y))
 		if inb(x, z) and kind[idx(x, z)] == T_GROUND and edge_dist(x, z, 2) >= 2:
 			kind[idx(x, z)] = T_BLOCK
+			if what != "": props[idx(x, z)] = what
 
 ## A ground cell near p at a given distance, on the same island and not by an edge.
 func _near(p: Vector3, dist: float, ang: float, isl: int, taken: Dictionary) -> Vector3:
@@ -766,7 +768,7 @@ func _dress_poi(ii: int, role: String, poi: Vector3, toward_mid: float, taken: D
 			# the vault: the best chest in the middle, ringed by rocks, two guard camps
 			heart_spot = poi
 			chest_spots.append({"pos": poi, "tier": 2})
-			_pillars(poi, [Vector2(3.2, 3.2), Vector2(-3.2, 3.2), Vector2(3.2, -3.2), Vector2(-3.2, -3.2)])
+			_pillars(poi, [Vector2(3.2, 3.2), Vector2(-3.2, 3.2), Vector2(3.2, -3.2), Vector2(-3.2, -3.2)], "ruin")
 			for k in 2:
 				var cp := _near(poi, 4.5, a0_of(ii) + PI * k, ii, taken)
 				if cp != Vector3.INF: camp_spots.append({"pos": cp, "island": ii, "kind": "heavy"})
@@ -777,7 +779,7 @@ func _dress_poi(ii: int, role: String, poi: Vector3, toward_mid: float, taken: D
 			chest_spots.append({"pos": poi, "tier": 1})
 			var cp := _near(poi, 2.6, toward_mid, ii, taken)
 			if cp != Vector3.INF: camp_spots.append({"pos": cp, "island": ii, "kind": "normal"})
-			_pillars(poi, [Vector2(cos(toward_mid + 1.3), sin(toward_mid + 1.3)) * 2.2, Vector2(cos(toward_mid - 1.3), sin(toward_mid - 1.3)) * 2.2])
+			_pillars(poi, [Vector2(cos(toward_mid + 1.3), sin(toward_mid + 1.3)) * 2.2, Vector2(cos(toward_mid - 1.3), sin(toward_mid - 1.3)) * 2.2], "camp")
 		"nest":
 			# wild kin around a nest, a small guard, a plain chest off to the side
 			for k in 2:
@@ -805,7 +807,7 @@ func _dress_poi(ii: int, role: String, poi: Vector3, toward_mid: float, taken: D
 				if wp != Vector3.INF: wild_spots.append(wp)
 		"shrine":
 			shrine_spots.append(poi)
-			_pillars(poi, [Vector2(2.2, 0), Vector2(-2.2, 0), Vector2(0, 2.2), Vector2(0, -2.2)])
+			_pillars(poi, [Vector2(2.2, 0), Vector2(-2.2, 0), Vector2(0, 2.2), Vector2(0, -2.2)], "ruin")
 			var ch := _near(poi, 3.6, toward_mid + PI, ii, taken)
 			if ch != Vector3.INF: chest_spots.append({"pos": ch, "tier": 0})
 
@@ -991,7 +993,7 @@ func build_meshes() -> void:
 	_build_air()
 
 ## Scatter batches split into 16x16-tile chunks, so the camera only draws the ones it can see.
-func _chunked(parent: Node3D, items: Array, mesh: Mesh, mat: Material, label: String) -> void:
+func _chunked(parent: Node3D, items: Array, mesh: Mesh, mat: Material, label: String, shadows := false) -> void:
 	var by := {}
 	for it in items:
 		var o: Vector3 = (it[0] as Transform3D).origin
@@ -1007,7 +1009,7 @@ func _chunked(parent: Node3D, items: Array, mesh: Mesh, mat: Material, label: St
 			mm.set_instance_color(k, list[k][1])
 		var mi := MultiMeshInstance3D.new(); mi.multimesh = mm
 		mi.material_override = mat
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_ON if shadows else GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		mi.name = "%s_%d_%d" % [label, key.x, key.y]
 		parent.add_child(mi)
 
@@ -1293,6 +1295,7 @@ func _build_air() -> void:
 func _decorate() -> void:
 	var drng := RandomNumberGenerator.new(); drng.seed = rng.seed + 11
 	var deco := Node3D.new(); deco.name = "Deco"; add_child(deco)
+	var packed := {}      # imported models, batched: group key -> {mesh, mat, items}
 	for z in h:
 		for x in w:
 			var i := idx(x, z)
@@ -1303,13 +1306,21 @@ func _decorate() -> void:
 			var by_shrine := false
 			for sp in shrine_spots:
 				if Vector2(sp.x - x - 0.5, sp.z - z - 0.5).length() < 2.6: by_shrine = true
-			if drng.randf() < 0.5 and not by_shrine:
+			var what: String = props.get(i, "")
+			if what == "":
+				what = "tree" if drng.randf() < 0.5 and not by_shrine else "rock"
+			if _pack_prop(packed, what, i, Vector3(x + 0.5, y, z + 0.5), drng):
+				continue
+			if what == "tree":
 				var reg := int(islands[island[i]].get("region", 0)) if island[i] >= 0 and island[i] < islands.size() else 0
 				n = Models.tree(drng, _bio(i)["leaf"], "pine" if reg == 2 or drng.randf() < 0.25 else ("blossom" if reg == 4 and drng.randf() < 0.6 else "round"))
 			else:
 				n = Models.rock(drng, drng.randf_range(0.9, 1.25))
 			n.position = Vector3(x + 0.5, y, z + 0.5)
 			deco.add_child(n)
+	for key in packed:
+		var g: Dictionary = packed[key]
+		_chunked(deco, g["items"], g["mesh"], g["mat"], String(g["label"]), bool(g["shadows"]))
 	# stone walls, batched: a block per tile with a cap stone on top
 	var wlist: Array = []
 	for wi in walls:
@@ -1368,7 +1379,17 @@ func _decorate() -> void:
 				pb.append(Vector3(x + drng.randf(), level[i] * LEVEL, z + drng.randf()))
 	_chunked(deco, xs, Models.grass_mesh(false), Models.grass_material(0.08), "Grass")
 	_chunked(deco, fl, Models.flower_mesh(), Models.grass_material(0.05, true), "Flowers")
-	if pb.size() > 0:
+	var pebbled := false
+	if pb.size() > 0 and Assets.on():
+		var peb := {}
+		for p in pb:
+			if not _pack_prop(peb, "pebble", idx(int(p.x), int(p.z)), p, drng):
+				peb.clear(); break
+		for key in peb:
+			var g: Dictionary = peb[key]
+			_chunked(deco, g["items"], g["mesh"], g["mat"], "Pebbles")
+		pebbled = not peb.is_empty()
+	if pb.size() > 0 and not pebbled:
 		var pm2 := MultiMesh.new(); pm2.transform_format = MultiMesh.TRANSFORM_3D; pm2.use_colors = true
 		var sm := SphereMesh.new(); sm.radius = 0.1; sm.height = 0.12; sm.radial_segments = 6; sm.rings = 3
 		pm2.mesh = sm
@@ -1414,6 +1435,75 @@ func _decorate() -> void:
 			var r := Models.rock(drng, drng.randf_range(0.4, 1.2))
 			r.position = at
 			deco.add_child(r)
+
+## Which look a tile's island has, for picking imported models: its authored biome, or on a
+## generated map its region (meadow, autumn, frost, dry, blossom).
+func style_at(i: int) -> String:
+	var ii := island[i] if i >= 0 and i < island.size() else -1
+	if ii < 0 or ii >= islands.size():
+		return "meadow"
+	var b := String(islands[ii].get("biome", ""))
+	if b != "":
+		return b
+	return ["meadow", "ember", "frost", "storm", "bloom"][int(islands[ii].get("region", 0)) % 5]
+
+## Adds one imported model (a tree, rock, ruin pillar, camp crates or a pebble) at p to the batches
+## in groups, picked and sized for the tile's biome. False if the model isn't available, so the
+## caller can build the old primitive one instead. Purely visual: what blocks stays the map data.
+func _pack_prop(groups: Dictionary, what: String, i: int, p: Vector3, r: RandomNumberGenerator) -> bool:
+	if not Assets.on():
+		return false
+	var style := style_at(i)
+	var list: Array
+	match what:
+		"tree": list = Assets.trees(style)
+		"rock": list = Assets.rocks(style)
+		"ruin": list = Assets.PILLARS
+		"camp": list = Assets.CAMP
+		"pebble": list = Assets.PEBBLES
+		_: return false
+	return _pack_prop_variant(groups, what, i, p, r, Assets.pick(list, r))
+
+func _pack_prop_variant(groups: Dictionary, what: String, i: int, p: Vector3, r: RandomNumberGenerator, v: Dictionary) -> bool:
+	var bio := _bio(i)
+	var am := Assets.mesh(String(v["m"]))
+	if am == null:
+		return false
+	var s := Assets.fit_scale(v, am, r)
+	var ab := am.get_aabb()
+	var b := Basis(Vector3.UP, r.randf() * TAU)
+	if what == "tree":
+		b = Basis(Vector3(r.randf_range(-1, 1), 0, r.randf_range(-1, 1)).normalized(), r.randf_range(0.0, 0.07)) * b
+	b = b.scaled(Vector3.ONE * s)
+	if what == "rock":
+		b = b * Basis.from_scale(Vector3(1.0, r.randf_range(1.15, 1.5), 1.0))   # taller boulders, so cover reads as cover
+	var tr := Transform3D(b, p + b * -Vector3(ab.position.x + ab.size.x * 0.5, ab.position.y + (0.05 if what != "pebble" else 0.0), ab.position.z + ab.size.z * 0.5))
+	var paint := String(v.get("paint", "own"))
+	var cfg := {"instanced": true, "bright": float(v.get("bright", 1.0))}
+	var col := Color.WHITE
+	var jit := r.randf_range(-0.07, 0.07)
+	if what == "tree" and paint != "own":
+		cfg["repaint"] = true
+		cfg["band"] = v["band"]
+		var leaf: Color = bio["leaf"]
+		if paint == "green":
+			leaf = Color("4f9a52").lerp(Color(bio["top"]), 0.3)
+		col = leaf.lightened(jit) if jit > 0.0 else leaf.darkened(-jit)
+	else:
+		# rocks, ruins, crates and bare trees: the texture's own colours, tinted toward the biome
+		cfg["color_tint"] = 1.0
+		var base: Color = v.get("tint", Color.WHITE)
+		if what in ["rock", "pebble"]:
+			base = Color.WHITE.lerp(Color(bio["side"]).lightened(0.3), 0.35).lerp(Color(bio["top"]), 0.12)
+		elif what == "ruin":
+			base = Color("fff4e4").lerp(Color(bio["top"]), 0.2).lightened(0.15)
+		col = base.lightened(jit) if jit > 0.0 else base.darkened(-jit)
+	var key := String(v["m"]) + str(cfg)
+	if not groups.has(key):
+		groups[key] = {"mesh": am, "mat": Assets.material(Assets.pack_of(String(v["m"])), cfg), "items": [],
+			"label": String(v["m"]).get_file(), "shadows": what != "pebble"}
+	groups[key]["items"].append([tr, col])
+	return true
 
 ## The home island: one flat round island with room for the farm, house and portal.
 func make_home(seed_val: int) -> void:
@@ -1588,7 +1678,7 @@ func generate_authored(L: Dictionary, seed_val: int) -> void:
 	depth.resize(w * h); depth.fill(0.0)
 	islands.clear(); pads.clear(); spawns.clear(); portal_spots.clear(); chest_spots.clear(); camp_spots.clear(); wild_spots.clear()
 	links.clear(); rings.clear(); winds.clear(); updrafts.clear()
-	sheer.clear(); lip.clear(); labels.clear(); walls.clear(); bush.clear(); paint.clear(); authored_portals.clear(); train_route = {}
+	sheer.clear(); lip.clear(); labels.clear(); walls.clear(); bush.clear(); paint.clear(); authored_portals.clear(); train_route = {}; props.clear()
 	layout_id = String(L.get("id", "authored"))
 	# the ground is the same every match: its noise and depths come from the layout, not the match
 	var lr := RandomNumberGenerator.new(); lr.seed = int(L.get("seed", 1))
@@ -1897,6 +1987,7 @@ func _authored_blockers(defs: Array, neck: Dictionary) -> void:
 			var px := int(pp[0]); var pz := int(pp[1])
 			if inb(px, pz) and kind[idx(px, pz)] == T_GROUND and island[idx(px, pz)] == ii:
 				kind[idx(px, pz)] = T_BLOCK
+				props[idx(px, pz)] = "ruin"
 		for bz in D.get("bush", []):
 			var bc := Vector2(float(bz[0]), float(bz[1])); var rad := float(bz[2])
 			for z in range(int(bc.y - rad - 1), int(bc.y + rad + 2)):

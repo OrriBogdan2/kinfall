@@ -216,6 +216,12 @@ func _ready() -> void:
 		print("BIOME sim ok, time %.0f, mobs left %d, fields %d" % [bm.time, bm.mobs.filter(func(x): return not x.dead).size(), bm.fields.list.size()])
 		get_tree().quit()
 		return
+	if "--pack-gallery" in args:
+		add_child(load("res://tests/pack_gallery.gd").new())
+		return
+	if Array(args).any(func(a): return String(a).begins_with("--art-view=")):
+		add_child(load("res://tests/art_view.gd").new())
+		return
 	if "--map-overview" in args:
 		add_child(load("res://tests/map_overview.gd").new())
 		return

@@ -16,6 +16,21 @@ uniform vec4 light_tint : source_color = vec4(1.05, 1.0, 0.93, 1.0);    // light
 uniform float paint = 0.07;     // how much the colour wanders across a surface
 uniform float sky_ao = 0.22;    // undersides darker, tops lit by the sky
 uniform float gloss = 0.0;      // 0 matte .. 1 shiny (a crisp highlight band)
+// Imported (CC0 pack) models: their colours come from a shared palette texture. One band of hues in
+// it (say the green of the leaves) can be repainted, keeping the texture's shading, so the same tree
+// takes each biome's foliage colour. With use_vertex_color the per-instance colour is the repaint
+// target instead (MultiMesh scatter), and the base albedo still tints everything.
+uniform bool use_tex = false;
+uniform sampler2D albedo_tex : source_color, filter_linear, repeat_disable;
+uniform vec4 recolor_to : source_color = vec4(1.0);
+uniform float recolor = 0.0;          // 0 keeps the texture's colour .. 1 fully repainted
+uniform float recolor_hue = 0.33;     // the hue band to repaint (0..1, red = 0, green = 0.33)
+uniform float recolor_width = 0.1;    // half-width of the band
+uniform float recolor_min_sat = 0.25; // greys, whites and near-blacks are left alone
+uniform float recolor_min_val = 0.0;  // (dark trunks can share a hue with orange leaves)
+uniform float recolor_ref = 0.6;      // the band's typical brightness, which maps onto recolor_to
+uniform float tex_sat = 1.0;          // overall saturation of the texture's own colours
+uniform float color_tint = 0.0;       // with use_vertex_color: how much the instance colour also tints the rest
 #include "res://shaders/noise.gdshaderinc"
 #include "res://shaders/vis.gdshaderinc"
 varying vec3 lpos;
@@ -26,9 +41,29 @@ void vertex() {
 	wnorm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 
+vec3 rgb2hsv(vec3 c) {
+	vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);
+	vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));
+	vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));
+	float d = q.x - min(q.w, q.y);
+	return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + 1.0e-10)), d / (q.x + 1.0e-10), q.x);
+}
+
 void fragment() {
 	vec3 c = albedo.rgb;
-	if (use_vertex_color) { c *= COLOR.rgb; }
+	if (use_tex) {
+		vec3 t = texture(albedo_tex, UV).rgb;
+		vec3 hsv = rgb2hsv(t);
+		vec3 target = use_vertex_color ? COLOR.rgb : recolor_to.rgb;
+		float dh = abs(fract(hsv.x - recolor_hue + 0.5) - 0.5);
+		float band = (1.0 - smoothstep(recolor_width * 0.7, recolor_width, dh)) * smoothstep(recolor_min_sat, recolor_min_sat + 0.1, hsv.y)
+			* smoothstep(recolor_min_val, recolor_min_val + 0.08, hsv.z);
+		vec3 painted = target * clamp(hsv.z / max(recolor_ref, 0.05), 0.55, 1.35);
+		float lum = dot(t, vec3(0.3, 0.59, 0.11));
+		t = mix(vec3(lum), t, tex_sat);
+		c *= mix(t, painted, band * recolor);
+		if (use_vertex_color) { c *= mix(vec3(1.0), COLOR.rgb, color_tint * (1.0 - band * recolor)); }
+	} else if (use_vertex_color) { c *= COLOR.rgb; }
 	// hand-painted variation: soft blotches of slightly lighter and darker paint
 	float n = vnoise(lpos.xz * 7.0 + lpos.y * 4.0) * 0.6 + vnoise(lpos.xy * 15.0 + 3.1) * 0.4;
 	c *= 1.0 + (n - 0.5) * 2.0 * paint;

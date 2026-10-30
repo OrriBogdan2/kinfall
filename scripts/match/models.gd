@@ -905,6 +905,16 @@ static func gear_smoke() -> Node3D:
 
 ## Things that break when shot or dashed through.
 static func breakable(kind_s: String) -> Node3D:
+	if kind_s == "crate":
+		var pc := Assets.prop("dungeon/box_small", 0.78, false, {"bright": 1.1})
+		if pc: return pc
+	elif kind_s == "barrel":
+		# the red powder keg: the barrel's wood painted red, its fuse still glowing on top
+		var pb := Assets.prop("dungeon/barrel_small", 0.85, true, {"band": Assets.BAND_WOOD, "paint": Color("d8483a"), "bright": 1.1})
+		if pb:
+			var top := (pb.get_child(0) as MeshInstance3D).get_aabb().size.y * (pb.get_child(0) as MeshInstance3D).scale.y
+			part(pb, sphere(0.09, 8), toon(Color("ffd25a"), false, 0.9), Vector3(0, top + 0.06, 0), Vector3.ONE, Vector3.ZERO, "Fuse")
+			return pb
 	var root := Node3D.new()
 	match kind_s:
 		"crate":
@@ -1522,7 +1532,48 @@ static func grass_material(sway: float, flower := false) -> ShaderMaterial:
 
 const CHEST_COLS := [[Color("8a5a35"), Color("f2c84a")], [Color("3f6fb0"), Color("dfe8f2")], [Color("6a3fa8"), Color("f2c84a")]]
 
+## A chest: the imported model (its lid on a hinge), coloured by tier, or the primitive one.
 static func chest(tier := 0) -> Node3D:
+	var pk := _pack_chest(tier)
+	return pk if pk else chest_prim(tier)
+
+const CHEST_WOOD := [null, Color("4f86c8"), Color("8a5ad0")]
+
+static func _pack_chest(tier: int) -> Node3D:
+	var id := "dungeon/chest_gold" if tier == 2 else "dungeon/chest"
+	var base := Assets.part(id, "chest")
+	var lidp := Assets.part(id, "chest_lid")
+	if base.is_empty() or lidp.is_empty():
+		return null
+	var cfg := {"rim": 0.3, "bright": 1.12}
+	if CHEST_WOOD[tier] != null:
+		cfg["band"] = Assets.BAND_WOOD
+		cfg["paint"] = CHEST_WOOD[tier]
+	var m := Assets.material("dungeon", cfg)
+	var root := Node3D.new()
+	var body := Node3D.new(); body.name = "Body"; root.add_child(body)
+	var sc := 0.52 * (1.0 + tier * 0.18)
+	# the model's lock faces +z and its hinge is at the back (-z); turned round inside Body so the
+	# hinge is at +z like the primitive chest, then Body faces the lock to the camera
+	var turn := Node3D.new(); turn.rotation.y = PI; turn.scale = Vector3.ONE * sc; body.add_child(turn)
+	part(turn, base[0], m, (base[1] as Transform3D).origin)
+	var lid := Node3D.new(); lid.name = "Lid"
+	lid.set_meta("hinged", true)
+	var hinge: Vector3 = (lidp[1] as Transform3D).origin
+	lid.position = Vector3(-hinge.x, hinge.y, -hinge.z) * sc
+	lid.scale = Vector3.ONE * sc
+	body.add_child(lid)
+	part(lid, lidp[0], m, Vector3.ZERO, Vector3.ONE, Vector3(0, PI, 0))
+	body.rotation.y = PI
+	if tier >= 1:
+		var cc: Array = CHEST_COLS[clampi(tier, 0, 2)]
+		var beam := part(root, cyl(0.16, 0.3, 9.0, 10), glow_mat(Color(cc[1] if tier == 1 else Color("c9a0ff"), 0.22)), Vector3(0, 4.5, 0), Vector3.ONE, Vector3.ZERO, "Beacon")
+		beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	root.set_meta("mats", [m, m])
+	return root
+
+## The chest built from primitives (also the base of a deathbox).
+static func chest_prim(tier := 0) -> Node3D:
 	var root := Node3D.new()
 	var cc: Array = CHEST_COLS[clampi(tier, 0, 2)]
 	var mw := toon(cc[0]); var mg := toon(cc[1], true, 0.3 + tier * 0.25)
@@ -1557,7 +1608,7 @@ static func chest(tier := 0) -> Node3D:
 
 ## A dead hunter's deathbox: a squat crate with a glow in its value colour.
 static func deathbox(col: Color) -> Node3D:
-	var root := chest(0)
+	var root := chest_prim(0)
 	var g := Node3D.new(); g.name = "Glow"; root.add_child(g)
 	var beam := part(g, cyl(0.12, 0.24, 5.0, 10), glow_mat(Color(col, 0.3)), Vector3(0, 2.5, 0))
 	beam.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF

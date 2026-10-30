@@ -165,8 +165,12 @@ func dress(mb: Mob) -> void:
 
 ## Repaints the monster's body in its region's colour (its darker parts follow).
 func _recolor(mb: Mob, col: Color) -> void:
-	var base: Color = Data.MOBS[mb.mkind]["color"]
-	for mat in mb.mats:
+	recolor_mats(mb.mats, mb.mkind, col)
+
+## The same for any monster model's materials (also used by tooling that builds bare models).
+static func recolor_mats(mats: Array, mkind: String, col: Color) -> void:
+	var base: Color = Data.MOBS[mkind]["color"]
+	for mat in mats:
 		var sm := mat as ShaderMaterial
 		if sm == null: continue
 		var a = sm.get_shader_parameter("albedo")
