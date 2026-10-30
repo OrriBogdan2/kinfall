@@ -1298,16 +1298,12 @@ func eliminate(h: Hunter, by: Ent, why: String, final := false) -> void:
 	if not net_on and not h.remote:
 		# everything they carried goes into a deathbox where they fell. While a teammate is still
 		# in the fight they can bring them back at it (or at a revive beacon)
-		Life.drop_box(self, h, why)
+		var bx := Life.drop_box(self, h, why)
 		h.lost_gems = h.gems
 		h.gems = 0; h.seeds = {}; h.caught = []
+		Life.kin_on_death(self, h, bx)
 		waiting = Life.team_alive(self, h.team) and not opts.get("training", false) and not opts.get("tutorial", false)
-		if waiting:
-			for kk in [h.kin, h.kin2]:
-				if kk and not (kk as Kin).dead:
-					giant_free(kk)
-					(kk as Kin).state = "away"
-		else:
+		if not waiting:
 			Life.make_gone(self, h)
 	elif net_on and not is_host and not h.remote:
 		net_event(["spill", _r(h.pos.x), _r(h.pos.y), _r(h.pos.z), h.gems, h.seeds, h.caught])
@@ -1564,7 +1560,11 @@ func _leave_kin(h: Hunter) -> void:
 	for kk in [h.kin, h.kin2]:
 		if kk == null:
 			continue
-		var k: Kin = kk
+		_leave_one_kin(h, kk)
+
+## One kin left behind where it was, dazed, for anyone to capture.
+func _leave_one_kin(h: Hunter, k: Kin) -> void:
+	if true:
 		giant_free(k)
 		var at: Vector3 = k.pos if k.state in ["active", "fainted", "returning", "reviving"] else h.pos
 		var bx := Life.box_of(self, h)
@@ -1581,6 +1581,7 @@ func _leave_kin(h: Hunter) -> void:
 				# whose it really is: yours (even if a rival was carrying it), or the hunter who brought it
 				w.lost_from = "you" if (h == player or k.lost_from == "you") else h.pname
 				w.lost_uid = String(rec.get("uid", ""))
+				w.lost_owner = h
 				w.dazed_t = 1e9
 				kstat["left"] += 1
 				if h == player:
@@ -1597,12 +1598,41 @@ func giant_free(k: Kin) -> bool:
 	if k.state == "fused": k._unfuse()
 	return true
 
+## Gives a hunter one of their kin back (out of a deathbox, or caught back up): it hops on your
+## shoulder, or onto the bench if you already have one out.
+func give_kin(h: Hunter, rec: Dictionary) -> Kin:
+	var k := Kin.new()
+	k.init_kin(self, next_id(h.nid + "k"), rec["species"], rec, h)
+	add_child(k)
+	k.teleport(h.pos + Vector3(0, 1.5, 0))
+	kins.append(k)
+	ents_by_id[k.nid] = k
+	if h.kin == null or (h.kin as Kin).dead:
+		h.kin = k
+	else:
+		h.kin2 = k
+		k.bench()
+	for L in player_lost.duplicate():
+		if String(L["uid"]) == String(rec.get("uid", "")):
+			player_lost.erase(L)
+	return k
+
 ## Where each of your lost kin ends up when the match is over.
 func _resolve_lost() -> Array:
 	var out: Array = []
 	for L in player_lost:
 		var w: Kin = L["kin"]
 		var holder = L.get("holder")
+		if w == null:
+			# still in your deathbox (nobody looted it): it ends up at the Ransom House
+			var fate0 := "ransom"; var who0 := ""
+			if holder is Hunter:
+				var hh0: Hunter = holder
+				if hh0 == player: fate0 = "self"
+				elif hh0.team == player.team: fate0 = "squad" if not hh0.out else "ransom"; who0 = hh0.pname
+				elif not hh0.out: fate0 = "rival"; who0 = hh0.pname
+			out.append({"uid": L["uid"], "fate": fate0, "holder": who0, "rec": L["rec"]})
+			continue
 		var fate := "ransom"
 		var who := ""
 		if holder is Hunter:
@@ -2589,7 +2619,7 @@ func _update_interact(dt: float) -> void:
 		if best.is_empty() and not opts.get("training", false):
 			for k in kins:
 				if k.state == "dazed" and not k.dead and h.flat_dist(k) < 1.9:
-					best = {"kind": "catch", "ent": k, "label": "Hold " + Settings.key_cap("interact") + " to catch the %s" % Data.KIN[k.species]["name"]}
+					best = {"kind": "catch", "ent": k, "label": ("Hold %s to capture %s" % [Settings.key_cap("interact"), k.rec.get("name", "the kin")]) if k.lost_from != "" else ("Hold " + Settings.key_cap("interact") + " to catch the %s" % Data.KIN[k.species]["name"])}
 					break
 		# 3. swap to a weapon on the ground
 		if best.is_empty():
@@ -2651,7 +2681,8 @@ func _update_interact(dt: float) -> void:
 					else: Life.loot_box(self, h, b)
 			"catch":
 				var k: Kin = best["ent"]
-				k.catch_prog += dt / 1.3
+				# capturing someone's lost kin takes longer than catching a wild one
+				k.catch_prog += dt / (float(T.get("capture_time", 3.0)) if k.lost_from != "" else 1.3)
 				if k.catch_prog >= 1.0:
 					_catch(h, k)
 			"chest":

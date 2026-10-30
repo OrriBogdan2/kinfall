@@ -1,6 +1,6 @@
 # Down, death, revive and respawn (built on Supervive's rules, tuned for extraction)
 
-Code: `scripts/match/`. Rules per mode: `data/rules/trios.tres`, `duos.tres`, `solo.tres` (script `life_rules.gd`; every value is tagged in that file).
+Code: `scripts/match/`. Rules per mode: `data/rules/trios.tres`, `duos.tres`, `solo.tres` (script `life_rules.gd`; every value is tagged in that file). Rules per run tier: `data/tiers/shallows.tres`, `deeps.tres`, `abyss.tres`.
 
 ## The flow
 
@@ -51,21 +51,40 @@ The real risk is player count. Three queues (solo, duo, trio) split a small laun
 2. Turn on solos when queue times allow.
 3. Same for Supervive: it moved its main queue from squads to trios at 1.0.
 
-## Kin when you die (design, hooks ready)
+## Kin when you die: depends on the run tier
 
-Supervive has no kin, so these rules are ours. What I'd do, and what the hooks already support:
+Risk scales with the tier you queue into (`data/tiers/*.tres`, script `run_tier.gd`). Higher tiers pay more and put your kin on the line:
 
-1. **Kin are never lost.** You can't loot them and they don't die for good. This matches "never sell kin power": the loss is your run's loot, not your companion.
-2. **Kin knocked out while you live:** it comes back to your side after a cooldown (`kin_recall_time`, 25s). No beacon needed for kin.
-3. **You go down:** your kin **guards your wisp** (`kin_guards_wisp`). An enemy who wants to execute you has to deal with it first. Nothing in Supervive has this, and it's a strong Kinfall moment.
-4. **You die:** a thrown kin on the ground (not in your box) **follows your closest living teammate** and fights alongside them (`kin_follows_teammate`, `HunterLife.kin_escort()`).
-   - If nobody on your team is up, it **hides and flees home**.
-   - However you come back (wisp, box or beacon), **it returns to you**, so kin ride along with beacon revives rather than using beacons themselves.
-5. **Team wipe:** you lose your loot; your kin limps home. A possible soft cost: kin come home "tired" and need a rest before the next run. That gives a sting without permadeath.
+| Tier | Kin you have on you when you die | Kin out of your hands (thrown, following a teammate) | Loot value |
+|---|---|---|---|
+| **Shallows** (1) | Stay with you, never lost | Follow a living teammate, or flee home | ×1 |
+| **Deeps** (2) | **Drop into your deathbox: anyone can loot them** | Follow a teammate, or flee home | ×1.75 |
+| **Abyss** (3) | **Drop into your deathbox: lootable** | **Can be captured by enemies** (hold E, 3s) | ×2.75 |
 
-Hooks for the kin system to listen to:
-- On `HunterLife`: signals `went_down`, `died`, `revived(how)` and `team_wiped`, plus `kin_escort()`.
-- In `LifeRules`: the `kin_*` values.
+All names and multipliers are placeholders.
+
+**Getting a kin back in the Deeps or Abyss:**
+- A box revive by your teammate brings you back with your loot and your kin.
+- A teammate can also loot your box for you, and the kin go back to their owner's team.
+- A beacon revive brings you back empty-handed, so your kin are still sitting in your box and you have to go get it.
+- If an enemy loots your box, your kin leave with them. The `kin_taken(kin, by)` signal fires so the extraction system can decide what that means: they become the enemy's on extract, or can be won back.
+
+**Other kin rules in every tier:**
+- **Knocked out while you're alive:** a kin comes back to you after `kin_recall_time` (25s).
+- **While you're downed:** your kin guards your wisp (`kin_guards_wisp`).
+- **However you come back:** a kin that's still loose returns to you, so kin don't need beacons of their own.
+
+**Worth deciding before launch:**
+1. **Do looted kin become the looter's for good?** That's the strongest stakes, and it fits "kin are earned, not bought".
+2. **Can the original owner hunt them back?** A softer option: a captured kin is "marked" for a while and its owner can find and reclaim it.
+3. **Warn before queueing.** A clear screen before entering the Deeps or Abyss ("your kin can be lost") matters, since losing a kin hurts far more than losing loot.
+
+**Hooks:**
+- `HunterLife.kin`: the kin you have on you.
+- `run_tier`
+- Signals: `kin_dropped`, `kin_recovered`, `Deathbox.kin_taken`.
+- `loose_kin_policy()` returns `{escort, flee, capturable, capture_time}` for the kin AI.
+- `went_down` / `died` / `revived(how)` / `team_wiped`.
 
 ## Hooks for everything else
 - `HunterController`:
@@ -99,3 +118,6 @@ Hooks for the kin system to listen to:
 | Last one standing knocked | Whole team dead |
 | Solo | 0 HP = dead. With self-revive item: up after 8.0s |
 | Abyss | Dead after ~3s of falling; box at the edge you fell from |
+| Shallows death | Kin stays with you; nothing to loot |
+| Deeps / Abyss death | Kin goes in the box; an enemy looting the box takes it; Abyss also marks loose kin as capturable |
+| Deeps, teammate box-revives you | Back with your kin and your loot |

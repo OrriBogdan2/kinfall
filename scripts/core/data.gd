@@ -293,16 +293,16 @@ const BOT_NAMES := ["Vexa", "Moss", "Tarn", "Juno", "Rook", "Kestrel", "Nim", "S
 
 ## Expedition tiers: deeper islands are harder and richer, and in the Hollow your partner can be lost.
 const TIERS := [
-	{"name": "The Meadow", "desc": "Gentle islands. One life, and the abyss is death. Go down for good and the kin you brought are left behind (the Ransom House sells them back cheap here).",
-		"mob": 1.0, "loot": 1.0, "kin_lvl": [1, 3], "unlock": 0, "risk_kin": false, "lives": 1,
+	{"name": "The Meadow", "desc": "Gentle islands. Your kin are always safe here: lose your loot, never your kin.",
+		"mob": 1.0, "loot": 1.0, "kin_lvl": [1, 3], "unlock": 0, "risk_kin": false, "kin_drop": false, "loose_capture": false, "lives": 1,
 		"biome": {"top": Color("5f8d45"), "top2": Color("4a7538"), "side": Color("8b6d52"), "deep": Color("3a3140"), "leaf": Color("5a9a4f")},
 		"sky": Color("10131f"), "ambient": Color("b9c4e6"), "sun": Color("fff1dc"), "clouds": [Color(0.06, 0.07, 0.13), Color(0.22, 0.24, 0.38)]},
-	{"name": "Dusk Isles", "desc": "Tougher monsters, about twice the loot, and rarer kin. One life. Kin you bring are at risk if you go down.",
-		"mob": 1.45, "loot": 1.9, "kin_lvl": [2, 5], "unlock": 2, "risk_kin": false, "lives": 1,
+	{"name": "Dusk Isles", "desc": "Tougher monsters, more loot, rarer kin. Kin you have on you drop into your deathbox when you die, and anyone can loot them. Kin out of your hands escape.",
+		"mob": 1.45, "loot": 1.75, "kin_lvl": [2, 5], "unlock": 2, "risk_kin": true, "kin_drop": true, "loose_capture": false, "lives": 1,
 		"biome": {"top": Color("56688a"), "top2": Color("465576"), "side": Color("6d5a74"), "deep": Color("2a2440"), "leaf": Color("8a6fb8")},
 		"sky": Color("150f22"), "ambient": Color("c9b4e6"), "sun": Color("ffc9a8"), "clouds": [Color(0.09, 0.05, 0.14), Color(0.32, 0.2, 0.4)]},
-	{"name": "The Hollow", "desc": "Brutal and rich, and the stakes are highest. Rival hunters here love to collect kin left behind.",
-		"mob": 2.0, "loot": 3.2, "kin_lvl": [4, 8], "unlock": 5, "risk_kin": true, "lives": 1,
+	{"name": "The Hollow", "desc": "Brutal and rich. Kin on you drop into your deathbox and can be looted, and kin out of your hands can be captured (hold the interact key for 3s).",
+		"mob": 2.0, "loot": 2.75, "kin_lvl": [4, 8], "unlock": 5, "risk_kin": true, "kin_drop": true, "loose_capture": true, "lives": 1,
 		"biome": {"top": Color("4f6b5e"), "top2": Color("3d5650"), "side": Color("5a4a44"), "deep": Color("1e1a22"), "leaf": Color("c25a4a")},
 		"sky": Color("0d0b10"), "ambient": Color("d0a0a0"), "sun": Color("ffb090"), "clouds": [Color(0.07, 0.03, 0.04), Color(0.3, 0.12, 0.12)]},
 ]

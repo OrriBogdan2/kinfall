@@ -366,6 +366,30 @@ func _life_check() -> void:
 		run.call(Match.DT)
 	print("LCHECK execute: dead=%s after %.1fs (stomp drains too)" % [B.out, m.time - t0])
 	print("LCHECK beacons=%d boxes=%d" % [m.beacons.size(), m.boxes.size()])
+	# 7. Dusk Isles rules: the kin on you go into the box; an enemy looting it takes them
+	m.T = Data.TIERS[1]
+	var rec := Save.new_kin("zapple")
+	A.kin = null; A.kin2 = null
+	m.give_kin(A, rec)
+	spot.call(A, home); spot.call(B, home + Vector3(-8, 0, 0)); spot.call(C, home + Vector3(-8, 0, 1))
+	m.eliminate(A, foe, "knocked out")
+	var ab := Life.box_of(m, A)
+	print("LCHECK dusk: kin in box=%d" % (ab.get("kin", []) as Array).size())
+	spot.call(foe, ab["pos"])
+	t0 = m.time
+	while not ab["empty"] and m.time - t0 < 4.0:
+		foe.inp["interact"] = true
+		run.call(Match.DT)
+	print("LCHECK dusk loot: foe caught=%d box kin=%d" % [foe.caught.size(), (ab.get("kin", []) as Array).size()])
+	# 8. Meadow: kin stay safe (hidden) on death and come back on revive
+	m.T = Data.TIERS[0]
+	spot.call(foe, m.world.random_ground())
+	var B2: Hunter = B
+	B2.kin = null; B2.kin2 = null
+	m.give_kin(B2, Save.new_kin("zapple"))
+	spot.call(B2, home + Vector3(-6, 0, 0))
+	m.eliminate(B2, foe, "knocked out")
+	print("LCHECK meadow: kin state=%s box kin=%d" % [B2.kin.state, (Life.box_of(m, B2).get("kin", []) as Array).size()])
 	get_tree().quit()
 
 ## Test: every weapon against a standing target at a couple of ranges, tapping and (for swords)

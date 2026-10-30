@@ -143,6 +143,7 @@ static func loot_box(m: Match, h: Hunter, b: Dictionary) -> void:
 		h.caught.append(rec)
 	h.tonics += int(b["tonics"])
 	h.armor_kits += int(b["kits"])
+	_kin_from_box(m, h, b)
 	var got := int(b["gems"])
 	b["gems"] = 0; b["seeds"] = {}; b["caught"] = []; b["tonics"] = 0; b["kits"] = 0
 	b["empty"] = true
@@ -188,6 +189,11 @@ static func bring_back(m: Match, o: Hunter, at: Vector3, hp_frac: float, sick: b
 	o.sick_t = R["sickness_time"] if sick else 0.0
 	o.teleport(m.world.free_spot_near(at, [], 1.0, 0.4, 6.0) if not m.world.is_void(at.x, at.z) else at)
 	o.prev = o.pos
+	for w in m.kins.duplicate():
+		# a loose kin of yours nobody captured comes running back
+		if w.is_wild() and not w.dead and w.lost_owner == o:
+			w.dead = true; w.visible = false
+			m.give_kin(o, w.rec)
 	for kk in [o.kin, o.kin2]:
 		# your kin was keeping out of sight; it comes straight back to you
 		if kk and not (kk as Kin).dead and (kk as Kin).state == "away":
@@ -211,7 +217,62 @@ static func make_gone(m: Match, h: Hunter) -> void:
 	if h.gone:
 		return
 	h.gone = true
-	m._leave_kin(h)
+	# kin that were keeping out of sight flee home: they're never lost that way
+
+# ------------------------------------------------------------------ kin at risk (by run tier)
+## When you die, what happens to your kin depends on the tier you're in (docs/DEATH_AND_REVIVE.md):
+## the Meadow keeps them safe; in the Dusk Isles the kin you have on you (shoulder or bench) drop
+## into your deathbox where anyone can loot them; in the Hollow kin out of your hands (thrown,
+## fighting) can also be captured. Safe kin keep out of sight and come back if you're revived.
+static func kin_on_death(m: Match, h: Hunter, b: Dictionary) -> void:
+	var training: bool = m.opts.get("training", false) or m.opts.get("tutorial", false)
+	b["kin"] = []
+	for kk in [h.kin, h.kin2]:
+		if kk == null or (kk as Kin).dead:
+			continue
+		var k: Kin = kk
+		m.giant_free(k)
+		var on_you: bool = k.state in ["shoulder", "bench", "away"]
+		if not training and on_you and bool(m.T.get("kin_drop", false)) and b.get("node") != null:
+			var rec: Dictionary = k.rec.duplicate(true)
+			(b["kin"] as Array).append(rec)
+			k.dead = true; k.visible = false
+			if h == m.player:
+				m.player_lost.append({"uid": String(rec.get("uid", "")), "kin": null, "box": b, "holder": null, "rec": rec})
+				m.add_feed("%s dropped into your deathbox" % rec.get("name", "Your kin"))
+			continue
+		if not training and not on_you and bool(m.T.get("loose_capture", false)):
+			# loose in the world: dazed, and anyone can capture it
+			m._leave_one_kin(h, k)
+			continue
+		k.state = "away"
+	if not (b["kin"] as Array).is_empty():
+		b["empty"] = false
+		_refresh_box(b)
+		trace(m, "%d kin into %s's box" % [(b["kin"] as Array).size(), h.pname])
+
+## Kin coming out of a box: back to their owner's side, to a teammate to carry home, or off with
+## whoever looted it.
+static func _kin_from_box(m: Match, h: Hunter, b: Dictionary) -> void:
+	var o: Hunter = b["owner"]
+	for rec in b.get("kin", []):
+		if h == o:
+			m.give_kin(h, rec)
+			if h == m.player: m.add_feed("%s is back with you" % rec.get("name", "Your kin"))
+			continue
+		var r2: Dictionary = (rec as Dictionary).duplicate(true)
+		if o == m.player:
+			r2["lost_from"] = "you"
+			for L in m.player_lost:
+				if String(L["uid"]) == String(rec.get("uid", "")): L["holder"] = h
+			m.add_feed(("%s is carrying %s for you" if h.team == o.team else "%s took %s from your box!") % [h.pname, rec.get("name", "your kin")])
+		elif h.team != o.team:
+			# a rival's kin: it's yours if you get it home
+			r2["trust"] = 20.0
+			r2["memory"] = []
+			if h == m.player: m.add_feed("You took %s's %s! Extract to keep it." % [o.pname, Data.KIN[r2["species"]]["name"]])
+		h.caught.append(r2)
+	b["kin"] = []
 
 # ------------------------------------------------------------------ beacons
 static func place_beacons(m: Match) -> void:

@@ -58,6 +58,7 @@ var fuse_def: UltimateDef = null
 var aura_t := 0.0
 var lost_from := ""               # a kin left behind by a hunter who went down (name), for tracking
 var lost_uid := ""
+var lost_owner: Ent = null         # the hunter it was lost from (they get it back if revived first)
 var ring: MeshInstance3D = null   # the team-coloured ring under it
 var shell_fx: Node3D = null       # the glow around its hunter while fused
 static var XRAY: Shader = preload("res://shaders/kin_aura_xray.gdshader")
