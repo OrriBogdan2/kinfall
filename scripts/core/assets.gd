@@ -63,12 +63,12 @@ const TREES := {
 
 const ROCKS := {
 	"meadow": [
-		{"m": "hexagon/rock_single_A", "w": 2, "fp": [1.0, 1.35]},
-		{"m": "hexagon/rock_single_B", "w": 2, "fp": [1.0, 1.35]},
-		{"m": "hexagon/rock_single_C", "w": 2, "fp": [1.0, 1.35]},
-		{"m": "hexagon/rock_single_D", "w": 2, "fp": [1.0, 1.35]},
-		{"m": "hexagon/rock_single_E", "w": 2, "fp": [1.0, 1.35]},
-		{"m": "dungeon/rubble_half", "w": 1, "fp": [1.1, 1.4], "bright": 1.7},
+		{"m": "hexagon/rock_single_A", "w": 1, "fp": [1.0, 1.35]},
+		{"m": "hexagon/rock_single_C", "w": 1, "fp": [1.0, 1.35]},
+		{"m": "hexagon/rock_single_E", "w": 1, "fp": [1.0, 1.35]},
+		{"m": "hexagon/mountain_B", "w": 2, "fp": [1.0, 1.2]},
+		{"m": "hexagon/mountain_C", "w": 2, "fp": [1.0, 1.2]},
+		{"m": "dungeon/rubble_half", "w": 2, "fp": [1.1, 1.4], "bright": 1.7},
 	],
 	"frost": [
 		{"m": "hexagon/mountain_A", "w": 2, "fp": [1.0, 1.2]},
