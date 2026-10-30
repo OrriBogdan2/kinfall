@@ -2475,7 +2475,8 @@ func _open_loadout() -> void:
 			_open_loadout())
 		var wu := Content.weapon(w)
 		var un: String = Content.ability(wu.utility).display_name if wu and wu.utility != "" and Content.ability(wu.utility) else ""
-		wb.tooltip_text = ("Melee: %d damage per hit, reach %.1f" % [int(wd["dmg"]), float(wd["range"])] if wd.get("melee", false) else "%d damage, %d per mag, range %d" % [int(wd["dmg"]), int(wd["mag"]), int(wd["range"])]) + ("\nRight click: " + un if un != "" else "")
+		var stat_s := ("Melee: %s damage per hit, reach %.1f" % [str(snappedf(float(wd["dmg"]), 0.1)), float(wd["range"])]) if wd.get("melee", false) else ("%s damage%s, %d per mag, range %d" % [str(snappedf(float(wd["dmg"]), 0.1)), (" x%d" % int(wd["pellets"])) if wd.has("pellets") else "", int(wd["mag"]), int(wd["range"])])
+		wb.tooltip_text = (String(wd.get("desc", "")) + "\n" if wd.has("desc") else "") + stat_s + ("\nRight click: " + un if un != "" else "")
 		wr.add_child(wb)
 	v.add_child(wr)
 	v.add_child(UI.section("Perk"))

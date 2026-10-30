@@ -1,0 +1,27 @@
+{
+	"id": "minigun",
+	"name": "Minigun",
+	"classes": [
+		"heavy"
+	],
+	"primary": {
+		"dmg": 2.35,
+		"rate": 0.06,
+		"speed": 60,
+		"mag": 150,
+		"reload": 3.0,
+		"kb": 0.4,
+		"spread": 0.052,
+		"range": 10.0,
+		"size": 0.11,
+		"color": "#ffb34d",
+		"sfx": "smg",
+		"spin_up": 0.7,
+		"spun_range": 1.5,
+		"fire_slow": 0.5,
+		"tighten_from_deg": 14.0,
+		"tighten_time": 1.5,
+		"desc": "Spins up for 0.7s, then fires a stream that tightens the longer you hold it. Slows you while firing."
+	},
+	"utility": "cluster_shell"
+}

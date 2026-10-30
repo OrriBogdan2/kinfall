@@ -1,0 +1,24 @@
+{
+	"id": "rifle",
+	"name": "Rifle",
+	"classes": [
+		"medium"
+	],
+	"primary": {
+		"dmg": 3.87,
+		"rate": 0.08,
+		"speed": 110,
+		"mag": 30,
+		"reload": 1.8,
+		"kb": 0.8,
+		"spread": 0.035,
+		"range": 9.5,
+		"size": 0.12,
+		"color": "#d9ff66",
+		"sfx": "rifle",
+		"sustain_loss": 0.4,
+		"sustain_rounds": 10,
+		"desc": "Steady and accurate. Long strings of fire lose some damage, so fire in bursts."
+	},
+	"utility": "suppressing_volley"
+}

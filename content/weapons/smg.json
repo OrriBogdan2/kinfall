@@ -1,0 +1,27 @@
+{
+	"id": "smg",
+	"name": "SMG",
+	"classes": [
+		"light"
+	],
+	"primary": {
+		"dmg": 2.76,
+		"rate": 0.07,
+		"speed": 55,
+		"mag": 36,
+		"reload": 1.4,
+		"kb": 0.5,
+		"spread": 0.087,
+		"range": 7.0,
+		"size": 0.1,
+		"color": "#99ffff",
+		"sfx": "smg",
+		"bloom_deg": 0.6,
+		"bloom_max_deg": 6.0,
+		"bloom_recover": 20.0,
+		"far_start": 0.6,
+		"far_mult": 0.6,
+		"desc": "Fast and loose. Spread grows the longer you hold it, and damage drops off at the far end."
+	},
+	"utility": "flechettes"
+}

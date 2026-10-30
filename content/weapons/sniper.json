@@ -1,0 +1,25 @@
+{
+	"id": "sniper",
+	"name": "Sniper",
+	"classes": [
+		"light"
+	],
+	"primary": {
+		"dmg": 33.14,
+		"rate": 1.5,
+		"speed": 32,
+		"mag": 5,
+		"reload": 2.2,
+		"kb": 3.0,
+		"spread": 0.0,
+		"range": 16.0,
+		"size": 0.25,
+		"color": "#ff8033",
+		"sfx": "rifle",
+		"warmup": 0.6,
+		"fire_slow": 0.6,
+		"close_mult": 0.5,
+		"desc": "Winds up for 0.6s with a laser showing, then hits hard. Weak point-blank, full damage from half range."
+	},
+	"utility": "pinning_dart"
+}

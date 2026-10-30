@@ -1,7 +1,0 @@
-{
-	"id": "rocket",
-	"name": "Rocket Launcher",
-	"primary": {"dmg": 15.0, "rate": 0.65, "speed": 17.0, "mag": 3, "reload": 1.7, "kb": 0.0, "spread": 0.0, "range": 11.0,
-		"sfx": "thump", "color": "#ff7a5a", "size": 0.2, "boom": 1.8, "boom_kb": 8.0},
-	"utility": "cluster_shell"
-}

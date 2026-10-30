@@ -70,7 +70,7 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 		var d := h.flat_dist(tgt)
 		var to := h.dir_to(tgt)
 		var pref: float = {"light": 4.5, "medium": 7.0, "heavy": 5.5}[h.cls]
-		if h.wid == "rail": pref = 11.0
+		if h.wid == "sniper": pref = 11.0
 		if h.wpn.get("melee", false): pref = 1.2
 		elif h.wpn.has("pellets"): pref = 3.5
 		if d > pref + 1.5:
@@ -101,7 +101,7 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 		a["burst"] = float(a.get("burst", 0.0)) - dt
 		if a["burst"] < -randf_range(0.35, 0.6):
 			a["burst"] = randf_range(0.7, 1.3)
-		if los and d < float(h.wpn["range"]) + 0.5 and (a["burst"] > 0.0 or float(h.wpn["rate"]) > 0.4):
+		if los and d < float(h.wpn["range"]) + 0.5 and (a["burst"] > 0.0 or float(h.wpn["rate"]) > 0.4 or h.wpn.has("spin_up")):
 			inp["fire"] = true
 		elif not los:
 			move = to

@@ -1,0 +1,24 @@
+{
+	"id": "burst_rifle",
+	"name": "Burst Rifle",
+	"classes": [
+		"medium"
+	],
+	"primary": {
+		"dmg": 5.52,
+		"rate": 0.34,
+		"burst": 3,
+		"burst_gap": 0.07,
+		"speed": 60,
+		"mag": 27,
+		"reload": 1.5,
+		"kb": 1.0,
+		"spread": 0.026,
+		"range": 10.5,
+		"size": 0.13,
+		"color": "#80ccff",
+		"sfx": "rifle",
+		"desc": "Three rounds per pull. Accurate at range."
+	},
+	"utility": "concussion_orb"
+}

@@ -106,6 +106,8 @@ func hurt(dmg: float, by: Ent, opts := {}) -> float:
 	freeze_t = 0.05 if d >= 10.0 else 0.03
 	squash = 0.1
 	if opts.has("kb"):
+		if "knock_steer" in self:
+			set("knock_steer", float(opts.get("kbi", 0.3)))
 		impulse(opts["kb"], opts.get("lift", -1.0))
 	if opts.get("burn", 0.0) > 0.0:
 		burn_t = maxf(burn_t, 3.0); burn_dps = maxf(burn_dps, float(opts["burn"])); burn_by = by

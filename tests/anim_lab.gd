@@ -19,7 +19,7 @@ func _ready() -> void:
 	if "--lab-reload" in OS.get_cmdline_user_args():
 		poses = ["r0.1", "r0.25", "r0.4", "r0.55", "r0.66", "r0.9"]
 	for i in poses.size():
-		var h := Models.hunter("medium", Data.TEAM_COLORS[0], "repeater", ["sage", "veil", "bastion", "pyra"][i % 4])
+		var h := Models.hunter("medium", Data.TEAM_COLORS[0], "rifle", ["sage", "veil", "bastion", "pyra"][i % 4])
 		h.position = Vector3((i % 7 - 3.0) * 1.8, 0, (i / 7) * 3.0 - 1.5)
 		h.rotation.y = PI + 0.5
 		add_child(h)

@@ -10,35 +10,29 @@ const MATCH_PLAYERS := 20
 
 const CLASSES := {
 	"light": {
-		"name": "Light", "hp": 115, "speed": 5.0, "dashes": 3, "mass": 0.9, "scale": 0.9,
-		"sig": "cloak", "weapon": "stinger", "weapons": ["stinger", "pulse", "rail", "needler", "fangs"],
-		"desc": "Fast and fragile. Three dashes and a cloak to slip out of fights.",
+		"name": "Light", "hp": 124, "speed": 5.2, "dashes": 1, "mass": 0.85, "scale": 0.9, "hit_r": 0.35,
+		"ex_dist": 7.0, "ex_time": 0.22, "ex_cd": 12.0, "glide_cap": 1.2,
+		"sig": "cloak", "weapon": "smg", "weapons": ["smg", "sniper", "twin_blades"],
+		"desc": "Fast and fragile. The fastest dash, the longest glide, and hits throw you furthest.",
 	},
 	"medium": {
-		"name": "Medium", "hp": 145, "speed": 5.0, "dashes": 2, "mass": 1.0, "scale": 1.0,
-		"sig": "mend", "weapon": "repeater", "weapons": ["repeater", "pulse", "rocket", "rail", "scatter", "blade"],
+		"name": "Medium", "hp": 145, "speed": 5.0, "dashes": 1, "mass": 1.0, "scale": 1.0, "hit_r": 0.40,
+		"ex_dist": 6.0, "ex_time": 0.22, "ex_cd": 13.0, "glide_cap": 1.0,
+		"sig": "mend", "weapon": "rifle", "weapons": ["rifle", "burst_rifle", "longsword"],
 		"desc": "The all-rounder. Heals the team and its kin, and speeds up revives.",
 	},
 	"heavy": {
-		"name": "Heavy", "hp": 190, "speed": 5.0, "dashes": 1, "mass": 1.45, "scale": 1.14,
-		"sig": "fortify", "weapon": "thumper", "weapons": ["thumper", "pulse", "rocket", "slugger", "maul"],
-		"desc": "Slow and tough. Grenades that blast people off edges, and a shield nothing can push.",
+		"name": "Heavy", "hp": 193, "speed": 4.73, "dashes": 2, "mass": 1.35, "scale": 1.14, "hit_r": 0.50,
+		"ex_dist": 5.0, "ex_time": 0.24, "ex_cd": 15.0, "glide_cap": 0.85,
+		"sig": "fortify", "weapon": "shotgun", "weapons": ["shotgun", "minigun", "greatsword"],
+		"desc": "Slow and tough. Two short dashes, the most health, and very hard to push off a ledge.",
 	},
 }
 
+## Fallback only: every real weapon lives in content/weapons.
 const WEAPONS := {
-	"stinger": {"name": "Stinger SMG", "dmg": 4.6, "rate": 0.085, "speed": 24.0, "mag": 26, "reload": 1.3,
-		"kb": 0.8, "spread": 0.07, "range": 10.0, "sfx": "smg", "color": Color("ffe08a"), "size": 0.12},
-	"repeater": {"name": "Repeater", "dmg": 10.0, "rate": 0.21, "speed": 27.0, "mag": 12, "reload": 1.2,
-		"kb": 2.4, "spread": 0.015, "range": 12.0, "sfx": "rifle", "color": Color("bfe6ff"), "size": 0.15},
-	"thumper": {"name": "Thumper", "dmg": 20.0, "rate": 0.8, "speed": 14.0, "mag": 4, "reload": 1.7,
-		"kb": 0.0, "spread": 0.0, "range": 9.0, "sfx": "thump", "color": Color("ff9a4a"), "size": 0.22,
-		"boom": 2.1, "boom_kb": 9.5},
-	"rail": {"name": "Rail Rifle", "dmg": 24.0, "rate": 0.9, "speed": 46.0, "mag": 4, "reload": 1.8,
-		"kb": 3.5, "spread": 0.0, "range": 18.0, "sfx": "rifle", "color": Color("9af0ff"), "size": 0.14},
-	"rocket": {"name": "Rocket Launcher", "dmg": 15.0, "rate": 0.65, "speed": 17.0, "mag": 3, "reload": 1.7,
-		"kb": 0.0, "spread": 0.0, "range": 11.0, "sfx": "thump", "color": Color("ff7a5a"), "size": 0.2,
-		"boom": 1.8, "boom_kb": 8.0},
+	"rifle": {"name": "Rifle", "dmg": 3.87, "rate": 0.08, "speed": 110.0, "mag": 30, "reload": 1.8,
+		"kb": 0.8, "spread": 0.035, "range": 9.5, "sfx": "rifle", "color": Color("d9ff66"), "size": 0.12},
 }
 
 ## Weapons found out on the islands: any weapon with a rarity on top, always better than what you
@@ -61,12 +55,16 @@ func weapon_ids() -> Array:
 
 func weapon_stats(wid: String, rar := 0) -> Dictionary:
 	var wd := Content.weapon(wid)
-	var w: Dictionary = wd.primary.duplicate() if wd else WEAPONS.get(wid, WEAPONS["repeater"]).duplicate()
+	var w: Dictionary = wd.primary.duplicate() if wd else WEAPONS.get(wid, WEAPONS["rifle"]).duplicate()
 	var r: Dictionary = RARITY[clampi(rar, 0, RARITY.size() - 1)]
 	w["short"] = String(w["name"]).split(" ")[0]
 	if rar > 0:
 		w["name"] = "%s %s" % [r["name"], w["name"]]
 	w["dmg"] = float(w["dmg"]) * float(r["dmg"])
+	if w.has("combo_dmg"):
+		w["combo_dmg"] = (w["combo_dmg"] as Array).map(func(x): return float(x) * float(r["dmg"]))
+	if w.has("charged_dmg"):
+		w["charged_dmg"] = float(w["charged_dmg"]) * float(r["dmg"])
 	w["mag"] = maxi(int(w["mag"]) + (1 if rar > 0 else 0), int(round(int(w["mag"]) * float(r["mag"]))))
 	w["reload"] = float(w["reload"]) * float(r["reload"])
 	w["rate"] = float(w["rate"]) * float(r["rate"])
@@ -85,23 +83,23 @@ func roll_rarity(r: RandomNumberGenerator, bonus := 0) -> int:
 ## Heroes: three per weight class. Each has a passive, an E ability and an R ultimate that charges
 ## as you deal damage, plus a right-click ability of their own. Your kin (C to throw, Q, shoulder) stays the same whoever you play.
 const HEROES := {
-	"veil": {"name": "Veil", "cls": "light", "weapon": "stinger", "e": "cloak", "r": "vanish", "s": "shadowstep", "color": Color("c9bcff"),
+	"veil": {"name": "Veil", "cls": "light", "weapon": "smg", "e": "cloak", "r": "vanish", "s": "shadowstep", "color": Color("c9bcff"),
 		"role": "Slippery scout", "passive": "Your first shot after leaving cloak always crits."},
-	"nyx": {"name": "Nyx", "cls": "light", "weapon": "stinger", "e": "blink", "r": "dance", "s": "bolas", "color": Color("b06ae0"),
+	"nyx": {"name": "Nyx", "cls": "light", "weapon": "twin_blades", "e": "blink", "r": "dance", "s": "bolas", "color": Color("b06ae0"),
 		"role": "Blink assassin", "passive": "Knocking down a hunter refreshes Blink."},
-	"kestrel": {"name": "Kestrel", "cls": "light", "weapon": "rail", "e": "tether", "r": "skypierce", "s": "divehawk", "color": Color("6ad0e0"),
+	"kestrel": {"name": "Kestrel", "cls": "light", "weapon": "sniper", "e": "tether", "r": "skypierce", "s": "divehawk", "color": Color("6ad0e0"),
 		"role": "Long-range sniper", "passive": "Shots from more than 9 tiles away deal 25% more damage."},
-	"sage": {"name": "Sage", "cls": "medium", "weapon": "repeater", "e": "mend", "r": "sanctuary", "s": "breeze", "color": Color("9ee2a0"),
+	"sage": {"name": "Sage", "cls": "medium", "weapon": "rifle", "e": "mend", "r": "sanctuary", "s": "breeze", "color": Color("9ee2a0"),
 		"role": "Healer", "passive": "Revives teammates 30% faster."},
-	"marlow": {"name": "Marlow", "cls": "medium", "weapon": "repeater", "e": "hook", "r": "anchor", "s": "haymaker", "color": Color("e0b05a"),
+	"marlow": {"name": "Marlow", "cls": "medium", "weapon": "longsword", "e": "hook", "r": "anchor", "s": "haymaker", "color": Color("e0b05a"),
 		"role": "Hook and slam", "passive": "Hooked foes are slowed for 2 seconds."},
-	"pyra": {"name": "Pyra", "cls": "medium", "weapon": "rocket", "e": "rocketjump", "r": "barrage", "s": "satchel", "color": Color("ff7a5a"),
+	"pyra": {"name": "Pyra", "cls": "medium", "weapon": "burst_rifle", "e": "rocketjump", "r": "barrage", "s": "satchel", "color": Color("ff7a5a"),
 		"role": "Rocket jumper", "passive": "Your blasts knock foes 20% further."},
-	"bastion": {"name": "Bastion", "cls": "heavy", "weapon": "thumper", "e": "fortify", "r": "bulwark", "s": "brightshield", "color": Color("e6dbc4"),
+	"bastion": {"name": "Bastion", "cls": "heavy", "weapon": "shotgun", "e": "fortify", "r": "bulwark", "s": "brightshield", "color": Color("e6dbc4"),
 		"role": "Unmovable wall", "passive": "Takes 10% less damage while above half health."},
-	"tusk": {"name": "Tusk", "cls": "heavy", "weapon": "thumper", "e": "ram", "r": "quake", "s": "cleave", "color": Color("c08a5a"),
+	"tusk": {"name": "Tusk", "cls": "heavy", "weapon": "greatsword", "e": "ram", "r": "quake", "s": "cleave", "color": Color("c08a5a"),
 		"role": "Charging brawler", "passive": "Hitting someone with Ram refunds half its cooldown."},
-	"halo": {"name": "Halo", "cls": "heavy", "weapon": "thumper", "e": "dome", "r": "well", "s": "binding", "color": Color("f2d47a"),
+	"halo": {"name": "Halo", "cls": "heavy", "weapon": "minigun", "e": "dome", "r": "well", "s": "binding", "color": Color("f2d47a"),
 		"role": "Bubble protector", "passive": "Allies inside your dome heal 4 health per second."},
 }
 

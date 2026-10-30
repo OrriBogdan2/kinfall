@@ -1,0 +1,36 @@
+{
+	"id": "twin_blades",
+	"name": "Twin Blades",
+	"classes": [
+		"light"
+	],
+	"primary": {
+		"melee": true,
+		"dmg": 5.25,
+		"combo_dmg": [
+			5.25,
+			5.25,
+			8.84
+		],
+		"rate": 0.22,
+		"combo_reset": 0.6,
+		"speed": 40,
+		"mag": 1,
+		"reload": 0.1,
+		"kb": 1.0,
+		"spread": 0.0,
+		"range": 2.0,
+		"arc": 110.0,
+		"lunge": 1.2,
+		"kb_influence": 0.5,
+		"charge_time": 0.5,
+		"charged_dmg": 16.57,
+		"charged_lunge": 4.5,
+		"charged_kb": 3.0,
+		"size": 0.2,
+		"color": "#c8f0ff",
+		"sfx": "dash",
+		"desc": "Tap for a quick 3-hit combo. Hold 0.5s for a long lunging stab that lands where you stop."
+	},
+	"utility": "shadow_lunge"
+}

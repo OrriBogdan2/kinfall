@@ -1,0 +1,37 @@
+{
+	"id": "greatsword",
+	"name": "Greatsword",
+	"classes": [
+		"heavy"
+	],
+	"primary": {
+		"melee": true,
+		"dmg": 8.84,
+		"combo_dmg": [
+			8.84,
+			8.84,
+			14.36
+		],
+		"rate": 0.4,
+		"combo_reset": 0.9,
+		"speed": 40,
+		"mag": 1,
+		"reload": 0.1,
+		"kb": 2.0,
+		"spread": 0.0,
+		"range": 3.2,
+		"arc": 160.0,
+		"tip_bonus": 0.3,
+		"lunge": 0.6,
+		"kb_influence": 0.5,
+		"charge_time": 1.0,
+		"charged_dmg": 27.62,
+		"charged_stun": 0.6,
+		"charged_kb": 8.0,
+		"size": 0.25,
+		"color": "#ffb070",
+		"sfx": "thump",
+		"desc": "A slow, huge 3-hit combo, strongest on the tip. Hold 1s for a slam that stuns and throws people far."
+	},
+	"utility": "earthshatter"
+}

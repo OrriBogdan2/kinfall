@@ -495,6 +495,8 @@ func _sweep(center: Vector2, radius: float, frac: float, col: Color) -> void:
 ## you know it comes back), a thick health bar in 25-point chunks with a pale trail for damage just
 ## taken, and little shield and cross marks so it's clear which is which.
 func _vitals(sp: Vector2, w: float, h: Hunter, hp_col: Color, trail: float, numbers := false) -> void:
+	if not sp.is_finite():
+		return
 	var x0 := sp.x - w * 0.5
 	if h.max_armor > 0.5:
 		var ar := Rect2(Vector2(x0, sp.y - 9), Vector2(w, 4))
@@ -799,8 +801,8 @@ func _draw_weapon(sz: Vector2, p: Hunter) -> void:
 	if p.wpn.get("melee", false):
 		# melee: no ammo; the combo's pips instead, the last one bigger
 		_text(r.position + Vector2(112, 62), "MELEE", 16, rc, big)
-		var cn: int = (p.wpn.get("combo", [1.0]) as Array).size()
-		var live := m.time - p.swing_at <= float(p.wpn["rate"]) + 0.6
+		var cn: int = (p.wpn.get("combo_dmg", p.wpn.get("combo", [1.0])) as Array).size()
+		var live := m.time - p.swing_at <= float(p.wpn["rate"]) + float(p.wpn.get("combo_reset", 0.6))
 		for ci in cn:
 			var on := live and (p.combo_i % cn) > ci
 			var rad := 5.0 if ci == cn - 1 else 3.5
@@ -954,12 +956,26 @@ func _draw_prompt(sz: Vector2, p: Hunter) -> void:
 func _draw_crosshair(p: Hunter) -> void:
 	var mp := c.get_local_mouse_position()
 	var col := INK
-	var gap := 6.0 + (p.recoil * 4.0)
+	# the crosshair opens with per-shot bloom and the minigun's spread
+	var gap := 6.0 + (p.recoil * 4.0) + p.wbloom * 1.2
+	if p.wpn.has("tighten_from_deg") and p.spin > 0.0:
+		gap += lerpf(12.0, 0.0, clampf(p.spun_t / float(p.wpn.get("tighten_time", 1.5)), 0.0, 1.0))
 	for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
 		c.draw_line(mp + d * gap, mp + d * (gap + 7.0), Color(0, 0, 0, 0.6), 4.0)
 		c.draw_line(mp + d * gap, mp + d * (gap + 7.0), col, 2.0)
 	c.draw_circle(mp, 1.6, col)
-	if p.reload_t > 0.0:
+	var ck := p.charge_k()
+	if ck > 0.0:
+		# a sword's charge: fills, then flashes when it's ready to release
+		var full := ck >= 1.0
+		_arc(mp, 18, ck, Color("fff3b0") if not full or int(m.time * 10.0) % 2 == 0 else Color.WHITE, 4.0 if full else 3.0)
+	elif p.warm_t > 0.0:
+		_arc(mp, 18, 1.0 - p.warm_t / maxf(0.01, float(p.wpn.get("warmup", 0.6))), p.wpn["color"], 3.0)
+	elif p.wpn.has("spin_up") and p.spin > 0.0 and p.spin < 1.0:
+		_arc(mp, 18, p.spin, Color("ffb34d"), 3.0)
+	elif p.wpn.get("melee", false):
+		pass
+	elif p.reload_t > 0.0:
 		_arc(mp, 18, 1.0 - p.reload_t / float(p.wpn["reload"]), Color("ffe7a8"), 3.0)
 	else:
 		# ammo left, as a thin ring that empties as you fire

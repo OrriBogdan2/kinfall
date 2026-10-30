@@ -1,8 +1,0 @@
-{
-	"id": "maul",
-	"name": "Groundbreaker Maul",
-	"classes": ["heavy"],
-	"primary": {"melee": true, "dmg": 30.0, "rate": 0.72, "speed": 40.0, "mag": 1, "reload": 0.1, "kb": 7.0, "spread": 0.0,
-		"range": 2.5, "arc": 150.0, "combo": [1.0, 1.6], "lunge": 2.0, "size": 0.25, "color": "#ffb070", "sfx": "thump"},
-	"utility": "earthshatter"
-}

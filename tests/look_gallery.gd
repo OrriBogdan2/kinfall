@@ -14,7 +14,7 @@ func _ready() -> void:
 		var k := i + page * 12
 		var lk := {"gender": i % 2, "face": k % Models.LOOK_FACES.size(), "hair": k % Models.LOOK_HAIRS.size(),
 			"skin": (k * 5) % Models.LOOK_SKIN.size(), "hair_col": (k * 3) % Models.LOOK_HAIR.size(), "detail": (k / 2) % Models.LOOK_DETAILS.size(), "body": 1}
-		var h := Models.hunter("medium", Data.TEAM_COLORS[0], "repeater", "plain", lk)
+		var h := Models.hunter("medium", Data.TEAM_COLORS[0], "rifle", "plain", lk)
 		h.position = Vector3((i % 6 - 2.5) * 0.85, (i / 6) * 0.0, (i / 6) * -1.8)
 		h.rotation.y = PI
 		add_child(h)

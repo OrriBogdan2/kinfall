@@ -579,18 +579,22 @@ static func _braid(torso: Node3D, m_hair: Material) -> void:
 		part(torso, sphere(0.065 - k * 0.006, 8), m_hair, Vector3(0, 0.86 - k * 0.09, 0.27 + k * 0.01))
 	part(torso, sphere(0.03, 6), toon(Color("e0607e")), Vector3(0, 0.44, 0.3))
 
+static func prism_tip() -> PrismMesh:
+	var pm := PrismMesh.new(); pm.size = Vector3(1, 1, 1)
+	return pm
+
 ## The gun's pieces, shared by hunters and the weapons lying around on the islands.
 static func gun_parts(gun: Node3D, weapon: String, m_gun: Material, m_dark: Material, m_acc: Material) -> void:
 	match weapon:
-		"stinger":
+		"smg":
 			part(gun, box(0.1, 0.12, 0.42), m_gun, Vector3(0, 0, -0.12))
 			part(gun, box(0.05, 0.16, 0.08), m_dark, Vector3(0, -0.12, -0.04))
 			part(gun, box(0.06, 0.06, 0.12), m_acc, Vector3(0, 0.08, -0.12))
-		"repeater":
+		"rifle":
 			part(gun, box(0.09, 0.12, 0.7), m_gun, Vector3(0, 0, -0.24))
 			part(gun, cyl(0.035, 0.035, 0.3), m_dark, Vector3(0, 0.02, -0.66), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			part(gun, box(0.05, 0.08, 0.16), m_acc, Vector3(0, 0.09, -0.16))
-		"rail":
+		"sniper":
 			part(gun, box(0.08, 0.1, 0.9), m_gun, Vector3(0, 0, -0.32))
 			part(gun, box(0.04, 0.04, 0.5), toon(Color("9af0ff"), false, 0.8), Vector3(0, 0.07, -0.42))
 			part(gun, cyl(0.05, 0.05, 0.14), m_dark, Vector3(0, 0.1, -0.12), Vector3.ONE, Vector3(PI / 2, 0, 0))
@@ -604,11 +608,11 @@ static func gun_parts(gun: Node3D, weapon: String, m_gun: Material, m_dark: Mate
 			part(gun, cyl(0.1, 0.1, 0.72), toon(Color("5a6a4a")), Vector3(0, 0.04, -0.22), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			part(gun, cyl(0.06, 0.12, 0.12), toon(Color("ff7a5a")), Vector3(0, 0.04, -0.6), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			part(gun, box(0.06, 0.16, 0.08), m_dark, Vector3(0, -0.12, -0.05))
-		"needler":
+		"burst_rifle":
 			part(gun, box(0.08, 0.11, 0.34), m_gun, Vector3(0, 0, -0.1))
 			part(gun, cyl(0.02, 0.02, 0.22, 6), toon(Color("d6a8ff"), false, 0.8), Vector3(0, 0.02, -0.36), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			part(gun, box(0.05, 0.15, 0.07), m_dark, Vector3(0, -0.11, -0.02))
-		"scatter":
+		"shotgun":
 			part(gun, box(0.12, 0.13, 0.62), m_gun, Vector3(0, 0, -0.2))
 			for sx in [-0.035, 0.035]:
 				part(gun, cyl(0.04, 0.04, 0.3, 8), m_dark, Vector3(sx, 0.03, -0.62), Vector3.ONE, Vector3(PI / 2, 0, 0))
@@ -617,21 +621,34 @@ static func gun_parts(gun: Node3D, weapon: String, m_gun: Material, m_dark: Mate
 			part(gun, cyl(0.1, 0.12, 0.78, 10), m_gun, Vector3(0, 0, -0.26), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			part(gun, cyl(0.15, 0.15, 0.1, 10), m_acc, Vector3(0, 0, -0.64), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			part(gun, box(0.08, 0.2, 0.12), m_dark, Vector3(0, -0.15, -0.02))
-		"fangs":
+		"twin_blades":
 			# two curved daggers, one held forward and one reversed
 			var bl := toon(Color("c8f0ff"), true, 0.35)
 			part(gun, box(0.04, 0.03, 0.42), bl, Vector3(0.06, 0, -0.26), Vector3.ONE, Vector3(0, 0.12, 0))
 			part(gun, box(0.05, 0.06, 0.12), m_dark, Vector3(0.06, 0, -0.02))
 			part(gun, box(0.04, 0.03, 0.34), bl, Vector3(-0.12, -0.06, 0.06), Vector3.ONE, Vector3(0, -0.3, 0))
 			part(gun, box(0.05, 0.06, 0.1), m_dark, Vector3(-0.1, -0.06, -0.08))
-		"blade":
+		"longsword":
 			part(gun, box(0.05, 0.12, 0.95), toon(Color("e9e4d4"), true, 0.2), Vector3(0, 0.02, -0.55))
 			part(gun, box(0.26, 0.05, 0.06), m_acc, Vector3(0, 0, -0.06))
 			part(gun, box(0.05, 0.06, 0.2), m_dark, Vector3(0, 0, 0.06))
-		"maul":
-			part(gun, cyl(0.035, 0.035, 0.9, 8), m_dark, Vector3(0, 0, -0.3), Vector3.ONE, Vector3(PI / 2, 0, 0))
-			part(gun, box(0.42, 0.26, 0.26), m_gun, Vector3(0, 0.02, -0.78))
-			part(gun, box(0.44, 0.08, 0.28), toon(Color("ffb070"), true, 0.5), Vector3(0, 0.02, -0.78))
+		"greatsword":
+			# a broad two-handed blade, longer than the hunter's arm span
+			var steel := toon(Color("9aa6b8"), true, 0.1)
+			part(gun, box(0.06, 0.16, 0.92), steel, Vector3(0, 0.02, -0.62))
+			part(gun, prism_tip(), steel, Vector3(0, 0.02, -1.15), Vector3(0.06, 0.16, 0.16), Vector3(-PI / 2, 0, 0))
+			part(gun, box(0.07, 0.04, 0.8), toon(Color("ffb070"), true, 0.5), Vector3(0, 0.02, -0.62))
+			part(gun, box(0.38, 0.07, 0.08), m_acc, Vector3(0, 0, -0.12))
+			part(gun, box(0.06, 0.07, 0.3), m_dark, Vector3(0, 0, 0.06))
+		"minigun":
+			# a spinning bundle of six barrels on a chunky drum
+			part(gun, box(0.2, 0.2, 0.36), m_gun, Vector3(0, 0, -0.06))
+			part(gun, cyl(0.13, 0.13, 0.12, 12), m_acc, Vector3(0, 0, -0.28), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			var spin := Node3D.new(); spin.name = "Barrels"; spin.position = Vector3(0, 0, -0.56); gun.add_child(spin)
+			for k in 6:
+				var a := TAU * k / 6.0
+				part(spin, cyl(0.025, 0.025, 0.56, 6), m_dark, Vector3(cos(a) * 0.075, sin(a) * 0.075, 0), Vector3.ONE, Vector3(PI / 2, 0, 0))
+			part(gun, box(0.08, 0.18, 0.14), m_dark, Vector3(0, -0.17, 0.0))
 		"thumper":
 			part(gun, cyl(0.12, 0.12, 0.62), m_gun, Vector3(0, 0, -0.2), Vector3.ONE, Vector3(PI / 2, 0, 0))
 			part(gun, cyl(0.14, 0.14, 0.08), m_acc, Vector3(0, 0, -0.52), Vector3.ONE, Vector3(PI / 2, 0, 0))

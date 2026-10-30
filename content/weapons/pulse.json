@@ -1,8 +1,0 @@
-{
-	"id": "pulse",
-	"name": "Pulse Carbine",
-	"classes": ["light", "medium", "heavy"],
-	"primary": {"dmg": 9.0, "rate": 0.17, "speed": 30.0, "mag": 14, "reload": 1.2, "kb": 1.4, "spread": 0.02,
-		"range": 13.0, "size": 0.12, "color": "#8ff0ff", "sfx": "rifle"},
-	"utility": "concussion_orb"
-}

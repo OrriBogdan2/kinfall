@@ -20,6 +20,7 @@ var chests: Array = []      # {pos, open, prog, node, tier}
 var shrines: Array = []     # {pos, used, prog, node}
 var breaks: Array = []      # {i, pos, kind, hp, node, dead}
 var ring_n := 0
+var pellet_hits := {}        # shotgun volley + target -> slugs landed
 var air_rings: Array = []   # {pos, dir, node, cd: {hunter nid: time}}
 var wpicks: Array = []      # found weapons on the ground {id, pos, wid, rar, node}
 var wdrop_n := 0
@@ -145,8 +146,8 @@ func start(o: Dictionary) -> void:
 		for b in breaks:
 			if b["kind"] == "barrel": b0 = b["pos"]; break
 		player.teleport(b0 + Vector3(2.2, 0, 0.6))
-		spawn_weapon("rail", 3, b0 + Vector3(1.6, 0, 1.8), "", false)
-		spawn_weapon("stinger", 4, b0 + Vector3(3.0, 0, 1.6), "", false)
+		spawn_weapon("sniper", 3, b0 + Vector3(1.6, 0, 1.8), "", false)
+		spawn_weapon("smg", 4, b0 + Vector3(3.0, 0, 1.6), "", false)
 	_spawn_wild()
 	var Hud = load("res://scripts/ui/hud.gd")
 	hud = Hud.new()
@@ -617,7 +618,7 @@ func _spawn_breakables() -> void:
 			if world.is_void(q.x, q.z) or world.is_block(q.x, q.z):
 				continue
 			q.y = world.ground_at(q.x, q.z)
-			if t[1] == "weapon": spawn_weapon("rail", 2, q, "", false)
+			if t[1] == "weapon": spawn_weapon("sniper", 2, q, "", false)
 			else: _add_break(t[1], q)
 	# the weapons lying in the open are the same for everyone in an online match
 	var wr := RandomNumberGenerator.new(); wr.seed = seed_val * 31 + 7
@@ -944,7 +945,7 @@ func _update_rings(dt: float) -> void:
 			var d: Vector2 = hv.normalized() if hv.length() > 1.0 else rd
 			if absf(d.dot(rd)) > 0.5:
 				d = rd if d.dot(rd) > 0.0 else -rd    # line up with the ring
-			var spd := minf(maxf(hv.length(), Hunter.GLIDE_SPEED) + 5.0, Hunter.GLIDE_MAX)
+			var spd := minf(maxf(hv.length(), Hunter.GLIDE_SPEED) + 4.0, Hunter.GLIDE_MAX)
 			h.vel.x = d.x * spd; h.vel.z = d.y * spd
 			h.vel.y = maxf(h.vel.y, 2.0)
 			h.glide_fuel = minf(1.0, h.glide_fuel + 0.35)
@@ -1150,6 +1151,7 @@ func cancel_abilities(h: Hunter) -> void:
 		fx.end_telegraph(h.acts_tele)
 		h.acts_tele = null
 
+const KNOCK_HEAL := 34.5     # 250 of a medium's 1,050 in Supervive's numbers
 func knock(h: Hunter, by: Ent, _o: Dictionary) -> void:
 	if h.downed or h.out:
 		return
@@ -1175,6 +1177,11 @@ func knock(h: Hunter, by: Ent, _o: Dictionary) -> void:
 		killcam_text = ("Knocked down by %s" % credit.pname) if credit is Hunter and credit != h else "You're down"
 	if credit is Hunter and credit != h:
 		credit.knocks += 1
+		# the Supervive 1.0 knock reward: a small heal and a dash back
+		if not credit.downed and credit.team != h.team:
+			credit.hp = minf(credit.max_hp, credit.hp + KNOCK_HEAL)
+			credit.dashes = minf(credit.max_dashes(), floorf(credit.dashes) + 1.0)
+			credit.ex_cd = 0.0 if credit.max_dashes() <= 1.0 else credit.ex_cd
 		add_feed("%s knocked %s" % [credit.pname, h.pname])
 		if credit == player:
 			_reward_moment(h.pos)
@@ -1849,6 +1856,16 @@ func _update_shots(dt: float) -> void:
 		var p: Vector3 = s["pos"]
 		s["prev"] = p
 		var v: Vector2 = s["vel"]
+		var sx0: Dictionary = s["x"]
+		if sx0.has("decel"):
+			# slugs slow down and stop
+			var sp0 := v.length()
+			var sp1 := maxf(0.0, sp0 - float(sx0["decel"]) * dt)
+			if sp1 <= 0.5:
+				_shot_end(s, p, null)
+				continue
+			v = v * (sp1 / sp0)
+			s["vel"] = v
 		var step := Vector3(v.x, 0, v.y) * dt
 		var n := int(ceil(step.length() / 0.25))
 		var hit := false
@@ -1976,8 +1993,28 @@ func _shot_end(s: Dictionary, at: Vector3, e: Ent) -> void:
 	if x.get("crit", false) and not crit:
 		dmg *= 1.5
 		crit = true
-	if x.has("far") and Vector2(at.x - s["start"].x, at.z - s["start"].z).length() > float(x["far"]):
+	var trav := Vector2(at.x - s["start"].x, at.z - s["start"].z).length()
+	if x.has("far") and trav > float(x["far"]):
 		dmg *= 1.25
+	if x.has("near"):
+		# a sniper round needs room: half damage point-blank, full from half its range
+		dmg *= lerpf(float(x["near"][0]), 1.0, clampf(trav / maxf(0.1, float(x["near"][1])), 0.0, 1.0))
+	if x.has("farf") and trav > float(x["farf"][0]):
+		dmg *= lerpf(1.0, float(x["farf"][1]), clampf((trav - float(x["farf"][0])) / maxf(0.1, float(x["farf"][2]) - float(x["farf"][0])), 0.0, 1.0))
+	if x.has("tip") and trav + 0.25 >= float(x["tip"][0]):
+		# the blade's sweet spot
+		dmg *= 1.0 + float(x["tip"][1])
+		fx.burst(at + Vector3(0, 0.4, 0), Color("fff6c0"), 10, 4.5, 0.3, 4.0)
+	if x.has("pg"):
+		# a shotgun volley: the first slug on someone does a fixed share of the whole volley,
+		# the rest split what's left, so landing every slug still adds up to the full volley
+		var pk := "%s|%s" % [x["pg"], e.nid if e.nid != "" else str(e.get_instance_id())]
+		var n: int = int(pellet_hits.get(pk, 0))
+		pellet_hits[pk] = n + 1
+		if pellet_hits.size() > 300:
+			pellet_hits.clear()
+		var total: float = dmg * float(x["pn"])
+		dmg = total * float(x["pf"]) if n == 0 else total * (1.0 - float(x["pf"])) / maxf(1.0, float(x["pn"]) - 1.0)
 	var dir: Vector2 = (s["vel"] as Vector2).normalized()
 	var o := {"src": "shot", "crit": crit}
 	if float(x.get("kb", 0.0)) > 0.0:
@@ -1986,6 +2023,7 @@ func _shot_end(s: Dictionary, at: Vector3, e: Ent) -> void:
 	if x.has("slow"): o["slow"] = x["slow"]
 	if x.has("root"): o["root"] = x["root"]
 	if x.has("stun"): o["stun"] = x["stun"]
+	if x.has("kbi"): o["kbi"] = x["kbi"]
 	if x.has("ab"): o["ab"] = x["ab"]
 	if x.get("hook", false) and by:
 		# drag it back toward whoever threw the hook

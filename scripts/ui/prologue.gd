@@ -153,7 +153,7 @@ func _set_kin() -> void:
 	isl.position = o
 	add_child(isl)
 	var tr := Models.tree(rng, Color("5a9a4f"), "blossom"); tr.position = o + Vector3(-2.6, 0, -2.0); tr.scale *= 1.3; add_child(tr)
-	kin_hunter = Models.hunter("medium", Data.TEAM_COLORS[0], "repeater", "sage", {"gender": rng.randi() % 2})
+	kin_hunter = Models.hunter("medium", Data.TEAM_COLORS[0], "rifle", "sage", {"gender": rng.randi() % 2})
 	kin_hunter.position = o + Vector3(0.6, 0, 0.6)
 	kin_hunter.rotation.y = PI + 0.2
 	var ring := kin_hunter.get_node_or_null("TeamRing") as Node3D
