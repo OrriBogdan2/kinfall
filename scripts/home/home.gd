@@ -30,6 +30,7 @@ var house_node: Node3D
 var rack_node: Node3D
 var rack_pick := ""
 var whistle_cd := 0.0
+var talk_cd := 0.0          # kin take turns talking: one ambient line at a time
 var whistle_player: AudioStreamPlayer
 var kins: Array = []           # {rec, node, pos, vel, goal, t, emote, emote_t, hop}
 var spots := {}                # name -> Vector3
@@ -207,6 +208,23 @@ func _ready() -> void:
 			get_tree().create_timer(0.5).timeout.connect(func():
 				if pick != "": rack_pick = pick
 				_open_rack())
+	if "--crowd-test" in dbg:
+		# test: pile every kin onto one spot next to you, then watch them sort themselves out
+		get_tree().create_timer(0.3).timeout.connect(func():
+			for k in kins:
+				k.erase("indoors"); (k["node"] as Node3D).visible = true
+				k["pos"] = ppos + Vector3(1.0, 0, 0.5); (k["node"] as Node3D).position = k["pos"]
+				k["hi_cd"] = 0.0
+			var t := 0.0
+			var tick := func(): pass
+			for step in [1.0, 3.0, 6.0]:
+				get_tree().create_timer(step).timeout.connect(func():
+					var md := 99.0; var talking := 0
+					for i in kins.size():
+						if float(kins[i].get("say_t", 0.0)) > 0.0: talking += 1
+						for j in range(i + 1, kins.size()):
+							md = minf(md, Vector2(kins[i]["pos"].x - kins[j]["pos"].x, kins[i]["pos"].z - kins[j]["pos"].z).length())
+					print("CROWD t=%.0f kin=%d min_gap=%.2f talking=%d" % [step, kins.size(), md, talking])))
 	if "--whistle-test" in dbg:
 		# test: every kin but one is indoors, then you whistle
 		get_tree().create_timer(0.3).timeout.connect(func():
@@ -570,10 +588,10 @@ func _spawn_kin() -> void:
 		lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED; lbl.no_depth_test = true
 		lbl.position.y = 1.25; lbl.visible = false
 		n.add_child(lbl)
-		var kd := {"rec": rec, "node": n, "pos": at, "vel": Vector3.ZERO, "goal": Vector3.INF, "t": randf() * 3.0, "emote": lbl, "emote_t": 0.0, "hop": randf() * 6.0}
+		var kd := {"rec": rec, "node": n, "pos": at, "vel": Vector3.ZERO, "goal": Vector3.INF, "t": randf() * 3.0, "emote": lbl, "emote_t": 0.0, "hop": randf() * 6.0, "pers": _personality(rec)}
 		var ri2: int = _d()["roster"].find(rec)
 		if isl == 0 and ri2 >= 0 and ri2 < 6:
-			kd["bed"] = Vector3(33.4 + (ri2 % 3) * 1.1, 0, 27.6 + (ri2 / 3) * 1.1)
+			kd["bed"] = Vector3(32.9 + (ri2 % 3) * 1.6, 0, 27.2 + (ri2 / 3) * 1.6)
 		kins.append(kd)
 
 # ------------------------------------------------------------------ loop
@@ -722,6 +740,8 @@ func _move_player(d: float) -> void:
 
 func _move_kin(d: float) -> void:
 	whistle_cd = maxf(0.0, whistle_cd - d)
+	talk_cd = maxf(0.0, talk_cd - d)
+	_separate_kin(d)
 	for k in kins:
 		if k.get("busy", false):
 			continue
@@ -797,8 +817,9 @@ func _move_kin(d: float) -> void:
 			k["task_t"] = 15.0
 			k["farm_t"] = 6.0
 		if k.has("farm_t"): k["farm_t"] = float(k["farm_t"]) - d
+		var pers: Dictionary = k.get("pers", {})
 		if k["t"] <= 0.0 and not locked and not k.has("chase") and not k.has("task") and not k.has("fetch"):
-			k["t"] = randf_range(2.0, 5.0)
+			k["t"] = randf_range(2.0, 5.0) * float(pers.get("rest", 1.0))
 			var night := sin((day_t - 0.25) * TAU) < -0.2
 			var friends: Array = kins.filter(func(o): return o != k and not o.get("busy", false) and world.island_of(o["pos"].x, o["pos"].z) == here)
 			k.erase("stare")
@@ -817,16 +838,19 @@ func _move_kin(d: float) -> void:
 				# pops inside for a nap now and then
 				k["going_in"] = true
 				k["goal"] = _house_door()
-			elif friends.size() > 0 and randf() < 0.22:
+			elif friends.size() > 0 and randf() < float(pers.get("social", 0.22)):
 				var f: Dictionary = friends[randi() % friends.size()]
 				k["chase"] = f; k["chase_t"] = 4.0
 				_emote(k, "★")
-			elif randf() < 0.25 + trust / 300.0 and world.island_of(ppos.x, ppos.z) == here:
-				# kin that trust you like to be near you
-				k["goal"] = ppos + Vector3(randf_range(-1.5, 1.5), 0, randf_range(-1.5, 1.5))
+			elif randf() < float(pers.get("cling", 0.25)) + trust / 300.0 and world.island_of(ppos.x, ppos.z) == here:
+				# kin that trust you like to be near you, each in its own spot around you
+				k["goal"] = _seat(k, ppos, 1.5)
+			elif randf() < 0.75 - float(pers.get("roam", 0.5)) * 0.5 and _haunt(k, here) != Vector3.INF:
+				# everyone has a favourite corner of the farm they drift back to
+				k["goal"] = _haunt(k, here) + Vector3(randf_range(-1.6, 1.6), 0, randf_range(-1.6, 1.6))
 			else:
 				k["goal"] = world.random_ground(maxi(here, 0))
-			if randf() < 0.3:
+			if randf() < 0.3 * float(pers.get("chatty", 1.0)):
 				_emote(k, "♥" if trust > 65.0 else ("?" if trust < 30.0 else "★"))
 		if k.has("fetch"):
 			_fetch_step(k, d)
@@ -841,7 +865,7 @@ func _move_kin(d: float) -> void:
 		if goal != Vector3.INF:
 			var to := Vector2(goal.x - pos.x, goal.z - pos.z)
 			if to.length() > 0.4:
-				wish = to.normalized() * (4.4 if (k.has("fetch") or k.has("called_t")) else (3.6 if k.has("chase") else 2.4)) * _care_speed(rec)
+				wish = to.normalized() * (4.4 if (k.has("fetch") or k.has("called_t")) else (3.6 if k.has("chase") else 2.4)) * _care_speed(rec) * float(pers.get("speed", 1.0))
 		var hv := Vector2(k["vel"].x, k["vel"].z)
 		hv += (wish - hv) * (1.0 - exp(-8.0 * d))
 		var nx := pos.x + hv.x * d
@@ -861,13 +885,14 @@ func _move_kin(d: float) -> void:
 			continue
 		var face := atan2(-hv.x, -hv.y) if hv.length() > 0.2 else atan2(-(ppos.x - pos.x), -(ppos.z - pos.z))
 		n.rotation.y = lerp_angle(n.rotation.y, face, minf(1.0, d * 8.0))
-		k["hop"] += d * (9.0 if hv.length() > 0.3 else 2.5)
+		k["hop"] += d * (float(pers.get("hop_f", 9.0)) if hv.length() > 0.3 else 2.5)
 		var joy := float(k.get("joy_t", 0.0))
 		if joy > 0.0:
 			# a happy little bounce
 			k["joy_t"] = joy - d
 			k["hop"] += d * 10.0
-		n.get_node("Body").position.y = absf(sin(k["hop"])) * (0.26 if joy > 0.0 else (0.14 if hv.length() > 0.3 else 0.03))
+		n.get_node("Body").position.y = absf(sin(k["hop"])) * (0.26 if joy > 0.0 else (float(pers.get("hop_a", 0.14)) if hv.length() > 0.3 else 0.03))
+		_quirk(k, n, hv.length() > 0.3, d)
 		n.set_meta("happy", joy > 0.0)
 		if k.has("say"):
 			k["say_t"] = float(k.get("say_t", 0.0)) - d
@@ -1194,7 +1219,14 @@ func _leap_step(k: Dictionary, d: float) -> void:
 		k["vel"] = Vector3.ZERO
 		Sfx.play("land", k["pos"], -10.0, 0.1, 1.3)
 
-func _emote(k: Dictionary, s: String) -> void:
+func _emote(k: Dictionary, s: String, force := false) -> void:
+	if not force and float(k.get("say_t", 0.0)) > 0.0:
+		return
+	if not force:
+		# one little symbol per huddle, so a group doesn't sprout a cloud of icons
+		for o in kins:
+			if o != k and float(o.get("emote_t", 0.0)) > 0.4 and Vector2(o["pos"].x - k["pos"].x, o["pos"].z - k["pos"].z).length() < 3.0:
+				return
 	var lbl: Label3D = k["emote"]
 	lbl.text = s
 	lbl.modulate = Color("ff8fb0") if s == "♥" else UI.INK
@@ -2019,7 +2051,7 @@ func _pet_kin(k: Dictionary) -> void:
 	k["joy_t"] = 0.9
 	_day1("pet")
 	_face(k["pos"])
-	_emote(k, "♥")
+	_emote(k, "♥", true)
 	fx.burst(k["pos"] + Vector3(0, 0.9, 0), Color("ff8fb0"), 12, 1.8)
 	Sfx.play("kin_happy", null, -4.0, 0.12)
 	if pet_done.get(rec["uid"], -1) != int(Save.d["matches"]):
@@ -2095,7 +2127,19 @@ func _fetch_step(k: Dictionary, d: float) -> void:
 		k["t"] = randf_range(1.5, 3.0)
 
 ## A speech bubble over a kin's head.
-func _say(k: Dictionary, text: String, secs := 4.0) -> void:
+func _say(k: Dictionary, text: String, secs := 4.0, direct := true) -> void:
+	if not direct:
+		# chatter waits its turn: nobody else talking nearby, and a breath since the last line
+		if talk_cd > 0.0 or _talking_near(k, 7.0):
+			return
+		talk_cd = randf_range(3.0, 5.0)
+	else:
+		# something you did with this kin: its answer wins, the others go quiet around it
+		for o in kins:
+			if o != k and o.has("say") and Vector2(o["pos"].x - k["pos"].x, o["pos"].z - k["pos"].z).length() < 5.0:
+				o["say_t"] = 0.0
+				(o["say"] as Label3D).visible = false
+		talk_cd = maxf(talk_cd, 2.0)
 	if not k.has("say"):
 		var l := Label3D.new()
 		l.font = UI.body; l.font_size = 34; l.pixel_size = 0.0105; l.outline_size = 14
@@ -3220,6 +3264,7 @@ func _care_tick(d: float) -> void:
 ## The thought bubble over each kin: what it wants, shown now and then rather than all the time.
 func _update_bubbles(d: float) -> void:
 	var now := Time.get_ticks_msec() / 1000.0
+	var shown: Array = []
 	for k in kins:
 		var rec: Dictionary = k["rec"]
 		if not k.has("bubble"):
@@ -3235,6 +3280,11 @@ func _update_bubbles(d: float) -> void:
 		var w := Care.want(rec) if visit.is_empty() else ""
 		var cyc := fmod(now + float(absi(String(rec["uid"]).hash()) % 97) * 0.1, 9.0) < 3.6
 		var show: bool = w != "" and cyc and not k.get("busy", false) and not k.has("fetch") and float(k.get("nap_t", 0.0)) <= 0.0 and float(k.get("say_t", 0.0)) <= 0.0
+		if show:
+			for p in shown:
+				if Vector2(p.x - k["pos"].x, p.z - k["pos"].z).length() < 2.6 or _talking_near(k, 2.6):
+					show = false; break
+		if show: shown.append(k["pos"])
 		bub.visible = show
 		if show:
 			for nm in ["food", "energy", "clean", "joy"]:
@@ -3254,9 +3304,9 @@ func _update_bubbles(d: float) -> void:
 				if randf() < 0.5 and float(k.get("nap_t", 0.0)) <= 0.0:
 					var trust := float(rec["trust"])
 					if Care.speech(rec) < 3:
-						_say(k, KinSpeak.say(rec, "sad" if trust < 30.0 else ("question" if w != "" else "happy"), w if w != "" else ("cold" if trust < 30.0 else "")), 2.8)
+						_say(k, KinSpeak.say(rec, "sad" if trust < 30.0 else ("question" if w != "" else "happy"), w if w != "" else ("cold" if trust < 30.0 else "")), 2.8, false)
 					else:
-						_say(k, _greeting(rec), 2.8)
+						_say(k, _greeting(rec), 2.8, false)
 
 ## Gentle routines driven by how it's feeling. Returns true if it chose where to go.
 func _care_goal(k: Dictionary) -> bool:
@@ -3268,11 +3318,11 @@ func _care_goal(k: Dictionary) -> bool:
 		k["nap_go"] = true
 		return true
 	if Care.need(rec, "food") < 30.0 and randf() < 0.4:
-		k["goal"] = spots["pot"] + Vector3(randf_range(0.8, 1.4), 0, randf_range(0.8, 1.2))
+		k["goal"] = _seat(k, spots["pot"], 1.4)
 		k["stare"] = spots["pot"]
 		return true
 	if Care.need(rec, "joy") < 30.0 and randf() < 0.6 and world.island_of(ppos.x, ppos.z) == world.island_of(k["pos"].x, k["pos"].z):
-		k["goal"] = ppos + Vector3(randf_range(-1.2, 1.2), 0, randf_range(-1.2, 1.2))
+		k["goal"] = _seat(k, ppos, 1.4)
 		return true
 	return false
 
@@ -3885,3 +3935,126 @@ func _open_train(rec: Dictionary) -> void:
 		row.add_child(b)
 		v.add_child(row)
 	v.add_child(UI.label("Energy %d  ·  Full %d" % [int(Care.need(rec, "energy")), int(Care.need(rec, "food"))], 13, UI.MUTED))
+
+# ---- kin as individuals: personal space, turns to talk, and a personality in how they move
+
+## How this kin carries itself, from its traits and kind: pace, bounce, how social or clingy it
+## is, how far it roams, how long it lingers, how chatty it is, and a little habit of its own.
+func _personality(rec: Dictionary) -> Dictionary:
+	var tr: Dictionary = rec.get("traits", {})
+	var brave := float(tr.get("bravery", 0.5)); var hot := float(tr.get("temper", 0.5))
+	var cur := float(tr.get("curiosity", 0.5)); var loyal := float(tr.get("loyalty", 0.5))
+	var h := absi(String(rec.get("uid", rec.get("name", ""))).hash())
+	var typ := String(Data.KIN.get(rec.get("species", ""), {}).get("type", ""))
+	# [hop rate, hop height, pace]: heavy kinds plod, light ones skip
+	var gait: Array = {"gravity": [5.5, 0.06, 0.82], "spore": [7.0, 0.11, 0.9], "lunar": [4.5, 0.2, 0.95],
+		"prism": [11.0, 0.09, 1.12], "venom": [9.5, 0.05, 1.06], "echo": [8.0, 0.16, 1.0]}.get(typ, [9.0, 0.14, 1.0])
+	var quirks := ["spin", "sniff", "hop", "sit", "look", "wiggle"]
+	return {
+		"speed": float(gait[2]) * lerpf(0.86, 1.18, (brave + hot) * 0.5) * (0.94 + float(h % 13) * 0.01),
+		"hop_f": float(gait[0]) * (0.9 + float(h % 7) * 0.035),
+		"hop_a": float(gait[1]),
+		"social": lerpf(0.06, 0.4, cur * 0.6 + (1.0 - loyal) * 0.4),
+		"cling": lerpf(0.08, 0.5, loyal),
+		"roam": cur,
+		"rest": lerpf(1.6, 0.7, hot * 0.5 + cur * 0.5),
+		"chatty": lerpf(0.35, 1.3, hot * 0.5 + cur * 0.5),
+		"haunt": h % 7,
+		"quirk": quirks[(h / 7) % quirks.size()],
+	}
+
+## A spot in a ring around a place, different for every kin, so a crowd fans out instead of piling up.
+func _seat(k: Dictionary, center: Vector3, r := 1.4) -> Vector3:
+	var i := maxi(0, kins.find(k))
+	var a := float(i) * 2.39996 + float(absi(String(k["rec"]["uid"]).hash()) % 100) * 0.013
+	var rr := r + float(i / 6) * 0.9
+	var p := center + Vector3(cos(a) * rr, 0, sin(a) * rr)
+	if world.is_void(p.x, p.z) or world.occupy(p.x, p.z, 0.3, 0.0, true) != 0.0:
+		return world.free_spot_near(p, kins.map(func(o): return o["pos"]), 1.0)
+	return p
+
+## The kin's favourite corner on this island, or INF if it isn't here.
+func _haunt(k: Dictionary, here: int) -> Vector3:
+	var picks := [spots.get("pot", Vector3.INF), POND_EDGE, spots.get("house", Vector3.INF) + Vector3(0, 0, 3.0), YARD_AT,
+		NEST_AT + Vector3(1.5, 0, 1.0), spots.get("rack", Vector3.INF) + Vector3(1.2, 0, 0.8), spots.get("stall", Vector3.INF) + Vector3(0, 0, 2.0)]
+	var p: Vector3 = picks[int(k.get("pers", {}).get("haunt", 0)) % picks.size()]
+	if p == Vector3.INF or world.island_of(p.x, p.z) != here:
+		return Vector3.INF
+	return p
+
+func _talking_near(k: Dictionary, r: float) -> bool:
+	for o in kins:
+		if o != k and float(o.get("say_t", 0.0)) > 0.0 and Vector2(o["pos"].x - k["pos"].x, o["pos"].z - k["pos"].z).length() < r:
+			return true
+	return false
+
+func _kin_r(k: Dictionary) -> float:
+	var n: Node3D = k["node"]
+	return 0.42 * n.scale.x
+
+## Personal space: kin push gently apart (and step around you) instead of stacking in one spot.
+## A kin that's being petted, napping or busy holds its ground and the others make room.
+func _separate_kin(d: float) -> void:
+	var act: Array = kins.filter(func(o): return not o.has("indoors") and not o.has("leap") and (o["node"] as Node3D).visible and not o.get("busy", false))
+	var fixed := func(o: Dictionary) -> bool: return float(o.get("hold_t", 0.0)) > 0.0 or float(o.get("nap_t", 0.0)) > 0.0 or o.has("bath")
+	var p2 := Vector2(ppos.x, ppos.z)
+	for i in act.size():
+		var a: Dictionary = act[i]
+		if fixed.call(a): continue
+		var ap := Vector2(a["pos"].x, a["pos"].z)
+		var push := Vector2.ZERO
+		for j in act.size():
+			if j == i: continue
+			var b: Dictionary = act[j]
+			var diff := ap - Vector2(b["pos"].x, b["pos"].z)
+			var need := _kin_r(a) + _kin_r(b)
+			var dl := diff.length()
+			if dl < need:
+				if dl < 0.001: diff = Vector2.from_angle(float(i) * 2.4); dl = 0.001
+				push += diff / dl * (need - dl) * (1.0 if fixed.call(b) else 0.5)
+		var dp := ap - p2
+		var need_p := _kin_r(a) + 0.38
+		if dp.length() < need_p and not a.has("fetch"):
+			if dp.length() < 0.001: dp = Vector2.from_angle(float(i) * 2.4)
+			push += dp.normalized() * (need_p - dp.length())
+		if push == Vector2.ZERO: continue
+		push = push.limit_length(3.5 * d + 0.02)
+		var pos: Vector3 = a["pos"]
+		if world.occupy(pos.x + push.x, pos.z, 0.3, 0.0, true) == 0.0 and not world.is_void(pos.x + push.x, pos.z): pos.x += push.x
+		if world.occupy(pos.x, pos.z + push.y, 0.3, 0.0, true) == 0.0 and not world.is_void(pos.x, pos.z + push.y): pos.z += push.y
+		a["pos"] = pos
+		(a["node"] as Node3D).position = pos
+
+## Each kin's little habit when it stops: a spin, a sniff at the ground, a happy hop, sitting down,
+## looking around, or a wiggle. Rare and staggered, so it reads as character, not a dance routine.
+func _quirk(k: Dictionary, n: Node3D, moving: bool, d: float) -> void:
+	var body := n.get_node_or_null("Body") as Node3D
+	if body == null: return
+	k["qt"] = float(k.get("qt", randf_range(4.0, 12.0))) - d
+	var q := float(k.get("q_on", 0.0))
+	if moving or float(k.get("hold_t", 0.0)) > 0.0 or float(k.get("nap_t", 0.0)) > 0.0 or k.has("bath") or k.has("fetch"):
+		# interrupted: only undo our own pose, so feeding and training animations keep theirs
+		if q > 0.0:
+			k["q_on"] = 0.0
+			body.rotation = Vector3.ZERO; body.scale = Vector3.ONE
+		k["qt"] = maxf(float(k["qt"]), 3.0)
+		return
+	if q <= 0.0 and float(k["qt"]) <= 0.0:
+		k["qt"] = randf_range(7.0, 16.0) * float(k.get("pers", {}).get("rest", 1.0))
+		k["q_on"] = 1.2
+		q = 1.2
+	if q <= 0.0:
+		return
+	q -= d
+	k["q_on"] = q
+	var t := 1.0 - clampf(q / 1.2, 0.0, 1.0)      # 0 -> 1 over the habit
+	var e := sin(t * PI)
+	match String(k.get("pers", {}).get("quirk", "look")):
+		"spin": body.rotation.y = t * TAU
+		"sniff": body.rotation.x = e * 0.35; body.position.y = -e * 0.04
+		"hop": body.position.y = absf(sin(t * TAU * 1.5)) * 0.22
+		"sit": body.scale = Vector3(1.0 + e * 0.12, 1.0 - e * 0.16, 1.0 + e * 0.12)
+		"look": body.rotation.y = sin(t * TAU) * 0.7
+		"wiggle": body.rotation.z = sin(t * TAU * 3.0) * 0.18 * e
+	if q <= 0.0:
+		body.rotation = Vector3.ZERO; body.scale = Vector3.ONE
