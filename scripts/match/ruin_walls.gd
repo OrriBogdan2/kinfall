@@ -53,12 +53,26 @@ func build(mat: Material) -> Array:
 		height[i] = n
 	# smooth the line of each run: a tile with two neighbours moves toward their midpoint, so rings
 	# curve and diagonal steps straighten (straight runs don't move)
+	# (a square corner with straight arms on both sides is a built corner: it stays square)
+	var fixed := {}
+	for ik in pos:
+		var i: int = ik
+		var ls: Array = links[i]
+		if ls.size() != 2:
+			continue
+		var da := Vector2i(int(ls[0]) % ww - i % ww, int(ls[0]) / ww - i / ww)
+		var db := Vector2i(int(ls[1]) % ww - i % ww, int(ls[1]) / ww - i / ww)
+		if da.x * db.x + da.y * db.y != 0 or absi(da.x) + absi(da.y) != 1 or absi(db.x) + absi(db.y) != 1:
+			continue
+		var x := i % ww; var z := i / ww
+		if is_wall(x + da.x * 2, z + da.y * 2) and is_wall(x + db.x * 2, z + db.y * 2):
+			fixed[i] = true
 	for _it in 3:
 		var nxt := {}
 		for i in pos:
 			var ls: Array = links[i]
 			var p: Vector3 = pos[i]
-			if ls.size() == 2:
+			if ls.size() == 2 and not fixed.has(i):
 				var m: Vector3 = (pos[ls[0]] + pos[ls[1]]) * 0.5
 				p = Vector3(p.x * 0.5 + m.x * 0.5, p.y, p.z * 0.5 + m.z * 0.5)
 			nxt[i] = p
