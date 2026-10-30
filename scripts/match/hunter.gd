@@ -509,8 +509,16 @@ func _open_glider() -> void:
 		var dirv := mvv.normalized() if mvv.length() > 0.1 else (hv.normalized() if hv.length() > 0.3 else aim_dir())
 		hv = hv.lerp(dirv * GLIDE_SPEED, 0.5)
 		vel.x = hv.x; vel.z = hv.y
-	m.sfx("glider_open", pos, -3.0 if is_local() else -9.0, 1.0)
+	_glider_sfx("open")
 	m.fx.burst(pos + Vector3(0, 1.7, 0), Color("f3eee2"), 8, 2.0, 0.35, 0.0)
+
+## The glider's open/close sound for this hunter's glider skin (quieter, and positional, for everyone else).
+func _glider_sfx(which: String) -> void:
+	var skin := "classic"
+	if model and model.has_node("Rig/Torso/Glider"):
+		skin = String(model.get_node("Rig/Torso/Glider").get_meta("skin", "classic"))
+	var vol := (-3.0 if is_local() else -9.0) if which == "open" else (-8.0 if is_local() else -14.0)
+	Sfx.play_stream(Gliders.sound(skin, which), pos, vol)
 
 ## The class's dodge (Shift), as described by its ability data: a dash, plus anything else in its
 ## effect list (the heavy class's charge shoves people).
@@ -1619,7 +1627,7 @@ func _update_glide(dt: float) -> void:
 	if gliding:
 		if not want or not can:
 			gliding = false
-			m.sfx("glider_close", pos, -8.0 if is_local() else -14.0, 1.0)
+			_glider_sfx("close")
 			if glide_fuel <= 0.0:
 				glide_cd = 0.5
 		elif not in_current:
@@ -1635,7 +1643,7 @@ func _update_glide(dt: float) -> void:
 			m.fx.burst(pos + Vector3(0, 1.2, 0), Color("cfeaff"), 12, 3.5, 0.4, -2.0, 0.8)
 			m.sfx("glide", pos, -2.0, 1.4)
 			add_stat("feathers")
-		m.sfx("glider_open", pos, -3.0 if is_local() else -9.0, 1.0)
+		_glider_sfx("open")
 		m.fx.burst(pos + Vector3(0, 1.7, 0), Color("f3eee2"), 8, 2.0, 0.35, 0.0)
 
 # Ledge float: touch the side of any ground above you while you're still alive and you float

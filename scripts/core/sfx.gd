@@ -159,6 +159,23 @@ func play(sname: String, pos = null, vol_db := 0.0, pitch_var := 0.07, pitch := 
 	p.play()
 
 
+## Plays a ready-made stream (a glider skin's sound, say) with the same distance falloff as play().
+func play_stream(st: AudioStream, pos = null, vol_db := 0.0, pitch_var := 0.05) -> void:
+	if st == null or players.is_empty():
+		return
+	var v := vol_db
+	if pos != null:
+		var dist := Vector2(pos.x - listener.x, pos.z - listener.z).length()
+		if dist > hear_range:
+			return
+		v += linear_to_db(clampf(1.0 - dist / hear_range, 0.05, 1.0))
+	var p := players[next]
+	next = (next + 1) % POOL
+	p.stream = st
+	p.volume_db = v
+	p.pitch_scale = 1.0 + rng.randf_range(-pitch_var, pitch_var)
+	p.play()
+
 ## A glider opening (snap + whoosh + pop) or closing (a soft falling swish), synthesized.
 func _glider_sound(opening: bool) -> AudioStreamWAV:
 	const R := 22050

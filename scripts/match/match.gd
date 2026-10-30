@@ -2544,6 +2544,22 @@ func step(dt: float) -> void:
 				x.ctrl = "idle"
 				eliminate(x, null, "knocked out")
 				break
+	if opts.get("mates_demo", false) and player:
+		# test: the squad UI. One teammate gets knocked, one dies into a deathbox, and the first is
+		# picked back up a few seconds later (frames under the minimap and the ally alerts up top)
+		var mates: Array = hunters.filter(func(x): return x.team == player.team and x != player)
+		if time < 0.05:
+			for i in mates.size():
+				var x: Hunter = mates[i]
+				x.ctrl = "idle"
+				x.teleport(world.free_spot_near(player.pos + Vector3(-4.0 + 3.0 * i, 0, -3.0 + 1.5 * i), [player.pos], 1.2, 0.4, 10.0))
+		if mates.size() >= 3:
+			if time > 1.0 and time < 1.1 and not mates[0].downed: knock(mates[0], null, {})
+			if mates[0].downed and not opts.has("mates_revive") or (opts.has("mates_revive") and time < float(opts.get("mates_revive", 0.0))): mates[0].revive = 0.0
+			if time > 1.6 and time < 1.7 and not mates[1].out: eliminate(mates[1], null, "knocked out")
+			if time > 1.2: mates[2].hp = mates[2].max_hp * 0.4; mates[2].armor = mates[2].max_armor * 0.5; mates[2].slow_t = 2.0
+			if opts.has("mates_revive") and time > float(opts["mates_revive"]) and mates[0].downed:
+				revive_hunter(mates[0], player)
 	if opts.get("ledge_demo", false) and player and time < 0.05:
 		# test: start just off the edge of your island, a few metres below the lip
 		var p0 := player.pos

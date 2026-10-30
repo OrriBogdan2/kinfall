@@ -41,6 +41,8 @@ func _ready() -> void:
 		if a == "--autoplay": opts["autoplay"] = true
 		if a == "--glide-demo": opts["glide_demo"] = true
 		if a == "--ledge-demo": opts["ledge_demo"] = true
+		if a.begins_with("--mates-revive="): opts["mates_revive"] = float(a.substr(15))
+		if a == "--mates-demo": opts["mates_demo"] = true; opts["no_drop"] = true; opts["god"] = true; opts["squad"] = 4; opts["teams"] = 2
 		if a == "--life-demo": opts["life_demo"] = true; opts["no_drop"] = true; opts["squad"] = 3; opts["teams"] = 3
 		if a.begins_with("--length="): opts["length"] = float(a.substr(9))
 		if a == "--no-drop": opts["no_drop"] = true
