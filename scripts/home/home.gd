@@ -4127,6 +4127,9 @@ func _econ_tests(dbg) -> void:
 			hecon.arm_pick = String(Save.d["armory"][2]["uid"])
 			hecon.open_armory())
 	if "--feeder-test" in dbg or "--starve-test" in dbg:
+		# a clean roster of six, so nothing else from the machine's save (an evolution, a nap) gets in the way
+		Save.d["roster"] = [Save.new_kin("zapple", "Pip")]
+		Save.d["active"] = Save.d["roster"][0]["uid"]
 		while Save.d["roster"].size() < 6:
 			Save.d["roster"].append(Save.new_kin(Data.KIN.keys()[Save.d["roster"].size() % Data.KIN.size()]))
 		Save.d["items"]["kibble"] = 12
@@ -4152,7 +4155,10 @@ func _econ_tests(dbg) -> void:
 					k["pos"] = world.free_spot_near(k["pos"], [], 0.6)
 					(k["node"] as Node3D).position = k["pos"]
 					k["t"] = 0.0
-					hecon.feed_goal(k))
+					hecon.feed_goal(k)
+				if "--feeder-open" in dbg:
+					Save.d["feeder_inv"] = {"basket": 1}
+					hecon.open_feeder(Econ.feeders()[0]))
 			for step in [3.0, 8.0, 14.0, 22.0]:
 				get_tree().create_timer(step).timeout.connect(func():
 					var md := 99.0; var eating := 0; var waiting := 0
@@ -4183,7 +4189,8 @@ func _econ_tests(dbg) -> void:
 			Save.d["buildings"].append("shrine")
 		Save.d["valuables"] = {"soul_ember": 2}
 		get_tree().create_timer(0.3).timeout.connect(func():
-			ppos = Vector3(49.6, 0, 37.6) if "--shrine-test" in dbg else Vector3(49.7, 0, 35.6)
-			player.position = ppos; cam.snap(ppos)
+			if not Array(dbg).any(func(a): return String(a).begins_with("--home-at=")):
+				ppos = Vector3(49.6, 0, 37.6) if "--shrine-test" in dbg else Vector3(49.7, 0, 35.6)
+				player.position = ppos; cam.snap(ppos)
 			if "--shrine-open" in dbg: hecon.open_shrine()
 			elif "--grave-open" in dbg: hecon.open_grave(Econ.graves()[Econ.graves().size() - 1]))

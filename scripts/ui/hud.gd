@@ -2454,6 +2454,35 @@ func _item_row(it: Dictionary, buttons: Array, note := "") -> Control:
 		row.add_child(b)
 	return rp
 
+## A scrolling list inside an item window: [scroll, rows]. _fit_panel sizes it.
+func _scroll_rows(v: VBoxContainer) -> Array:
+	var sc := ScrollContainer.new()
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var rows := UI.vbox(6)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(rows)
+	v.add_child(sc)
+	return [sc, rows]
+
+## Puts an item window on the right, between the top counters and the weapon/slots cluster at the
+## bottom right, and lets its list scroll if it's too long to fit.
+func _fit_panel(pc: PanelContainer, sc: ScrollContainer, rows: VBoxContainer) -> void:
+	pc.position = Vector2(-10000, 0)     # out of sight until it's sized
+	await get_tree().process_frame
+	if not is_instance_valid(pc):
+		return
+	var vs := pc.get_viewport_rect().size
+	var top := 64.0
+	var bottom := vs.y - 172.0          # clear of the weapon card and the consumable slots
+	var want := rows.get_combined_minimum_size().y
+	var rest := pc.get_combined_minimum_size().y - sc.get_combined_minimum_size().y
+	sc.custom_minimum_size.y = clampf(bottom - top - rest, 60.0, want)
+	pc.reset_size()
+	await get_tree().process_frame
+	if not is_instance_valid(pc):
+		return
+	pc.position = Vector2(vs.x - pc.size.x - 16.0, clampf(vs.y * 0.42 - pc.size.y * 0.5, top, maxf(top, bottom - pc.size.y)))
+
 func open_swap(wp: Dictionary) -> void:
 	close_pack()
 	swap_wp = wp
@@ -2482,11 +2511,12 @@ func _build_swap() -> void:
 	v.add_child(_item_row(incoming, []))
 	v.add_child(UI.label("Drop one to make room", 12, MUTED, UI.caps))
 	var low := Pack.lowest(p)
+	var sl := _scroll_rows(v)
 	for i in p.pack.size():
 		var idx := i
 		var it: Dictionary = p.pack[i]
 		var worse := Loot.value(it) < Loot.value(incoming)
-		v.add_child(_item_row(it, [["Drop", func():
+		sl[1].add_child(_item_row(it, [["Drop", func():
 			if swap_wp != null and m.player:
 				Pack.swap(m, m.player, idx, swap_wp)
 			close_swap(), worse]], "least valuable" if i == low else ""))
@@ -2497,10 +2527,7 @@ func _build_swap() -> void:
 	foot.add_child(hint)
 	add_child(pc)
 	swap_panel = pc
-	await get_tree().process_frame
-	if is_instance_valid(pc):
-		var vs := pc.get_viewport_rect().size
-		pc.position = Vector2(vs.x * 0.5 + 90.0, maxf(80.0, vs.y * 0.5 - pc.size.y * 0.5 - 40.0))
+	_fit_panel(pc, sl[0], sl[1])
 
 func toggle_pack() -> void:
 	if pack_open():
@@ -2537,8 +2564,10 @@ func _build_pack() -> void:
 		if not (g as Dictionary).is_empty():
 			v.add_child(_item_row(Loot.glove(String(g["id"]), int(g["rar"])), []))
 	v.add_child(UI.label("Carrying home  ·  extract to keep it all", 12, MUTED, UI.caps))
+	var sl := _scroll_rows(v)
+	var rows: VBoxContainer = sl[1]
 	if p.pack.is_empty():
-		v.add_child(UI.label("Nothing yet. Weapons, gloves and treasure you pick up go here.", 13, MUTED))
+		rows.add_child(UI.label("Nothing yet. Weapons, gloves and treasure you pick up go here.", 13, MUTED))
 	for i in p.pack.size():
 		var idx := i
 		var it: Dictionary = p.pack[i]
@@ -2546,21 +2575,18 @@ func _build_pack() -> void:
 		if String(it.get("t", "")) in ["weapon", "glove"]:
 			bts.append(["Equip", func(): Pack.use_from_pack(m, m.player, idx); _build_pack(), true])
 		bts.append(["Drop", func(): Pack.drop_from_pack(m, m.player, idx); _build_pack()])
-		v.add_child(_item_row(it, bts))
+		rows.add_child(_item_row(it, bts))
 	for k in p.pack_cap - p.pack.size():
 		if k >= 3: break
 		var empty := UI.card(Color(1, 1, 1, 0.03), 6, 9)
 		empty.custom_minimum_size.y = 30
 		empty.add_child(UI.label("empty slot", 12, Color(MUTED, 0.6)))
-		v.add_child(empty)
+		rows.add_child(empty)
 	var hint := UI.label("%s or Esc to close  ·  bigger backpacks at your armory" % Settings.key_cap("inventory"), 12, MUTED)
 	v.add_child(hint)
 	add_child(pc)
 	pack_panel = pc
-	await get_tree().process_frame
-	if is_instance_valid(pc):
-		var vs := pc.get_viewport_rect().size
-		pc.position = Vector2(vs.x * 0.5 + 90.0, maxf(80.0, vs.y * 0.5 - pc.size.y * 0.5 - 40.0))
+	_fit_panel(pc, sl[0], rows)
 
 ## Closes the windows when they stop making sense (you went down, walked off, or it's gone).
 func _pack_tick() -> void:

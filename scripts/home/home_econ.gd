@@ -577,7 +577,9 @@ func open_grave(g: Dictionary) -> void:
 	el.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	v.add_child(el)
 	var days := int((Time.get_unix_time_from_system() - float(g.get("t", 0.0))) / 86400.0)
-	v.add_child(UI.label("Buried %s, after %d expedition%s together." % ["today" if days <= 0 else ("%d day%s ago" % [days, "" if days == 1 else "s"]), int(g["rec"].get("matches", 0)), "" if int(g["rec"].get("matches", 0)) == 1 else "s"], 13, UI.MUTED))
+	var gm := int(g["rec"].get("matches", 0))
+	var when := "today" if days <= 0 else ("%d day%s ago" % [days, "" if days == 1 else "s"])
+	v.add_child(UI.label(("Buried %s, after %d expedition%s together." % [when, gm, "" if gm == 1 else "s"]) if gm > 0 else ("Buried %s. It never went on an expedition." % when), 13, UI.MUTED))
 	v.add_child(UI.section("What it remembered"))
 	var mem: Array = g.get("mem", [])
 	if mem.is_empty():
@@ -869,7 +871,9 @@ func _detail(it: Dictionary) -> Control:
 	var row := UI.hbox(8)
 	var uid := String(it["uid"])
 	if on:
-		row.add_child(UI.button("✓ Taking it  ·  leave it", func(): Econ.set_loadout(slot, ""); Save.save_game(); open_armory(), 190))
+		var lb := UI.button("✓ Taking it", func(): Econ.set_loadout(slot, ""); Save.save_game(); open_armory(), 190)
+		lb.tooltip_text = "Picked for your next expedition. Click to leave it at home"
+		row.add_child(lb)
 	else:
 		row.add_child(UI.primary("Take it next time", func(): Econ.set_loadout(slot, uid); Sfx.play("pickup"); Save.save_game(); open_armory(), 190))
 	row.add_child(UI.button("Sell  %d" % Loot.sell_price(it), func():
@@ -881,22 +885,30 @@ func _detail(it: Dictionary) -> Control:
 		Sfx.play("build", null, -6.0); h._toast("+%d scrap" % n)
 		arm_pick = ""; Save.save_game(); open_armory(), 110))
 	col.add_child(row)
-	var risk := UI.label("What you take is at risk: go down and it's in your deathbox like everything else.", 12, UI.MUTED)
+	var risk := UI.label("What you take is at risk: go down and it's in your deathbox.", 12, UI.MUTED)
 	risk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	col.add_child(risk)
 	return col
 
 func _preview(it: Dictionary) -> Control:
-	var svc := SubViewportContainer.new(); svc.stretch = true; svc.custom_minimum_size = Vector2(340, 150)
+	var svc := SubViewportContainer.new(); svc.stretch = true; svc.custom_minimum_size = Vector2(340, 130)
 	var vp := SubViewport.new(); vp.own_world_3d = true; vp.transparent_bg = true; vp.msaa_3d = Viewport.MSAA_2X
 	svc.add_child(vp)
 	var w3 := Node3D.new(); vp.add_child(w3)
 	Look.lights(w3, Color("fff1dc"), 1.0)
 	var holder := Node3D.new(); w3.add_child(holder)
 	if String(it["t"]) == "weapon":
-		var gun := Node3D.new(); gun.scale = Vector3.ONE * 2.1; gun.rotation = Vector3(0, PI / 2, 0.15); gun.position = Vector3(0, 0, -0.5)
-		holder.add_child(gun)
-		Models.gun_parts(gun, String(it["wid"]), Models.toon(Color("4a4d5c")), Models.toon(Color("2b2a33")), Models.toon(Loot.col_of(it), true, 0.5))
+		var tilt := Node3D.new(); tilt.rotation = Vector3(0, PI / 2, 0.15)
+		holder.add_child(tilt)
+		var gun := Node3D.new()
+		tilt.add_child(gun)
+		Models.gun_parts(gun, String(it["wid"]), Models.toon(Color("7a7f92")), Models.toon(Color("4d4b58")), Models.toon(Loot.col_of(it), true, 0.5))
+		# centre it on the turntable and size it to the window, whatever its shape
+		var bb := _bounds(gun, Transform3D.IDENTITY)
+		if bb.size.length() > 0.01:
+			var k := 2.0 / maxf(bb.size.x, maxf(bb.size.y, bb.size.z))
+			gun.scale = Vector3.ONE * k
+			gun.position = -bb.get_center() * k
 	else:
 		var gd := Models.gear_drop(Gear.ALL.get(String(it["id"]), {}).get("col", Color.WHITE), Loot.rar_of(it))
 		gd.position.y = -0.7
@@ -916,6 +928,23 @@ func _preview(it: Dictionary) -> Control:
 	var ticker := Timer.new(); ticker.wait_time = 0.033; ticker.autostart = true; svc.add_child(ticker)
 	ticker.timeout.connect(func(): if is_instance_valid(holder): holder.rotation.y = Time.get_ticks_msec() / 1200.0)
 	return svc
+
+## The box round every mesh under n, in the space n's parent sees it (n needn't be in the tree).
+func _bounds(n: Node3D, xf: Transform3D) -> AABB:
+	var out := AABB(); var any := false
+	for ch in n.get_children():
+		if not (ch is Node3D) or not (ch as Node3D).visible: continue
+		var cx: Transform3D = xf * (ch as Node3D).transform
+		var bb := AABB()
+		var got := false
+		if ch is MeshInstance3D and (ch as MeshInstance3D).mesh:
+			bb = cx * (ch as MeshInstance3D).mesh.get_aabb(); got = true
+		var sub := _bounds(ch, cx)
+		if sub.size != Vector3.ZERO:
+			bb = bb.merge(sub) if got else sub; got = true
+		if got:
+			out = out.merge(bb) if any else bb; any = true
+	return out
 
 func _treasure_n() -> int:
 	var n := 0
@@ -973,7 +1002,7 @@ func loadout_rows(parent: VBoxContainer, reopen: Callable) -> void:
 		var card := UI.card(UI.CARD, 6, 10)
 		var row := UI.hbox(8); card.add_child(row)
 		var what := String({"weapon": "Weapon", "glove0": "Active glove", "glove1": "Passive glove"}[slot])
-		var nm := UI.label("%s:  %s" % [what, Loot.name_of(cur) if not cur.is_empty() else ("your class weapon" if slot == "weapon" else "none")], 14, Loot.col_of(cur) if not cur.is_empty() else UI.MUTED, UI.semi)
+		var nm := UI.label("%s:  %s%s" % [what, Loot.name_of(cur) if not cur.is_empty() else ("the one above" if slot == "weapon" else "none"), "  (instead of the one above)" if slot == "weapon" and not cur.is_empty() else ""], 14, Loot.col_of(cur) if not cur.is_empty() else UI.MUTED, UI.semi)
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		nm.clip_text = true
 		nm.tooltip_text = Loot.sub_of(cur) if not cur.is_empty() else ""

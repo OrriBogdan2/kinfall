@@ -852,6 +852,37 @@ func _economy_check() -> void:
 	for t in before["traits"]: tdiff += absf(float(before["traits"][t]) - float(back["traits"].get(t, 0.0)))
 	print("ECON  revived %s %s: level %d -> %d, trust %d -> %d, traits moved %.2f, memories %d -> %d, ghost=%s, likes %s -> %s" % [back["name"], back["title"], int(before["level"]), int(back["level"]), int(before["trust"]), int(back["trust"]), tdiff, (before["memory"] as Array).size(), (back["memory"] as Array).size(), back.get("ghost", false), str(before.get("likes", {}).get("food", "")), str(back["likes"]["food"])])
 	ok.call(not back.is_empty() and back["ghost"] and String(back["title"]) != "" and int(back["level"]) == 4 and tdiff > 0.05 and Save.d["roster"].has(back) and not Econ.graves().has(g) and Econ.embers() == 0, "revived kin comes back changed")
+	# weapons found in a region lean to its element (the meadow has none of its own)
+	var erng := RandomNumberGenerator.new(); erng.seed = 77
+	var by_biome := {}
+	for bi in ["ember", "frost", "storm", "bloom", "gloom", "meadow"]:
+		var cnt := {}
+		for n in 400:
+			var e := Loot.roll_element(erng, bi)
+			cnt[e] = int(cnt.get(e, 0)) + 1
+		by_biome[bi] = cnt
+	var home_el := func(bi: String) -> String:
+		for el in Loot.ELEMENTS:
+			if String(Loot.ELEMENTS[el]["biome"]) == bi: return el
+		return ""
+	var lean := true
+	for bi in ["ember", "frost", "storm", "bloom", "gloom"]:
+		var mine := int(by_biome[bi].get(home_el.call(bi), 0))
+		for el in by_biome[bi]:
+			if el != "" and el != home_el.call(bi) and int(by_biome[bi][el]) >= mine: lean = false
+	print("ECON  elements by biome (of 400): %s" % str(by_biome))
+	ok.call(lean and int(by_biome["meadow"].get("", 0)) > 300, "each region's weapons lean to its own element")
+	# an old save (from before the armory and feeders) loads and gets them filled in
+	var old := Save.fresh()
+	for k in ["armory", "raid_out", "loadout", "valuables", "feeders", "graves", "arm_lvl", "pack_lvl", "scrap", "feeder_inv", "feeder_given"]:
+		old.erase(k)
+	var orec := Save.new_kin("zapple", "Oldie")
+	orec.erase("starve")
+	old["roster"] = [orec]
+	Save.d = old
+	Econ.ensure()
+	Care.catch_up(orec)
+	ok.call(Econ.armory().is_empty() and Econ.feeders().size() == 1 and Econ.graves().is_empty() and Econ.pack_cap() == Econ.PACK_CAPS[0] and Care.starve_stage(orec) == "" and Econ.begin_raid().is_empty(), "an old save loads: a first trough, empty armory, %d-slot backpack" % Econ.pack_cap())
 	print("ECON DONE failures: %d" % bad[0])
 	get_tree().quit()
 

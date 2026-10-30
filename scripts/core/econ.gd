@@ -286,10 +286,12 @@ static func catch_up_all() -> Array:
 	var roster: Array = Save.d["roster"]
 	var extra := {}
 	for rec in roster:
+		var gone := Time.get_unix_time_from_system() - float(rec.get("needs_t", Time.get_unix_time_from_system()))
 		var ex := Care.catch_up(rec)
 		if ex > 0.0: extra[rec["uid"]] = ex
-		# half a day or less away: still a meal if they're hungry and there's food out
-		if Care.need(rec, "food") < HUNGRY_AT:
+		# away a while (not just back from a menu): still a meal if they're hungry and there's food
+		# out. Home only a moment ago, they walk over and eat where you can see it.
+		if gone > 600.0 and Care.need(rec, "food") < HUNGRY_AT:
 			serve_any(rec)
 	var guard := 0
 	while not extra.is_empty() and guard < 24 * 14:
