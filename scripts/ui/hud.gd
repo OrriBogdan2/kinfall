@@ -755,13 +755,13 @@ func _draw_exit_labels() -> void:
 					_: line = "Start uplink" if m.exits.startable(x) else ("Online in %s" % _fmt(float(x["open_at"]) - m.time))
 		var reach := 26.0 if x["kind"] == "hatch" else 44.0
 		if st in ["boarding", "open"]: reach = 70.0
-		var prompted: bool = not m.interact.is_empty() and m.interact.get("x") == x     # the prompt already says it
+		var prompted: bool = not m.interact.is_empty() and is_same(m.interact.get("x"), x)     # the prompt already says it
 		if d < reach and not cam.is_position_behind(at) and not prompted:
 			var lp := cam.unproject_position(at + Vector3(0, 3.4 if x["kind"] != "hatch" else 1.6, 0))
 			_ctext(lp, String(x["name"]), 13, col, big)
 			if line != "":
 				_ctext(lp + Vector2(0, 17), line, 12 if st not in ["boarding", "open"] else 16, INK if st not in ["boarding", "open"] else col, big)
-		if x == mine and d > 7.0 and not m.opts.get("tutorial", false):
+		if is_same(x, mine) and d > 7.0 and not m.opts.get("tutorial", false):
 			var tgt: Vector3 = x.get("berth", at)
 			_draw_waypoint(tgt, "Skiff" if x["kind"] == "dock" else ("Lift" if st == "open" else "Uplink"), col)
 

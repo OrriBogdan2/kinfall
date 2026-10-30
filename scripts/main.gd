@@ -893,10 +893,12 @@ func _extract_check() -> void:
 	m.time = float(d["open_at"]) + 1.0
 	P.teleport(d["pos"] + Vector3(0.3, 0, 0.3))
 	var t0 := m.time
+	var pings_before := m.pings.size()
 	run.call(m, 2.5, func(): P.inp["interact"] = true)
 	P.inp["interact"] = false
-	print("EXCHECK skiff: state=%s after holding %.1fs, arrives in %.0fs" % [d["state"], m.time - t0, float(d["t"])])
-	if d["state"] != "called": ok = false; print("EXCHECK FAIL skiff not called")
+	var flare: bool = (d["node"] as Node3D).get_node("Beacon/Flare").visible
+	print("EXCHECK skiff: state=%s after holding %.1fs, arrives in %.0fs; loud: map pings +%d, flare=%s" % [d["state"], m.time - t0, float(d["t"]), m.pings.size() - pings_before, flare])
+	if d["state"] != "called" or m.pings.size() <= pings_before or not flare: ok = false; print("EXCHECK FAIL skiff not called (or not loud)")
 	run.call(m, 30.0)
 	var waves := m.mobs.filter(func(x): return not x.dead and int(x.get_meta("exit", -1)) == int(d["i"])).size()
 	print("EXCHECK skiff: waves=%d monsters alive from them=%d t left=%.0f" % [int(d["waves"]), waves, float(d["t"])])

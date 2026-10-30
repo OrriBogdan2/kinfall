@@ -3004,8 +3004,9 @@ func _update_interact(dt: float) -> void:
 					break
 		# 5. the exits: call a skiff, unlock a hatch, start an uplink
 		if exits:
+			# (using an exit beats picking up a weapon or opening a chest that happens to be there)
 			var ex := exits.interact_for(h)
-			if best.is_empty(): best = ex
+			if best.is_empty() or (ex.has("act") and String(best.get("kind", "")) in ["weapon", "chest", "shrine"]): best = ex
 		if h == player:
 			interact = best
 		if best.is_empty() or not want:

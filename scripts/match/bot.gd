@@ -431,7 +431,7 @@ func _choose(m: Match, h: Hunter) -> void:
 		a["goal_since"] = m.time
 	elif goal != Vector3.INF:
 		var d := h.flat_dist(goal)
-		if d < 2.0:
+		if d < 2.0 and String(a.get("goal_kind", "")) in ["board", "yard", "beacon"]:
 			a["goal_since"] = m.time      # there and waiting (holding a dock, charging an uplink) is fine
 		if d < float(a.get("goal_best", 1e9)) - 0.5:
 			a["goal_best"] = d
