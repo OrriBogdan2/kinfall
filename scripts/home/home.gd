@@ -1817,6 +1817,8 @@ func _open_shop() -> void:
 				var fk: String = f
 				goods.append(["food:" + f, fd["name"], fd["desc"], int(fd["price"]), Color("ffb36a"), func(): Save.add_item(fk, 1), "have %d" % int(Save.d["items"].get(f, 0))])
 			goods.append(["tonic", "Tonic", "Heals 45 in a match (%s)." % Settings.key_cap("tonic"), 30, Color("8fe0a0"), func(): Save.add_item("tonic", 1), "have %d" % int(Save.d["items"].get("tonic", 0))])
+			var kl := Exits.keys_left_today()
+			goods.append(["rift_key", "Rift Key", "Opens any rift hatch on an expedition: a quiet way out, any time. Lost if you go down. %d a day." % Exits.KEYS_PER_DAY, Exits.KEY_PRICE if kl > 0 else -1, ExitModels.HATCH, func(): Exits.buy_key(), "have %d%s" % [int(Save.d["items"].get("rift_key", 0)), "" if kl > 0 else "  ·  sold out today"]])
 		"Wear":
 			var owned: Array = Save.d.get("accs", [])
 			for a in Data.ACCS:
