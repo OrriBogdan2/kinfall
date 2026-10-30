@@ -575,17 +575,17 @@ func _hud_tick(delta: float) -> void:
 		t["t"] = float(t["t"]) + delta
 		if float(t["t"]) > 1.4: small_toasts.erase(t)
 
-## Health and armor over the ability row, with your hero, lives and glider cloth.
+## Health and armor over the ability row, with your class badge, lives and glider cloth.
 func _draw_vitals(sz: Vector2, p: Hunter) -> void:
 	var w := 380.0
 	var x0 := sz.x * 0.5 - w * 0.5
 	var y0 := sz.y - 150.0
-	var hc: Color = Data.HEROES[p.hero]["color"]
-	# hero badge
+	var hc: Color = p.accent()
+	# class badge
 	var bc := Vector2(x0 - 30, y0 + 16)
 	c.draw_circle(bc, 24, Color(0.04, 0.04, 0.06, 0.92))
 	c.draw_arc(bc, 24, 0, TAU, 40, hc, 2.5, true)
-	_ctext(bc + Vector2(0, 9), String(Data.HEROES[p.hero]["name"]).substr(0, 1), 24, hc, big)
+	_ctext(bc + Vector2(0, 9), String(p.cdat["name"]).substr(0, 1), 24, hc, big)
 	if p.lives < 50 and p.lives > 1:
 		for i in p.lives:
 			var hp_c := bc + Vector2((i - (p.lives - 1) * 0.5) * 11.0, 32)
@@ -656,13 +656,11 @@ func _draw_abilities(sz: Vector2, p: Hunter) -> void:
 	for gi in 2:
 		if not (p.gear[gi] as Dictionary).is_empty() and Gear.active(String(p.gear[gi]["id"])): gear_n += 1
 	var util: AbilityDef = p.runner.def_of("utility") if p.runner else null
-	var s_id := Abil.s_id(p)
-	var has_sec := util != null or s_id != ""
+	var has_sec := util != null
 	var n_small := (3 if k else 0) + (1 if has_sec else 0) + 2
 	var total := n_small * s + us + n_small * gap + gear_n * (48.0 + 8.0) + (8.0 if gear_n > 0 else 0.0)
 	var x := sz.x * 0.5 - total * 0.5
 	var y := sz.y - 88.0
-	var hc: Color = Data.HEROES[p.hero]["color"]
 	if k:
 		var kc: Color = Data.KIN[k.species]["color"]
 		var out_now: bool = k.state in ["active", "flying", "returning"]
@@ -678,22 +676,10 @@ func _draw_abilities(sz: Vector2, p: Hunter) -> void:
 				if not k.ready_to_fight():
 					_rounded(Rect2(Vector2(x, y), Vector2(s, s)), Color(0, 0, 0, 0.45), 12)
 			x += s + gap
-	# right click: the weapon's utility, or the hero's secondary if the weapon has none
+	# right click: the weapon's utility
 	if util:
 		var sr := Rect2(Vector2(x, y), Vector2(s, s))
 		_ab_slot("sec", sr, util.icon, Settings.key_cap("secondary"), util.color, p.runner.cd_frac("utility"), p.runner.cd_left("utility") if not p.runner.is_ready("utility") else 0.0, p.runner.is_ready("utility"), p.runner.charges("utility") if util.charges > 1 else -1, util.charges if util.charges > 1 else 0)
-		x += s + gap
-	elif s_id != "":
-		var s_ab: Dictionary = Data.ABIL[s_id]
-		var sr := Rect2(Vector2(x, y), Vector2(s, s))
-		if s_id == "breeze":
-			_ab_slot("sec", sr, s_id, Settings.key_cap("secondary"), hc, (p.sec_ch_t / float(s_ab["cd"])) if p.sec_ch == 0 else 0.0, p.sec_ch_t if p.sec_ch == 0 else 0.0, p.sec_ch > 0, p.sec_ch, 3)
-		elif s_id == "satchel" and not p.satchel.is_empty():
-			_ab_slot("sec", sr, s_id, Settings.key_cap("secondary"), Color("ff7a5a"), 0.0, 0.0, true, -1, 0, "Set off")
-		elif s_id == "brightshield" and p.bshield_on:
-			_ab_slot("sec", sr, "fortify", Settings.key_cap("secondary"), Color("fff6c0"), 1.0 - p.bshield_t / 3.0, 0.0, true, -1, 0, "Holding")
-		else:
-			_ab_slot("sec", sr, s_id, Settings.key_cap("secondary"), hc, p.sec_cd / float(s_ab["cd"]) if p.sec_cd > 0.0 else 0.0, p.sec_cd, p.sec_cd <= 0.0)
 		x += s + gap
 	# the bond ultimate: a heart-ring that fills as you and your kin fight together
 	var ud := Ultimate.def_for(k) if k else null
@@ -895,9 +881,6 @@ func _draw_kit(sz: Vector2, p: Hunter) -> void:
 	var util: AbilityDef = p.runner.def_of("utility") if p.runner else null
 	if util:
 		lines.append([Settings.key_cap("secondary"), util.display_name, util.desc, util.color])
-	elif Abil.s_id(p) != "":
-		var s_ab: Dictionary = Data.ABIL[Abil.s_id(p)]
-		lines.append([Settings.key_cap("secondary"), s_ab["name"], s_ab["desc"], Data.HEROES[p.hero]["color"].lightened(0.25)])
 	if p.kin:
 		var k: Kin = p.kin
 		var kcol: Color = Data.KIN[k.species]["color"]
@@ -1127,7 +1110,7 @@ func _secs(x: float) -> String:
 	return ("%ds" % int(x)) if absf(x - round(x)) < 0.05 else ("%.1fs" % x)
 
 func _tip_lines(id: String, p: Hunter) -> Array:
-	var hc: Color = Data.HEROES[p.hero]["color"]
+	var hc: Color = p.accent()
 	var out: Array = []
 	match id:
 		"sec" when p.runner and p.runner.def_of("utility") != null:
@@ -1186,23 +1169,6 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 			out.append(["Gear active  ·  %s" % Settings.key_cap("gear%d" % (int(id.substr(4)) + 1)), MUTED, 12])
 			out.append([gd["desc"], INK, 14])
 			out.append([Gear.stat_text(String(g["id"]), int(g.get("rar", 1))), MUTED, 13])
-		"e", "sec":
-			var aid: String = Abil.e_id(p) if id == "e" else Abil.s_id(p)
-			var ab: Dictionary = Data.ABIL[aid]
-			var kind: String = {"e": "Hero ability", "r": "Ultimate", "sec": "Secondary"}[id]
-			var act: String = {"e": "signature", "r": "ultimate", "sec": "secondary"}[id]
-			out.append([ab["name"], GOLD if id == "r" else hc])
-			out.append(["%s  ·  %s" % [kind, Settings.key_cap(act)], MUTED, 12])
-			out.append([ab["desc"], INK, 14])
-			if id == "r":
-				out.append(["Charges as you deal damage: %d%%. %s" % [int(p.ult * 100.0), "Ready!" if p.ult >= 1.0 else ""], GOLD, 13])
-			else:
-				var cdv: float = p.sig_cd if id == "e" else p.sec_cd
-				out.append(["Cooldown %s%s" % [_secs(float(ab.get("cd", 0.0))), ("  ·  ready in %s" % _secs(cdv)) if cdv > 0.05 else "  ·  ready"], MUTED, 13])
-			if id == "e":
-				out.append(["Passive: " + String(Data.HEROES[p.hero]["passive"]), Color(hc, 0.9), 13])
-			if not Settings.get_v("quick_cast") and id in ["e", "r"]:
-				out.append(["Hold to aim, let go to cast. Right click cancels.", MUTED, 12])
 		"throw":
 			var k: Kin = p.kin
 			if k == null: return []
@@ -1236,11 +1202,10 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 			out.append(["Magazine %d  ·  reload %s  ·  range %d tiles" % [int(wp["mag"]), _secs(float(wp["reload"])), int(float(wp.get("range", 10.0)))], MUTED, 13])
 			out.append(["Shots spread while you move or jump. Stand still or crouch to tighten them.", MUTED, 12])
 		"vitals":
-			var hd: Dictionary = Data.HEROES[p.hero]
-			out.append([String(hd["name"]) + "  ·  " + String(hd["role"]), hc])
-			out.append(["%s class  ·  speed %.1f" % [String(p.cls).capitalize(), p.base_speed], MUTED, 12])
+			out.append(["%s class" % String(p.cls).capitalize(), hc])
+			out.append(["Speed %.1f  ·  %s" % [p.base_speed, String(p.cdat.get("desc", ""))], MUTED, 12])
 			out.append(["Health %d / %d   ·   Armor %d / %d" % [int(ceil(p.hp)), int(p.max_hp), int(ceil(p.armor)), int(p.max_armor)], INK, 14])
-			out.append(["Armor soaks hits first and refills a few seconds after you stop taking damage. Health only regenerates once armor is full.", MUTED, 13])
+			out.append(["Armor takes 20% off every hit until it wears out. Neither armor nor health comes back on its own: use armor kits and tonics.", MUTED, 13])
 			if p.lives < 50:
 				out.append(["Lives left: %d" % p.lives, Color("ff7a8a"), 13])
 	return out
@@ -1301,10 +1266,9 @@ func _draw_world_hover(sz: Vector2, p: Hunter) -> void:
 			lines.append(["A rival hunter's kin.", BAD])
 	elif best is Hunter:
 		var h: Hunter = best
-		var hd: Dictionary = Data.HEROES[h.hero]
 		var ally: bool = h.team == p.team
 		lines.append([h.pname, GOOD if ally else Data.TEAM_COLORS[h.team % Data.TEAM_COLORS.size()]])
-		lines.append(["%s  ·  %s  ·  %s" % [hd["name"], hd["role"], "teammate" if ally else "rival"], MUTED])
+		lines.append(["%s class  ·  %s  ·  %s" % [String(h.cls).capitalize(), String(h.wpn.get("name", "")), "teammate" if ally else "rival"], MUTED])
 		lines.append(["Health %d / %d   ·   Armor %d / %d" % [int(ceil(h.hp)), int(h.max_hp), int(ceil(h.armor)), int(h.max_armor)], INK])
 		if h.downed:
 			lines.append(["Down. %s" % ("Hold %s next to them to revive." % Settings.key_cap("interact") if ally else "Finish them before they're revived."), BAD if not ally else GOOD])

@@ -93,25 +93,31 @@ const LOOK_BODIES := ["Slim", "Average", "Sturdy"]
 const LOOK_GENDERS := ["Female", "Male"]
 const LOOK_FACES := ["Bright eyes", "Calm", "Sleepy", "Cheerful", "Fierce", "Wink", "Starry", "Determined", "Smug"]
 const LOOK_HAIRS := ["Short", "Long", "Ponytail", "Bun", "Spiky", "Buzzed", "Bob", "Pigtails", "Braid", "Mohawk", "Afro", "Curly", "Swoop", "Bald"]
+## Outfits: a coat colour and headwear. Purely cosmetic.
+const LOOK_OUTFITS := ["Hood", "Horned", "Goggles", "Wide hat", "Bandana", "Ember", "Helm", "Brawler", "Halo"]
+const OUTFIT_KEYS := ["veil", "nyx", "kestrel", "sage", "marlow", "pyra", "bastion", "tusk", "halo"]
+const OUTFIT_COLS := [Color("c9bcff"), Color("b06ae0"), Color("6ad0e0"), Color("9ee2a0"), Color("e0b05a"), Color("ff7a5a"), Color("e6dbc4"), Color("c08a5a"), Color("f2d47a")]
 const LOOK_DETAILS := ["None", "Freckles", "Scar", "Face paint", "Stubble", "Beard", "Moustache", "Beauty mark"]
 
 static func default_look() -> Dictionary:
-	return {"body": 1, "gender": 1, "face": 0, "skin": 1, "hair": 0, "hair_col": 0, "detail": 0}
+	return {"body": 1, "gender": 1, "face": 0, "skin": 1, "hair": 0, "hair_col": 0, "detail": 0, "outfit": 3}
 
 ## A saved look with every value inside its list (older saves had a third gender option).
 static func clean_look(lk: Dictionary) -> Dictionary:
 	var out := default_look()
 	out.merge(lk, true)
-	var lists := {"body": LOOK_BODIES, "gender": LOOK_GENDERS, "face": LOOK_FACES, "skin": LOOK_SKIN, "hair": LOOK_HAIRS, "hair_col": LOOK_HAIR, "detail": LOOK_DETAILS}
+	var lists := {"body": LOOK_BODIES, "gender": LOOK_GENDERS, "face": LOOK_FACES, "skin": LOOK_SKIN, "hair": LOOK_HAIRS, "hair_col": LOOK_HAIR, "detail": LOOK_DETAILS, "outfit": LOOK_OUTFITS}
 	for k in lists:
 		out[k] = clampi(int(out[k]), 0, (lists[k] as Array).size() - 1)
 	return out
 
-static func hunter(cls: String, team_col: Color, weapon: String, hero := "", appearance := {}) -> Node3D:
+static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", appearance := {}) -> Node3D:
 	var lk: Dictionary = clean_look(appearance)
 	var root := Node3D.new()
-	var look: String = hero if hero != "" else {"light": "veil", "medium": "sage", "heavy": "bastion"}.get(cls, "sage")
-	var hero_col: Color = Data.HEROES[look]["color"] if Data.HEROES.has(look) else team_col
+	var oi: int = OUTFIT_KEYS.find(outfit) if outfit != "" else int(lk["outfit"])
+	if oi < 0: oi = 3
+	var look: String = OUTFIT_KEYS[oi]
+	var hero_col: Color = OUTFIT_COLS[oi]
 	var hc := hero_col
 	# outfit: a coat in the hero's colour, darker trousers and leather, team colour on the trim
 	var coat_col := hero_col.lerp(Color("3a3f52"), 0.42).lerp(team_col, 0.12)

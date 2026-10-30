@@ -52,11 +52,7 @@ func _ready() -> void:
 		_build_hub()
 		Sfx.play_music("hub")
 	Sfx.play_ambience("home")
-	var hero: String = Save.d.get("hero", "")
-	if not Data.HEROES.has(hero): hero = "sage"
-	var w: String = Save.d.get("weapon", "")
-	if not Data.CLASSES[Data.HEROES[hero]["cls"]]["weapons"].has(w): w = Data.HEROES[hero]["weapon"]
-	player = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], w, hero, Save.d.get("look", {}))
+	player = Models.hunter(Data.class_of_save(), Data.TEAM_COLORS[0], Data.weapon_for(Data.class_of_save(), String(Save.d.get("weapon", ""))), "", Save.d.get("look", {}))
 	add_child(player)
 	player.position = ppos
 	for a in OS.get_cmdline_user_args():
@@ -273,7 +269,7 @@ func _send_presence(d: float) -> void:
 	if js == null:
 		return
 	var ak := Save.active_kin()
-	js.hubPresence(JSON.stringify({"n": String(Save.d.get("name", "Hunter")).substr(0, 16), "h": Save.d.get("hero", "sage"),
+	js.hubPresence(JSON.stringify({"n": String(Save.d.get("name", "Hunter")).substr(0, 16), "h": Data.class_of_save(),
 		"x": snappedf(ppos.x, 0.01), "z": snappedf(ppos.z, 0.01), "f": snappedf(pface, 0.01), "k": ak.get("species", "")}))
 
 func _on_peers(arr: Array) -> void:
@@ -287,9 +283,9 @@ func _on_peers(arr: Array) -> void:
 		seen[id] = true
 		var at := Vector3(clampf(Social.num_of(p["x"]), 0, world.w), 0, clampf(Social.num_of(p["z"]), 0, world.h))
 		if not others.has(id):
-			var hero := Social.txt_of(p.get("h"), "sage")
-			if not Data.HEROES.has(hero): hero = "sage"
-			var n := Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[1 + others.size() % 5], Data.HEROES[hero]["weapon"], hero)
+			var ocl := Social.txt_of(p.get("h"), "medium")
+			if not Data.CLASSES.has(ocl): ocl = "medium"
+			var n := Models.hunter(ocl, Data.TEAM_COLORS[1 + others.size() % 5], Data.CLASSES[ocl]["weapon"], "")
 			add_child(n)
 			var lbl := Label3D.new()
 			lbl.font = UI.big; lbl.font_size = 40; lbl.pixel_size = 0.01; lbl.outline_size = 10

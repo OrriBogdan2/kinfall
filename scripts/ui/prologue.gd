@@ -208,11 +208,10 @@ func _set_drop() -> void:
 		var isl := Scenery.island(rng, rng.randf_range(4.0, 9.0), true, rng.randf() < 0.4)
 		isl.position = o + Vector3(rng.randf_range(-60, 70), rng.randf_range(-40, -24), rng.randf_range(-130, -25))
 		add_child(isl)
-	var heroes: Array = Data.HEROES.keys()
 	for i in 5:
-		var hero: String = heroes[i % heroes.size()]
-		var h := Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[(i % (Data.TEAM_COLORS.size() - 1)) + 1], Data.HEROES[hero]["weapon"], hero,
-			{"gender": i % 2, "skin": rng.randi() % Models.LOOK_SKIN.size(), "hair": rng.randi() % Models.LOOK_HAIRS.size()})
+		var cl: String = ["light", "medium", "heavy"][i % 3]
+		var h := Models.hunter(cl, Data.TEAM_COLORS[(i % (Data.TEAM_COLORS.size() - 1)) + 1], Data.CLASSES[cl]["weapon"], "",
+			{"gender": i % 2, "skin": rng.randi() % Models.LOOK_SKIN.size(), "hair": rng.randi() % Models.LOOK_HAIRS.size(), "outfit": (i * 2) % Models.LOOK_OUTFITS.size()})
 		(h.get_node("TeamRing") as Node3D).visible = false
 		(h.get_node("Rig/Torso/Glider") as Node3D).visible = true
 		h.position = o + Vector3(rng.randf_range(-3, 3), 12.0, rng.randf_range(-8, -4))

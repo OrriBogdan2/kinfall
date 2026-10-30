@@ -1,5 +1,5 @@
 extends Node3D
-## Every hero side by side, with a spread of looks, and one with its glider open. Open
+## Every class and weapon side by side, with a spread of looks, and one with its glider open. Open
 ## tests/hunter_gallery.tscn and press F6. Pass -- --gallery-top to look from the game's camera angle.
 
 func _ready() -> void:
@@ -12,11 +12,12 @@ func _ready() -> void:
 	ground.mesh = pm
 	ground.material_override = Models.toon(Color("5f8d45"), false)
 	add_child(ground)
-	var ids: Array = Data.HEROES.keys()
+	var ids: Array = []
+	for c in ["light", "medium", "heavy"]:
+		for w in Data.CLASSES[c]["weapons"]: ids.append([c, w])
 	for i in ids.size():
-		var hd: Dictionary = Data.HEROES[ids[i]]
-		var lk := {"body": i % 3, "gender": i % 3, "face": i % 5, "skin": (i * 2) % Models.LOOK_SKIN.size(), "hair": i % 6, "hair_col": i % Models.LOOK_HAIR.size()}
-		var h := Models.hunter(hd["cls"], Data.TEAM_COLORS[i % 4], hd["weapon"], ids[i], lk)
+		var lk := {"body": i % 3, "gender": i % 3, "face": i % 5, "skin": (i * 2) % Models.LOOK_SKIN.size(), "hair": i % 6, "hair_col": i % Models.LOOK_HAIR.size(), "outfit": i % Models.LOOK_OUTFITS.size()}
+		var h := Models.hunter(ids[i][0], Data.TEAM_COLORS[i % 4], ids[i][1], "", lk)
 		h.position = Vector3((i - (ids.size() - 1) * 0.5) * 1.25, 0, 0)
 		h.rotation.y = PI + 0.3
 		add_child(h)

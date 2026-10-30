@@ -10,21 +10,21 @@ const MATCH_PLAYERS := 20
 
 const CLASSES := {
 	"light": {
-		"name": "Light", "hp": 124, "speed": 5.2, "dashes": 1, "mass": 0.85, "scale": 0.9, "hit_r": 0.35,
+		"name": "Light", "color": Color("c9bcff"), "hp": 124, "speed": 5.2, "dashes": 1, "mass": 0.85, "scale": 0.9, "hit_r": 0.35,
 		"ex_dist": 7.0, "ex_time": 0.22, "ex_cd": 12.0, "glide_cap": 1.2,
-		"sig": "cloak", "weapon": "smg", "weapons": ["smg", "sniper", "twin_blades"],
+		"weapon": "smg", "weapons": ["smg", "sniper", "twin_blades"],
 		"desc": "Fast and fragile. The fastest dash, the longest glide, and hits throw you furthest.",
 	},
 	"medium": {
-		"name": "Medium", "hp": 145, "speed": 5.0, "dashes": 1, "mass": 1.0, "scale": 1.0, "hit_r": 0.40,
+		"name": "Medium", "color": Color("9ee2a0"), "hp": 145, "speed": 5.0, "dashes": 1, "mass": 1.0, "scale": 1.0, "hit_r": 0.40,
 		"ex_dist": 6.0, "ex_time": 0.22, "ex_cd": 13.0, "glide_cap": 1.0,
-		"sig": "mend", "weapon": "rifle", "weapons": ["rifle", "burst_rifle", "longsword"],
-		"desc": "The all-rounder. Heals the team and its kin, and speeds up revives.",
+		"weapon": "rifle", "weapons": ["rifle", "burst_rifle", "longsword"],
+		"desc": "The all-rounder: middle health, speed, dash and glide.",
 	},
 	"heavy": {
-		"name": "Heavy", "hp": 193, "speed": 4.73, "dashes": 2, "mass": 1.35, "scale": 1.14, "hit_r": 0.50,
+		"name": "Heavy", "color": Color("e6dbc4"), "hp": 193, "speed": 4.73, "dashes": 2, "mass": 1.35, "scale": 1.14, "hit_r": 0.50,
 		"ex_dist": 5.0, "ex_time": 0.24, "ex_cd": 15.0, "glide_cap": 0.85,
-		"sig": "fortify", "weapon": "shotgun", "weapons": ["shotgun", "minigun", "greatsword"],
+		"weapon": "shotgun", "weapons": ["shotgun", "minigun", "greatsword"],
 		"desc": "Slow and tough. Two short dashes, the most health, and very hard to push off a ledge.",
 	},
 }
@@ -80,59 +80,17 @@ func roll_rarity(r: RandomNumberGenerator, bonus := 0) -> int:
 	if x > 0.98: rar = 4
 	return clampi(rar + bonus, 1, RARITY.size() - 1)
 
-## Heroes: three per weight class. Each has a passive, an E ability and an R ultimate that charges
-## as you deal damage, plus a right-click ability of their own. Your kin (C to throw, Q, shoulder) stays the same whoever you play.
-const HEROES := {
-	"veil": {"name": "Veil", "cls": "light", "weapon": "smg", "e": "cloak", "r": "vanish", "s": "shadowstep", "color": Color("c9bcff"),
-		"role": "Slippery scout", "passive": "Your first shot after leaving cloak always crits."},
-	"nyx": {"name": "Nyx", "cls": "light", "weapon": "twin_blades", "e": "blink", "r": "dance", "s": "bolas", "color": Color("b06ae0"),
-		"role": "Blink assassin", "passive": "Knocking down a hunter refreshes Blink."},
-	"kestrel": {"name": "Kestrel", "cls": "light", "weapon": "sniper", "e": "tether", "r": "skypierce", "s": "divehawk", "color": Color("6ad0e0"),
-		"role": "Long-range sniper", "passive": "Shots from more than 9 tiles away deal 25% more damage."},
-	"sage": {"name": "Sage", "cls": "medium", "weapon": "rifle", "e": "mend", "r": "sanctuary", "s": "breeze", "color": Color("9ee2a0"),
-		"role": "Healer", "passive": "Revives teammates 30% faster."},
-	"marlow": {"name": "Marlow", "cls": "medium", "weapon": "longsword", "e": "hook", "r": "anchor", "s": "haymaker", "color": Color("e0b05a"),
-		"role": "Hook and slam", "passive": "Hooked foes are slowed for 2 seconds."},
-	"pyra": {"name": "Pyra", "cls": "medium", "weapon": "burst_rifle", "e": "rocketjump", "r": "barrage", "s": "satchel", "color": Color("ff7a5a"),
-		"role": "Rocket jumper", "passive": "Your blasts knock foes 20% further."},
-	"bastion": {"name": "Bastion", "cls": "heavy", "weapon": "shotgun", "e": "fortify", "r": "bulwark", "s": "brightshield", "color": Color("e6dbc4"),
-		"role": "Unmovable wall", "passive": "Takes 10% less damage while above half health."},
-	"tusk": {"name": "Tusk", "cls": "heavy", "weapon": "greatsword", "e": "ram", "r": "quake", "s": "cleave", "color": Color("c08a5a"),
-		"role": "Charging brawler", "passive": "Hitting someone with Ram refunds half its cooldown."},
-	"halo": {"name": "Halo", "cls": "heavy", "weapon": "minigun", "e": "dome", "r": "well", "s": "binding", "color": Color("f2d47a"),
-		"role": "Bubble protector", "passive": "Allies inside your dome heal 4 health per second."},
-}
+## The class you play and the weapon you carry are your whole loadout: left and right click come
+## from the weapon, Q, E and R from the kin you bring.
+func class_of_save() -> String:
+	var c: String = Save.d.get("cls", "medium")
+	return c if CLASSES.has(c) else "medium"
 
-const ABIL := {
-	"cloak": {"name": "Cloak", "cd": 14.0, "desc": "Vanish for 3s and move 35% faster. Firing reveals you."},
-	"mend": {"name": "Mend", "cd": 16.0, "desc": "Heal 35 to you, nearby teammates and kin. Nearby revives jump halfway."},
-	"fortify": {"name": "Fortify", "cd": 16.0, "desc": "A 60 point shield for 5s. Nothing can knock you back."},
-	"blink": {"name": "Blink", "cd": 7.0, "desc": "Teleport up to 6 tiles toward the cursor. Your next shots for 2s crit."},
-	"tether": {"name": "Tether Shot", "cd": 9.0, "desc": "A fast dart that roots the first foe it hits for 1.5s."},
-	"hook": {"name": "Chain Hook", "cd": 10.0, "desc": "Throw a hook that drags the first foe it hits to you and stuns it."},
-	"rocketjump": {"name": "Rocket Jump", "cd": 9.0, "desc": "Blast off toward the cursor, knocking away anyone next to you."},
-	"ram": {"name": "Ram", "cd": 9.0, "desc": "Charge forward, bowling foes over and shoving them hard. Great near edges."},
-	"dome": {"name": "Dome", "cd": 15.0, "desc": "A 4s bubble around you that blocks enemy shots from outside."},
-	"vanish": {"name": "Vanish", "desc": "Cloak and haste for 5s and refill every dash."},
-	"dance": {"name": "Shadow Dance", "desc": "Blink between up to three nearby foes, slashing and stunning each."},
-	"skypierce": {"name": "Skypierce", "desc": "Aim for a moment, then fire a beam across the map that pierces everything."},
-	"sanctuary": {"name": "Sanctuary", "desc": "A circle that heals you, your team and kin inside it for 6s."},
-	"anchor": {"name": "Anchor Drop", "desc": "Leap to the cursor and slam down, launching foes away."},
-	"barrage": {"name": "Barrage", "desc": "Fire six rockets into the area around the cursor."},
-	"bulwark": {"name": "Bulwark", "desc": "A 120 point shield, no knockback, and nearby foes are slowed for 6s."},
-	"quake": {"name": "Quake", "desc": "Stomp a shockwave ahead that launches and stuns everything in it."},
-	"well": {"name": "Gravity Well", "desc": "A vortex at the cursor that drags foes in, then bursts."},
-	# right click: each hero's second tool, in the spirit of Supervive's secondaries
-	"shadowstep": {"name": "Shadow Knife", "cd": 8.0, "desc": "A knife. On a hit you appear behind the foe and your next shots crit."},
-	"bolas": {"name": "Chain Bolas", "cd": 9.0, "desc": "Roots the first foe hit. Catch two close together to stun both."},
-	"divehawk": {"name": "Dive Hawk", "cd": 10.0, "desc": "A hawk dives on the cursor: damage, knockback and a short stun."},
-	"breeze": {"name": "Mending Breeze", "cd": 5.0, "desc": "Heals you and every ally in its path. Three charges."},
-	"cleave": {"name": "Cleave", "cd": 6.0, "desc": "A sweeping slam. Hits wounded foes harder; from the air it stuns."},
-	"binding": {"name": "Binding Orb", "cd": 9.0, "desc": "An orb at the cursor that roots every foe near it a moment later."},
-	"haymaker": {"name": "Haymaker", "cd": 7.0, "desc": "A heavy punch that sends a foe flying. Into a wall, it's stunned."},
-	"satchel": {"name": "Satchel Charge", "cd": 8.0, "desc": "Throw a charge, click again to blow it. It launches you too: ride it."},
-	"brightshield": {"name": "Brightshield", "cd": 6.0, "desc": "Hold to block everything from the front for up to 3s. You move slower."},
-}
+## The saved weapon if the class can carry it, else the class's default.
+func weapon_for(cls: String, w: String) -> String:
+	var cd: Dictionary = CLASSES.get(cls, CLASSES["medium"])
+	return w if (cd["weapons"] as Array).has(w) else String(cd["weapon"])
+
 
 ## The soundtrack. Tracks join your music list the first time you hear them; some only play in
 ## rare places or moments.

@@ -230,48 +230,18 @@ func _crawl(m: Match, h: Hunter) -> void:
 		mv = Vector2.ZERO
 	h.inp["move"] = mv
 
-## Right-click secondaries: each hero's own read on when it pays off.
+## Right click: the weapon's utility, used when a target is in reach.
 func _use_sec(m: Match, h: Hunter, tgt: Ent) -> void:
-	var id := Abil.s_id(h)
 	h.inp["sec_hold"] = false
 	if tgt == null:
 		return
 	var d := h.flat_dist(tgt)
-	# a weapon utility takes the right click over the hero's own secondary
-	if h.runner and h.runner.has_slot("utility"):
-		if h.runner.is_ready("utility") and d < 10.0 and randf() < 0.08:
+	if h.runner and h.runner.has_slot("utility") and h.runner.is_ready("utility"):
+		var go := d < 10.0 and randf() < 0.08
+		if tgt is Mob and (tgt as Mob).stag_open > 0.0 and d < 6.0:
+			go = true
+		if go:
 			h.inp["sec"] = true
-		return
-	if id == "":
-		return
-	var hurt := h.hp < h.max_hp * 0.5
-	var facing: bool = tgt is Hunter and h.aim_dir().dot(h.dir_to(tgt)) > 0.6
-	if id == "brightshield":
-		h.inp["sec_hold"] = (hurt or h.armor <= 0.0) and facing and d < 12.0
-		if h.inp["sec_hold"] and not h.bshield_on and h.sec_cd <= 0.0:
-			h.inp["sec"] = true
-		return
-	if id == "satchel" and not h.satchel.is_empty():
-		var sp: Vector3 = h.satchel["pos"]
-		if Vector2(tgt.pos.x - sp.x, tgt.pos.z - sp.z).length() < 2.6 and float(h.satchel["t"]) < 5.3:
-			h.inp["sec"] = true
-		return
-	if id == "breeze":
-		if h.sec_ch > 0 and (hurt or (d < 2.5 and randf() < 0.05)):
-			h.inp["sec"] = true
-		return
-	if h.sec_cd > 0.0:
-		return
-	var go := false
-	match id:
-		"shadowstep", "bolas", "binding": go = d < 9.0 and randf() < 0.1
-		"divehawk": go = d < 8.0 and randf() < 0.1
-		"haymaker", "cleave": go = d < 2.3
-		"satchel": go = d < 7.5 and randf() < 0.08
-	if tgt is Mob and (tgt as Mob).stag_open > 0.0 and d < 6.0:
-		go = true
-	if go:
-		h.inp["sec"] = true
 
 ## Kin abilities (Q, V) when they fit the moment, and the bond ultimate (R) once it's full.
 ## (The kin also uses its abilities on its own; this is the hunter asking for them.)

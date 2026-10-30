@@ -38,8 +38,11 @@ func _ready() -> void:
 		if a == "--meteor-test": opts["meteor_test"] = true; opts["no_drop"] = true
 		if a == "--break-demo": opts["break_demo"] = true; opts["no_drop"] = true
 		if a == "--watch-heart": opts["watch_heart"] = true
-		if a.begins_with("--hero="): Save.d["hero"] = a.substr(7); Save.d["weapon"] = ""
-		if a.begins_with("--weapon="): Save.d["weapon"] = a.substr(9)
+		if a.begins_with("--class="): Save.d["cls"] = a.substr(8); Save.d["weapon"] = ""
+		if a.begins_with("--weapon="):
+			Save.d["weapon"] = a.substr(9)
+			for c in Data.CLASSES:
+				if (Data.CLASSES[c]["weapons"] as Array).has(a.substr(9)): Save.d["cls"] = c
 		if a == "--ability-demo": opts["ability_demo"] = true
 		if a == "--fresh": Save.d = Save.fresh()
 		if a.begins_with("--test-kin="):
@@ -301,7 +304,7 @@ func _weapon_check() -> void:
 			for dist in ([1.6] if wd.get("melee", false) else ([1.5, 3.0] if wd.has("pellets") else [3.0, float(wd["range"]) * 0.8])):
 				var m := Match.new()
 				add_child(m)
-				m.start({"training": true, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242, "no_drop": true, "weapon": wid, "hero": Hunter.DEFAULT_HERO[cls]})
+				m.start({"training": true, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242, "no_drop": true, "weapon": wid, "cls": cls})
 				m.set_process(false)
 				var P: Hunter = m.player
 				var T: Hunter = null
@@ -432,7 +435,7 @@ func _cmd(c: String) -> void:
 	elif current is Match:
 		var m: Match = current
 		if c == "state":
-			out = {"time": m.time, "mid": m.get_instance_id(), "host": m.is_host, "me": Net.me, "hunters": m.hunters.map(func(h): return [h.nid, h.pname, h.team, snappedf(h.hp, 0.1), h.remote, h.downed, h.out, h.pos.snapped(Vector3(0.1, 0.1, 0.1)), h.dropping, h.hero]),
+			out = {"time": m.time, "mid": m.get_instance_id(), "host": m.is_host, "me": Net.me, "hunters": m.hunters.map(func(h): return [h.nid, h.pname, h.team, snappedf(h.hp, 0.1), h.remote, h.downed, h.out, h.pos.snapped(Vector3(0.1, 0.1, 0.1)), h.dropping, h.cls]),
 				"mobs": m.mobs.filter(func(x): return not x.dead).size(), "kills": m.player.kills if m.player else 0, "knocks": m.player.knocks if m.player else 0,
 				"feed": m.feed.map(func(f): return f["text"]), "pickups": m.pickups.size(), "gems": m.player.gems if m.player else 0}
 		elif c.begins_with("tp:") and m.player:

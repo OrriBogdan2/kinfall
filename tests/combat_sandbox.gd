@@ -3,7 +3,7 @@ extends Node
 ## Drops you on the training island with target dummies, using the loadout below. Nothing here is saved.
 
 @export var weapon := "pulse"          # any id in content/weapons
-@export var hero := "sage"             # class comes from the hero for now (light / medium / heavy)
+@export var cls := "medium"
 
 func _ready() -> void:
 	if Save.d.get("roster", []).is_empty():
@@ -12,5 +12,5 @@ func _ready() -> void:
 		Save.d["roster"] = [k]; Save.d["active"] = k["uid"]
 	var main: Node = load("res://scenes/main.tscn").instantiate()
 	main.set_meta("start", {"screen": "match", "opts": {"training": true, "sandbox": true, "teams": 1, "squad": 1, "tier": 0,
-		"length": 1e9, "seed": 4242, "no_drop": true, "weapon": weapon, "hero": hero}})
+		"length": 1e9, "seed": 4242, "no_drop": true, "weapon": weapon, "cls": cls}})
 	add_child(main)

@@ -15,7 +15,7 @@ const TIPS := [
 	"Sneak (Ctrl): you move slower and quieter, and you see further.",
 	"Get knocked into a wall and you're stunned. Do it to them first.",
 	"Shots go exactly where you aim. Fast guns sway in the same small pattern every time, and firing slows your step.",
-	"Jump at a wall in the air to kick off it. Light heroes get two kicks.",
+	"Jump at a wall in the air to kick off it. Light hunters get two kicks.",
 	"Crates and barrels break when you shoot or dash through them. Some hide a better weapon.",
 	"Weapons you find out here are stronger than your own, but only for this expedition.",
 	"Health and armor don't come back on their own. 1 drinks a tonic for health, 2 uses a kit to repair your armor. You take more damage while you do either.",

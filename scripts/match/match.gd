@@ -233,6 +233,12 @@ func _spawn_pads_and_portals() -> void:
 
 func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String, kin_rec: Dictionary, at: Vector3, kit := {}, kin_rec2 := {}) -> Hunter:
 	var h := Hunter.new()
+	if cls == "" or not Data.CLASSES.has(cls):
+		cls = ["light", "medium", "heavy"][rng.randi_range(0, 2)]
+	if String(kit.get("weapon", "")) == "?":
+		kit = kit.duplicate()
+		var pool: Array = Data.CLASSES[cls]["weapons"]
+		kit["weapon"] = pool[rng.randi_range(0, pool.size() - 1)]
 	h.init_hunter(self, id, team, cls, pname, ctrl, kit)
 	h.lives = 99 if (opts.get("tutorial", false) or opts.get("training", false)) else int(T.get("lives", 2))
 	add_child(h)
@@ -260,15 +266,12 @@ func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String
 	return h
 
 func my_kit() -> Dictionary:
-	return {"hero": String(opts.get("hero", Save.d.get("hero", ""))), "weapon": String(opts.get("weapon", Save.d.get("weapon", ""))), "perk": Save.d.get("perk", "")}
+	return {"weapon": String(opts.get("weapon", Save.d.get("weapon", ""))), "perk": Save.d.get("perk", "")}
 
 func bot_kit() -> Dictionary:
-	var heroes: Array = Data.HEROES.keys()
-	var hero: String = heroes[rng.randi_range(0, heroes.size() - 1)]
-	var pool: Array = Data.CLASSES[Data.HEROES[hero]["cls"]]["weapons"]
-	var w: String = Data.HEROES[hero]["weapon"] if rng.randf() < 0.6 else pool[rng.randi_range(0, pool.size() - 1)]
+	# the weapon is picked once the bot's class is known (see make_hunter): any of its class's
 	var perks: Array = Data.PERKS.keys()
-	return {"hero": hero, "weapon": w, "perk": perks[rng.randi_range(0, perks.size() - 1)]}
+	return {"weapon": "?", "perk": perks[rng.randi_range(0, perks.size() - 1)]}
 
 func bot_kin_record() -> Dictionary:
 	var sp: String = Data.KIN.keys()[rng.randi_range(0, Data.KIN.size() - 1)]
@@ -344,7 +347,7 @@ func _spawn_hunters() -> void:
 					rec["name"] = Data.KIN[rec["species"]]["name"]
 					rec["trust"] = 95.0
 					rec2 = Save.new_kin(String(ids[(ids.find(rec["species"]) + 1) % ids.size()]))
-				player = make_hunter("p0", 0, Save.d.get("cls", "medium"), Save.d.get("name", "Hunter"), "bot" if opts.get("autoplay", false) else "local", rec, at, my_kit(), rec2)
+				player = make_hunter("p0", 0, String(opts.get("cls", Data.class_of_save())), Save.d.get("name", "Hunter"), "bot" if opts.get("autoplay", false) else "local", rec, at, my_kit(), rec2)
 				if opts.get("autoplay", false):
 					player.ai = bot_brain.new_mind(rng, 0.7)
 				if "--at-stairs" in OS.get_cmdline_user_args() and not world.stairs.is_empty():
@@ -1143,21 +1146,18 @@ func on_damage(target: Ent, by: Ent, d: float, o: Dictionary) -> void:
 		if hud: hud.hurt_flash(d)
 	fx.burst(target.pos + Vector3(0, 0.8, 0), Color("fff2d0") if not crit else Color("ffd23f"), 6 if d < 10 else 12, 3.5, 0.3, 8.0, 0.7)
 
-## Cancels anything a hero had queued up: ability sequences, a charging Ram, a beam windup.
+## Cancels anything a hunter had going: a sword charge, a sniper wind-up.
 func cancel_abilities(h: Hunter) -> void:
-	h.acts.clear()
 	h.charge = {}
-	if h.acts_tele:
-		fx.end_telegraph(h.acts_tele)
-		h.acts_tele = null
+	h.warm_t = 0.0
+	h.mel_hold = 0.0
+	h.strike_at_end = {}
 
 const KNOCK_HEAL := 34.5     # 250 of a medium's 1,050 in Supervive's numbers
 func knock(h: Hunter, by: Ent, _o: Dictionary) -> void:
 	if h.downed or h.out:
 		return
 	cancel_abilities(h)
-	if by is Hunter and by.hero == "nyx" and by.team != h.team:
-		by.sig_cd = 0.0
 	h.downed = true
 	h.down_hp = Data.MATCH["down_hp"]
 	h.hp = 0.0
@@ -1221,7 +1221,7 @@ func _slow(t: float, k: float) -> void:
 
 ## A hero's ultimate going off: punch the camera for the one who used it.
 func ult_moment(h: Hunter) -> void:
-	var col: Color = Data.HEROES[h.hero]["color"]
+	var col: Color = h.accent()
 	fx.ring(h.pos, 4.5, Color(col, 0.9), 0.45)
 	fx.burst(h.pos + Vector3(0, 1.2, 0), col, 30, 6.0, 0.6, 2.0, 1.3)
 	if h == player:
@@ -2047,7 +2047,7 @@ func _shot_end(s: Dictionary, at: Vector3, e: Ent) -> void:
 		var back := Vector2(e.pos.x - by.pos.x, e.pos.z - by.pos.z).normalized()
 		var to := Vector3(e.pos.x + back.x * 1.1, 0, e.pos.z + back.y * 1.1)
 		if not world.is_void(to.x, to.z) and not world.is_block(to.x, to.z):
-			fx.ghost(by.position, by.face, Data.HEROES[(by as Hunter).hero]["color"], float((by as Hunter).cdat["scale"]))
+			fx.ghost(by.position, by.face, (by as Hunter).accent(), float((by as Hunter).cdat["scale"]))
 			by.teleport(Vector3(to.x, world.ground_at(to.x, to.z), to.z))
 			by.vel = Vector3.ZERO
 			(by as Hunter).crit_t = maxf((by as Hunter).crit_t, 1.5)
@@ -2512,7 +2512,7 @@ func _update_interact(dt: float) -> void:
 			if o == h or not o.downed or o.out or h.flat_dist(o) > 1.6:
 				continue
 			if o.team == h.team:
-				var rate: float = dt / Data.MATCH["revive_time"] * (1.3 if h.hero == "sage" else 1.0)
+				var rate: float = dt / Data.MATCH["revive_time"]
 				if o.remote:
 					_rev_out[o.nid] = float(_rev_out.get(o.nid, 0.0)) + rate
 					o.revive += rate
@@ -2719,7 +2719,6 @@ func _update_training(dt: float) -> void:
 	# everything recharges quickly here
 	player.ult = minf(1.0, player.ult + dt / 6.0)
 	player.sig_cd = maxf(0.0, player.sig_cd - dt * 2.0)
-	player.sec_cd = maxf(0.0, player.sec_cd - dt)
 	for kk in [player.kin, player.kin2]:
 		if kk: (kk as Kin).runner.tick(dt * 2.0)
 	if player.tonics < 1: player.tonics = 3
@@ -2736,7 +2735,7 @@ func _update_training(dt: float) -> void:
 		"swap": player.kin2 != null and train.get("_swapped", false),
 		"combo": int(player.stats.get("combos", 0)) > 0,
 		"crouch": player.crouch,
-		"secondary": player.sec_cd > 0.0 or player.sec_ch < 3 or player.bshield_on or not player.satchel.is_empty(),
+		"secondary": player.runner != null and player.runner.has_slot("utility") and not player.runner.is_ready("utility"),
 		"ult": was_ult and player.ult < 0.5,
 		"throw": player.kin != null and player.kin.st_throws > 0,
 		"kinskill": player.kin != null and (player.kin as Kin).runner.has_slot("k2") and not (player.kin as Kin).runner.is_ready("k2"),
@@ -2765,7 +2764,7 @@ func _update_training(dt: float) -> void:
 
 ## The checklist for this hero: the secondary step only shows for heroes that have one.
 func train_rows() -> Array:
-	return TRAIN.filter(func(t): return t[0] != "secondary" or (player != null and Abil.s_id(player) != ""))
+	return TRAIN.filter(func(t): return t[0] != "secondary" or (player != null and player.runner != null and player.runner.has_slot("utility")))
 
 func _train_label(k: String) -> String:
 	for t in TRAIN:
@@ -2895,7 +2894,7 @@ func _tut_spot(dist: float, ang0: float) -> Vector3:
 
 # ------------------------------------------------------------------ hero zones
 func add_zone(kind_s: String, at: Vector3, radius: float, dur: float, team_i: int, owner: Hunter, from_net := false) -> void:
-	var col: Color = Data.HEROES[owner.hero]["color"] if owner else Color.WHITE
+	var col: Color = owner.accent() if owner else Color.WHITE
 	var n := Node3D.new()
 	add_child(n)
 	n.position = at
@@ -2923,7 +2922,7 @@ func _dome_blocks(s: Dictionary, p: Vector3) -> bool:
 			continue
 		var c: Vector3 = z["pos"]
 		if Vector2(p.x - c.x, p.z - c.z).length() < z["r"] and Vector2(s["start"].x - c.x, s["start"].z - c.z).length() > z["r"]:
-			fx.burst(p, Color(Data.HEROES["halo"]["color"], 0.8), 6, 2.0, 0.25, 0.0, 0.7)
+			fx.burst(p, Color(Color("f2d47a"), 0.8), 6, 2.0, 0.25, 0.0, 0.7)
 			return true
 	return false
 
@@ -2942,7 +2941,7 @@ func _update_zones(dt: float) -> void:
 			match String(z["kind"]):
 				"sanctuary", "dome":
 					# heal your own hunter and kin when standing inside a friendly area
-					var amt := 12.0 * 0.25 if z["kind"] == "sanctuary" else (4.0 * 0.25 if owner and owner.hero == "halo" else 0.0)
+					var amt := 12.0 * 0.25 if z["kind"] == "sanctuary" else 0.0
 					if amt > 0.0:
 						for h in hunters:
 							if h.team == z["team"] and not h.remote and not h.downed and not h.out and h.flat_dist(c) < z["r"]:
@@ -3265,7 +3264,7 @@ func _spawn_net_hunters(spots: Array, names: Array) -> void:
 				_apply_treat(player.kin)
 			_start_drop(player, at)
 		else:
-			var h := make_hunter("P" + peer, t, String(r["cls"]), String(r["name"]), "remote", krec, at, {"hero": r.get("hero", ""), "weapon": r.get("weapon", ""), "perk": ""})
+			var h := make_hunter("P" + peer, t, String(r["cls"]), String(r["name"]), "remote", krec, at, {"weapon": r.get("weapon", ""), "perk": ""})
 			h.remote = true
 			if h.kin:
 				h.kin.remote = true
@@ -3309,7 +3308,6 @@ func _flags(h: Hunter) -> int:
 	if h.gliding: f |= 256
 	if h.dropping: f |= 512
 	if h.riding: f |= 1024
-	if h.bshield_on: f |= 2048
 	if h.reveal_t > 0.0: f |= 4096
 	if h.crouch: f |= 8192
 	if h.diving: f |= 16384
@@ -3436,7 +3434,6 @@ func _net_apply(e: Ent, it: Array) -> void:
 			h.gliding = f & 256 != 0
 			h.dropping = f & 512 != 0
 			h.riding = f & 1024 != 0
-			h.bshield_on = f & 2048 != 0
 			h.diving = f & 16384 != 0
 			if f & 4096 != 0: h.reveal_t = maxf(h.reveal_t, 0.3)
 			h.crouch = f & 8192 != 0
@@ -3514,8 +3511,6 @@ func _net_ev(x, from: String) -> void:
 				if by == player:
 					player.knocks += 1
 					_reward_moment(who.pos)
-					if player.hero == "nyx":
-						player.sig_cd = 0.0
 				_check_team(player.team if player else -9)
 		"out":
 			who = ents_by_id.get(String(x[1]), null)

@@ -176,8 +176,7 @@ func _ready() -> void:
 	_build_lots()
 	_build_bridges()
 	_build_plots()
-	var hero0 := _hero()
-	player = Models.hunter(Data.HEROES[hero0]["cls"], Data.TEAM_COLORS[0], _weapon(), hero0, Save.d.get("look", {}))
+	player = Models.hunter(Data.class_of_save(), Data.TEAM_COLORS[0], _weapon(), "", Save.d.get("look", {}))
 	add_child(player)
 	ppos = Vector3(38.0, 0, 34.5)
 	if spawn == "house":
@@ -290,14 +289,6 @@ func _ready() -> void:
 			ppos = Vector3(float(xy[0]), 0, float(xy[1])); player.position = ppos; cam.snap(ppos)
 	_spawn_kin()
 	_setup_care()
-	if "--hero-lineup" in dbg:
-		var hi := 0
-		for hid in Data.HEROES:
-			var hm := Models.hunter(Data.HEROES[hid]["cls"], Data.TEAM_COLORS[0], Data.HEROES[hid]["weapon"], hid)
-			hm.position = Vector3(34.0 + (hi % 5) * 1.9, 0, 31.5 + (hi / 5) * 2.2)
-			hm.rotation.y = PI * 0.85
-			add_child(hm)
-			hi += 1
 	if "--kin-lineup" in dbg:
 		var lr := RandomNumberGenerator.new(); lr.seed = 11
 		var sps: Array = Data.KIN.keys()
@@ -1930,33 +1921,23 @@ var exp_cls := ""
 var exp_mode := "solo"
 var exp_tier := 0
 
-func _hero() -> String:
-	var h: String = Save.d.get("hero", "")
-	if not Data.HEROES.has(h):
-		h = {"light": "veil", "medium": "sage", "heavy": "bastion"}.get(Save.d.get("cls", "medium"), "sage")
-	return h
-
 func _weapon() -> String:
-	var hd: Dictionary = Data.HEROES[_hero()]
-	var w: String = Save.d.get("weapon", hd["weapon"])
-	return w if Data.CLASSES[hd["cls"]]["weapons"].has(w) else hd["weapon"]
+	return Data.weapon_for(Data.class_of_save(), String(Save.d.get("weapon", "")))
 
 func _open_expedition() -> void:
 	_day1("portal")
 	var v := _new_panel("Expedition", 720)
-	var hero := _hero()
-	var hd: Dictionary = Data.HEROES[hero]
-	var w: String = Save.d.get("weapon", hd["weapon"])
-	if not Data.CLASSES[hd["cls"]]["weapons"].has(w): w = hd["weapon"]
+	var cd: Dictionary = Data.CLASSES[Data.class_of_save()]
+	var w := _weapon()
 	var pk: String = Save.d.get("perk", "")
 	var hc := UI.card(UI.CARD, 12, 14)
 	var hrow := UI.hbox(12); hc.add_child(hrow)
 	var hv := UI.vbox(4); hv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	hv.add_child(UI.title("%s  ·  %s" % [hd["name"], Data.CLASSES[hd["cls"]]["name"]], 24, hd["color"]))
-	hv.add_child(UI.label("%s  ·  right click %s  ·  %s" % [Data.weapon_stats(w)["name"], (Content.ability(Content.weapon(w).utility).display_name if Content.weapon(w) and Content.weapon(w).utility != "" and Content.ability(Content.weapon(w).utility) else "weapon utility"),
+	hv.add_child(UI.title("%s class  ·  %s" % [cd["name"], Data.weapon_stats(w)["name"]], 24, cd["color"]))
+	hv.add_child(UI.label("%d health  ·  right click %s  ·  %s" % [int(cd["hp"]), (Content.ability(Content.weapon(w).utility).display_name if Content.weapon(w) and Content.weapon(w).utility != "" and Content.ability(Content.weapon(w).utility) else "weapon utility"),
 		Data.PERKS[pk]["name"] if Data.PERKS.has(pk) else "no perk"], 14, UI.MUTED))
 	hrow.add_child(hv)
-	hrow.add_child(UI.button("Hero and loadout", _open_loadout, 200))
+	hrow.add_child(UI.button("Class and loadout", _open_loadout, 200))
 	v.add_child(hc)
 	var ak := Save.active_kin()
 	if not ak.is_empty():
@@ -1999,7 +1980,7 @@ func _open_expedition() -> void:
 	go.add_child(UI.primary("Start expedition", _start_match, 220))
 	go.add_child(UI.button("Training area", _start_training, 180))
 	if Bridge.net_available():
-		go.add_child(UI.button("Play online with friends", func(): Game.goto("lobby", {"cls": Data.HEROES[_hero()]["cls"], "tier": exp_tier}), 240))
+		go.add_child(UI.button("Play online with friends", func(): Game.goto("lobby", {"cls": Data.class_of_save(), "tier": exp_tier}), 240))
 	v.add_child(go)
 
 ## One row of the expedition loadout: which kin, with ‹ › to change it.
@@ -2160,12 +2141,12 @@ func _ransom_card(L: Dictionary) -> Control:
 
 ## A safe island to learn every button: nothing can hurt you and nothing you do there counts.
 func _start_training() -> void:
-	Save.d["cls"] = Data.HEROES[_hero()]["cls"]
+	Save.d["cls"] = Data.class_of_save()
 	Save.save_game()
 	Game.start_match({"training": true, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242})
 
 func _start_match() -> void:
-	Save.d["cls"] = Data.HEROES[_hero()]["cls"]
+	Save.d["cls"] = Data.class_of_save()
 	Save.save_game()
 	# about 20 hunters a match, whatever the squad size (your squadmates are bots)
 	var o := {"teams": Data.MATCH_PLAYERS, "squad": 1}
@@ -2421,51 +2402,46 @@ func _open_hall() -> void:
 		kr.add_child(c)
 	v.add_child(kr)
 
-# ---- heroes and loadout
+# ---- class and loadout
 func _open_loadout() -> void:
-	var v := _new_panel("Hero and loadout", 780)
-	var hero := _hero()
-	var hd: Dictionary = Data.HEROES[hero]
+	var v := _new_panel("Class and loadout", 780)
+	var cur_c := Data.class_of_save()
 	var cols := UI.hbox(10)
 	for c in ["light", "medium", "heavy"]:
 		var cd: Dictionary = Data.CLASSES[c]
+		var ck: String = c
 		var col := UI.vbox(6); col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var hl := UI.label("%s  ·  %d HP  ·  %d dash%s" % [cd["name"], cd["hp"], cd["dashes"], "es" if cd["dashes"] > 1 else ""], 13, UI.MUTED)
+		var b := UI.choice(String(cd["name"]), c == cur_c, func():
+			Save.d["cls"] = ck
+			Save.d["weapon"] = Data.CLASSES[ck]["weapon"]
+			Save.save_game()
+			_refresh_player_model()
+			_open_loadout())
+		col.add_child(b)
+		var hl := UI.label("%d health  ·  %d dash%s  ·  %s" % [cd["hp"], cd["dashes"], "es" if cd["dashes"] > 1 else "", "light frame" if c == "light" else ("hard to push" if c == "heavy" else "all-rounder")], 13, UI.MUTED)
 		hl.autowrap_mode = TextServer.AUTOWRAP_OFF
 		col.add_child(hl)
-		for hid in Data.HEROES:
-			if Data.HEROES[hid]["cls"] != c: continue
-			var hh: Dictionary = Data.HEROES[hid]
-			var hk: String = hid
-			var b := UI.button("%s  ·  %s" % [hh["name"], hh["role"]], func():
-				Save.d["hero"] = hk
-				Save.d["cls"] = Data.HEROES[hk]["cls"]
-				Save.d["weapon"] = Data.HEROES[hk]["weapon"]
-				Save.save_game()
-				_refresh_player_model()
-				_open_loadout())
-			if hid == hero:
-				b.theme_type_variation = "Chosen"
-			col.add_child(b)
+		var dl := UI.label(String(cd["desc"]), 13, cd["color"] if c == cur_c else UI.MUTED)
+		dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		col.add_child(dl)
 		cols.add_child(col)
 	v.add_child(cols)
+	var hd: Dictionary = Data.CLASSES[cur_c]
 	var det := UI.card(UI.CARD, 12, 14)
 	var dv := UI.vbox(5); det.add_child(dv)
-	dv.add_child(UI.title("%s, %s" % [hd["name"], String(hd["role"]).to_lower()], 22, hd["color"]))
-	dv.add_child(UI.label("Passive: " + String(hd["passive"]), 14))
-	var cw0: String = Save.d.get("weapon", hd["weapon"])
+	var cw0 := _weapon()
 	var wdef := Content.weapon(cw0)
 	var ud: AbilityDef = Content.ability(wdef.utility) if wdef and wdef.utility != "" else null
 	if ud:
 		dv.add_child(UI.label("Right click (from your weapon)  %s: %s" % [ud.display_name, ud.desc], 14))
-	var kn := UI.label("A hero is a preset: a class, a weapon and a look. Left and right click come from your weapon; Q, E and R come from the kin you bring, so the same hero plays differently with every pair of kin.", 13, UI.MUTED)
+	var kn := UI.label("Left and right click come from your weapon; Q, E and R come from the kin you bring, so the same class plays differently with every pair of kin.", 13, UI.MUTED)
 	kn.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	dv.add_child(kn)
 	v.add_child(det)
 	v.add_child(UI.section("Weapon"))
 	var wr := UI.hbox(8)
-	var cur_w: String = Save.d.get("weapon", hd["weapon"])
-	for w in Data.CLASSES[hd["cls"]]["weapons"]:
+	var cur_w := _weapon()
+	for w in hd["weapons"]:
 		var wd: Dictionary = Data.weapon_stats(w)
 		var wk: String = w
 		var wb := UI.choice(String(wd["name"]), w == cur_w, func():
@@ -2498,12 +2474,11 @@ func _open_loadout() -> void:
 	v.add_child(UI.button("Back to the expedition", _open_expedition, 240))
 
 func _refresh_player_model() -> void:
-	var hero := _hero()
 	var at := player.position
 	var rot := player.rotation
 	player.queue_free()
 	var w := _weapon()
-	player = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], w, hero, Save.d.get("look", {}))
+	player = Models.hunter(Data.class_of_save(), Data.TEAM_COLORS[0], w, "", Save.d.get("look", {}))
 	player.position = at; player.rotation = rot
 	add_child(player)
 

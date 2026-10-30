@@ -65,9 +65,7 @@ func _ready() -> void:
 		if not Save.d["tutorial"]["day1"].has("inside"):
 			Save.d["tutorial"]["day1"]["inside"] = true
 			Save.d["gems"] = int(Save.d["gems"]) + 5
-	var hero: String = Save.d.get("hero", "sage")
-	if not Data.HEROES.has(hero): hero = "sage"
-	player = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], Data.HEROES[hero]["weapon"], hero, Save.d.get("look", {}))
+	player = Models.hunter(Data.class_of_save(), Data.TEAM_COLORS[0], Data.weapon_for(Data.class_of_save(), String(Save.d.get("weapon", ""))), "", Save.d.get("look", {}))
 	add_child(player)
 	ppos = Vector3(W * 0.5, 0, D - 0.9)
 	player.position = ppos

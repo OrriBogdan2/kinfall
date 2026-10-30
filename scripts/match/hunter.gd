@@ -122,12 +122,6 @@ var armor_wait := 0.0
 var bloom := 0.0              # extra spread from moving, jumping and dashing
 var crouch := false           # slower, steadier aim, and much harder to spot
 var crouch_k := 0.0
-var sec_cd := 0.0             # right-click ability
-var sec_ch := 3               # its charges, for heroes that have them
-var sec_ch_t := 0.0
-var satchel := {}             # Pyra's thrown charge, waiting to be set off
-var bshield_on := false       # Bastion's Brightshield is up
-var bshield_t := 0.0
 var reveal_t := 0.0           # seen through bushes and around walls for a moment after firing or getting hit
 var wall_touch_t := 0.0       # touching a wall in the air: a jump kicks off it
 var wall_n := Vector2.ZERO
@@ -148,13 +142,10 @@ var glide_max := GLIDE_TIME
 var glide_cd := 0.0
 var glide_k := 0.0             # how far the glider is unfolded, for the model
 var wind_t := 0.0
-var hero := "sage"
 var perk := ""
 var ult := 0.0                # the bond meter, 0..1: R calls your kin's bond ultimate at 1
 var crit_t := 0.0             # shots crit while this runs (Blink)
 var charge: Dictionary = {}   # Ram
-var acts: Array = []          # queued ability pieces, see Abil.tick
-var acts_tele: Node3D = null
 var idle_fire := 0.0
 var dropping := false         # gliding down from the sky at the start of a match
 var drop_from := Vector2.INF  # where the drop started
@@ -167,27 +158,21 @@ var dash_at := -9.0           # when the last dash started, for perfect dodges
 var dodged := false        # F has to be let go between weapon swaps
 var lives := 1                # comes back this many times minus one before it's really out
 
-const DEFAULT_HERO := {"light": "veil", "medium": "sage", "heavy": "bastion"}
 
 func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, name_txt: String, control: String, kit := {}) -> void:
 	setup(match_node, id)
 	kind = "hunter"
 	team = team_id
-	hero = String(kit.get("hero", ""))
-	if not Data.HEROES.has(hero):
-		hero = DEFAULT_HERO.get(class_id, "sage")
-	cls = Data.HEROES[hero]["cls"]
+	cls = class_id if Data.CLASSES.has(class_id) else "medium"
 	cdat = Data.CLASSES[cls]
-	wid = String(kit.get("weapon", ""))
-	if not cdat["weapons"].has(wid):
-		wid = Data.HEROES[hero]["weapon"]
+	wid = Data.weapon_for(cls, String(kit.get("weapon", "")))
 	wpn = Data.weapon_stats(wid, 0)
 	perk = String(kit.get("perk", ""))
 	pname = name_txt
 	ctrl = control
 	if control != "local":
 		bot_look = {"gender": randi() % 2, "body": randi() % 3, "detail": randi() % Models.LOOK_DETAILS.size(), "face": randi() % Models.LOOK_FACES.size(), "skin": randi() % Models.LOOK_SKIN.size(),
-			"hair": randi() % Models.LOOK_HAIRS.size(), "hair_col": randi() % 6}
+			"hair": randi() % Models.LOOK_HAIRS.size(), "hair_col": randi() % 6, "outfit": randi() % Models.LOOK_OUTFITS.size()}
 	max_hp = cdat["hp"] + (15 if perk == "toughskin" else 0); hp = max_hp
 	max_armor = round(max_hp * ARMOR_DUR); armor = max_armor; base_armor = max_armor
 	glide_max = GLIDE_TIME * float(cdat.get("glide_cap", 1.0)) * (1.6 if perk == "featherfall" else 1.0)
@@ -198,7 +183,7 @@ func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, n
 	dashes = max_dashes()
 	ammo = wpn["mag"]
 	r = float(cdat.get("hit_r", 0.38 * float(cdat["scale"])))
-	set_model(Models.hunter(cls, Data.TEAM_COLORS[team % Data.TEAM_COLORS.size()], wid, hero, Save.d.get("look", {}) if ctrl == "local" else bot_look))
+	set_model(Models.hunter(cls, Data.TEAM_COLORS[team % Data.TEAM_COLORS.size()], wid, "", Save.d.get("look", {}) if ctrl == "local" else bot_look))
 
 ## Swap to a found weapon for the rest of the expedition.
 func equip(w: String, rar: int, with_ammo := -1) -> void:
@@ -215,6 +200,10 @@ func equip(w: String, rar: int, with_ammo := -1) -> void:
 				ch.queue_free()
 		var acc: Color = Data.RARITY[rar]["color"] if rar > 0 else Data.TEAM_COLORS[team % Data.TEAM_COLORS.size()]
 		Models.gun_parts(gun, w, Models.toon(Color("4a4d5c")), Models.toon(Color("2b2a33")), Models.toon(acc, true, 0.45 if rar > 0 else 0.0))
+
+## The colour that marks this hunter's effects (from their class).
+func accent() -> Color:
+	return cdat.get("color", Color.WHITE) if not cdat.is_empty() else Color.WHITE
 
 func max_dashes() -> float:
 	var base := float(dodge_def.charges) if dodge_def else float(cdat["dashes"])
@@ -267,12 +256,6 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 	reveal_t = maxf(reveal_t, 1.0)
 	if opts.has("wallstun"):
 		wallstun = float(opts["wallstun"])
-	if bshield_on and by != null and opts.get("src", "") not in ["fall", "burn", "wall"]:
-		var to := Vector2(by.pos.x - pos.x, by.pos.z - pos.z)
-		if to.length() > 0.2 and to.normalized().dot(aim_dir()) > 0.3:
-			m.fx.burst(pos + Vector3(to.normalized().x * 0.6, 1.0, to.normalized().y * 0.6), Color("fff6c0"), 6, 2.5, 0.25)
-			m.sfx("shield", pos, -10.0, 1.6)
-			return 0.0
 	# Getting hit while gliding, as in Supervive: no extra damage, but every hit eats glider fuel
 	# (and fuel burns faster for a moment after). A hit that empties it, or any hit on an already
 	# overheated glider, stuns you and sends you plummeting.
@@ -292,8 +275,6 @@ func _mitigate(dmg: float, by: Ent, opts: Dictionary) -> float:
 	var d := dmg
 	if ctrl == "local" and m.opts.get("tutorial", false):
 		d *= 0.35
-	if hero == "bastion" and hp > max_hp * 0.5:
-		d *= 0.9
 	if shoulder() == "bedrock":
 		d *= 0.85
 	if downed:
@@ -864,12 +845,8 @@ func _emit_shot() -> void:
 		life = dist / spd
 		extra["boom"] = wpn["boom"]; extra["boom_kb"] = wpn["boom_kb"]
 	var sp := shoulder()
-	if crit_t > 0.0 or (hero == "veil" and cloak_t > 0.0):
+	if crit_t > 0.0:
 		extra["crit"] = true
-	if hero == "kestrel":
-		extra["far"] = 9.0
-	if hero == "pyra" and extra.has("boom_kb"):
-		extra["boom_kb"] = float(extra["boom_kb"]) * 1.2
 	if sp == "kindle": extra["burn"] = 4.0
 	if sp == "briar": extra["slow"] = 0.7
 	if not fuse.is_empty():
@@ -952,28 +929,6 @@ func fuse_mod(k: String) -> float:
 	if fuse.is_empty():
 		return 1.0
 	return float((fuse["def"] as UltimateDef).owner_mods.get(k, 1.0))
-
-func _old_signature() -> void:
-	match cdat["sig"]:
-		"cloak":
-			cloak_t = 3.0; haste_t = 3.0
-			m.sfx("cloak", pos, -2.0)
-			m.fx.burst(pos + Vector3(0, 0.8, 0), Color("c9bcff"), 18, 4.0)
-		"mend":
-			m.sfx("heal", pos, 0.0)
-			m.fx.ring(pos, 5.0, Color("9ee2a0"), 0.45)
-			for o in m.hunters:
-				if o.team == team and not o.out and o.flat_dist(self) < 5.0:
-					if o.downed:
-						o.revive = minf(0.95, o.revive + 0.5)
-					else:
-						o.heal(35.0)
-				if o.team == team and o.kin and o.kin.state == "active" and o.kin.flat_dist(self) < 5.0:
-					o.kin.hp = minf(o.kin.max_hp, o.kin.hp + 35.0)
-		"fortify":
-			shield = maxf(shield, 60.0); shield_t = 5.0; fortify_t = 5.0
-			m.sfx("shield", pos, 0.0)
-			m.fx.ring(pos, 1.6, Color("e6dbc4"), 0.3)
 
 func heal(n: float) -> void:
 	if downed or out:
@@ -1093,8 +1048,6 @@ func sim(dt: float) -> void:
 	swap_cd = maxf(0.0, swap_cd - dt)
 	if not fuse.is_empty():
 		fuse["t"] = float(fuse["t"]) - dt
-	if not downed:
-		Abil.tick(self, dt)
 	# reload by itself once you stop shooting for a moment
 	idle_fire += dt
 	if idle_fire > 1.3 and ammo < int(wpn["mag"]) and reload_t <= 0.0 and not inp["fire"]:
@@ -1116,7 +1069,6 @@ func sim(dt: float) -> void:
 	var cdr := gear_stat("cdr")
 	if cdr > 0.0:
 		sig_cd = maxf(0.0, sig_cd - dt * cdr)
-		sec_cd = maxf(0.0, sec_cd - dt * cdr)
 	for gi in 2:
 		gear_cd[gi] = maxf(0.0, float(gear_cd[gi]) - dt)
 		if inp.get("gear%d" % (gi + 1), false):
@@ -1124,10 +1076,8 @@ func sim(dt: float) -> void:
 	if inp["sig"]: use_kin_ability("k1")
 	if inp["skill"]: use_kin_ability("k2")
 	if inp["swap"]: swap_kin()
-	if inp["sec"]:
-		if runner and runner.has_slot("utility"): runner.use("utility")
-		else: Abil.use_s(self)
-	Abil.tick_s(self, dt)
+	if inp["sec"] and runner and runner.has_slot("utility"):
+		runner.use("utility")
 	if inp["reload"]: start_reload()
 	if inp["tonic"]: use_tonic()
 	if inp.get("kit", false): use_kit()
@@ -1184,19 +1134,10 @@ func _physics(dt: float) -> void:
 		_grapple(dt)
 		return
 	var mv: Vector2 = inp["move"] if stun_t <= 0.0 and root_t <= 0.0 else Vector2.ZERO
-	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.45 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * _fire_slow() * (0.45 if drink_t > 0.0 or kit_t > 0.0 else 1.0) * (0.6 if bshield_on else 1.0) * (0.55 if crouch else 1.0) * (1.0 + gear_stat("speed")) * fuse_mod("speed")
+	var spd := base_speed * (1.35 if haste_t > 0.0 else 1.0) * (0.4 if downed else 1.0) * (0.65 if slow_t > 0.0 else 1.0) * (0.88 if reload_t > 0.0 else 1.0) * _fire_slow() * (0.45 if drink_t > 0.0 or kit_t > 0.0 else 1.0) * (0.55 if crouch else 1.0) * (1.0 + gear_stat("speed")) * fuse_mod("speed")
 	var hv := Vector2(vel.x, vel.z)
 	var cur := hv.length()
-	if charge.size() > 0:
-		charge["t"] -= dt
-		hv = charge["dir"] * 21.0
-		Abil.charge_hits(self)
-		if charge["t"] <= 0.0:
-			hv = charge["dir"] * spd
-			charge = {}
-		if int(m.time * 30.0) % 2 == 0:
-			m.fx.dust(pos, 2)
-	elif roll_t > 0.0:
+	if roll_t > 0.0:
 		roll_t -= dt
 		# the "hold for the long dash" option: keep Shift down and the short dash stretches into
 		# the long one, which then goes on its own cooldown
@@ -1639,15 +1580,10 @@ func render(delta: float, alpha: float) -> void:
 	if not model:
 		return
 	model.rotation.y = face
-	var bs: Node3D = model.get_node_or_null("BShield")
 	if remote:
 		update_lip()
 	_render_balloon()
 	_render_weapon_fx(delta)
-	if bshield_on and bs == null:
-		bs = Models.part(model, Models.sphere(0.7, 18), Models.glow_mat(Color(1.0, 0.95, 0.75, 0.45)), Vector3(0, 0.9, -0.65), Vector3(1.0, 1.15, 0.22), Vector3.ZERO, "BShield")
-		bs.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	if bs: bs.visible = bshield_on
 	var rig: Node3D = model.get_node("Rig")
 	var torso: Node3D = rig.get_node("Torso")
 	if anim == null or anim.model != model:

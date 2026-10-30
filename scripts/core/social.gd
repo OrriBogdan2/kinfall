@@ -171,7 +171,7 @@ static func profile_doc() -> Dictionary:
 		roster.append({"uid": r["uid"], "species": r["species"], "name": r["name"], "level": int(r["level"]),
 			"trust": int(r["trust"]), "forms": r["forms"], "muts": r["muts"]})
 	var d := {
-		"name": Save.d.get("name", "Hunter"), "hero": Save.d.get("hero", ""), "weapon": Save.d.get("weapon", ""),
+		"name": Save.d.get("name", "Hunter"), "cls": Data.class_of_save(), "weapon": Save.d.get("weapon", ""),
 		"active": Save.d.get("active", ""), "roster": roster,
 		"buildings": Save.d.get("buildings", []), "bridges": Save.d.get("bridges", []),
 		"plots": Save.d["plots"], "gh_plots": Save.d.get("gh_plots", []),
@@ -731,10 +731,10 @@ static func clean_island(d: Dictionary) -> Dictionary:
 			var k := txt_of(x)
 			if table.has(k) and not out.has(k): out.append(k)
 		return out
-	var hero := txt_of(d.get("hero"))
+	var cl := txt_of(d.get("cls"))
 	var gh: Array = plots.call(d.get("gh_plots"))
 	return {"name": say_of(d.get("name"), "Hunter", 16), "active": txt_of(d.get("active"), "", 24), "roster": roster,
-		"hero": hero if Data.HEROES.has(hero) else "sage", "buildings": pick.call(d.get("buildings"), Data.BUILDINGS),
+		"cls": cl if Data.CLASSES.has(cl) else "medium", "buildings": pick.call(d.get("buildings"), Data.BUILDINGS),
 		"bridges": pick.call(d.get("bridges"), Data.ISLES), "plots": plots.call(d.get("plots")), "gh_plots": gh.slice(0, 4),
 		"guild": txt_of(d.get("guild"), "", 40), "decor": _clean_decor(d.get("decor"))}
 

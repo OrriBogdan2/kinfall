@@ -384,7 +384,7 @@ func _clear_bottom() -> void:
 
 # ---- your hunter
 const LOOK_ROWS := [["gender", "Gender", Models.LOOK_GENDERS], ["body", "Body", Models.LOOK_BODIES], ["face", "Face", Models.LOOK_FACES],
-	["detail", "Details", Models.LOOK_DETAILS], ["skin", "Skin", Models.LOOK_SKIN], ["hair", "Hair", Models.LOOK_HAIRS], ["hair_col", "Hair colour", Models.LOOK_HAIR]]
+	["detail", "Details", Models.LOOK_DETAILS], ["skin", "Skin", Models.LOOK_SKIN], ["hair", "Hair", Models.LOOK_HAIRS], ["hair_col", "Hair colour", Models.LOOK_HAIR], ["outfit", "Outfit", Models.LOOK_OUTFITS]]
 
 func _show_create() -> void:
 	stage = "create"
@@ -464,9 +464,7 @@ func _rebuild_preview() -> void:
 	if preview:
 		preview_yaw = preview.rotation.y
 		preview.queue_free()
-	var hero: String = Save.d.get("hero", "sage")
-	if not Data.HEROES.has(hero): hero = "sage"
-	preview = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], Data.HEROES[hero]["weapon"], hero, look)
+	preview = Models.hunter(Data.class_of_save(), Data.TEAM_COLORS[0], Data.weapon_for(Data.class_of_save(), String(Save.d.get("weapon", ""))), "", look)
 	preview.position = Vector3(0.8, 0, 1.6)
 	preview.rotation.y = preview_yaw
 	add_child(preview)

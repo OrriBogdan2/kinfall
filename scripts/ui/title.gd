@@ -174,11 +174,7 @@ func _build_ship() -> void:
 
 ## You at the bow, your kin around you.
 func _crew() -> void:
-	var hero: String = Save.d.get("hero", "")
-	if not Data.HEROES.has(hero): hero = "sage"
-	var w: String = Save.d.get("weapon", "")
-	if not Data.CLASSES[Data.HEROES[hero]["cls"]]["weapons"].has(w): w = Data.HEROES[hero]["weapon"]
-	hunter_node = Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[0], w, hero, Save.d.get("look", {}))
+	hunter_node = Models.hunter(Data.class_of_save(), Data.TEAM_COLORS[0], Data.weapon_for(Data.class_of_save(), String(Save.d.get("weapon", ""))), "", Save.d.get("look", {}))
 	hunter_node.position = Vector3(0.15, DECK_Y, -4.7)
 	hunter_node.rotation.y = -0.35
 	hunter_node.scale *= 1.1
@@ -245,11 +241,11 @@ func _beacon(isl: Node3D, c: Color, r: float) -> void:
 # ---------------------------------------------------------------- life in the sky
 ## Another hunter jumps off the ship and glides down toward the islands.
 func _spawn_glider(age := 0.0) -> void:
-	var heroes: Array = Data.HEROES.keys()
-	var hero: String = heroes[rng.randi_range(0, heroes.size() - 1)]
+	var cl: String = ["light", "medium", "heavy"][rng.randi_range(0, 2)]
 	var team := rng.randi_range(1, Data.TEAM_COLORS.size() - 1)
-	var lk := {"gender": rng.randi() % 2, "face": rng.randi() % Models.LOOK_FACES.size(), "skin": rng.randi() % Models.LOOK_SKIN.size(), "hair": rng.randi() % Models.LOOK_HAIRS.size(), "hair_col": rng.randi() % Models.LOOK_HAIR.size()}
-	var h := Models.hunter(Data.HEROES[hero]["cls"], Data.TEAM_COLORS[team], Data.HEROES[hero]["weapon"], hero, lk)
+	var lk := {"gender": rng.randi() % 2, "face": rng.randi() % Models.LOOK_FACES.size(), "skin": rng.randi() % Models.LOOK_SKIN.size(), "hair": rng.randi() % Models.LOOK_HAIRS.size(), "hair_col": rng.randi() % Models.LOOK_HAIR.size(), "outfit": rng.randi() % Models.LOOK_OUTFITS.size()}
+	var cw: Array = Data.CLASSES[cl]["weapons"]
+	var h := Models.hunter(cl, Data.TEAM_COLORS[team], cw[rng.randi_range(0, cw.size() - 1)], "", lk)
 	(h.get_node("TeamRing") as Node3D).visible = false
 	var gl: Node3D = h.get_node("Rig/Torso/Glider")
 	gl.visible = true
