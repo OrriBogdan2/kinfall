@@ -49,6 +49,7 @@ var lots := {}                 # building id -> {node, built}
 var visit: Dictionary = {}     # when visiting someone: their island snapshot (see Social.publish_profile)
 var visit_id := ""
 var petted := {}
+var hecon: HomeEcon = null       # the armory, feeders, starving, graveyard and Soul Shrine (home_econ.gd)
 
 ## The island being shown: yours, or the one you're visiting.
 func _d() -> Dictionary:
@@ -94,6 +95,10 @@ func _ready() -> void:
 	# so does Old Pell's Ransom House
 	if visit.is_empty() and not Save.d.get("buildings", []).has("ransom"):
 		Save.d["buildings"].append("ransom")
+	hecon = HomeEcon.new(self)
+	if visit.is_empty():
+		Econ.ensure()
+		_econ_tests(dbg)
 	if "--home-all" in dbg:
 		Save.d["bridges"] = Data.ISLES.keys()
 		Save.d["buildings"] = Data.BUILDINGS.keys()
@@ -337,6 +342,8 @@ func _ready() -> void:
 			ppos = Vector3(float(xy[0]), 0, float(xy[1])); player.position = ppos; cam.snap(ppos)
 	_spawn_kin()
 	_setup_care()
+	if visit.is_empty():
+		hecon.build()
 	if "--kin-lineup" in dbg:
 		var lr := RandomNumberGenerator.new(); lr.seed = 11
 		var sps: Array = Data.KIN.keys()
@@ -352,6 +359,8 @@ func _ready() -> void:
 	_build_ui()
 	_refresh_top()
 	_refresh_day1()
+	if visit.is_empty():
+		hecon.show_away()
 	if not visit.is_empty():
 		pass
 	elif not Save.d["tutorial"].get("home", false):
@@ -659,6 +668,7 @@ func _process(delta: float) -> void:
 	_move_player(d)
 	_move_kin(d)
 	_care_tick(d)
+	if hecon: hecon.tick(d)
 	_update_bubbles(d)
 	_train_process(d)
 	cam.follow(ppos, d, panel_open == "" and train.is_empty())
@@ -1247,6 +1257,9 @@ func _find_interact() -> void:
 		best = {"kind": "egg"} if is_instance_valid(nest) else {"kind": "nook"}
 	if p2.distance_to(Vector2(YARD_AT.x, YARD_AT.z)) < 1.6 and best.is_empty():
 		best = {"kind": "yard"}
+	if hecon:
+		var hb: Dictionary = hecon.find(p2, bd if not best.is_empty() else 9.0)
+		if not hb.is_empty(): best = hb
 	interact = best
 	if panel_open != "" or best.is_empty() or building_now or chat_open or not train.is_empty():
 		prompt_box.visible = false
@@ -1370,6 +1383,7 @@ func _label_for(it: Dictionary) -> String:
 		"egg": return ("Help the %s hatch!" if _egg_ready() else "Warm the %s") % _egg_label()
 		"yard": return "Train your partner"
 		"nook": return "Pair two kin for an egg"
+		"feeder", "grave", "graveyard", "place": return hecon.label(it)
 	return ""
 
 func _use(it: Dictionary) -> void:
@@ -1398,6 +1412,7 @@ func _use(it: Dictionary) -> void:
 			var ak := Save.active_kin()
 			if not ak.is_empty(): _open_train(ak)
 		"nook": _open_nook()
+		"feeder", "grave", "graveyard", "place": hecon.use(it)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if not train.is_empty():
@@ -1423,6 +1438,10 @@ func _unhandled_input(event: InputEvent) -> void:
 		if event.button_index == MOUSE_BUTTON_WHEEL_DOWN: cam.zoom_to = clampf(cam.zoom_to + 0.08, 0.55, 1.6)
 	if event.is_action_pressed("whistle") and panel_open == "" and not chat_open and visit.is_empty() and train.is_empty() and not Overlay.is_open():
 		_whistle()
+		get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed("menu") and hecon and not hecon.carry.is_empty():
+		hecon.cancel_carry()
 		get_viewport().set_input_as_handled()
 		return
 	if event.is_action_pressed("menu") and not Overlay.is_open():
@@ -1833,6 +1852,7 @@ func _open_shop() -> void:
 					if not Save.d.has("furniture"): Save.d["furniture"] = {}
 					Save.d["furniture"][fk] = int(Save.d["furniture"].get(fk, 0)) + 1, "have %d" % int(Save.d.get("furniture", {}).get(f, 0))])
 		"Farm":
+			goods += hecon.shop_goods()
 			if int(Save.d["plot_cap"]) < 8:
 				goods.append(["plots", "Two more plots", "Grow more at once.", 120 + 80 * (int(Save.d["plot_cap"]) - 4), Color("9c7a52"), func():
 					Save.d["plot_cap"] = int(Save.d["plot_cap"]) + 2
@@ -2160,7 +2180,13 @@ func _open_kin(rec: Dictionary) -> void:
 	var lo := float(bd[0]); var hi := float(nb[0]) if nb.size() > 0 else 100.0
 	row.call(c1, "Trust", clampf((float(rec["trust"]) - lo) / maxf(1.0, hi - lo), 0.0, 1.0), Color("ffb3c6"), ("next: %s" % nb[1]) if nb.size() > 0 else "max")
 	var bl := UI.label(String(bd[2]), 12, UI.MUTED); bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART; c1.add_child(bl)
-	c1.add_child(UI.section(Care.condition_name(rec)))
+	c1.add_child(UI.section(Care.condition_name(rec), Color("ff9a7a") if Care.starve_stage(rec) != "" else Color("c9a46a")))
+	if Care.starve_stage(rec) != "":
+		var sl := UI.label(String(Care.STARVE_INFO[Care.starve_stage(rec)][1]), 12, Color("ffb0a0"))
+		sl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		c1.add_child(sl)
+	if String(rec.get("title", "")) != "":
+		c1.add_child(UI.label("%s %s  ·  came back from the Soul Shrine" % [rec["name"], rec["title"]], 12, Color("bff8ec")))
 	for n in Care.NEEDS:
 		row.call(c1, Care.NEED_INFO[n]["name"], Care.need(rec, n) / 100.0, Care.NEED_INFO[n]["col"], str(int(Care.need(rec, n))))
 	cols.add_child(c1)
@@ -2465,6 +2491,7 @@ func _open_expedition() -> void:
 			left.add_child(tl)
 	if Save.d.get("treat", "") != "":
 		left.add_child(UI.label("Treat: " + _treat_name(Save.d["treat"]), 13, UI.GOLD))
+	hecon.loadout_rows(left, _open_expedition)
 	# right: where you're going and how
 	var right := UI.vbox(8); right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cols.add_child(right)
@@ -2695,6 +2722,16 @@ func _start_duel() -> void:
 
 ## Before a run where kin can be lost, say so plainly and make the player confirm.
 func _confirm_start() -> void:
+	var weak := hecon.refuse_reason()
+	if weak != "":
+		var wv := _new_panel("Too hungry to go", 560)
+		var wl := UI.label(weak, 15, UI.INK); wl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		wv.add_child(wl)
+		var wr := UI.hbox(10)
+		wr.add_child(UI.primary("Feed it", func(): _open_feed(Save.active_kin()), 160))
+		wr.add_child(UI.button("Back", _open_expedition, 140))
+		wv.add_child(wr)
+		return
 	var td: Dictionary = Data.TIERS[exp_tier]
 	if not td.get("risk_kin", false):
 		_start_match()
@@ -2728,6 +2765,8 @@ func _start_match() -> void:
 		"trio": o = {"teams": int(ceil(Data.MATCH_PLAYERS / 3.0)), "squad": 3}
 	o["total"] = Data.MATCH_PLAYERS
 	o["tier"] = exp_tier
+	o["kit_items"] = Econ.begin_raid()      # the armory loadout rides with you
+	Save.save_game()
 	Game.start_match(o)
 
 # ---- evolution
@@ -2804,6 +2843,8 @@ func _building_verb(b: String) -> String:
 	match b:
 		"hall": return "Look at your trophies"
 		"cottage", "cottage2": return "Peek into the %s" % Data.BUILDINGS[b]["name"]
+		"armory": return "Open the armory  ·  %d stored" % Econ.armory().size()
+		"shrine": return "Visit the Soul Shrine"
 	return "Visit the %s" % Data.BUILDINGS[b]["name"]
 
 func _open_lot(b: String) -> void:
@@ -2818,6 +2859,12 @@ func _open_lot(b: String) -> void:
 		if b == "ransom":
 			_open_ransom()
 			return
+		if b == "armory":
+			hecon.open_armory()
+			return
+		if b == "shrine":
+			hecon.open_shrine()
+			return
 		var v := _new_panel(bd["name"], 480)
 		v.add_child(UI.label(bd["desc"], 16))
 		if b in ["cottage", "cottage2"]:
@@ -2829,6 +2876,9 @@ func _open_lot(b: String) -> void:
 			for rec in Save.d["roster"]:
 				if rec["uid"] != Save.d.get("active", ""): resting.append(rec["name"])
 			v.add_child(UI.label(("Resting here: " + ", ".join(resting)) if resting.size() > 0 else "Nobody's resting here right now. Kin who aren't your partner sleep here.", 15, UI.MUTED))
+		return
+	if b == "shrine":
+		hecon.open_shrine_lot()
 		return
 	var v := _new_panel("Build a %s" % bd["name"], 500)
 	v.add_child(UI.label(bd["desc"], 16))
@@ -3183,8 +3233,10 @@ func _setup_care() -> void:
 	add_child(nl)
 	if not visit.is_empty():
 		return
-	for rec in _d()["roster"]:
-		Care.catch_up(rec)
+	# the time you were away: needs drift, kin eat from the feeders, and hungry ones may starve
+	hecon.away = Econ.catch_up_all()
+	if hecon.away.any(func(e): return e["kind"] == "died"):
+		_spawn_kin()
 	Care.dex_sync()
 	_refresh_nest()
 
@@ -3298,6 +3350,8 @@ func _care_goal(k: Dictionary) -> bool:
 		k["goal"] = k["bed"]
 		k["nap_go"] = true
 		return true
+	if hecon and hecon.feed_goal(k):
+		return true      # off to a feeder
 	if Care.need(rec, "food") < 30.0 and randf() < 0.4:
 		k["goal"] = _seat(k, spots["pot"], 1.4)
 		k["stare"] = spots["pot"]
@@ -3309,6 +3363,8 @@ func _care_goal(k: Dictionary) -> bool:
 
 ## Per-frame care states: napping, bathing, staring at the pot.
 func _care_step(k: Dictionary, d: float) -> void:
+	if hecon and hecon.feed_step(k, d):
+		return
 	var rec: Dictionary = k["rec"]
 	var pos: Vector3 = k["pos"]
 	if float(k.get("nap_t", 0.0)) > 0.0:
@@ -3357,14 +3413,14 @@ func _care_step(k: Dictionary, d: float) -> void:
 
 ## Speed multiplier for a tired kin.
 func _care_speed(rec: Dictionary) -> float:
-	return 0.7 if Care.need(rec, "energy") < 25.0 else 1.0
+	return (0.7 if Care.need(rec, "energy") < 25.0 else 1.0) * (0.7 if Care.starve_h(rec) >= Care.STARVE["weak"] else 1.0)
 
 # ---- care actions, from the kin's card; they play out in the world, not in a menu
 func _care_start(k: Dictionary) -> bool:
 	if k.is_empty():
 		return false
 	_close_panel()
-	k.erase("chase"); k.erase("task"); k.erase("stare"); k.erase("nap_go")
+	k.erase("chase"); k.erase("task"); k.erase("stare"); k.erase("nap_go"); k.erase("eat")
 	k["nap_t"] = 0.0
 	return true
 
@@ -4039,3 +4095,102 @@ func _quirk(k: Dictionary, n: Node3D, moving: bool, d: float) -> void:
 		"wiggle": body.rotation.z = sin(t * TAU * 3.0) * 0.18 * e
 	if q <= 0.0:
 		body.rotation = Vector3.ZERO; body.scale = Vector3.ONE
+
+# ------------------------------------------------------------------ test hooks for the economy
+## --armory-test, --feeder-test, --grave-test, --shrine-test: set up a save and open the thing,
+## for screenshots (nothing is written to the real save).
+func _econ_tests(dbg) -> void:
+	var any := false
+	for a in dbg:
+		if String(a) in ["--armory-test", "--feeder-test", "--grave-test", "--shrine-test", "--starve-test"]: any = true
+	if not any:
+		return
+	Save.no_write = true
+	Save.d["tutorial"]["home"] = true
+	Save.d["tutorial"]["day1_done"] = true
+	Save.d["gems"] = maxi(int(Save.d["gems"]), 900)
+	Save.d["extracts"] = maxi(int(Save.d.get("extracts", 0)), 6)
+	var rng := RandomNumberGenerator.new(); rng.seed = 5
+	if "--armory-test" in dbg:
+		if not Save.d["buildings"].has("armory"): Save.d["buildings"].append("armory")
+		Save.d["armory"] = []
+		for t in [["rifle", 2, "fire", ""], ["sniper", 3, "frost", ""], ["", 0, "", "thunderclap"], ["smg", 1, "", ""], ["shotgun", 4, "venom", ""],
+				["longsword", 2, "storm", ""], ["burst_rifle", 3, "", ""], ["greatsword", 2, "void", ""]]:
+			Save.d["armory"].append(Loot.weapon(String(t[0]), int(t[1]), String(t[2]), String(t[3])))
+		var gk: Array = Gear.ALL.keys()
+		for i in mini(4, gk.size()):
+			Save.d["armory"].append(Loot.glove(String(gk[i]), 1 + i % 4))
+		Save.d["valuables"] = {"old_coin": 3, "sky_pearl": 1, "kin_idol": 1, "soul_ember": 1}
+		Save.d["scrap"] = 9
+		Save.d["loadout"] = {"weapon": Save.d["armory"][2]["uid"]}
+		get_tree().create_timer(0.4).timeout.connect(func():
+			hecon.arm_pick = String(Save.d["armory"][2]["uid"])
+			hecon.open_armory())
+	if "--feeder-test" in dbg or "--starve-test" in dbg:
+		# a clean roster of six, so nothing else from the machine's save (an evolution, a nap) gets in the way
+		Save.d["roster"] = [Save.new_kin("zapple", "Pip")]
+		Save.d["active"] = Save.d["roster"][0]["uid"]
+		while Save.d["roster"].size() < 6:
+			Save.d["roster"].append(Save.new_kin(Data.KIN.keys()[Save.d["roster"].size() % Data.KIN.size()]))
+		Save.d["items"]["kibble"] = 12
+		Save.d["crops"]["tidebloom"] = 4
+		Save.d["feeders"] = [{"id": "f1", "kind": "trough", "x": Econ.FEEDER_START.x, "z": Econ.FEEDER_START.z, "food": ["kibble", "kibble", "tidebloom", "kibble", "kibble", "kibble"], "auto": true}]
+		Save.d["feeder_given"] = true
+		for rec in Save.d["roster"]:
+			Care.ensure(rec)
+			rec["needs"]["food"] = 18.0 if "--feeder-test" in dbg else 0.0
+			rec["needs_t"] = Time.get_unix_time_from_system()
+			rec["likes"]["hates"] = "puffcorn"
+		if "--starve-test" in dbg:
+			# one kin a day and a half without food, another a whole day: warnings on the way in
+			Save.d["roster"][0]["starve"] = 20.0 * 3600.0
+			Save.d["roster"][1]["starve"] = 7.0 * 3600.0
+		if "--feeder-test" in dbg:
+			get_tree().create_timer(0.3).timeout.connect(func():
+				ppos = Econ.FEEDER_START + Vector3(0.5, 0, 3.2); player.position = ppos; cam.snap(ppos)
+				for i in kins.size():
+					var k: Dictionary = kins[i]
+					k.erase("indoors"); (k["node"] as Node3D).visible = true
+					k["pos"] = Econ.FEEDER_START + Vector3(cos(i * 1.1) * 3.4, 0, sin(i * 1.1) * 2.6 + 0.4)
+					k["pos"] = world.free_spot_near(k["pos"], [], 0.6)
+					(k["node"] as Node3D).position = k["pos"]
+					k["t"] = 0.0
+					hecon.feed_goal(k)
+				if "--feeder-open" in dbg:
+					Save.d["feeder_inv"] = {"basket": 1}
+					hecon.open_feeder(Econ.feeders()[0]))
+			for step in [3.0, 8.0, 14.0, 22.0]:
+				get_tree().create_timer(step).timeout.connect(func():
+					var md := 99.0; var eating := 0; var waiting := 0
+					for i in kins.size():
+						if kins[i].has("eat"):
+							if String(kins[i]["eat"]["phase"]) == "eat": eating += 1
+							elif int(kins[i]["eat"]["seat"]) < 0: waiting += 1
+						for j in range(i + 1, kins.size()):
+							md = minf(md, Vector2(kins[i]["pos"].x - kins[j]["pos"].x, kins[i]["pos"].z - kins[j]["pos"].z).length())
+					var fed := (Save.d["roster"] as Array).filter(func(r): return Care.need(r, "food") > 30.0).size()
+					print("FEEDER t=%.0f kin=%d eating=%d waiting=%d fed=%d fill=%d min_gap=%.2f" % [step, kins.size(), eating, waiting, fed, Econ.fill(Econ.feeders()[0]), md]))
+	if "--grave-test" in dbg or "--shrine-test" in dbg:
+		while Save.d["roster"].size() < 3:
+			Save.d["roster"].append(Save.new_kin(Data.KIN.keys()[Save.d["roster"].size() % Data.KIN.size()]))
+		Save.d["graves"] = []
+		for i in 4:
+			var rec := Save.new_kin(Data.KIN.keys()[(i + 2) % Data.KIN.size()], ["Biscuit", "Wren", "Clove", "Sorrel"][i])
+			rec["level"] = 3 + i * 2
+			Save.remember(rec, "caught", "was caught by you in the islands and brought home")
+			Save.remember(rec, "extracted", "made it out of the islands with you")
+			Save.remember(rec, "fed", "was fed emberberry by you")
+			Save.remember(rec, "love", "loved playing fetch with you")
+			Save.d["roster"].append(rec)
+			var g := Econ.kin_dies(rec, "starved")
+			g["t"] = Time.get_unix_time_from_system() - 86400.0 * (i + 1)
+			g["soul"] = i < 2 and "--shrine-test" in dbg
+		if "--shrine-test" in dbg and not Save.d["buildings"].has("shrine"):
+			Save.d["buildings"].append("shrine")
+		Save.d["valuables"] = {"soul_ember": 2}
+		get_tree().create_timer(0.3).timeout.connect(func():
+			if not Array(dbg).any(func(a): return String(a).begins_with("--home-at=")):
+				ppos = Vector3(49.6, 0, 37.6) if "--shrine-test" in dbg else Vector3(49.7, 0, 35.6)
+				player.position = ppos; cam.snap(ppos)
+			if "--shrine-open" in dbg: hecon.open_shrine()
+			elif "--grave-open" in dbg: hecon.open_grave(Econ.graves()[Econ.graves().size() - 1]))

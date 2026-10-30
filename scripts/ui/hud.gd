@@ -1155,12 +1155,18 @@ func _draw_kin_card(sz: Vector2, p: Hunter) -> void:
 func _draw_weapon(sz: Vector2, p: Hunter) -> void:
 	var w := 270.0
 	var r := Rect2(Vector2(sz.x - w - 18, sz.y - 18 - 62), Vector2(w, 62))
-	var rc: Color = Data.RARITY[p.wrar]["color"] if p.wrar > 0 else Color("e6dccb")
+	var rc: Color = Loot.col_of(Loot.of_hand(p)) if Loot.keepable(Loot.of_hand(p)) else Color("e6dccb")
 	_rounded(r, Color(0.04, 0.05, 0.08, 0.88), 12, Color(rc, 0.45), 1)
 	hover_spots.append([r, "weapon"])
 	c.draw_rect(Rect2(r.position + Vector2(0, 10), Vector2(3, r.size.y - 20)), rc)
 	Icons.draw(c, p.wid, r.position + Vector2(40, 34), 26.0, Color(rc, 0.9))
-	_text(r.position + Vector2(78, 22), String(p.wpn["name"]).to_upper(), 12, rc, big)
+	var wn := String(p.wpn["name"]).to_upper()
+	_text(r.position + Vector2(78, 22), wn, 12 if wn.length() <= 20 else 10, rc, big)
+	if p.welem != "":
+		# the element's colour: what it does to whatever you hit is in the hover
+		var ec: Color = Loot.ELEMENTS[p.welem]["col"]
+		c.draw_circle(r.position + Vector2(w - 16, 18), 5.0, ec)
+		c.draw_arc(r.position + Vector2(w - 16, 18), 8.0, 0, TAU, 20, Color(ec, 0.5), 2.0)
 	var mag := int(p.wpn["mag"])
 	var ammo_col := INK if p.ammo > mag * 0.25 else HP_LOW
 	if p.wpn.get("melee", false):
@@ -1207,6 +1213,16 @@ func _draw_weapon(sz: Vector2, p: Hunter) -> void:
 	Icons.draw(c, "gem", Vector2(gx + 8, y + s - 10), 7.0, GOLD)
 	_text(Vector2(gx + 20, y + s - 4), "%d" % p.gems, 18, GOLD if p.gems > 0 else MUTED, big)
 	_text(Vector2(gx + 2, y + 14), "%d seeds · %d kin" % [seeds, p.caught.size()], 10, MUTED, big)
+	if not m.opts.get("training", false):
+		# the backpack: slots used (red when full); the key opens it
+		var full := p.pack.size() >= p.pack_cap
+		var pcol := Color("ffb0a0") if full else (INK if p.pack.size() > 0 else MUTED)
+		var gw := big.get_string_size("%d" % p.gems, HORIZONTAL_ALIGNMENT_LEFT, -1, 18).x
+		var px := gx + 30.0 + gw
+		Icons.draw(c, "satchel", Vector2(px + 8, y + s - 10), 8.0, pcol)
+		_text(Vector2(px + 20, y + s - 4), "%d/%d" % [p.pack.size(), p.pack_cap], 14, pcol, big)
+		var pw := big.get_string_size("%d/%d" % [p.pack.size(), p.pack_cap], HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x
+		hover_spots.append([Rect2(Vector2(px, y + s - 22), Vector2(24 + pw, 24)), "pack"])
 
 ## Your squadmates down the left side.
 ## A teammate's state, for the squad frames, markers and arrows: [label, colour, where to point,
@@ -2040,11 +2056,18 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 			out.append(["Heal", GOOD])
 			out.append(["Item  ·  %s" % Settings.key_cap("tonic"), MUTED, 12])
 			out.append(["Drinks a tonic (40%% of your health) when you're hurt; with full health it uses an armor kit instead. Neither comes back on its own. Carrying %d tonics and %d kits." % [p.tonics, p.armor_kits], INK, 14])
+		"pack":
+			out.append(["Backpack  %d/%d" % [p.pack.size(), p.pack_cap], INK])
+			out.append(["Open  ·  %s" % Settings.key_cap("inventory"), MUTED, 12])
+			out.append(["Weapons, gloves and treasure you're carrying home. Extract to keep it all in your armory; die and it stays in your deathbox. Bigger backpacks at the armory.", INK, 14])
 		"weapon":
 			var wp: Dictionary = p.wpn
-			var rc: Color = Data.RARITY[p.wrar]["color"] if p.wrar > 0 else Color("e6dccb")
+			var hand := Loot.of_hand(p)
+			var rc: Color = Loot.col_of(hand) if Loot.keepable(hand) else Color("e6dccb")
 			out.append([wp["name"], rc])
 			out.append(["%s weapon  ·  reloads by itself when empty" % (String(Data.RARITY[p.wrar]["name"]) if p.wrar > 0 else "Standard"), MUTED, 12])
+			if Loot.keepable(hand) and Loot.sub_of(hand) != "Plain":
+				out.append([Loot.sub_of(hand), Loot.el_col(hand), 13])
 			var rate := 1.0 / maxf(0.01, float(wp["rate"]))
 			out.append(["%.0f damage a shot  ·  %.1f shots a second  ·  about %d damage a second" % [float(wp["dmg"]), rate, int(float(wp["dmg"]) * rate)], INK, 14])
 			out.append(["Magazine %d  ·  reload %s  ·  range %d tiles" % [int(wp["mag"]), _secs(float(wp["reload"])), int(float(wp.get("range", 10.0)))], MUTED, 13])
@@ -2216,9 +2239,10 @@ func loot_is(b: Dictionary) -> bool:
 	return loot_open != null and is_same(loot_open, b)
 
 func mouse_on_ui() -> bool:
-	if loot_panel == null or not is_instance_valid(loot_panel) or not loot_panel.visible:
-		return false
-	return loot_panel.get_global_rect().grow(6.0).has_point(loot_panel.get_global_mouse_position())
+	for pn in [loot_panel, swap_panel, pack_panel]:
+		if pn != null and is_instance_valid(pn) and pn.visible and pn.get_global_rect().grow(6.0).has_point(pn.get_global_mouse_position()):
+			return true
+	return false
 
 func open_loot(b: Dictionary) -> void:
 	loot_open = b
@@ -2234,6 +2258,7 @@ func close_loot() -> void:
 	loot_panel = null
 
 func _loot_tick(_delta: float) -> void:
+	_pack_tick()
 	if loot_open == null:
 		return
 	var p: Hunter = m.player
@@ -2242,7 +2267,7 @@ func _loot_tick(_delta: float) -> void:
 		close_loot()
 		return
 	# rebuild only when what's in it (or what you're holding) changes
-	var sig := str(Life.box_items(m, p, b).map(func(it): return [it["name"], it["upgrade"]])) + str(p.gear) + p.wid + str(p.wrar)
+	var sig := str(Life.box_items(m, p, b).map(func(it): return [it["name"], it["upgrade"]])) + str(p.gear) + p.wid + str(p.wrar) + str(p.pack.size())
 	if sig != loot_sig:
 		_build_loot()
 
@@ -2252,7 +2277,7 @@ func _build_loot() -> void:
 	if loot_panel and is_instance_valid(loot_panel):
 		loot_panel.queue_free()
 	var items: Array = Life.box_items(m, p, b)
-	loot_sig = str(items.map(func(it): return [it["name"], it["upgrade"]])) + str(p.gear) + p.wid + str(p.wrar)
+	loot_sig = str(items.map(func(it): return [it["name"], it["upgrade"]])) + str(p.gear) + p.wid + str(p.wrar) + str(p.pack.size())
 	var pc := PanelContainer.new()
 	pc.theme = UI.theme()
 	pc.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -2271,6 +2296,7 @@ func _build_loot() -> void:
 	var t := UI.title(("Your deathbox" if o == p else "%s's deathbox" % o.pname), 22, INK)
 	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(t)
+	head.add_child(_pack_chip(p))
 	var cl := UI.button("✕", func(): close_loot(), 36)
 	cl.flat = true
 	head.add_child(cl)
@@ -2311,13 +2337,27 @@ func _build_loot() -> void:
 			var tag := UI.label("UPGRADE" if it["upgrade"] else "WORSE", 11, GOOD if it["upgrade"] else MUTED, UI.caps)
 			tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			row.add_child(tag)
+		elif it["key"] == "pack":
+			var vt := UI.label("%d" % int(it.get("value", 0)), 13, GOLD, UI.big)
+			vt.tooltip_text = "Worth"
+			vt.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			row.add_child(Icons.Glyph.new("gem", Color(GOLD, 0.8), 12.0))
+			row.add_child(vt)
 		var itc: Dictionary = it
-		var take := UI.button("Swap" if it["key"] in ["gear", "weapon"] else "Take", func():
+		var verb := "Take"
+		if it["key"] in ["gear", "weapon"]: verb = "Swap"
+		elif it["key"] == "pack" and it.get("full", false): verb = "Swap" if it["upgrade"] else "Full"
+		var take := UI.button(verb, func():
 			if loot_open != null and m.player:
 				Life.take_item(m, m.player, loot_open, itc)
 				if (loot_open as Dictionary).get("empty", false): close_loot()
 				else: _build_loot(), 76)
 		take.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		if verb == "Full":
+			take.disabled = true
+			take.tooltip_text = "Your backpack is full of better things"
+		elif it["key"] == "pack" and it.get("full", false):
+			take.tooltip_text = "Swaps out the least valuable thing in your backpack"
 		row.add_child(take)
 		list.add_child(rp)
 	var foot := UI.hbox(8); v.add_child(foot)
@@ -2327,7 +2367,7 @@ func _build_loot() -> void:
 			toast_small(("Smart looted %d thing%s" % [got, "" if got == 1 else "s"]) if got > 0 else "Nothing here beats what you've got", Color("ffd36a"))
 			close_loot(), 200)
 	foot.add_child(sm)
-	var hint := UI.label("Takes everything useful; leaves worse gear", 12, MUTED)
+	var hint := UI.label("Best first: hands, then your backpack", 12, MUTED)
 	hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	foot.add_child(hint)
 	pc.custom_minimum_size.x = 430
@@ -2338,6 +2378,238 @@ func _build_loot() -> void:
 	if is_instance_valid(pc):
 		var vs := pc.get_viewport_rect().size
 		pc.position = Vector2(vs.x * 0.5 + 90.0, maxf(90.0, vs.y * 0.5 - pc.size.y * 0.5 - 40.0))
+
+# ------------------------------------------------------------------ the backpack and the swap window
+## The backpack (I): what you're carrying home, each with Equip (weapons and gloves go in your hands,
+## what you held takes its slot) and Drop. The swap window opens when you pick something up with a
+## full pack: click the thing to leave behind, or leave the new one where it lies.
+var swap_wp = null             # the ground pick-up waiting for a slot, or null
+var swap_panel: PanelContainer
+var pack_panel: PanelContainer
+var pack_sig := ""
+
+func swap_open() -> bool:
+	return swap_wp != null and swap_panel != null and is_instance_valid(swap_panel)
+
+func pack_open() -> bool:
+	return pack_panel != null and is_instance_valid(pack_panel)
+
+func _pack_chip(p: Hunter) -> Control:
+	var full: bool = p.pack.size() >= p.pack_cap
+	var chip := UI.card(Color(Color("ffb0a0") if full else INK, 0.1), 4, 999)
+	var hb := UI.hbox(5); chip.add_child(hb)
+	hb.add_child(Icons.Glyph.new("satchel", Color("ffb0a0") if full else INK, 14.0))
+	var l := UI.label("%d/%d" % [p.pack.size(), p.pack_cap], 13, Color("ffb0a0") if full else INK, UI.semi)
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	hb.add_child(l)
+	chip.tooltip_text = "Backpack: weapons, gloves and treasure to carry home (%s)" % Settings.key_cap("inventory")
+	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return chip
+
+func _item_panel(title: String, col: Color, width: float) -> Array:
+	var pc := PanelContainer.new()
+	pc.theme = UI.theme()
+	pc.mouse_filter = Control.MOUSE_FILTER_STOP
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = Color(0.06, 0.065, 0.1, 0.95)
+	sb.set_corner_radius_all(14)
+	sb.border_color = Color(col, 0.8); sb.set_border_width_all(2); sb.border_width_top = 4
+	sb.content_margin_left = 14; sb.content_margin_right = 14; sb.content_margin_top = 12; sb.content_margin_bottom = 12
+	sb.shadow_color = Color(0, 0, 0, 0.5); sb.shadow_size = 18
+	pc.add_theme_stylebox_override("panel", sb)
+	pc.custom_minimum_size.x = width
+	var v := UI.vbox(6); pc.add_child(v)
+	var head := UI.hbox(8); v.add_child(head)
+	head.add_child(Icons.Glyph.new("satchel", col, 18.0))
+	var t := UI.title(title, 22, INK)
+	t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	head.add_child(t)
+	return [pc, v, head]
+
+## One item as a row: icon, name, what it does, its worth, and buttons [[text, callable, primary]].
+func _item_row(it: Dictionary, buttons: Array, note := "") -> Control:
+	var rp := PanelContainer.new()
+	var col := Loot.col_of(it)
+	var rs := StyleBoxFlat.new()
+	rs.bg_color = Color(col, 0.09)
+	rs.set_corner_radius_all(9)
+	rs.border_color = Color(Loot.el_col(it), 0.6); rs.border_width_left = 3
+	rs.content_margin_left = 8; rs.content_margin_right = 8; rs.content_margin_top = 5; rs.content_margin_bottom = 5
+	rp.add_theme_stylebox_override("panel", rs)
+	var row := UI.hbox(8); rp.add_child(row)
+	row.add_child(Icons.Glyph.new(Loot.icon_of(it), Loot.el_col(it), 24.0))
+	var cv := UI.vbox(0); cv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var nm := UI.label(Loot.name_of(it) + (("  ·  " + note) if note != "" else ""), 15, col, UI.semi)
+	nm.autowrap_mode = TextServer.AUTOWRAP_OFF
+	nm.clip_text = true
+	nm.custom_minimum_size.x = 200
+	cv.add_child(nm)
+	var sub := UI.label(Loot.sub_of(it), 12, MUTED)
+	sub.autowrap_mode = TextServer.AUTOWRAP_OFF
+	sub.clip_text = true
+	sub.custom_minimum_size.x = 200
+	sub.tooltip_text = Loot.sub_of(it)
+	sub.mouse_filter = Control.MOUSE_FILTER_PASS
+	cv.add_child(sub)
+	row.add_child(cv)
+	row.add_child(Icons.Glyph.new("gem", Color(GOLD, 0.8), 12.0))
+	var vt := UI.label("%d" % Loot.value(it), 13, GOLD, UI.big)
+	vt.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(vt)
+	for bt in buttons:
+		var b: Button = UI.primary(String(bt[0]), bt[1], 76) if bt.size() > 2 and bt[2] else UI.button(String(bt[0]), bt[1], 70)
+		b.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(b)
+	return rp
+
+## A scrolling list inside an item window: [scroll, rows]. _fit_panel sizes it.
+func _scroll_rows(v: VBoxContainer) -> Array:
+	var sc := ScrollContainer.new()
+	sc.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var rows := UI.vbox(6)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sc.add_child(rows)
+	v.add_child(sc)
+	return [sc, rows]
+
+## Puts an item window on the right, between the top counters and the weapon/slots cluster at the
+## bottom right, and lets its list scroll if it's too long to fit.
+func _fit_panel(pc: PanelContainer, sc: ScrollContainer, rows: VBoxContainer) -> void:
+	pc.position = Vector2(-10000, 0)     # out of sight until it's sized
+	await get_tree().process_frame
+	if not is_instance_valid(pc):
+		return
+	var vs := pc.get_viewport_rect().size
+	var top := 64.0
+	var bottom := vs.y - 172.0          # clear of the weapon card and the consumable slots
+	var want := rows.get_combined_minimum_size().y
+	var rest := pc.get_combined_minimum_size().y - sc.get_combined_minimum_size().y
+	sc.custom_minimum_size.y = clampf(bottom - top - rest, 60.0, want)
+	pc.reset_size()
+	await get_tree().process_frame
+	if not is_instance_valid(pc):
+		return
+	pc.position = Vector2(vs.x - pc.size.x - 16.0, clampf(vs.y * 0.42 - pc.size.y * 0.5, top, maxf(top, bottom - pc.size.y)))
+
+func open_swap(wp: Dictionary) -> void:
+	close_pack()
+	swap_wp = wp
+	_build_swap()
+	if swap_panel: UI.pop_in(swap_panel)
+	Sfx.play("whoosh", null, -10.0, 0.05, 1.1)
+
+func close_swap() -> void:
+	swap_wp = null
+	if swap_panel and is_instance_valid(swap_panel):
+		swap_panel.queue_free()
+	swap_panel = null
+
+func _build_swap() -> void:
+	if swap_panel and is_instance_valid(swap_panel):
+		swap_panel.queue_free()
+	var p: Hunter = m.player
+	var wp: Dictionary = swap_wp
+	var incoming := Pack.ground_item(wp)
+	var pb := _item_panel("Backpack full", Color("ffb0a0"), 470)
+	var pc: PanelContainer = pb[0]; var v: VBoxContainer = pb[1]; var head: HBoxContainer = pb[2]
+	head.add_child(_pack_chip(p))
+	var cl := UI.button("✕", func(): close_swap(), 36); cl.flat = true
+	head.add_child(cl)
+	v.add_child(UI.label("Picking up", 12, MUTED, UI.caps))
+	v.add_child(_item_row(incoming, []))
+	v.add_child(UI.label("Drop one to make room", 12, MUTED, UI.caps))
+	var low := Pack.lowest(p)
+	var sl := _scroll_rows(v)
+	for i in p.pack.size():
+		var idx := i
+		var it: Dictionary = p.pack[i]
+		var worse := Loot.value(it) < Loot.value(incoming)
+		sl[1].add_child(_item_row(it, [["Drop", func():
+			if swap_wp != null and m.player:
+				Pack.swap(m, m.player, idx, swap_wp)
+			close_swap(), worse]], "least valuable" if i == low else ""))
+	var foot := UI.hbox(8); v.add_child(foot)
+	foot.add_child(UI.button("Leave it  (Esc)", func(): close_swap(), 150))
+	var hint := UI.label("What you drop stays on the ground", 12, MUTED)
+	hint.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	foot.add_child(hint)
+	add_child(pc)
+	swap_panel = pc
+	_fit_panel(pc, sl[0], sl[1])
+
+func toggle_pack() -> void:
+	if pack_open():
+		close_pack()
+	else:
+		close_swap()
+		pack_sig = ""
+		_build_pack()
+		if pack_panel: UI.pop_in(pack_panel)
+		Sfx.play("whoosh", null, -12.0, 0.05, 1.2)
+
+func close_pack() -> void:
+	if pack_panel and is_instance_valid(pack_panel):
+		pack_panel.queue_free()
+	pack_panel = null
+
+func _pack_state(p: Hunter) -> String:
+	return str(p.pack.map(func(it): return it.get("uid", ""))) + p.wid + str(p.wrar) + p.welem + str(p.gear) + str(p.pack_cap)
+
+func _build_pack() -> void:
+	if pack_panel and is_instance_valid(pack_panel):
+		pack_panel.queue_free()
+	var p: Hunter = m.player
+	pack_sig = _pack_state(p)
+	var pb := _item_panel("Backpack", INK, 470)
+	var pc: PanelContainer = pb[0]; var v: VBoxContainer = pb[1]; var head: HBoxContainer = pb[2]
+	head.add_child(_pack_chip(p))
+	var cl := UI.button("✕", func(): close_pack(), 36); cl.flat = true
+	head.add_child(cl)
+	v.add_child(UI.label("In your hands", 12, MUTED, UI.caps))
+	var hand := Loot.of_hand(p)
+	v.add_child(_item_row(hand, [], "" if Loot.keepable(hand) else "always yours"))
+	for g in p.gear:
+		if not (g as Dictionary).is_empty():
+			v.add_child(_item_row(Loot.glove(String(g["id"]), int(g["rar"])), []))
+	v.add_child(UI.label("Carrying home  ·  extract to keep it all", 12, MUTED, UI.caps))
+	var sl := _scroll_rows(v)
+	var rows: VBoxContainer = sl[1]
+	if p.pack.is_empty():
+		rows.add_child(UI.label("Nothing yet. Weapons, gloves and treasure you pick up go here.", 13, MUTED))
+	for i in p.pack.size():
+		var idx := i
+		var it: Dictionary = p.pack[i]
+		var bts: Array = []
+		if String(it.get("t", "")) in ["weapon", "glove"]:
+			bts.append(["Equip", func(): Pack.use_from_pack(m, m.player, idx); _build_pack(), true])
+		bts.append(["Drop", func(): Pack.drop_from_pack(m, m.player, idx); _build_pack()])
+		rows.add_child(_item_row(it, bts))
+	for k in p.pack_cap - p.pack.size():
+		if k >= 3: break
+		var empty := UI.card(Color(1, 1, 1, 0.03), 6, 9)
+		empty.custom_minimum_size.y = 30
+		empty.add_child(UI.label("empty slot", 12, Color(MUTED, 0.6)))
+		rows.add_child(empty)
+	var hint := UI.label("%s or Esc to close  ·  bigger backpacks at your armory" % Settings.key_cap("inventory"), 12, MUTED)
+	v.add_child(hint)
+	add_child(pc)
+	pack_panel = pc
+	_fit_panel(pc, sl[0], rows)
+
+## Closes the windows when they stop making sense (you went down, walked off, or it's gone).
+func _pack_tick() -> void:
+	var p: Hunter = m.player
+	if swap_wp != null:
+		var wp: Dictionary = swap_wp
+		if p == null or p.out or p.downed or not m.wpicks.has(wp) or p.flat_dist(wp["pos"]) > 3.0 or Pack.room(p):
+			if p and Pack.room(p) and m.wpicks.has(wp) and p.flat_dist(wp["pos"]) <= 3.0:
+				Pack.stash(m, p, wp)
+			close_swap()
+	if pack_open():
+		if p == null or p.out or p.downed:
+			close_pack()
+		elif _pack_state(p) != pack_sig:
+			_build_pack()
 
 # ------------------------------------------------------------------ wisp and deathbox revive rings
 ## A ring on the ground round every wisp you can see, the size of the revive range: green and

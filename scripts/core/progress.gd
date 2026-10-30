@@ -23,6 +23,8 @@ const CHALLENGES := [
 
 ## What has to happen before the market will sell something. Missing = always for sale.
 const SHOP_REQ := {
+	"feeder:hopper": {"extracts": 2},
+	"feeder:banquet": {"extracts": 5},
 	"seed:mindmint": {"challenge": "first_out"},
 	"seed:puffcorn": {"extracts": 3},
 	"seed:glowcap": {"challenge": "harvest20"},
@@ -208,4 +210,5 @@ static func item_name(key: String) -> String:
 		"acc": return String(Data.ACCS[p[1]]["name"])
 		"plots": return "More farm plots"
 		"furn": return String(Data.FURN[p[1]]["name"])
+		"feeder": return String(Econ.FEEDERS[p[1]]["name"])
 	return key

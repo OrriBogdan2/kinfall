@@ -167,6 +167,12 @@ var diving := false           # the skydive part of the drop, before the glider 
 var riding := false           # aboard the skyship, waiting to jump
 var bless_t := 0.0
 var wrar := 0                 # rarity of the weapon in hand, 0 for the one you brought
+var winst: Dictionary = {}    # the weapon in hand as an item you can carry home (Loot), {} for the plain one
+var welem := ""               # its element ("fire", "frost", ...): a rider on every hit (Loot.rider)
+var wuniq := ""               # a named unique's id
+var el_n := 0                 # attacks made with the element, for "every Nth hit" riders
+var pack: Array = []          # the backpack: weapons, gloves and valuables to carry home (Loot items)
+var pack_cap := 6
 var swap_hold := false
 var dash_at := -9.0           # when the last dash started, for perfect dodges
 var dodged := false        # F has to be let go between weapon swaps
@@ -201,6 +207,7 @@ func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, n
 ## Swap to a found weapon for the rest of the expedition.
 func equip(w: String, rar: int, with_ammo := -1) -> void:
 	wid = w; wrar = rar
+	winst = {}; welem = ""; wuniq = ""
 	wpn = Data.weapon_stats(w, rar)
 	_kit_from_weapon()
 	wbloom = 0.0; warm_t = 0.0; spin = 0.0; spun_t = 0.0; sus_n = 0; mel_hold = 0.0; strike_at_end = {}
@@ -1031,6 +1038,7 @@ func _strike(dmg: float, reach: float, arc_deg: float, kb: float, o := {}) -> vo
 	var sp := shoulder()
 	if sp == "kindle": extra["burn"] = 4.0
 	if sp == "briar": extra["slow"] = 0.7
+	Loot.rider(self, extra, dmg * m.dmg_mult(self))
 	# the swing is a fan of very short, invisible strikes, so walls and terraces block it like shots
 	var rays := 9 if arc_deg > 130.0 else 7
 	for i in rays:
@@ -1084,6 +1092,7 @@ func _emit_shot() -> void:
 		extra["crit"] = true
 	if sp == "kindle": extra["burn"] = 4.0
 	if sp == "briar": extra["slow"] = 0.7
+	Loot.rider(self, extra, dmg)
 	if not fuse.is_empty():
 		# a fused kin changes every shot: burning, slowing, bursting or arcing to another foe
 		var fs: Dictionary = (fuse["def"] as UltimateDef).shots

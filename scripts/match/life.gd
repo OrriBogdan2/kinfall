@@ -44,6 +44,8 @@ static func box_value(b: Dictionary) -> int:
 	for s in b["seeds"]: v += int(b["seeds"][s]) * 3
 	v += (b["caught"] as Array).size() * 15
 	v += int(b["tonics"]) * 4 + int(b["kits"]) * 4
+	for c in Pack._box_things(b):
+		v += Loot.value(c["it"]) / 2
 	return v
 
 static func box_color(b: Dictionary) -> Color:
@@ -196,7 +198,8 @@ static func drop_box(m: Match, h: Hunter, why: String) -> Dictionary:
 	var at := box_spot(m, h, why)
 	var b := {"owner": h, "team": h.team, "pos": at, "gems": h.gems, "seeds": h.seeds.duplicate(), "caught": h.caught.duplicate(true),
 		"tonics": maxi(0, h.tonics - h.free_tonics), "kits": h.armor_kits, "soul_until": m.time + R["soul_time"], "prog": {}, "node": null, "empty": false,
-		"gear": [], "weapon": {}}
+		"gear": [], "weapon": {}, "pack": h.pack.duplicate(true)}
+	h.pack = []
 	h.tonics = mini(h.tonics, h.free_tonics)
 	h.armor_kits = 0
 	# your gloves and any weapon you found go in the box too (Supervive: the box holds everything)
@@ -205,8 +208,8 @@ static func drop_box(m: Match, h: Hunter, why: String) -> Dictionary:
 			(b["gear"] as Array).append((g as Dictionary).duplicate())
 	h.gear = [{}, {}]
 	if h.has_method("refresh_gear"): h.refresh_gear()
-	if h.wrar > 0:
-		b["weapon"] = {"wid": h.wid, "rar": h.wrar}
+	if Loot.keepable(Loot.of_hand(h)):
+		b["weapon"] = Loot.of_hand(h).duplicate()
 		h.equip(String(Data.CLASSES[h.cls]["weapon"]), 0)
 	if at == Vector3.INF:
 		# nowhere to put it: the abyss keeps it
@@ -253,16 +256,19 @@ static func box_items(m: Match, h: Hunter, b: Dictionary) -> Array:
 		var r: Dictionary = Data.RARITY[clampi(int(g["rar"]), 0, Data.RARITY.size() - 1)]
 		var slot := Gear.slot_of(String(g["id"]))
 		var cur: Dictionary = h.gear[slot]
-		var up := cur.is_empty() or int(g["rar"]) > int(cur["rar"])
+		var up := cur.is_empty() or Loot.value({"t": "glove", "id": g["id"], "rar": g["rar"]}) > Loot.value({"t": "glove", "id": cur["id"], "rar": cur["rar"]})
 		out.append({"key": "gear", "i": i, "name": "%s%s" % [(String(r["name"]) + " ") if int(g["rar"]) > 1 else "", gd.get("name", g["id"])],
 			"sub": ("Active glove (%s)  ·  " % Settings.key_cap("gear1") if slot == 0 else "Passive glove  ·  ") + Gear.stat_text(String(g["id"]), int(g["rar"])),
 			"icon": Gear.icon_of(String(g["id"])), "col": r["color"], "upgrade": up})
-	var w: Dictionary = b.get("weapon", {})
+	var w: Dictionary = Pack.box_weapon_item(b)
 	if not w.is_empty():
-		var r2: Dictionary = Data.RARITY[clampi(int(w["rar"]), 0, Data.RARITY.size() - 1)]
-		var up2 := int(w["rar"]) > h.wrar
-		out.append({"key": "weapon", "name": Data.weapon_stats(String(w["wid"]), int(w["rar"]))["name"], "sub": "+%d%% damage" % int(round((float(r2["dmg"]) - 1.0) * 100.0)),
-			"icon": String(w["wid"]), "col": r2["color"], "upgrade": up2})
+		out.append({"key": "weapon", "name": Loot.name_of(w), "sub": Loot.sub_of(w), "icon": Loot.icon_of(w), "col": Loot.col_of(w),
+			"upgrade": Loot.value(w) > Loot.value(Loot.of_hand(h)), "value": Loot.value(w), "el": String(w.get("el", ""))})
+	# weapons, gloves and treasure for the backpack (worth taking if there's room, or it beats the worst thing in it)
+	for i in (b.get("pack", []) as Array).size():
+		var it: Dictionary = b["pack"][i]
+		out.append({"key": "pack", "i": i, "name": Loot.name_of(it), "sub": Loot.sub_of(it), "icon": Loot.icon_of(it), "col": Loot.col_of(it),
+			"upgrade": Pack.wants(h, it), "value": Loot.value(it), "el": String(it.get("el", "")), "full": not Pack.room(h)})
 	return out
 
 ## Takes one thing out of a box. Swapping gloves or weapons leaves yours in the box in its place.
@@ -303,36 +309,38 @@ static func take_item(m: Match, h: Hunter, b: Dictionary, it: Dictionary) -> voi
 				if not old.is_empty():
 					(b["gear"] as Array).append(old)
 		"weapon":
-			var w: Dictionary = b["weapon"]
-			var old_w := {"wid": h.wid, "rar": h.wrar}
-			h.equip(String(w["wid"]), int(w["rar"]))
-			b["weapon"] = old_w if int(old_w["rar"]) > 0 else {}
+			var w: Dictionary = Pack.box_weapon_item(b)
+			var old_w := Loot.of_hand(h)
+			Loot.equip(h, w)
+			b["weapon"] = old_w.duplicate() if Loot.keepable(old_w) else {}
+		"pack":
+			# into your backpack; a full one swaps out its least valuable thing (that goes in the box)
+			var pi := int(it["i"])
+			if pi < (b["pack"] as Array).size():
+				var pit: Dictionary = b["pack"][pi]
+				if Pack.room(h):
+					(b["pack"] as Array).remove_at(pi)
+					h.pack.append(pit)
+				elif Loot.value(pit) > Pack.lowest_value(h):
+					(b["pack"] as Array).remove_at(pi)
+					var li := Pack.lowest(h)
+					(b["pack"] as Array).append(h.pack[li])
+					h.pack.remove_at(li)
+					h.pack.append(pit)
+				elif h == m.player and m.hud:
+					m.hud.toast_small("Your backpack is full of better things", Color("ffb0a0"))
 	m.sfx("pickup", b["pos"], -4.0, 0.9)
 	_settle_box(b)
 
 ## Smart loot (press interact again with a box open): every gem, seed, kin and consumable, and the
 ## gloves or weapon only where they beat what you've got. Returns how many things it took.
 static func smart_loot(m: Match, h: Hunter, b: Dictionary) -> int:
-	var n := 0
-	var guard := 0
-	while guard < 30:
-		guard += 1
-		var took := false
-		for it in box_items(m, h, b):
-			if it["upgrade"]:
-				take_item(m, h, b, it)
-				n += 1
-				took = true
-				break
-		if not took:
-			break
-	if n > 0:
-		m.fx.burst(b["pos"] + Vector3(0, 0.6, 0), Color("ffd36a"), 14, 3.0, 0.4)
-	return n
+	return Pack.smart_loot(m, h, b)
 
 static func _settle_box(b: Dictionary) -> void:
 	b["empty"] = int(b["gems"]) <= 0 and (b["seeds"] as Dictionary).is_empty() and (b["caught"] as Array).is_empty() \
-		and int(b["tonics"]) <= 0 and int(b["kits"]) <= 0 and (b.get("gear", []) as Array).is_empty() and (b.get("weapon", {}) as Dictionary).is_empty()
+		and int(b["tonics"]) <= 0 and int(b["kits"]) <= 0 and (b.get("gear", []) as Array).is_empty() and (b.get("weapon", {}) as Dictionary).is_empty() \
+		and (b.get("pack", []) as Array).is_empty()
 	_refresh_box(b)
 
 ## Takes everything in a box.
@@ -343,7 +351,17 @@ static func loot_box(m: Match, h: Hunter, b: Dictionary) -> void:
 			take_item(m, h, b, {"key": "gear", "i": (b["gear"] as Array).find(g)})
 		if not (b.get("weapon", {}) as Dictionary).is_empty():
 			take_item(m, h, b, {"key": "weapon"})
+		for pit in (b.get("pack", []) as Array):
+			h.pack.append(pit)
+		b["pack"] = []
 	else:
+		# anything worth packing, best first, while there's room
+		var things: Array = (b.get("pack", []) as Array).duplicate()
+		things.sort_custom(func(a, c): return Loot.value(a) > Loot.value(c))
+		for pit in things:
+			if not Pack.room(h): break
+			h.pack.append(pit)
+			(b["pack"] as Array).erase(pit)
 		for it in box_items(m, h, b):
 			if it["key"] in ["gear", "weapon"] and it["upgrade"]:
 				take_item(m, h, b, it)

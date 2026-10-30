@@ -965,10 +965,12 @@ static func kin(species: String, rec := {}) -> Node3D:
 	var root := Node3D.new()
 	var mats: Array = []
 	var shimmer: bool = rec.get("shimmer", false)
-	var m_body := toon(Care.shimmer_col(sp["color"]) if shimmer else sp["color"]); mats.append(m_body)
+	var ghost: bool = rec.get("ghost", false)       # brought back by the Soul Shrine: pale and glowing
+	if ghost: glow_c = Color("9ff0e0")
+	var m_body := toon(Care.ghost_col(sp["color"]) if ghost else (Care.shimmer_col(sp["color"]) if shimmer else sp["color"])); mats.append(m_body)
 	m_body.set_shader_parameter("rim_color", glow_c)
-	m_body.set_shader_parameter("rim_amount", 1.4)
-	var m_belly := toon(Care.shimmer_col(sp["belly"]) if shimmer else sp["belly"]); mats.append(m_belly)
+	m_body.set_shader_parameter("rim_amount", 2.2 if ghost else 1.4)
+	var m_belly := toon(Care.ghost_col(sp["belly"]) if ghost else (Care.shimmer_col(sp["belly"]) if shimmer else sp["belly"])); mats.append(m_belly)
 	m_belly.set_shader_parameter("rim_color", glow_c)
 	var m_dark := toon((sp["color"] as Color).darkened(0.3)); mats.append(m_dark)
 	var m_glow := toon(glow_c, false, 0.7); mats.append(m_glow)
@@ -1927,6 +1929,8 @@ static func signpost(text_lines: Array) -> Node3D:
 
 # ---------------------------------------------------------------- home buildings
 static func building(id: String) -> Node3D:
+	if id in ["armory", "shrine"]:
+		return EconModels.building(id)
 	var root := Node3D.new()
 	var body := Node3D.new(); body.name = "Body"; root.add_child(body)
 	var wood := toon(Color("7a5236")); var stone := toon(Color("9a948c")); var dark := toon(Color("4a4550"))
