@@ -85,13 +85,13 @@ islands = [
     dict(id="still", name="Stillwater", role="nest", region=4, poi=[172, 172], noise=0.14, biome="storm", danger=0,
          shapes=[circle(172, 172, 17), circle(176, 176, 7, 1)], sheer=[[210, 240]], bush=[[164, 164, 1.6]]),
     # The outer ring: smaller landings where the first gates open.
-    dict(id="skyport", name="Skyport", role="grove", region=2, poi=[108, 17], noise=0.12, biome="frost", danger=0,
+    dict(id="skyport", name="Skyport", role="landing", region=2, poi=[108, 17], noise=0.12, biome="frost", danger=0,
          shapes=[circle(108, 17, 10)], sheer=[]),
-    dict(id="dawn", name="Dawnrest", role="grove", region=4, poi=[108, 199], noise=0.12, biome="bloom", danger=0,
+    dict(id="dawn", name="Dawnrest", role="landing", region=4, poi=[108, 199], noise=0.12, biome="bloom", danger=0,
          shapes=[circle(108, 199, 10)], sheer=[]),
-    dict(id="iron", name="Ironfall", role="grove", region=3, poi=[16, 108], noise=0.12, biome="ember", danger=0,
+    dict(id="iron", name="Ironfall", role="landing", region=3, poi=[16, 108], noise=0.12, biome="ember", danger=0,
          shapes=[circle(16, 108, 10)], sheer=[]),
-    dict(id="fern", name="Fernway", role="grove", region=1, poi=[200, 108], noise=0.12, biome="storm", danger=0,
+    dict(id="fern", name="Fernway", role="landing", region=1, poi=[200, 108], noise=0.12, biome="storm", danger=0,
          shapes=[circle(200, 108, 10)], sheer=[]),
 ]
 

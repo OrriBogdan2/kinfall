@@ -652,7 +652,7 @@
   {
    "id": "skyport",
    "name": "Skyport",
-   "role": "grove",
+   "role": "landing",
    "region": 2,
    "poi": [
     108,
@@ -676,7 +676,7 @@
   {
    "id": "dawn",
    "name": "Dawnrest",
-   "role": "grove",
+   "role": "landing",
    "region": 4,
    "poi": [
     108,
@@ -700,7 +700,7 @@
   {
    "id": "iron",
    "name": "Ironfall",
-   "role": "grove",
+   "role": "landing",
    "region": 3,
    "poi": [
     16,
@@ -724,7 +724,7 @@
   {
    "id": "fern",
    "name": "Fernway",
-   "role": "grove",
+   "role": "landing",
    "region": 1,
    "poi": [
     200,

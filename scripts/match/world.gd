@@ -788,6 +788,11 @@ func _dress_poi(ii: int, role: String, poi: Vector3, toward_mid: float, taken: D
 			var ch := _near(poi, 3.5, toward_mid - PI * 0.5, ii, taken)
 			if ch != Vector3.INF: chest_spots.append({"pos": ch, "tier": 0})
 			islands[ii]["nest"] = poi
+		"landing":
+			# an outer landing where squads come down and gates open: two chests, no monsters
+			for k in 2:
+				var ch := _near(poi, 2.8, toward_mid + PI * (0.5 + k), ii, taken)
+				if ch != Vector3.INF: chest_spots.append({"pos": ch, "tier": 0})
 		"grove":
 			# quiet: two plain chests and a light camp
 			for k in 2:
@@ -853,7 +858,7 @@ func _place_spots() -> void:
 	# big islands get a second, smaller find on their far side so the extra ground isn't empty
 	if w >= 180:
 		for ii in range(1, islands.size()):
-			if islands[ii]["cells"].size() < 260:
+			if islands[ii]["cells"].size() < 260 or islands[ii]["role"] == "landing":
 				continue
 			var poi := _poi(ii)
 			if poi == Vector3.INF:

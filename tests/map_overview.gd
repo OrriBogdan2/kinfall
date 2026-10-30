@@ -17,10 +17,20 @@ func _ready() -> void:
 		var l := Label3D.new()
 		l.text = String(lb["name"])
 		l.font = UI.big; l.font_size = 64 if lb["kind"] == "poi" else 40; l.pixel_size = 0.06; l.outline_size = 16
-		l.modulate = Color("fff4d8") if lb["kind"] == "poi" else Color("ffb36a")
+		l.modulate = Color("fff4d8") if lb["kind"] == "poi" else (Color("ffe2a0") if lb["kind"] == "rail" else Color("ffb36a"))
 		l.billboard = BaseMaterial3D.BILLBOARD_ENABLED; l.no_depth_test = true
 		l.position = (lb["pos"] as Vector3) + Vector3(0, 6, 0)
 		add_child(l)
+	if not w.train_route.is_empty():
+		# the sky train's loop, as a dotted amber line
+		var s := 0.0
+		while s < float(w.train_route["len"]):
+			var q := w.train_at(s)
+			var d := MeshInstance3D.new(); d.mesh = Models.box(0.9, 0.3, 0.9)
+			d.material_override = Models.glow_mat(Color(1.0, 0.75, 0.35, 0.9 if q.y > -1.0 else 0.4))
+			d.position = q
+			add_child(d)
+			s += 2.0
 	for p in w.portal_spots:
 		var m := MeshInstance3D.new(); m.mesh = Models.cyl(1.4, 1.4, 6.0, 12)
 		m.material_override = Models.glow_mat(Color("8fe3c8")); m.position = p + Vector3(0, 3, 0)

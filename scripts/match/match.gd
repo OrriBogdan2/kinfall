@@ -3518,7 +3518,7 @@ func _tut_drive() -> void:
 func _train_demo() -> void:
 	var mode := String(opts["train_demo"]) if opts["train_demo"] is String else "ride"
 	var st := skytrain
-	if time < DT * 1.5:
+	if time < DT * 1.5 and mode != "watch":
 		cam.zoom_to = 0.8
 		if mode == "track":
 			# a stretch of open track ahead, level with the islands (not down under a bridge)
