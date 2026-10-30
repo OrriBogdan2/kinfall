@@ -1,11 +1,13 @@
 {
+ "id": "power_core",
  "name": "Power Glove",
+ "short": "Power",
+ "verb": "",
  "cd": 0,
  "col": "ff6a4a",
  "stats": {
   "dmg": 0.12
  },
  "icon": "burst",
- "desc": "12% more damage.",
- "id": "power_core"
+ "desc": "12% more damage."
 }

@@ -1,13 +1,18 @@
 {
 	"id": "updraft",
 	"name": "Moonlift",
+	"short": "Lift",
+	"verb": "rescue",
+	"element": "lunar",
 	"icon": "updraft",
 	"color": "#fff0a0",
 	"cooldown": 14,
-	"desc": "A column of moonlight lifts you high and cools your glider. Your kin uses it on its own to save you from the abyss.",
+	"charges": 1,
+	"from": "owner",
 	"auto": {
 		"when": "owner_falling"
 	},
+	"desc": "On its own, when you fall into the abyss, Lunowl throws up a column of moonlight that lifts you high and cools your glider.",
 	"effects": [
 		{
 			"type": "launch",
@@ -20,7 +25,5 @@
 			"type": "cool_glider",
 			"target": "owner"
 		}
-	],
-	"from": "owner",
-	"charges": 1
+	]
 }

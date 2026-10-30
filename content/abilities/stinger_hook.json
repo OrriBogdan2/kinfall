@@ -1,0 +1,42 @@
+{
+	"id": "stinger_hook",
+	"name": "Stinger Hook",
+	"short": "Hook",
+	"verb": "hook",
+	"element": "venom",
+	"icon": "hook",
+	"color": "#a6ff3a",
+	"cooldown": 8,
+	"charges": 1,
+	"range": 8,
+	"from": "kin",
+	"auto": {
+		"when": "foe_in_range",
+		"range": 8
+	},
+	"desc": "Vespyx lashes its tail 8m: the first foe it stings is dragged back to it, poisoned, blighted (healing halved) and stunned 0.3s.",
+	"effects": [
+		{
+			"type": "projectile",
+			"dmg": 8,
+			"speed": 30,
+			"range": 8,
+			"size": 0.18,
+			"rope": true,
+			"deco": "hook",
+			"burn": 6,
+			"blight": 4,
+			"color": "#a6ff3a",
+			"sfx": "throw",
+			"pitch": 1.2,
+			"on_hit": [
+				{
+					"type": "yank",
+					"gap": 1.2,
+					"stun": 0.3,
+					"color": "#a6ff3a"
+				}
+			]
+		}
+	]
+}

@@ -1,11 +1,41 @@
 {
+ "id": "medkit",
  "name": "Mending Glove",
- "cd": 28,
+ "short": "Mend Orb",
+ "verb": "heal orb",
+ "cd": 22,
  "col": "8fe0a0",
  "stats": {
   "armor": 10
  },
  "icon": "medkit",
- "desc": "Heal 40 health and 20 armor.",
- "id": "medkit"
+ "desc": "Lob a mending orb at the cursor: you and teammates where it lands heal 35 and shake off slows, roots and poison.",
+ "bot": {
+  "when": "hurt",
+  "below": 0.55
+ },
+ "effects": [
+  {
+   "type": "projectile",
+   "dmg": 0,
+   "speed": 16,
+   "range": 9,
+   "to_aim": true,
+   "size": 0.24,
+   "deco": "orb",
+   "color": "8fe0a0",
+   "sfx": "throw",
+   "pitch": 1.2,
+   "on_end": [
+    {
+     "type": "ally_area",
+     "at": "here",
+     "radius": 2.6,
+     "heal": 35,
+     "cleanse": true,
+     "color": "8fe0a0"
+    }
+   ]
+  }
+ ]
 }

@@ -12,6 +12,9 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 	var a := h.ai
 	a["think"] -= dt
 	a["dash_cd"] -= dt; a["jump_cd"] -= dt; a["throw_cd"] -= dt; a["strafe_t"] -= dt
+	if float(a.get("hold", 0.0)) > 0.0:
+		a["hold"] = float(a["hold"]) - dt
+		h.inp["sec_hold"] = float(a["hold"]) > 0.0
 	var inp := h.inp
 	inp["fire"] = false
 	inp["interact"] = false
@@ -70,6 +73,16 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 		a["seen"] = tgt
 		a["react_t"] = float(df.get("react", 0.3)) * randf_range(0.8, 1.3) * (1.6 if tgt is Hunter else 1.0)
 	a["react_t"] = float(a.get("react_t", 0.0)) - dt
+	# ---- a decoy: the rival vanished and left a copy behind; bots keep shooting the copy
+	if tgt is Hunter and (tgt as Hunter).cloak_t > 0.0 and m.verbs:
+		var dc: Dictionary = m.verbs.decoy_of(tgt)
+		if not dc.is_empty() and h.flat_dist(dc["pos"]) < float(h.wpn["range"]) + 1.0:
+			var dp: Vector3 = dc["pos"]
+			inp["aim"] = dp + Vector3(0, 0.9, 0)
+			inp["aim_y"] = dp.y
+			inp["fire"] = true
+			inp["move"] = Vector2.ZERO
+			return
 	# ---- combat
 	var finishing: bool = tgt is Hunter and tgt.downed and not tgt.out
 	if tgt and not tgt.dead and tgt.hittable() and (finishing or not (tgt is Hunter and not tgt.targetable())):
@@ -144,10 +157,15 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 			a["abil_t"] = randf_range(0.4, 1.0) * (1.0 + (1.0 - abil) * 4.0)
 			_use_sig(m, h, tgt)
 			_use_sec(m, h, tgt)
-			# the active glove (Q), now and then, more often on harder bots
-			if h.gear_cd[0] <= 0.0 and not (h.gear[0] as Dictionary).is_empty() and Gear.active(String(h.gear[0]["id"])) and randf() < abil * 0.45:
-				h.inp["aim"] = Vector3(tgt.pos.x, tgt.pos.y, tgt.pos.z)
-				inp["gear1"] = true
+			# the active glove (Q) when its moment comes (hook in range, wall when shot at...)
+			if h.gear_cd[0] <= 0.0 and not (h.gear[0] as Dictionary).is_empty() and Gear.active(String(h.gear[0]["id"])) and randf() < 0.3 + abil * 0.6:
+				var gdf := Gear.def_of(String(h.gear[0]["id"]))
+				var ga := ability_aim(m, h, gdf, tgt)
+				if ga == Vector3.INF and gdf.bot.is_empty() and randf() < abil * 0.3:
+					ga = tgt.pos        # an old glove with no hints: now and then, at the target
+				if ga != Vector3.INF:
+					h.inp["aim"] = ga
+					inp["gear1"] = true
 	else:
 		a["tgt"] = null
 		var goal: Vector3 = a["goal"]
@@ -261,16 +279,71 @@ func _crawl(m: Match, h: Hunter) -> void:
 
 ## Right click: the weapon's utility, used when a target is in reach.
 func _use_sec(m: Match, h: Hunter, tgt: Ent) -> void:
+	var a := h.ai
+	# holding a charge-up (Rail Charge): keep holding until it's ready, then let go
+	if float(a.get("hold", 0.0)) > 0.0:
+		h.inp["sec_hold"] = true
+		if tgt: h.inp["aim"] = Vector3(tgt.pos.x, tgt.pos.y + 0.9, tgt.pos.z)
+		return
 	h.inp["sec_hold"] = false
 	if tgt == null:
 		return
-	var d := h.flat_dist(tgt)
 	if h.runner and h.runner.has_slot("utility") and h.runner.is_ready("utility"):
-		var go := d < 10.0 and randf() < 0.08
-		if tgt is Mob and (tgt as Mob).stag_open > 0.0 and d < 6.0:
-			go = true
-		if go:
+		var ud: AbilityDef = h.runner.def_of("utility")
+		var aim := ability_aim(m, h, ud, tgt)
+		if tgt is Mob and (tgt as Mob).stag_open > 0.0 and h.flat_dist(tgt) < 7.0:
+			aim = tgt.pos
+		if aim != Vector3.INF:
+			h.inp["aim"] = aim
 			h.inp["sec"] = true
+			if not ud.charge.is_empty():
+				a["hold"] = float(ud.bot.get("hold", ud.charge.get("time", 1.0)))
+				h.inp["sec_hold"] = true
+
+## Where a bot would aim one of its abilities right now, from the ability's "bot" hint, or
+## Vector3.INF if this isn't the moment:
+##   in_range [min, max]  the target is in reach and in sight: aim at it
+##   under_fire           a rival is shooting you: aim between you and them (walls, reflects)
+##   clumped              two or more foes bunched near the target, or a rival hunter in reach
+##   hurt below           low on health: at your own feet (heals, decoys)
+##   gap                  the target is across the abyss within reach (bridges)
+func ability_aim(m: Match, h: Hunter, def: AbilityDef, tgt: Ent) -> Vector3:
+	var b: Dictionary = def.bot
+	if b.is_empty() or tgt == null:
+		return Vector3.INF
+	var d := h.flat_dist(tgt)
+	var mx := float(b.get("max", def.cast_range if def.cast_range > 0.0 else 8.0))
+	var mn := float(b.get("min", 0.0))
+	var sees: bool = m.world.los(h.pos, tgt.pos, h.pos.y + 0.95)
+	var tp := Vector3(tgt.pos.x + tgt.vel.x * 0.15, tgt.pos.y + 0.9, tgt.pos.z + tgt.vel.z * 0.15)
+	match String(b.get("when", "")):
+		"in_range":
+			if d >= mn and d <= mx and sees and randf() < 0.55:
+				return tp
+		"under_fire":
+			var att = h.last_hit_by
+			if att is Kin and (att as Kin).owner_h: att = (att as Kin).owner_h
+			if att is Ent and is_instance_valid(att) and not att.dead and att.team != h.team and m.time - h.hurt_at < 0.6 and h.flat_dist(att) > 2.5:
+				var dd: Vector2 = h.dir_to(att)
+				return Vector3(h.pos.x + dd.x * 2.5, att.pos.y + 0.9, h.pos.z + dd.y * 2.5)
+		"clumped":
+			if d <= mx:
+				var n := 0
+				for f in m.foes_of(h.team):
+					if f.flat_dist(tgt) < 3.0: n += 1
+				if n >= 2 or (tgt is Hunter and randf() < 0.35):
+					return tgt.pos
+		"hurt":
+			if h.hp < h.max_hp * float(b.get("below", 0.5)) and m.time - h.hurt_at < 2.0:
+				return h.pos
+		"gap":
+			if d < 10.0 and d > 3.0:
+				var mid := h.pos.lerp(tgt.pos, 0.5)
+				if m.world.is_void(mid.x, mid.z) and absf(tgt.pos.y - h.pos.y) < 1.2:
+					return tgt.pos
+		"always":
+			return tp
+	return Vector3.INF
 
 ## Kin abilities (Q, V) when they fit the moment, and the bond ultimate (R) once it's full.
 ## (The kin also uses its abilities on its own; this is the hunter asking for them.)

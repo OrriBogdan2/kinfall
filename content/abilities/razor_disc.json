@@ -1,0 +1,30 @@
+{
+	"id": "razor_disc",
+	"name": "Razor Disc",
+	"short": "Disc",
+	"verb": "boomerang",
+	"icon": "disc",
+	"color": "#9ff6ff",
+	"cooldown": 7,
+	"charges": 1,
+	"bot": {
+		"when": "in_range",
+		"max": 8
+	},
+	"desc": "Throw a spinning disc 8m that cuts everything it passes, then flies back to you and cuts them again.",
+	"effects": [
+		{
+			"type": "projectile",
+			"dmg": 9,
+			"speed": 19,
+			"range": 8,
+			"size": 0.2,
+			"return": true,
+			"deco": "disc",
+			"slow": 0.6,
+			"color": "#9ff6ff",
+			"sfx": "throw",
+			"pitch": 1.4
+		}
+	]
+}

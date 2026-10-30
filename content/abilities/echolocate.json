@@ -1,0 +1,30 @@
+{
+	"id": "echolocate",
+	"name": "Echolocate",
+	"short": "Ping",
+	"verb": "reveal",
+	"element": "echo",
+	"icon": "pulse",
+	"color": "#7fe8ff",
+	"cooldown": 14,
+	"charges": 1,
+	"from": "owner",
+	"auto": {
+		"when": "owner_fighting",
+		"chance": 0.3
+	},
+	"desc": "On its own in a fight, Echolop pings: every rival within 18m is revealed through grass and walls for 3s, and your next shots for 1.5s crit.",
+	"effects": [
+		{
+			"type": "reveal",
+			"radius": 18,
+			"time": 3,
+			"color": "#7fe8ff"
+		},
+		{
+			"type": "crit",
+			"time": 1.5,
+			"target": "owner"
+		}
+	]
+}

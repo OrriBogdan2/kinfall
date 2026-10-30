@@ -1,0 +1,20 @@
+{
+	"venom": {"name": "Venom Trail", "color": "#a6ff3a",
+		"desc": "Vespyx: anything you dash through is poisoned and blighted (healing halved).",
+		"pass": {"dmg": 3, "burn": 4, "blight": 3, "color": "#a6ff3a"}},
+	"spore": {"name": "Spore Puff", "color": "#3fe0c0",
+		"desc": "Mycroll: you leave a spore puff where you started that slows and stings foes for 2s.",
+		"start": [{"type": "zone", "at": "self", "radius": 1.5, "time": 2.0, "every": 0.5, "dmg": 2, "slow": 0.7, "color": "#a8ffe8"}]},
+	"echo": {"name": "Echo Step", "color": "#7fe8ff",
+		"desc": "Echolop: a beat after the dash, it echoes: a second, shorter dash the same way.",
+		"repeat": {"delay": 0.18, "k": 0.55}},
+	"gravity": {"name": "Gravity Wake", "color": "#b48cff",
+		"desc": "Gravadillo: where you stop, gravity tugs every foe within 3m a step toward you.",
+		"end": [{"type": "pull", "at": "self", "radius": 3.0, "strength": 6, "color": "#b48cff"}]},
+	"lunar": {"name": "Moon Blink", "color": "#fff0a0",
+		"desc": "Lunowl: on the ground you don't travel, you blink: there in an instant, through anything in the way.",
+		"blink": true},
+	"prism": {"name": "Prism Decoy", "color": "#7ff3ff",
+		"desc": "Prismander: you leave a crystal copy of yourself behind for 1.8s that draws bots' fire.",
+		"start": [{"type": "decoy", "time": 1.8, "color": "#7ff3ff"}]}
+}

@@ -254,6 +254,9 @@ func _ready() -> void:
 	if "--duel-check" in args:
 		_duel_check()
 		return
+	if "--ability-check" in args:
+		_ability_check()
+		return
 	if "--simtest" in args:
 		_simtest(opts)
 		return
@@ -781,6 +784,319 @@ func _weapon_check() -> void:
 				print("WCHECK %-12s %-6s dist %4.1f  dps %6.1f  (%d in %ds)" % [wid, mode, dist, dealt / dur, int(dealt), int(dur)])
 				m.queue_free()
 				await get_tree().process_frame
+	get_tree().quit()
+
+## Headless check for the ability verbs: each one fired at a dummy rival, asserting what it should
+## do (a hook drags them in, a wall stops a shot, a mirror sends it back, a slam throws them up...).
+var _ac_fail := 0
+func _ac(name: String, ok: bool, info := "") -> void:
+	print("ACHECK %-26s %s  %s" % [name, "PASS" if ok else "FAIL", info])
+	if not ok: _ac_fail += 1
+
+func _ac_setup(dist: float, extra_t := false) -> Array:
+	var m := Match.new()
+	add_child(m)
+	m.start({"training": true, "teams": 1, "squad": 1, "tier": 0, "length": 1e9, "seed": 4242, "no_drop": true, "weapon": "rifle", "cls": "medium"})
+	m.set_process(false)
+	var P: Hunter = m.player
+	for mb in m.mobs: mb.queue_free()
+	m.mobs.clear()
+	var home := Vector3.INF
+	for tries in 600:
+		var at: Vector3 = m.world.random_ground(m.world.island_of(P.pos.x, P.pos.z)) if tries < 300 else m.world.random_ground()
+		var ok := true
+		for k in 13:
+			var q := at + Vector3((dist + 3.0) * k / 12.0, 0, 0)
+			for sz in [-1.2, 0.0, 1.2]:
+				var q2 := q + Vector3(0, 0, sz)
+				if m.world.is_block(q2.x, q2.z) or absf(m.world.ground_at(q2.x, q2.z) - at.y) > 0.01: ok = false
+		var back := at + Vector3(-3.0, 0, 0)
+		if m.world.is_block(back.x, back.z) or absf(m.world.ground_at(back.x, back.z) - at.y) > 0.01: ok = false
+		if ok:
+			home = at; break
+	if home == Vector3.INF:
+		home = P.pos
+	P.teleport(home)
+	P.vel = Vector3.ZERO
+	P.hp = P.max_hp
+	var T: Hunter = m.make_hunter("T", 5, "medium", "Target", "idle", {}, home + Vector3(dist, 0, 0))
+	T.max_hp = 10000.0; T.hp = T.max_hp; T.armor = 0.0; T.max_armor = 0.0
+	var T2: Hunter = null
+	if extra_t:
+		T2 = m.make_hunter("T2", 5, "medium", "Target2", "idle", {}, home + Vector3(dist + 2.0, 0, 0))
+		T2.max_hp = 10000.0; T2.hp = T2.max_hp; T2.armor = 0.0; T2.max_armor = 0.0
+	for i in 5: m.step(Match.DT)
+	P.inp["aim"] = T.pos + Vector3(0, 0.9, 0); P.inp["aim_y"] = T.pos.y
+	if OS.get_cmdline_user_args().has("--ac-debug"):
+		print("  setup home=%s P=%s T=%s gP=%.2f gT=%.2f Tgr=%s Pgr=%s" % [home, P.pos, T.pos, m.world.ground_at(P.pos.x, P.pos.z), m.world.ground_at(T.pos.x, T.pos.z), T.grounded, P.grounded])
+	return [m, P, T, T2]
+
+func _ac_run(m: Match, secs: float, each := Callable()) -> void:
+	var t := 0.0
+	while t < secs:
+		if each.is_valid(): each.call()
+		for mb in m.mobs: mb.queue_free()
+		m.mobs.clear()
+		m.step(Match.DT); t += Match.DT
+
+func _ac_glove(P: Hunter, gid: String, rar := 1) -> void:
+	P.gear[0] = {"id": gid, "rar": rar}
+	P.gear_cd[0] = 0.0
+	P.m.use_gear(P, 0)
+
+func _ability_check() -> void:
+	var r: Array
+	var m: Match; var P: Hunter; var T: Hunter
+	# 1. Hook glove drags the target in
+	r = _ac_setup(7.0); m = r[0]; P = r[1]; T = r[2]
+	var d0 := P.flat_dist(T)
+	_ac_glove(P, "grapple")
+	_ac_run(m, 1.0)
+	_ac("hook pulls target", P.flat_dist(T) < 3.0, "dist %.1f -> %.1f" % [d0, P.flat_dist(T)])
+	m.queue_free(); await get_tree().process_frame
+	# 2. Barrier wall stops an enemy shot
+	r = _ac_setup(7.0); m = r[0]; P = r[1]; T = r[2]
+	P.inp["aim"] = P.pos + Vector3(2.5, 0.9, 0)
+	_ac_glove(P, "barrier")
+	var whp: float = m.verbs.walls[0]["hp"] if not m.verbs.walls.is_empty() else -1.0
+	var php := P.hp
+	m.spawn_shot(T, T.pos + Vector3(-0.6, 0.95, 0), Vector2(-30, 0), 20.0, 0.5, 0.15, Color.RED, {})
+	_ac_run(m, 0.5)
+	var whp2: float = m.verbs.walls[0]["hp"] if not m.verbs.walls.is_empty() else -1.0
+	_ac("wall blocks a shot", P.hp >= php and whp2 < whp and whp > 0.0, "wall hp %.0f -> %.0f, player hp %.0f -> %.0f" % [whp, whp2, php, P.hp])
+	# a barrier stops bodies too: walk the target into it
+	var tx0 := T.pos.x
+	_ac_run(m, 1.2, func(): T.inp["move"] = Vector2(-1, 0))
+	_ac("wall blocks movement", T.pos.x > P.pos.x + 2.4, "target x %.1f (wall at %.1f)" % [T.pos.x - P.pos.x, 2.5])
+	m.queue_free(); await get_tree().process_frame
+	# 3. Mirror glove reflects a shot back at the shooter
+	r = _ac_setup(6.0); m = r[0]; P = r[1]; T = r[2]
+	_ac_glove(P, "bubble")
+	php = P.hp
+	var thp := T.hp
+	m.spawn_shot(T, T.pos + Vector3(-0.6, 0.95, 0), Vector2(-30, 0), 20.0, 0.6, 0.15, Color.RED, {})
+	_ac_run(m, 0.6)
+	_ac("reflect returns a shot", P.hp >= php and T.hp < thp, "shooter took %.0f, player took %.0f" % [thp - T.hp, php - P.hp])
+	m.queue_free(); await get_tree().process_frame
+	# 4. Riposte (frontal) parries a melee swing and stuns the swinger
+	r = _ac_setup(1.4); m = r[0]; P = r[1]; T = r[2]
+	P.runner.set_slot("utility", Content.ability("riposte"))
+	P.runner.use("utility", {})
+	m.spawn_shot(T, T.pos + Vector3(-0.3, 0.95, 0), Vector2(-40, 0), 10.0, 0.08, 0.3, Color.RED, {"melee": true})
+	_ac_run(m, 0.15)
+	_ac("riposte parries melee", T.stun_t > 0.3, "attacker stun %.2f" % T.stun_t)
+	m.queue_free(); await get_tree().process_frame
+	# 5. Earthshatter: leap, knock up; an airborne target is spiked
+	r = _ac_setup(5.0); m = r[0]; P = r[1]; T = r[2]
+	P.runner.set_slot("utility", Content.ability("earthshatter"))
+	P.runner.use("utility", {})
+	var acc := {"top": 0.0, "hits": 0, "last": 0.0}
+	var g := T.pos.y
+	_ac_run(m, 1.0, func(): acc["top"] = maxf(acc["top"], T.pos.y - g))
+	_ac("slam knocks up", acc["top"] > 0.5 and T.hp < T.max_hp, "rose %.2fm, took %.0f" % [acc["top"], T.max_hp - T.hp])
+	m.queue_free(); await get_tree().process_frame
+	r = _ac_setup(5.0); m = r[0]; P = r[1]; T = r[2]
+	P.runner.set_slot("utility", Content.ability("earthshatter"))
+	P.runner.use("utility", {})
+	_ac_run(m, 0.42)
+	T.vel.y = 7.0; T.grounded = false
+	_ac_run(m, 0.3)
+	_ac("slam spikes airborne", T.stun_t > 0.4, "stun %.2f, took %.0f" % [T.stun_t, T.max_hp - T.hp])
+	m.queue_free(); await get_tree().process_frame
+	# 6. Leash Bolt: tether snaps when stretched
+	r = _ac_setup(5.0); m = r[0]; P = r[1]; T = r[2]
+	P.runner.set_slot("utility", Content.ability("leash_bolt"))
+	P.runner.use("utility", {})
+	_ac_run(m, 0.4)
+	var tethered := not m.verbs.tethers.is_empty()
+	thp = T.hp
+	T.teleport(P.pos + Vector3(8.0, 0, 0))
+	_ac_run(m, 0.2)
+	_ac("tether snaps", tethered and T.hp < thp - 15.0 and T.stun_t > 0.5, "tethered=%s snap dmg %.0f stun %.2f" % [tethered, thp - T.hp, T.stun_t])
+	m.queue_free(); await get_tree().process_frame
+	# 7. Tripwire Mine roots whoever steps on it
+	r = _ac_setup(4.0); m = r[0]; P = r[1]; T = r[2]
+	P.runner.set_slot("utility", Content.ability("tripwire_mine"))
+	P.inp["aim"] = T.pos + Vector3(-1.5, 0, 0)
+	P.runner.use("utility", {})
+	_ac_run(m, 1.0)
+	var before_root := T.root_t
+	_ac_run(m, 1.0, func(): T.inp["move"] = Vector2(-1, 0))
+	_ac("trap roots on step", before_root <= 0.0 and (T.root_t > 0.0 or T.hp < T.max_hp) and m.verbs.traps.is_empty(), "root %.2f, took %.0f" % [T.root_t, T.max_hp - T.hp])
+	m.queue_free(); await get_tree().process_frame
+	# 8. Moon Swap (kin E, performed from the shoulder): trade places
+	r = _ac_setup(6.0); m = r[0]; P = r[1]; T = r[2]
+	var pa := P.pos; var ta := T.pos
+	Effects.run(Content.ability("moon_swap").effects, P, {"aim": T.pos})
+	_ac_run(m, 0.5)
+	_ac("swap trades places", P.flat_dist(ta) < 1.2 and T.flat_dist(pa) < 1.2, "player at %.1f from target's spot" % P.flat_dist(ta))
+	m.queue_free(); await get_tree().process_frame
+	# 9. Fissure glove: the line throws the target up
+	r = _ac_setup(5.0); m = r[0]; P = r[1]; T = r[2]
+	_ac_glove(P, "quake")
+	acc["top"] = 0.0; g = T.pos.y
+	_ac_run(m, 1.0, func(): acc["top"] = maxf(acc["top"], T.pos.y - g))
+	_ac("fissure knocks up", acc["top"] > 0.4 and T.hp < T.max_hp, "rose %.2f" % acc["top"])
+	m.queue_free(); await get_tree().process_frame
+	# 10. Vortex glove: drags the target to the centre
+	r = _ac_setup(6.0); m = r[0]; P = r[1]; T = r[2]
+	var ctr := T.pos + Vector3(2.0, 0, 0)
+	P.inp["aim"] = ctr
+	_ac_glove(P, "shock")
+	var dc0 := T.flat_dist(ctr)
+	_ac_run(m, 1.0)
+	_ac("vortex pulls in", T.flat_dist(ctr) < dc0 - 0.6, "to centre %.1f -> %.1f" % [dc0, T.flat_dist(ctr)])
+	m.queue_free(); await get_tree().process_frame
+	# 11. Razor Disc: out and back, hitting twice
+	r = _ac_setup(4.0); m = r[0]; P = r[1]; T = r[2]
+	P.runner.set_slot("utility", Content.ability("razor_disc"))
+	P.runner.use("utility", {})
+	acc["hits"] = 0; acc["last"] = T.hp
+	_ac_run(m, 1.6, func():
+		if T.hp < float(acc["last"]) - 0.5: acc["hits"] = int(acc["hits"]) + 1
+		acc["last"] = T.hp)
+	_ac("boomerang hits twice", int(acc["hits"]) >= 2, "%d hits" % acc["hits"])
+	m.queue_free(); await get_tree().process_frame
+	# 12. Rail Charge: a full charge pierces two in a line
+	r = _ac_setup(5.0, true); m = r[0]; P = r[1]; T = r[2]
+	var T2: Hunter = r[3]
+	P.runner.set_slot("utility", Content.ability("rail_charge"))
+	P.runner.use("utility", {"charge": 1.0})
+	_ac_run(m, 0.4)
+	_ac("rail pierces", T.hp < T.max_hp - 20.0 and T2.hp < T2.max_hp - 20.0, "%.0f and %.0f" % [T.max_hp - T.hp, T2.max_hp - T2.hp])
+	# and the player's held charge path: press, hold 1s, let go
+	P.runner.reset()
+	T.hp = T.max_hp
+	P.inp["aim"] = T.pos + Vector3(0, 0.9, 0)
+	P.inp["sec"] = true; P.inp["sec_hold"] = true
+	_ac_run(m, 1.0, func(): P.inp["sec_hold"] = true)
+	P.inp["sec_hold"] = false
+	_ac_run(m, 0.3)
+	_ac("rail hold-to-charge", T.hp < T.max_hp - 25.0, "took %.0f" % (T.max_hp - T.hp))
+	m.queue_free(); await get_tree().process_frame
+	# 13. Breach: throws the target back and you the other way
+	r = _ac_setup(2.5); m = r[0]; P = r[1]; T = r[2]
+	P.runner.set_slot("utility", Content.ability("breach"))
+	var p0 := P.pos; var t0 := T.pos
+	P.runner.use("utility", {})
+	var pv := P.vel
+	_ac_run(m, 0.5)
+	print("   breach vel after cast ", pv)
+	_ac("breach knocks both apart", T.pos.x - t0.x > 1.5 and p0.x - P.pos.x > 1.0, "target +%.1f, you -%.1f" % [T.pos.x - t0.x, p0.x - P.pos.x])
+	m.queue_free(); await get_tree().process_frame
+	# 14. Bulwark: a shield that follows you and stops shots
+	r = _ac_setup(6.0); m = r[0]; P = r[1]; T = r[2]
+	P.runner.set_slot("utility", Content.ability("bulwark"))
+	P.runner.use("utility", {})
+	php = P.hp
+	m.spawn_shot(T, T.pos + Vector3(-0.6, 0.95, 0), Vector2(-30, 0), 20.0, 0.5, 0.15, Color.RED, {})
+	_ac_run(m, 0.4)
+	_ac("bulwark blocks", P.hp >= php and not m.verbs.walls.is_empty(), "")
+	m.queue_free(); await get_tree().process_frame
+	# 15. Shadow Step: knife, then you're behind them
+	r = _ac_setup(6.0); m = r[0]; P = r[1]; T = r[2]
+	P.runner.set_slot("utility", Content.ability("shadow_step"))
+	P.runner.use("utility", {})
+	_ac_run(m, 0.4)
+	_ac("shadow step lands behind", P.pos.x > T.pos.x and P.flat_dist(T) < 1.8 and P.crit_t > 0.0, "x %.1f vs %.1f, target took %.0f" % [P.pos.x, T.pos.x, T.max_hp - T.hp])
+	m.queue_free(); await get_tree().process_frame
+	# 16. Ice Bridge: over the abyss
+	r = _ac_setup(4.0); m = r[0]; P = r[1]; T = r[2]
+	var edge := Vector3.INF; var ed := Vector2.ZERO
+	for i in 4000:
+		var q: Vector3 = m.world.random_ground()
+		for dd in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
+			var q2 := q + Vector3(dd.x, 0, dd.y) * 1.2
+			if m.world.is_void(q2.x, q2.z) and not m.world.is_block(q.x, q.z):
+				edge = q; ed = dd; break
+		if edge != Vector3.INF: break
+	P.teleport(edge); P.inp["aim"] = edge + Vector3(ed.x, 0, ed.y) * 8.0
+	_ac_glove(P, "frost")
+	var ground_ok: bool = not m.world.is_void(edge.x + ed.x * 3.0, edge.z + ed.y * 3.0)
+	_ac("ice bridge makes ground", not m.verbs.terrain.is_empty() and ground_ok, "%d tiles" % (m.verbs.terrain[0]["tiles"].size() if not m.verbs.terrain.is_empty() else 0))
+	_ac_run(m, 7.5)
+	_ac("ice bridge melts", m.verbs.terrain.is_empty() and m.world.is_void(edge.x + ed.x * 3.0, edge.z + ed.y * 3.0), "")
+	m.queue_free(); await get_tree().process_frame
+	# 17. Prism Wall (kin E) reflects shots back
+	r = _ac_setup(7.0); m = r[0]; P = r[1]; T = r[2]
+	P.inp["aim"] = P.pos + Vector3(2.5, 0, 0)
+	Effects.run(Content.ability("prism_wall").effects, P, {"aim": P.pos + Vector3(2.5, 0, 0)})
+	thp = T.hp; php = P.hp
+	m.spawn_shot(T, T.pos + Vector3(-0.6, 0.95, 0), Vector2(-30, 0), 20.0, 0.6, 0.15, Color.RED, {})
+	_ac_run(m, 0.6)
+	_ac("prism wall reflects", T.hp < thp and P.hp >= php, "shooter took %.0f" % (thp - T.hp))
+	m.queue_free(); await get_tree().process_frame
+	# 18. Stinger Hook (kin E): yanks to the caster and blights
+	r = _ac_setup(6.0); m = r[0]; P = r[1]; T = r[2]
+	Effects.run(Content.ability("stinger_hook").effects, P, {"aim": T.pos})
+	_ac_run(m, 0.8)
+	_ac("stinger hook yanks + blights", P.flat_dist(T) < 3.0 and T.blight_t > 0.0, "dist %.1f blight %.1f" % [P.flat_dist(T), T.blight_t])
+	m.queue_free(); await get_tree().process_frame
+	# 19. Gravity Slam (kin E) pulls in and lifts
+	r = _ac_setup(5.0); m = r[0]; P = r[1]; T = r[2]
+	var gk: Kin = P.kin
+	if gk:
+		gk.teleport(P.pos + Vector3(1, 0, 0)); gk.state = "active"
+		var land := T.pos + Vector3(1.5, 0, 0)
+		Effects.run(Content.ability("slam").effects, gk, {"aim": land})
+		acc["top"] = 0.0; g = T.pos.y
+		var dl := T.flat_dist(land)
+		var mind := {"d": dl}
+		_ac_run(m, 1.0, func():
+			acc["top"] = maxf(acc["top"], T.pos.y - g)
+			mind["d"] = minf(mind["d"], T.flat_dist(land)))
+		_ac("gravity slam pulls + lifts", acc["top"] > 0.4 and float(mind["d"]) < dl - 0.3, "rose %.2f, to crater %.1f -> %.1f (kin %s)" % [acc["top"], dl, mind["d"], gk.state])
+	m.queue_free(); await get_tree().process_frame
+	# 20. Dashes: class verbs and kin riders
+	r = _ac_setup(6.0); m = r[0]; P = r[1]; T = r[2]
+	P.cls = "light"; P.dodge_def = Content.class_dodge("light")
+	P.inp["move"] = Vector2(1, 0)
+	P.do_dash()
+	_ac("light phase step", P.phase_t > 0.1, "phase %.2f" % P.phase_t)
+	_ac_run(m, 0.6)
+	P.cls = "medium"; P.dodge_def = Content.class_dodge("medium"); P.dashes = 1.0
+	P.ammo = 0
+	P.do_dash()
+	_ac("medium roll reloads", P.ammo > 0, "ammo %d" % P.ammo)
+	_ac_run(m, 0.6)
+	if P.kin:
+		(P.kin as Kin).species = "wisplet"
+		P.dashes = 1.0
+		var bp := P.pos
+		P.inp["move"] = Vector2(-1, 0)
+		P.do_dash()
+		print("   lunar: element=%s grounded=%s dashes=%.1f roll=%.2f" % [P.kin_element(), P.grounded, P.dashes, P.roll_t])
+		_ac("lunar dash blinks", P.roll_t <= 0.0 and P.flat_dist(bp) > 2.0, "moved %.1f instantly" % P.flat_dist(bp))
+		_ac_run(m, 0.6)
+		(P.kin as Kin).species = "cindle"
+		P.dashes = 1.0
+		P.teleport(T.pos + Vector3(-2.5, 0, 0))
+		P.inp["move"] = Vector2(1, 0)
+		P.do_dash()
+		_ac_run(m, 0.4)
+		_ac("venom dash poisons", T.burn_t > 0.0 or T.blight_t > 0.0, "burn %.1f" % T.burn_t)
+	m.queue_free(); await get_tree().process_frame
+	# 21. Every ability and active glove runs without errors (watch the log for SCRIPT ERROR)
+	r = _ac_setup(5.0); m = r[0]; P = r[1]; T = r[2]
+	var n := 0
+	for id in Content.ids("abilities"):
+		var ad := Content.ability(id)
+		P.teleport(T.pos + Vector3(-5, 0, 0)); P.vel = Vector3.ZERO
+		P.inp["aim"] = T.pos + Vector3(0, 0.9, 0)
+		Effects.run(ad.effects, P, {"slot": "utility", "ability": id, "charge": 0.7})
+		_ac_run(m, 0.8)
+		n += 1
+	for gid in Gear.ALL:
+		if Gear.active(gid):
+			P.teleport(T.pos + Vector3(-5, 0, 0)); P.vel = Vector3.ZERO
+			P.inp["aim"] = T.pos + Vector3(0, 0.9, 0)
+			for rar in [1, 4]:
+				_ac_glove(P, gid, rar)
+				_ac_run(m, 0.6)
+			n += 1
+	_ac("all abilities run", true, "%d ran" % n)
+	m.queue_free(); await get_tree().process_frame
+	print("ACHECK DONE, failures: ", _ac_fail)
 	get_tree().quit()
 
 ## Headless check for basing to a teammate (B): a clean channel arrives weakened; a hit interrupts.

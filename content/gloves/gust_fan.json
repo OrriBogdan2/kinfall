@@ -1,11 +1,13 @@
 {
+ "id": "gust_fan",
  "name": "Gust Glove",
+ "short": "Gust",
+ "verb": "launch",
  "cd": 16,
  "col": "cfeaff",
  "stats": {
   "glide_speed": 0.1
  },
  "icon": "gust_fan",
- "desc": "A burst of wind launches you up and forward and cools your glider. Saves falls, reaches high ground.",
- "id": "gust_fan"
+ "desc": "A burst of wind launches you up and forward and cools your glider. Saves falls, reaches high ground."
 }

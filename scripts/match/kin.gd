@@ -276,7 +276,7 @@ func _cast(slot: String, p: Vector3, auto := false, through: Node = null) -> voi
 	var dd := Vector2(p.x - pos.x, p.z - pos.z)
 	if dd.length() > 0.1 and def.from == "kin" and through == null:
 		face = atan2(-dd.x, -dd.y)
-	var ctx := {"aim": p, "power": ability_power() * (0.85 if through else 1.0)}
+	var ctx := {"aim": p, "power": ability_power() * (0.85 if through else 1.0), "level": owner_h.ability_level(slot) if owner_h and slot == "k1" else 1}
 	if through:
 		ctx["as"] = through
 	runner.use(slot, ctx)

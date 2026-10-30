@@ -1,12 +1,20 @@
 {
+ "id": "blink",
  "name": "Blink Glove",
- "cd": 14,
+ "short": "Blink",
+ "verb": "blink-strike",
+ "cd": 12,
  "col": "c9a0ff",
  "stats": {
   "speed": 0.03
  },
  "icon": "blink",
- "desc": "Blink 5 tiles toward the cursor. Never into the abyss.",
+ "desc": "Blink 5m toward the cursor (never into the abyss) and slash everything around where you land: 14 damage, slowed.",
+ "bot": {
+  "when": "in_range",
+  "min": 3,
+  "max": 6
+ },
  "effects": [
   {
    "type": "burst",
@@ -14,12 +22,17 @@
   },
   {
    "type": "blink",
-   "distance": 5.0
+   "distance": 5.0,
+   "color": "c9a0ff"
   },
   {
-   "type": "burst",
+   "type": "area",
+   "at": "self",
+   "radius": 1.8,
+   "dmg": 14,
+   "slow": 1.2,
+   "kb": 4,
    "color": "c9a0ff"
   }
- ],
- "id": "blink"
+ ]
 }

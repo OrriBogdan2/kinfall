@@ -76,6 +76,22 @@ var pending_input := {"base": false, "dash": false, "jump": false, "sig": false,
 var zones: Array = []      # hero areas: dome, sanctuary, well
 var fields: Fields = null  # patches made by kin abilities (Thorn Patch)
 var verbs: Verbs = null    # walls, reflect windows, tethers, traps, bridges and yanks left by abilities
+var _later: Array = []     # [due time, Callable]: delayed ability steps, on match time (not wall-clock timers)
+
+## Run cb after `delay` seconds of match time: delayed effects, echoes, landing blasts. Unlike a
+## SceneTree timer it pauses with the match, keeps step with headless sims and dies with the match.
+func later(delay: float, cb: Callable) -> void:
+	_later.append([time + maxf(0.0, delay), cb])
+
+func _run_later() -> void:
+	if _later.is_empty():
+		return
+	var due: Array = []
+	for it in _later:
+		if float(it[0]) <= time: due.append(it)
+	for it in due:
+		_later.erase(it)
+		(it[1] as Callable).call()
 var _bond_cb: Callable
 var _combo_cb: Callable
 var player_lost: Array = []  # your kin left behind when you went down: {uid, kin, holder}
@@ -786,14 +802,14 @@ func use_gear(h: Hunter, slot: int) -> void:
 	if not Gear.active(gid):
 		return
 	var gd: Dictionary = Gear.ALL[gid]
-	h.gear_cd[slot] = float(gd["cd"])
+	h.gear_cd[slot] = Gear.cd_of(gid, int(g.get("rar", 1)))
 	var col: Color = gd["col"]
 	h.reveal_t = maxf(h.reveal_t, 0.6)
 	if h == player:
 		h._ab_feedback("gear0", "cast")
 	if gd.has("effects"):
-		# newer gloves are built from the same effect blocks as abilities
-		Effects.run(gd["effects"], h, {})
+		# newer gloves are built from the same effect blocks as abilities, scaled by rarity
+		Effects.run(Gear.effects_of(gid, int(g.get("rar", 1))), h, {"slot": "gear", "ability": gid, "level": h.ability_level("gear")})
 		sfx("skill", h.pos, -4.0, 1.0)
 		return
 	match gid:
@@ -2167,7 +2183,11 @@ func _update_shots(dt: float) -> void:
 		var sx: Dictionary = s["x"]
 		for i in n:
 			p += step / n
-			if sx.has("dy"):
+			if sx.has("lob"):
+				var tr0 := Vector2(p.x - (s["start"] as Vector3).x, p.z - (s["start"] as Vector3).z).length()
+				var tot := float(s["life0"]) * (s["vel"] as Vector2).length()
+				p.y = (s["start"] as Vector3).y + sin(clampf(tr0 / maxf(0.1, tot), 0.0, 1.0) * PI) * float(sx["lob"])
+			elif sx.has("dy"):
 				# climbing or dipping toward the height you aimed at
 				var trav := Vector2(p.x - (s["start"] as Vector3).x, p.z - (s["start"] as Vector3).z).length()
 				p.y = float(sx["y0"]) + float(sx["dy"]) * clampf(trav / float(sx["dyd"]), 0.0, 1.0)
@@ -2270,6 +2290,8 @@ func _shot_break(s: Dictionary, p: Vector3) -> Dictionary:
 func _shot_targets(s: Dictionary) -> Array:
 	var x: Dictionary = s["x"]
 	var out: Array = []
+	if x.has("lob"):
+		return out       # a lobbed shell sails over everyone and comes down where it was aimed
 	if x.get("cos", false):
 		# a remote shooter's bullet stops on whatever it visibly hits; the owner reports the damage
 		for h in hunters:
@@ -2279,12 +2301,12 @@ func _shot_targets(s: Dictionary) -> Array:
 		return out
 	if x.get("mob", false):
 		for h in hunters:
-			if h.hittable() and not h.downed: out.append(h)
+			if h.hittable() and not h.downed and h.phase_t <= 0.0: out.append(h)
 		for k in kins:
 			if not k.is_wild() and k.hittable(): out.append(k)
 		return out
 	for h in hunters:
-		if h.team != s["team"] and h.hittable(): out.append(h)
+		if h.team != s["team"] and h.hittable() and h.phase_t <= 0.0: out.append(h)
 	for k in kins:
 		if k.team != s["team"] and k.hittable(): out.append(k)
 	for mb in mobs:
@@ -2393,6 +2415,8 @@ func _shot_apply(s: Dictionary, at: Vector3, e: Ent) -> void:
 	if x.has("root"): o["root"] = x["root"]
 	if x.has("stun"): o["stun"] = x["stun"]
 	if x.has("kbi"): o["kbi"] = x["kbi"]
+	if x.has("blight"): o["blight"] = x["blight"]
+	if x.has("wallstun"): o["wallstun"] = x["wallstun"]
 	if x.has("ab"): o["ab"] = x["ab"]
 	if x.get("hook", false) and by:
 		# drag it back toward whoever threw the hook
@@ -2669,7 +2693,14 @@ func _gather_input() -> void:
 	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["ultimate", "ult"], ["secondary", "sec"], ["gear1", "gear1"]]:
 		if a[0] == "tonic" and (not perk_offer.is_empty() or not _perk_keys_down.is_empty()):
 			continue       # 1, 2 and 3 pick a perk while a choice is open
-		var aimable: bool = a[0] in ["signature", "ultimate"] and not quick
+		if a[0] == "secondary" and aim_hold != "" and aim_hold != "secondary" and Input.is_action_just_pressed("secondary"):
+			aim_hold = ""          # right click while aiming something else cancels the cast
+			continue
+		var aimable: bool = a[0] in ["signature", "ultimate", "gear1", "secondary"] and not quick
+		if a[0] == "secondary" and player.runner and player.runner.def_of("utility") and not player.runner.def_of("utility").charge.is_empty():
+			aimable = false       # a charge-up starts on the press and fires on the release
+		if a[0] == "gear1" and (player.gear[0] as Dictionary).is_empty():
+			aimable = false
 		if aimable:
 			# hold to see where it will land, let go to cast it
 			if Input.is_action_just_pressed(a[0]) and not paused:
@@ -2677,9 +2708,6 @@ func _gather_input() -> void:
 			if aim_hold == a[0] and not Input.is_action_pressed(a[0]):
 				aim_hold = ""
 				pending_input[a[1]] = true
-			continue
-		if a[0] == "secondary" and aim_hold != "" and Input.is_action_just_pressed("secondary"):
-			aim_hold = ""          # right click while aiming cancels the cast
 			continue
 		if Input.is_action_just_pressed(a[0]):
 			pending_input[a[1]] = true
@@ -2922,6 +2950,7 @@ func step(dt: float) -> void:
 	_update_zones(dt)
 	fields.tick(dt)
 	verbs.tick(dt)
+	_run_later()
 	if biomes: biomes.tick(dt)
 	_update_tracking(dt)
 	if opts.get("tutorial", false):
@@ -4564,6 +4593,7 @@ var ind_area: MeshInstance3D
 var ind_fill: MeshInstance3D
 var ind_line: MeshInstance3D
 var ind_fan: MeshInstance3D
+var ind_wall: MeshInstance3D
 ## [shape, reach, size]: self (around you), dash (where you'll end up), line (length, width),
 ## area (a circle at the cursor within reach), cone (length, cosine of the half angle)
 const AIM := {
@@ -4589,6 +4619,7 @@ func _build_indicators() -> void:
 	ind_fill = mk.call(Models.cyl(1.0, 1.0, 0.01, 40), Models.glow_mat(Color(1, 1, 1, 0.14)))
 	ind_line = mk.call(Models.box(1.0, 0.01, 1.0), Models.glow_mat(Color(1, 1, 1, 0.22)))
 	ind_fan = mk.call(ArrayMesh.new(), Models.glow_mat(Color(1, 1, 1, 0.2)))
+	ind_wall = mk.call(Models.box(1.0, 0.02, 1.0), Models.glow_mat(Color(1, 1, 1, 0.9)))
 
 func _fan_mesh(length: float, cos_half: float) -> ArrayMesh:
 	var half := acos(clampf(cos_half, -1.0, 1.0))
@@ -4608,15 +4639,30 @@ func _fan_mesh(length: float, cos_half: float) -> ArrayMesh:
 func _update_indicators(alpha: float) -> void:
 	if ind_range == null:
 		_build_indicators()
-	for n in [ind_range, ind_area, ind_fill, ind_line, ind_fan]: n.visible = false
+	for n in [ind_range, ind_area, ind_fill, ind_line, ind_fan, ind_wall]: n.visible = false
 	var p := player
-	if aim_hold == "" or p == null or p.out or p.downed or paused:
+	if p == null or p.out or p.downed or paused or (aim_hold == "" and p.charge_frac() < 0.0):
 		return
 	var id := ""
 	var col := Color.WHITE
 	var spec: Array = []
 	var from_kin := false
-	match aim_hold:
+	if p.charge_frac() >= 0.0:
+		# a charge-up: the lane grows as you hold
+		var ud: AbilityDef = p.runner.def_of("utility")
+		var sp0: Array = ud.aim_spec()
+		spec = ["line", lerpf(float(sp0[1]) * 0.5, float(sp0[1]), p.charge_frac()), float(sp0[2]) * (1.0 + p.charge_frac())]
+		col = ud.color.lerp(Color.WHITE, 0.4 * p.charge_frac())
+	match aim_hold if spec.is_empty() else "":
+		"secondary":
+			var ud2: AbilityDef = p.runner.def_of("utility") if p.runner else null
+			if ud2 == null: return
+			spec = ud2.aim_spec(); col = ud2.color
+		"gear1":
+			var g0: Dictionary = p.gear[0]
+			if g0.is_empty(): return
+			var gdf := Gear.def_of(String(g0["id"]))
+			spec = gdf.aim_spec(); col = gdf.color
 		"signature", "kin_skill":
 			if p.kin == null: return
 			var kd: AbilityDef = (p.kin as Kin).runner.def_of("k1" if aim_hold == "signature" else "k2")
@@ -4664,13 +4710,41 @@ func _update_indicators(alpha: float) -> void:
 			ind_line.global_position = Vector3(mid.x, gy, mid.y)
 			ind_line.rotation = Vector3(0, atan2(-dir.x, -dir.y), 0)
 			ind_line.scale = Vector3(size, 1, reach)
+			# and a tick across its far end so the length reads
+			ind_wall.visible = true
+			var tip := Vector2(at.x, at.z) + dir * reach
+			ind_wall.global_position = Vector3(tip.x, gy + 0.01, tip.y)
+			ind_wall.rotation = Vector3(0, atan2(-dir.x, -dir.y), 0)
+			ind_wall.scale = Vector3(maxf(size * 1.8, 0.9), 1, 0.12)
+		"wall":
+			# the wall's own footprint, across your aim, where it will stand
+			var front := spec.size() > 3 and String(spec[3]) == "front"
+			var dist2 := reach if front else minf(d.length(), reach)
+			var wd := dir
+			if from_kin:
+				var od := Vector2(aim.x - p.pos.x, aim.z - p.pos.z)
+				if od.length() > 0.3: wd = od.normalized()
+			var c3 := Vector2(at.x, at.z) + dir * dist2
+			var g3 := world.ground_at(c3.x, c3.y)
+			var cy3: float = (g3 if g3 > World.VOID + 1.0 else at.y) + 0.08
+			if not front:
+				ind_range.visible = true
+				ind_range.global_position = Vector3(at.x, gy, at.z); ind_range.scale = Vector3.ONE * reach
+			ind_wall.visible = true
+			ind_wall.global_position = Vector3(c3.x, cy3, c3.y)
+			ind_wall.rotation = Vector3(0, atan2(-wd.x, -wd.y), 0)
+			ind_wall.scale = Vector3(size, 1, 0.55)
+			ind_line.visible = true
+			ind_line.global_position = Vector3(c3.x, cy3 - 0.01, c3.y) + Vector3(wd.x, 0, wd.y) * 0.5
+			ind_line.rotation = Vector3(0, atan2(-wd.x, -wd.y), 0)
+			ind_line.scale = Vector3(size, 1, 1.0)
 		"cone":
 			ind_fan.mesh = _fan_mesh(reach, size)
 			ind_fan.visible = true
 			ind_fan.global_position = Vector3(at.x, gy, at.z)
 			ind_fan.rotation = Vector3(0, atan2(-dir.x, -dir.y), 0)
-	for mi in [ind_range, ind_area, ind_fill, ind_line, ind_fan]:
-		set_col.call(mi, 0.35 if mi == ind_range else (0.9 if mi == ind_area else 0.22))
+	for mi in [ind_range, ind_area, ind_fill, ind_line, ind_fan, ind_wall]:
+		set_col.call(mi, 0.35 if mi == ind_range else (0.9 if mi in [ind_area, ind_wall] else 0.22))
 
 func _build_aim() -> void:
 	aim_line = MeshInstance3D.new()

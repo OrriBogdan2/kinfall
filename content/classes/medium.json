@@ -1,1 +1,4 @@
-{"id": "medium", "dodge": "dash"}
+{
+ "id": "medium",
+ "dodge": "combat_roll"
+}

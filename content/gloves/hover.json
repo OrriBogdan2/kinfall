@@ -1,11 +1,13 @@
 {
+ "id": "hover",
  "name": "Hover Glove",
+ "short": "Hover",
+ "verb": "double jump",
  "cd": 7,
  "col": "b6f0ff",
  "stats": {
   "glide_speed": 0.05
  },
  "icon": "updraft",
- "desc": "A second jump in mid-air, and your glider is ready the moment you want it.",
- "id": "hover"
+ "desc": "A second jump in mid-air, and your glider is ready the moment you want it."
 }

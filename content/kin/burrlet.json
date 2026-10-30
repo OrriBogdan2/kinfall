@@ -27,7 +27,7 @@
 	"voice": "curious and odd, notices small things",
 	"shoulder": "briar",
 	"abilities": [
-		"snare",
+		"puffcap_mines",
 		"thorn_patch"
 	],
 	"ultimate": "thornwake",

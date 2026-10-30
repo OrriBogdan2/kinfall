@@ -1,36 +1,29 @@
 {
 	"id": "rock_guard",
 	"name": "Mass Guard",
-	"icon": "fortify",
+	"short": "Plate",
+	"verb": "shield wall",
+	"element": "gravity",
+	"icon": "wall",
 	"color": "#b48cff",
 	"cooldown": 12,
-	"desc": "Your kin grows impossibly heavy for 4s (takes 60% less damage), shoves foes off it and gives you a 30 point shield.",
+	"charges": 1,
+	"from": "owner",
 	"auto": {
-		"when": "owner_hurt",
-		"below": 0.6
+		"when": "owner_under_fire"
 	},
+	"desc": "When you're under fire, Gravadillo curls into a heavy plate in front of you for 3s that stops enemy shots (120 HP).",
 	"effects": [
 		{
-			"type": "guard",
-			"amount": 0.6,
-			"time": 4,
-			"target": "self"
-		},
-		{
-			"type": "shield",
-			"amount": 30,
-			"time": 5,
-			"target": "owner"
-		},
-		{
-			"type": "area",
-			"at": "self",
-			"radius": 2.0,
-			"dmg": 6,
-			"kb": 8,
+			"type": "wall",
+			"at": "front",
+			"on": "owner",
+			"dist": 1.2,
+			"length": 2.4,
+			"hp": 120,
+			"time": 3,
+			"follow": true,
 			"color": "#b48cff"
 		}
-	],
-	"from": "kin",
-	"charges": 1
+	]
 }

@@ -1,11 +1,13 @@
 {
+ "id": "focus",
  "name": "Focus Glove",
+ "short": "Focus",
+ "verb": "",
  "cd": 0,
  "col": "d07aff",
  "stats": {
   "cdr": 0.18
  },
  "icon": "pulse",
- "desc": "Abilities recharge 18% faster.",
- "id": "focus"
+ "desc": "Abilities recharge 18% faster."
 }

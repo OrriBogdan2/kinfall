@@ -26,5 +26,5 @@
 		"bloom_dash_reset": true,
 		"desc": "Seven slugs that slow and stop at 5m. One slug landing still hurts. Spread grows with each shot; dashing resets it."
 	},
-	"utility": "breaching_blast"
+	"utility": "breach"
 }

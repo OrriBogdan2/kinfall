@@ -1,0 +1,37 @@
+{
+	"id": "tripwire_mine",
+	"name": "Tripwire Mine",
+	"short": "Mine",
+	"verb": "trap",
+	"icon": "trap",
+	"color": "#ffb04a",
+	"cooldown": 10,
+	"charges": 2,
+	"range": 8,
+	"bot": {
+		"when": "in_range",
+		"max": 8
+	},
+	"desc": "Plant a mine up to 8m away (2 charges). The first rival to step on it is rooted 1.4s, revealed for 3s and takes 14.",
+	"effects": [
+		{
+			"type": "trap",
+			"at": "aim",
+			"radius": 1.1,
+			"arm": 0.8,
+			"time": 25,
+			"reveal": 3,
+			"color": "#ffb04a",
+			"on_trigger": [
+				{
+					"type": "area",
+					"at": "here",
+					"radius": 1.6,
+					"dmg": 14,
+					"root": 1.4,
+					"color": "#ffb04a"
+				}
+			]
+		}
+	]
+}

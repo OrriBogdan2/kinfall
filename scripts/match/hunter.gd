@@ -156,6 +156,9 @@ var perk := ""                  # (old single home perk; perks are now found in 
 var perks: Array = []           # perks picked up this expedition, one entry per stack
 var ult := 0.0                # the bond meter, 0..1: R calls your kin's bond ultimate at 1
 var crit_t := 0.0             # shots crit while this runs (Blink)
+var phase_t := 0.0            # Light's Phase Step: shots pass through you while this runs
+var dash_pass := {}           # a kin rider on the dash: what it does to foes you pass through {hit, opts}
+var abil_charge := {}         # holding a charge-up weapon ability (Rail Charge): {t}
 var charge: Dictionary = {}   # Ram
 var idle_fire := 0.0
 var dropping := false         # gliding down from the sky at the start of a match
@@ -644,8 +647,61 @@ func do_dash() -> void:
 	else:
 		dashes -= 1.0
 	var effs: Array = dodge_def.effects if dodge_def else [{"type": "dash", "speed": DASH_SPEED, "time": DASH_TIME, "invuln": 0.14}]
-	Effects.run(effs, self, {"slot": "dodge", "ability": dodge_def.id if dodge_def else "dash"})
+	Effects.run(effs, self, {"slot": "dodge", "ability": dodge_def.id if dodge_def else "dash", "level": ability_level("dash")})
+	_dash_rider(use_ex)
 	CombatBus.ability_used.emit(self, dodge_def.id if dodge_def else "dash", "dodge")
+
+## The element of the kin you brought ("venom", "lunar"...), which flavours your dash.
+func kin_element() -> String:
+	if kin == null or (kin as Kin).dead:
+		return ""
+	return String(Data.KIN.get((kin as Kin).species, {}).get("type", ""))
+
+## Your kin's element adds a rider to every dash (content/rules/dash_riders.json): venom poisons
+## what you pass through, lunar blinks instead of travelling, gravity tugs foes in at the end,
+## spore leaves a cloud, prism leaves a decoy, echo dashes a second time.
+func dash_rider() -> Dictionary:
+	var el := kin_element()
+	return Content.rules("dash_riders").get(el, {}) if el != "" else {}
+
+func _dash_rider(ex: bool) -> void:
+	dash_pass = {}
+	var rd := dash_rider()
+	if rd.is_empty():
+		return
+	var col := Color(String(rd.get("color", "#ffffff")))
+	var ctx := {"slot": "dodge", "ability": "dash_" + kin_element(), "level": ability_level("dash"), "at_fixed": pos, "dir": roll_dir}
+	if rd.get("blink", false) and not ex and grounded:
+		# lunar: no travel at all, you're simply there
+		var dist := roll_speed * roll_t
+		roll_t = 0.0
+		Effects.run([{"type": "blink", "distance": dist + 0.4, "color": col.to_html(false)}], self, {"dir": roll_dir})
+		vel.x = roll_dir.x * 3.0; vel.z = roll_dir.y * 3.0
+		phase_t = maxf(phase_t, 0.15)
+	if rd.has("start"):
+		Effects.run(rd["start"], self, ctx)
+	if rd.has("pass"):
+		dash_pass = {"hit": {}, "opts": rd["pass"]}
+	if rd.has("end"):
+		var tt := maxf(0.02, roll_t)
+		m.later(tt, func():
+			if is_instance_valid(self) and not dead and not out:
+				Effects.run(rd["end"], self, {"slot": "dodge", "ability": "dash_" + kin_element(), "level": ability_level("dash")}))
+	if rd.has("repeat") and not ex:
+		var rp: Dictionary = rd["repeat"]
+		var d0 := roll_dir
+		var spd0 := roll_speed
+		var t0 := roll_t
+		m.later(t0 + float(rp.get("delay", 0.25)), func():
+			if is_instance_valid(self) and not dead and not out and not downed and stun_t <= 0.0 and roll_t <= 0.0:
+				roll_dir = d0
+				roll_speed = spd0
+				roll_t = t0 * float(rp.get("k", 0.6))
+				move_kind = "dash"
+				inv_t = maxf(inv_t, roll_t)
+				m.fx.ring(pos, 0.9, col, 0.25)
+				m.fx.dash_trail(self)
+				m.sfx("dash", pos, -6.0, 1.4))
 
 var roll_speed := DASH_SPEED
 var wedged_t := 0.0
@@ -676,7 +732,26 @@ func dash_with(e: Dictionary) -> void:
 		roll_speed = float(cdat.get("ex_dist", roll_speed * roll_t)) / roll_t
 		vel.y = maxf(vel.y, 0.0)
 	inv_t = maxf(inv_t, float(e.get("invuln", 0.14)))
-	shove = {"hit": {}, "kb": float(e.get("shove_kb", 9.0)), "dmg": float(e.get("shove_dmg", 0.0))} if e.get("shove", false) else {}
+	shove = {"hit": {}, "kb": float(e.get("shove_kb", 9.0)), "dmg": float(e.get("shove_dmg", 0.0)), "ws": float(e.get("wallstun", 0.0))} if e.get("shove", false) else {}
+	if float(e.get("phase", 0.0)) > 0.0:
+		# Light: for the whole step shots fly straight through you
+		phase_t = maxf(phase_t, roll_t + float(e["phase"]) * 0.3)
+		inv_t = maxf(inv_t, roll_t + 0.02)
+	if float(e.get("reload", 0.0)) > 0.0 and not wpn.get("melee", false):
+		# Medium: the roll slips rounds into the magazine
+		var mag := int(wpn["mag"])
+		ammo = mini(mag, ammo + int(ceil(mag * float(e["reload"]))))
+		if ammo >= mag: reload_t = 0.0
+	match String(e.get("trail", "")):
+		"ghost":
+			for i in 3:
+				m.later(roll_t * float(i) / 3.0, func():
+					if is_instance_valid(self) and m: m.fx.ghost(position, face, Color("d8c8ff"), float(cdat["scale"])))
+		"roll":
+			m.fx.dust(pos, 6)
+		"dust":
+			m.fx.dust(pos, 10)
+			m.fx.burst(pos + Vector3(0, 0.5, 0), Color("ffd8a8"), 10, 3.0, 0.3, 4.0, 1.0, Vector3(roll_dir.x, 0.2, roll_dir.y), 30.0)
 	if not shove.is_empty():
 		fortify_t = maxf(fortify_t, roll_t + 0.1)     # nothing knocks you back mid-charge
 	dash_at = m.time
@@ -686,6 +761,19 @@ func dash_with(e: Dictionary) -> void:
 	m.sfx("dash", pos, -4.0, 0.8 if not shove.is_empty() else 1.0)
 	m.fx.dash_trail(self)
 
+## A kin rider: foes you dash through get its status (venom's poison).
+func _pass_along() -> void:
+	for f in m.foes_of(team):
+		if dash_pass["hit"].has(f.get_instance_id()) or flat_dist(f) > r + f.r + 0.4 or absf(f.pos.y - pos.y) > 1.4:
+			continue
+		dash_pass["hit"][f.get_instance_id()] = true
+		var o := {"src": "abil", "ab": "dodge", "tags": ["dodge"]}
+		var po: Dictionary = dash_pass["opts"]
+		for k in ["burn", "slow", "blight", "stun", "root"]:
+			if po.has(k): o[k] = float(po[k])
+		f.hurt(maxf(0.1, float(po.get("dmg", 0.0))) * m.dmg_mult(self), self, o)
+		m.fx.burst(f.pos + Vector3(0, 0.8, 0), Color(String(po.get("color", "#a6ff3a"))), 8, 3.0, 0.3)
+
 func _shove_along() -> void:
 	for f in m.foes_of(team):
 		if shove["hit"].has(f.nid) or flat_dist(f) > r + f.r + 0.35 or absf(f.pos.y - pos.y) > 1.4:
@@ -693,7 +781,9 @@ func _shove_along() -> void:
 		shove["hit"][f.nid] = true
 		var side := Vector2(f.pos.x - pos.x, f.pos.z - pos.z).normalized()
 		var push := (roll_dir * 0.7 + side * 0.5).normalized() * float(shove["kb"])
-		f.hurt(maxf(0.1, float(shove["dmg"])) * m.dmg_mult(self), self, {"kb": push, "lift": 2.5, "src": "abil", "ab": "dodge", "tags": ["dodge"]})
+		var so := {"kb": push, "lift": 2.5, "src": "abil", "ab": "dodge", "tags": ["dodge"]}
+		if float(shove.get("ws", 0.0)) > 0.0: so["wallstun"] = float(shove["ws"])
+		f.hurt(maxf(0.1, float(shove["dmg"])) * m.dmg_mult(self), self, so)
 		m.shake(0.25, f.pos)
 
 func can_fire() -> bool:
@@ -1033,6 +1123,75 @@ func _ground_aim() -> Vector3:
 	var g: float = m.world.ground_at(a.x, a.z)
 	return Vector3(a.x, g if g > World.VOID + 1.0 else pos.y, a.z)
 
+## Rail Charge and the like: hold the button and it grows; let go (or hold past full) and it fires.
+func _tick_charge(dt: float) -> void:
+	var ud: AbilityDef = runner.def_of("utility") if runner else null
+	if ud == null or ud.charge.is_empty() or downed or stun_t > 0.0 or out:
+		abil_charge = {}
+		return
+	abil_charge["t"] = float(abil_charge["t"]) + dt
+	var full := float(ud.charge.get("time", 1.0))
+	var k := clampf(float(abil_charge["t"]) / full, 0.0, 1.0)
+	if int(abil_charge["t"] * 10.0) != int((float(abil_charge["t"]) - dt) * 10.0) and k < 1.0:
+		m.fx.burst(pos + Vector3(aim_dir().x * 0.7, 1.0, aim_dir().y * 0.7), ud.color, 3, 1.5, 0.2, 0.0, 0.6)
+	if not inp.get("sec_hold", false) or float(abil_charge["t"]) >= full + 0.6:
+		abil_charge = {}
+		if runner.use("utility", {"level": ability_level("sec"), "charge": maxf(k, float(ud.charge.get("min", 0.0)))}):
+			used["utility"] = int(used.get("utility", 0)) + 1
+			_ab_feedback("sec", "cast")
+			if k >= 1.0: m.fx.flash(pos + Vector3(0, 1.0, 0), ud.color, 0.6, 0.08)
+
+## How far along a held charge is, 0..1 (-1 when not charging).
+func charge_frac() -> float:
+	var ud: AbilityDef = runner.def_of("utility") if runner else null
+	if abil_charge.is_empty() or ud == null or ud.charge.is_empty():
+		return -1.0
+	return clampf(float(abil_charge["t"]) / float(ud.charge.get("time", 1.0)), 0.0, 1.0)
+
+## The level of one of your ability slots (skill points). Every slot is level 1 until levelling is in;
+## "sec" (RMB), "dash" (Shift), "gear" (Q), "k1" (E), "r" (R).
+func ability_level(slot: String) -> int:
+	if has_method("slot_level"):
+		return maxi(1, int(call("slot_level", slot)))
+	return 1
+
+## What the HUD needs to draw one ability slot: name, short name, icon, colour, one-line desc,
+## cooldown left and total, charges. slot: "sec" | "dash" | "gear" | "k1" | "r".
+func slot_info(slot: String) -> Dictionary:
+	var out := {"name": "", "short": "", "icon": "", "col": Color.WHITE, "desc": "", "cd": 0.0, "cd_max": 0.0, "charges": 0, "max_charges": 0, "verb": "", "ready": false, "level": ability_level(slot)}
+	match slot:
+		"sec", "utility":
+			var d: AbilityDef = runner.def_of("utility") if runner else null
+			if d == null: return out
+			out.merge({"name": d.display_name, "short": d.short, "icon": d.icon, "col": d.color, "desc": d.desc, "cd": runner.cd_left("utility"),
+				"cd_max": d.cooldown, "charges": runner.charges("utility"), "max_charges": d.charges, "verb": d.verb, "ready": runner.is_ready("utility"), "charge": charge_frac()}, true)
+		"dash", "dodge":
+			var d: AbilityDef = dodge_def
+			var rd := dash_rider()
+			var dmax := max_dashes()
+			out.merge({"name": d.display_name if d else "Dash", "short": (d.short if d else "Dash"), "icon": d.icon if d else "dash", "col": d.color if d else Color("bfe6ff"),
+				"desc": (d.desc if d else "") + (("  " + String(rd.get("desc", ""))) if not rd.is_empty() else ""), "rider": String(rd.get("name", "")),
+				"cd": (1.0 - fposmod(dashes, 1.0)) * dash_regen() if dashes < 1.0 else 0.0, "cd_max": dash_regen(), "charges": int(floor(dashes)), "max_charges": int(dmax),
+				"verb": d.verb if d else "dash", "ready": dashes >= 1.0}, true)
+		"gear", "gear0", "q":
+			var g: Dictionary = gear[0]
+			if g.is_empty() or not Gear.ALL.has(String(g["id"])): return out
+			var gd: Dictionary = Gear.ALL[String(g["id"])]
+			out.merge({"name": String(gd["name"]), "short": String(gd.get("short", gd["name"])), "icon": Gear.icon_of(String(g["id"])), "col": gd["col"], "desc": Gear.desc_of(String(g["id"]), int(g["rar"])),
+				"cd": float(gear_cd[0]), "cd_max": Gear.cd_of(String(g["id"]), int(g["rar"])), "charges": 1 if float(gear_cd[0]) <= 0.0 else 0, "max_charges": 1, "verb": String(gd.get("verb", "")), "ready": float(gear_cd[0]) <= 0.0 and Gear.active(String(g["id"]))}, true)
+		"k1", "e":
+			var k: Kin = kin
+			if k == null or k.runner == null: return out
+			var d: AbilityDef = k.runner.def_of("k1")
+			if d == null: return out
+			out.merge({"name": d.display_name, "short": d.short, "icon": d.icon, "col": d.color, "desc": d.desc, "cd": k.runner.cd_left("k1"), "cd_max": d.cooldown,
+				"charges": k.runner.charges("k1"), "max_charges": d.charges, "verb": d.verb, "element": d.element, "ready": k.runner.is_ready("k1") and k.ready_to_fight() and k.state != "fused"}, true)
+		"r", "ult":
+			var u := Ultimate.def_for(kin) if kin else null
+			if u == null: return out
+			out.merge({"name": u.display_name, "short": u.display_name, "icon": u.id, "col": u.color, "desc": u.desc, "cd": 0.0, "cd_max": 0.0, "charges": 1 if ult >= 1.0 else 0, "max_charges": 1, "ready": Ultimate.can_cast(self)}, true)
+	return out
+
 ## Q and V: your active kin's abilities, aimed at the cursor.
 func use_kin_ability(slot: String) -> void:
 	var k: Kin = kin
@@ -1101,6 +1260,8 @@ func heal(n: float) -> void:
 	if remote:
 		m.net_event(["heal", nid, n])
 		return
+	if blight_t > 0.0:
+		n *= 0.4          # blighted by venom: healing barely takes
 	var before := hp
 	hp = minf(max_hp, hp + n)
 	if hp - before > 1.0:
@@ -1200,7 +1361,7 @@ func sim(dt: float) -> void:
 	tick_status(dt)
 	if grounded:
 		air_peak = pos.y
-	for k in ["base_cd", "weak_t", "dash_buf", "hit_heat_t", "ex_cd", "reveal_t", "inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t", "sick_t"]:
+	for k in ["base_cd", "weak_t", "dash_buf", "hit_heat_t", "ex_cd", "reveal_t", "inv_t", "fire_cd", "coyote", "jump_buf", "mantle_cd", "grap_cd", "sig_cd", "cloak_t", "haste_t", "fortify_t", "recoil", "muzzle_t", "regen_wait", "land_t", "glide_cd", "bless_t", "crit_t", "sick_t", "phase_t"]:
 		set(k, maxf(0.0, get(k) - dt))
 	if shield_t > 0.0:
 		shield_t -= dt
@@ -1272,11 +1433,17 @@ func sim(dt: float) -> void:
 	if inp["sig"]: use_kin_ability("k1")
 	# (a kin's second ability and mid-fight kin swaps are retired from the kit; bots don't press them)
 	if inp["sec"] and runner and runner.has_slot("utility"):
-		if runner.use("utility"):
+		var ud: AbilityDef = runner.def_of("utility")
+		if not ud.charge.is_empty() and runner.is_ready("utility") and abil_charge.is_empty():
+			abil_charge = {"t": 0.0}       # a charge-up: it fires when you let go
+			m.sfx("rail", pos, -14.0, 0.6)
+		elif ud.charge.is_empty() and runner.use("utility", {"level": ability_level("sec")}):
 			used["utility"] = int(used.get("utility", 0)) + 1
 			_ab_feedback("sec", "cast")
-		else:
+		elif abil_charge.is_empty():
 			_ab_feedback("sec", "deny")
+	if not abil_charge.is_empty():
+		_tick_charge(dt)
 	if inp["reload"]: start_reload()
 	if inp["tonic"]: use_heal()
 	if inp.get("kit", false): use_kit()
@@ -1377,6 +1544,8 @@ func _physics(dt: float) -> void:
 		hv = roll_dir * roll_speed
 		if not shove.is_empty():
 			_shove_along()
+		if not dash_pass.is_empty():
+			_pass_along()
 		if roll_t <= 0.0:
 			# out of a dash you keep some of its speed: a little on the ground, most in the air
 			hv = roll_dir * roll_speed * (DASH_CARRY_GROUND if grounded else DASH_CARRY_AIR)

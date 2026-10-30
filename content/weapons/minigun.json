@@ -23,5 +23,5 @@
 		"tighten_time": 1.5,
 		"desc": "Spins up for 0.7s, then fires a stream that tightens the longer you hold it. Slows you while firing."
 	},
-	"utility": "cluster_shell"
+	"utility": "bulwark"
 }

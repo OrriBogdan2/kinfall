@@ -1,11 +1,13 @@
 {
+ "id": "rocket",
  "name": "Rocket Glove",
+ "short": "Rocket",
+ "verb": "launch",
  "cd": 16,
  "col": "ff7a4a",
  "stats": {
   "heat": 0.1
  },
  "icon": "rocketjump",
- "desc": "Blast straight up into the sky and cool your glider by half. Chain it into a glide to go high and far.",
- "id": "rocket"
+ "desc": "Blast straight up into the sky and cool your glider by half. Chain it into a glide to go high and far."
 }

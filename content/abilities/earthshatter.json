@@ -1,28 +1,40 @@
 {
 	"id": "earthshatter",
 	"name": "Earthshatter",
-	"desc": "Leap to a spot and smash down, blasting everyone there away and slowing them.",
+	"short": "Slam",
+	"verb": "leap slam",
 	"icon": "quake",
 	"color": "#ffb070",
 	"cooldown": 10,
+	"charges": 1,
 	"range": 7,
+	"bot": {
+		"when": "in_range",
+		"min": 2.5,
+		"max": 7
+	},
+	"desc": "Leap up to 7m and smash down: everyone within 3m is thrown into the air; anyone already airborne is spiked (+60% damage, stunned 1s).",
 	"effects": [
 		{
 			"type": "leap",
 			"at": "aim",
-			"time": 0.5,
+			"time": 0.55,
+			"color": "#ffb070",
 			"on_land": [
 				{
 					"type": "area",
 					"at": "here",
 					"radius": 3.0,
 					"dmg": 20,
-					"kb": 10,
-					"slow": 1.5,
+					"kb": 3,
+					"lift": 8,
+					"spike": {
+						"dmg": 0.6,
+						"stun": 1.0
+					},
 					"color": "#ffb070"
 				}
 			]
 		}
-	],
-	"charges": 1
+	]
 }

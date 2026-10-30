@@ -1,0 +1,39 @@
+{
+	"id": "leash_bolt",
+	"name": "Leash Bolt",
+	"short": "Leash",
+	"verb": "tether",
+	"icon": "tether",
+	"color": "#ffd27a",
+	"cooldown": 10,
+	"charges": 1,
+	"bot": {
+		"when": "in_range",
+		"max": 9
+	},
+	"desc": "A bolt that leashes whoever it hits to you for 3.5s. If they get 6m away it snaps: 22 damage, stunned 1s, dragged back.",
+	"effects": [
+		{
+			"type": "projectile",
+			"dmg": 8,
+			"speed": 36,
+			"range": 10,
+			"size": 0.16,
+			"deco": "orb",
+			"color": "#ffd27a",
+			"sfx": "zap",
+			"pitch": 1.2,
+			"on_hit": [
+				{
+					"type": "tether",
+					"max": 6,
+					"time": 3.5,
+					"dmg": 22,
+					"stun": 1.0,
+					"yank": true,
+					"color": "#ffd27a"
+				}
+			]
+		}
+	]
+}

@@ -1,22 +1,25 @@
 {
- "name": "Frost Glove",
- "cd": 20,
+ "id": "frost",
+ "name": "Ice Bridge Glove",
+ "short": "Bridge",
+ "verb": "terrain",
+ "cd": 18,
  "col": "9ae8ff",
  "stats": {
   "cdr": 0.04
  },
- "icon": "snare",
- "desc": "Freeze a patch at the cursor for 4s. Anyone inside is slowed hard.",
+ "icon": "platform",
+ "desc": "Freeze a 10m ice bridge toward the cursor across the abyss for 7s. Cross gaps, chase, escape, but it melts.",
+ "bot": {
+  "when": "gap"
+ },
  "effects": [
   {
-   "type": "zone",
-   "radius": 3.0,
-   "time": 4.0,
-   "every": 0.5,
-   "slow": 0.45,
-   "at": "aim",
-   "color": "9ae8ff"
+   "type": "bridge",
+   "length": 10,
+   "width": 1.5,
+   "time": 7,
+   "color": "bff0ff"
   }
- ],
- "id": "frost"
+ ]
 }

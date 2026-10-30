@@ -1,0 +1,21 @@
+{
+	"id": "phase_step",
+	"name": "Phase Step",
+	"short": "Phase",
+	"verb": "phase dash",
+	"icon": "dash",
+	"color": "#d8c8ff",
+	"cooldown": 6.5,
+	"charges": 1,
+	"desc": "Light: a short, very fast phase. Shots pass straight through you for the whole step. In the air, or on cooldown, Shift does the long dash.",
+	"effects": [
+		{
+			"type": "dash",
+			"speed": 27,
+			"time": 0.135,
+			"invuln": 0.16,
+			"phase": 0.2,
+			"trail": "ghost"
+		}
+	]
+}

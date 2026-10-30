@@ -1,11 +1,13 @@
 {
+ "id": "boots",
  "name": "Swift Glove",
+ "short": "Swift",
+ "verb": "",
  "cd": 0,
  "col": "8fd16a",
  "stats": {
   "speed": 0.1
  },
  "icon": "dash",
- "desc": "10% faster on foot.",
- "id": "boots"
+ "desc": "10% faster on foot."
 }

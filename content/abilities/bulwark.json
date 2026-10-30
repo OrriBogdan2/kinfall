@@ -1,0 +1,26 @@
+{
+	"id": "bulwark",
+	"name": "Bulwark",
+	"short": "Bulwark",
+	"verb": "shield wall",
+	"icon": "wall",
+	"color": "#ffcf8a",
+	"cooldown": 12,
+	"charges": 1,
+	"bot": {
+		"when": "under_fire"
+	},
+	"desc": "Raise a 3m energy shield in front of you for 5s (160 HP). It turns with your aim and stops enemy shots; yours go through.",
+	"effects": [
+		{
+			"type": "wall",
+			"at": "front",
+			"dist": 1.3,
+			"length": 3.2,
+			"hp": 160,
+			"time": 5,
+			"follow": true,
+			"color": "#ffcf8a"
+		}
+	]
+}

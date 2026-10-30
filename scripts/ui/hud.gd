@@ -1482,10 +1482,12 @@ func _draw_kit(sz: Vector2, p: Hunter) -> void:
 		var ud := Ultimate.def_for(k)
 		if ud: lines.append([Settings.key_cap("ultimate"), ud.display_name + " (bond ultimate)", ud.desc + " Fill the bond meter by fighting together.", ud.color])
 		lines.append([Settings.key_cap("throw"), "Throw / recall " + String(k.rec.get("name", "your kin")), "Stuns what it hits; then your shots deal a combo. Press again to call it back.", kcol])
+	var dsi := p.slot_info("dash")
+	lines.append([Settings.key_cap("dash"), String(dsi["name"]) + ((" + " + String(dsi["rider"])) if String(dsi.get("rider", "")) != "" else ""), String(dsi["desc"]), dsi["col"]])
 	var g0: Dictionary = p.gear[0]
 	if not g0.is_empty() and Gear.ALL.has(String(g0["id"])):
 		var gdd: Dictionary = Gear.ALL[String(g0["id"])]
-		lines.append([Settings.key_cap("gear1"), String(gdd["name"]), String(gdd["desc"]), gdd["col"]])
+		lines.append([Settings.key_cap("gear1"), String(gdd["name"]), Gear.desc_of(String(g0["id"]), int(g0.get("rar", 1))), gdd["col"]])
 	else:
 		lines.append([Settings.key_cap("gear1"), "Glove (empty)", "Find gloves in chests, vaults and on bosses. An active glove goes here.", MUTED])
 	var w := 356.0
@@ -1866,7 +1868,7 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 			var gd: Dictionary = Gear.ALL[String(g["id"])]
 			out.append([gd["name"], gd["col"]])
 			out.append(["Active glove  ·  %s" % Settings.key_cap("gear1") if int(id.substr(4)) == 0 else "Passive glove", MUTED, 12])
-			out.append([gd["desc"], INK, 14])
+			out.append([Gear.desc_of(String(g["id"]), int(g.get("rar", 1))), INK, 14])
 			out.append([Gear.stat_text(String(g["id"]), int(g.get("rar", 1))), MUTED, 13])
 		"throw":
 			var k: Kin = p.kin
@@ -1882,6 +1884,9 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 			out.append([dd.display_name if dd else "Dash", dd.color if dd else Color("bfe6ff")])
 			out.append(["%s class dodge  ·  %s" % [String(p.cls).capitalize(), Settings.key_cap("dash")], MUTED, 12])
 			out.append([dd.desc if dd else "A quick burst the way you're moving.", INK, 14])
+			var rd := p.dash_rider()
+			if not rd.is_empty():
+				out.append([String(rd.get("name", "")) + ":  " + String(rd.get("desc", "")), Color(String(rd.get("color", "#ffffff"))), 13])
 			out.append(["%d of %d charges. One comes back every %s." % [int(floor(p.dashes)), int(p.max_dashes()), _secs(p.dash_regen())], MUTED, 13])
 		"kit":
 			out.append(["Armor kit", ARMOR_COL])

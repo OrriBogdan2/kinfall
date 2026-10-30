@@ -1,5 +1,8 @@
 {
+ "id": "booster",
  "name": "Glider Glove",
+ "short": "Glider",
+ "verb": "",
  "cd": 0,
  "col": "6ac0ff",
  "stats": {
@@ -7,6 +10,5 @@
   "heat": 0.2
  },
  "icon": "updraft",
- "desc": "Glide 20% faster and longer.",
- "id": "booster"
+ "desc": "Glide 20% faster and longer."
 }

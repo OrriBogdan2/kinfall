@@ -1,0 +1,54 @@
+{
+	"id": "rail_charge",
+	"name": "Rail Charge",
+	"short": "Rail",
+	"verb": "charge-shot",
+	"icon": "skypierce",
+	"color": "#d9ff66",
+	"cooldown": 8,
+	"charges": 1,
+	"charge": {
+		"time": 1.0,
+		"min": 0.15
+	},
+	"aim": [
+		"line",
+		17,
+		0.45
+	],
+	"bot": {
+		"when": "in_range",
+		"max": 15,
+		"hold": 0.9
+	},
+	"desc": "Hold to charge for up to 1s, let go to fire a rail that pierces everyone in its line: 10 to 34 damage, 9 to 17m, full charge stuns.",
+	"effects": [
+		{
+			"type": "projectile",
+			"speed": 80,
+			"size": 0.14,
+			"pierce": true,
+			"color": "#d9ff66",
+			"sfx": "rail",
+			"pitch": 0.9,
+			"charged": {
+				"dmg": [
+					10,
+					34
+				],
+				"range": [
+					9,
+					17
+				],
+				"kb": [
+					1,
+					7
+				],
+				"stun": [
+					0,
+					0.5
+				]
+			}
+		}
+	]
+}

@@ -1,11 +1,73 @@
 {
- "name": "Shock Glove",
+ "id": "shock",
+ "name": "Vortex Glove",
+ "short": "Vortex",
+ "verb": "pull",
  "cd": 16,
- "col": "fff27a",
+ "col": "b48cff",
  "stats": {
   "dmg": 0.05
  },
- "icon": "shock",
- "desc": "Blast everything around you away. Great for knocking rivals off the edge.",
- "id": "shock"
+ "icon": "anchor",
+ "desc": "Lob a gravity bomb at the cursor: for 1s it drags everyone within 3.5m into its centre, then pops (12 damage, thrown up).",
+ "bot": {
+  "when": "clumped",
+  "max": 9
+ },
+ "effects": [
+  {
+   "type": "projectile",
+   "dmg": 0,
+   "speed": 15,
+   "range": 9,
+   "to_aim": true,
+   "size": 0.25,
+   "deco": "orb",
+   "color": "b48cff",
+   "sfx": "throw",
+   "pitch": 0.6,
+   "on_end": [
+    {
+     "type": "telegraph",
+     "at": "here",
+     "radius": 3.5,
+     "time": 1.0,
+     "color": "b48cff"
+    },
+    {
+     "type": "pull",
+     "at": "here",
+     "radius": 3.5,
+     "strength": 8,
+     "color": "b48cff"
+    },
+    {
+     "type": "pull",
+     "at": "here",
+     "radius": 3.5,
+     "strength": 8,
+     "delay": 0.35,
+     "color": "b48cff"
+    },
+    {
+     "type": "pull",
+     "at": "here",
+     "radius": 3.5,
+     "strength": 8,
+     "delay": 0.7,
+     "color": "b48cff"
+    },
+    {
+     "type": "area",
+     "at": "here",
+     "radius": 1.8,
+     "dmg": 12,
+     "lift": 6,
+     "kb": 2,
+     "delay": 1.0,
+     "color": "d4b8ff"
+    }
+   ]
+  }
+ ]
 }

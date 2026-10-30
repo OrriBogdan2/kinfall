@@ -1,11 +1,13 @@
 {
 	"id": "dash",
 	"name": "Dash",
-	"desc": "A quick burst the way you're moving (or toward the cursor). In the air, or with it on cooldown, Shift does a long dash instead. Dash through a hit just as it lands for a perfect dodge: your next shots crit.",
+	"short": "Dash",
+	"verb": "dash",
 	"icon": "dash",
 	"color": "#bfe6ff",
 	"cooldown": 9.0,
 	"charges": 1,
+	"desc": "A quick burst the way you're moving.",
 	"effects": [
 		{
 			"type": "dash",

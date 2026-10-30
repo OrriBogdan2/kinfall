@@ -1,11 +1,13 @@
 {
+ "id": "skyhook",
  "name": "Skyhook Glove",
+ "short": "Skyhook",
+ "verb": "grapple",
  "cd": 14,
  "col": "e8c06a",
  "stats": {
   "speed": 0.03
  },
  "icon": "hook",
- "desc": "Hook a point toward the cursor and swing up to it: onto a ledge above you, or high into the air.",
- "id": "skyhook"
+ "desc": "Hook a point toward the cursor and swing up to it: onto a ledge above you, or high into the air."
 }

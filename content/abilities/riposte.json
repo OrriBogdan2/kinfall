@@ -1,0 +1,26 @@
+{
+	"id": "riposte",
+	"name": "Riposte",
+	"short": "Parry",
+	"verb": "reflect",
+	"icon": "brightshield",
+	"color": "#fff0b0",
+	"cooldown": 8,
+	"charges": 1,
+	"bot": {
+		"when": "under_fire"
+	},
+	"desc": "Raise your blade for 0.7s: shots hitting your front fly back at the shooter (+30%), and a sword or claw that hits it is parried and stunned 1s.",
+	"effects": [
+		{
+			"type": "reflect",
+			"target": "self",
+			"radius": 1.9,
+			"arc": 0.0,
+			"time": 0.7,
+			"dmg_k": 1.3,
+			"riposte": 1.0,
+			"color": "#fff0b0"
+		}
+	]
+}

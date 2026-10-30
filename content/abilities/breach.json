@@ -1,0 +1,33 @@
+{
+	"id": "breach",
+	"name": "Breach",
+	"short": "Breach",
+	"verb": "knockback",
+	"icon": "concussion",
+	"color": "#ffd28a",
+	"cooldown": 8,
+	"charges": 1,
+	"bot": {
+		"when": "in_range",
+		"max": 3.8
+	},
+	"desc": "A point-blank blast that throws everyone in front of you 6m back (into a wall: stunned) and kicks you backwards out of the fight.",
+	"effects": [
+		{
+			"type": "cone",
+			"radius": 4.0,
+			"arc": 0.5,
+			"dmg": 18,
+			"kb": 13,
+			"color": "#ffd28a"
+		},
+		{
+			"type": "launch",
+			"target": "self",
+			"dir": "back",
+			"up": 6,
+			"forward": 8,
+			"color": "#ffd28a"
+		}
+	]
+}

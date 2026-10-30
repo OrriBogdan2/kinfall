@@ -1,0 +1,28 @@
+{
+	"id": "prism_wall",
+	"name": "Prism Wall",
+	"short": "Prism Wall",
+	"verb": "reflect wall",
+	"element": "prism",
+	"icon": "wall",
+	"color": "#7ff3ff",
+	"cooldown": 10,
+	"charges": 1,
+	"range": 7,
+	"from": "kin",
+	"auto": {
+		"when": "owner_under_fire"
+	},
+	"desc": "Prismander raises a 4m crystal wall at the spot: enemy shots that hit it bounce back at them. Lasts 4.5s or 140 damage.",
+	"effects": [
+		{
+			"type": "wall",
+			"at": "aim",
+			"length": 4,
+			"hp": 140,
+			"time": 4.5,
+			"reflect": true,
+			"color": "#7ff3ff"
+		}
+	]
+}

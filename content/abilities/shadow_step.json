@@ -1,0 +1,35 @@
+{
+	"id": "shadow_step",
+	"name": "Shadow Step",
+	"short": "Shadow",
+	"verb": "blink-strike",
+	"icon": "shadowstep",
+	"color": "#c8f0ff",
+	"cooldown": 8,
+	"charges": 1,
+	"bot": {
+		"when": "in_range",
+		"max": 9
+	},
+	"desc": "Throw a knife 9m. If it hits, you appear behind that foe and your next hits for 1.5s crit.",
+	"effects": [
+		{
+			"type": "projectile",
+			"dmg": 10,
+			"speed": 34,
+			"range": 9,
+			"size": 0.14,
+			"deco": "hook",
+			"color": "#c8f0ff",
+			"sfx": "throw",
+			"pitch": 1.5,
+			"on_hit": [
+				{
+					"type": "behind",
+					"crit": 1.5,
+					"color": "#c8f0ff"
+				}
+			]
+		}
+	]
+}

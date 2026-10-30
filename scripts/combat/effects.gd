@@ -42,6 +42,12 @@ static func run(effects: Array, caster: Node, ctx: Dictionary) -> void:
 	for e0 in effects:
 		if e0 is Dictionary:
 			var e: Dictionary = e0
+			if e.has("per_level") and float(ctx.get("level", 1)) > 1.0:
+				# "per_level": {"time": 0.5, "radius": 0.2} adds that much per level past the first
+				e = e.duplicate()
+				var pl: Dictionary = e["per_level"]
+				for key in pl:
+					e[key] = float(e.get(key, 0.0)) + float(pl[key]) * (float(ctx["level"]) - 1.0)
 			if e.has("charged"):
 				e = _charged(e, ctx)
 			var delay := float(e.get("delay", 0.0))
@@ -67,7 +73,7 @@ static func run(effects: Array, caster: Node, ctx: Dictionary) -> void:
 			if delay > 0.0 and caster.is_inside_tree():
 				var ee: Dictionary = e.duplicate()
 				ee.erase("delay")
-				caster.get_tree().create_timer(delay, false).timeout.connect(func():
+				_m(caster).later(delay, func():
 					if is_instance_valid(caster) and not caster.dead: run([ee], caster, ctx))
 				continue
 			_one(e, caster, ctx)
@@ -177,18 +183,24 @@ static func _targets(e: Dictionary, caster: Node) -> Array:
 			return out
 	return [caster]
 
+## Skill points: each level past the first makes an ability's damage 15% stronger (ctx.level, 1..4).
+const PER_LEVEL := 0.15
+
+static func level_k(ctx: Dictionary) -> float:
+	return 1.0 + PER_LEVEL * (clampf(float(ctx.get("level", 1)), 1.0, 6.0) - 1.0)
+
 static func _power(caster: Node, ctx: Dictionary) -> float:
 	var m = _m(caster)
 	if caster is Hunter:
-		return m.dmg_mult(caster)
-	return float(ctx.get("power", 1.0))
+		return m.dmg_mult(caster) * level_k(ctx)
+	return float(ctx.get("power", 1.0)) * level_k(ctx)
 
 static func _hit_opts(e: Dictionary, ctx: Dictionary, kb: Vector2, caster: Node) -> Dictionary:
 	var slot := String(ctx.get("slot", ""))
 	var o := {"src": "kin" if caster is Kin else "abil", "ab": slot if slot != "" else "abil", "tags": [slot, String(ctx.get("ability", ""))]}
 	if caster is Kin: o["tags"].append("kin")
 	if kb.length() > 0.01: o["kb"] = kb
-	for k in ["lift", "stun", "slow", "root", "burn"]:
+	for k in ["lift", "stun", "slow", "root", "burn", "blight", "wallstun"]:
 		if e.has(k): o[k] = float(e[k])
 	return o
 
@@ -221,6 +233,11 @@ static func _one(e: Dictionary, caster: Node, ctx: Dictionary) -> void:
 				origin = ctx["at"]; y = origin.y + 0.2; lead = 0.25
 				if ctx.has("dir"): d = ctx["dir"]
 			var ring := bool(e.get("ring", false))
+			var rng_e := float(e.get("range", 10.0))
+			if e.get("to_aim", false) and not String(e.get("from", "")) == "here":
+				# lobbed: it comes down at the cursor (never short of 2m, never past its range)
+				var ap := _aim_point(caster, ctx)
+				rng_e = clampf(Vector2(ap.x - caster.pos.x, ap.z - caster.pos.z).length(), 2.0, rng_e)
 			for i in n:
 				var a := atan2(d.y, d.x) + (spread * (float(i) / maxf(1.0, n - 1) - 0.5) if n > 1 else 0.0)
 				if ring: a = atan2(d.y, d.x) + TAU * float(i) / float(n)
@@ -235,12 +252,14 @@ static func _one(e: Dictionary, caster: Node, ctx: Dictionary) -> void:
 				for kk in ["pierce", "bounce", "return", "rope", "deco", "spin"]:
 					if e.has(kk): extra[kk] = e[kk]
 				if e.get("pierce", false) or e.get("return", false): extra["hitset"] = {}
+				if e.get("to_aim", false): extra["lob"] = maxf(1.2, rng_e * 0.25)    # lobbed: arcs over heads to the spot
 				if String(e.get("from", "")) == "here": extra["cos_free"] = true
 				extra["fx_ctx"] = ctx
-				m.spawn_shot(caster, start, dir * spd, float(e.get("dmg", 0.0)) * pw, float(e.get("range", 10.0)) / spd, float(e.get("size", 0.15)), col, extra)
+				m.spawn_shot(caster, start, dir * spd, float(e.get("dmg", 0.0)) * pw, rng_e / spd, float(e.get("size", 0.15)), col, extra)
 			m.sfx(String(e.get("sfx", "throw")), caster.pos, -3.0, float(e.get("pitch", 1.0)))
 		"area":
 			var at := _where(e, caster, ctx)
+			print("DBG area at=", at, " caster=", caster.pos, " foes=", m.foes_of(caster.team).map(func(f): return [f.pos, f.hittable()]))
 			var r := float(e.get("radius", 2.0))
 			m.fx.ring(at, r, col, 0.3)
 			m.fx.burst(at + Vector3(0, 0.4, 0), col, int(clampf(r * 10.0, 8.0, 30.0)), 5.0, 0.45, 6.0, 1.1)
@@ -337,7 +356,7 @@ static func _one(e: Dictionary, caster: Node, ctx: Dictionary) -> void:
 				(caster as Hunter).launch_to(to, float(e.get("time", 0.5)))
 				if e.has("on_land"):
 					var land: Array = e["on_land"]
-					caster.get_tree().create_timer(float(e.get("time", 0.5)), false).timeout.connect(func():
+					m.later(float(e.get("time", 0.5)), func():
 						if is_instance_valid(caster): run(land, caster, {"at": caster.pos, "slot": ctx.get("slot", ""), "ability": ctx.get("ability", "")}))
 		"dash":
 			if caster is Hunter:
@@ -458,16 +477,44 @@ static func _one(e: Dictionary, caster: Node, ctx: Dictionary) -> void:
 		"wall":
 			var d := _aim_dir(caster, ctx)
 			var at: Vector3
+			var anchor: Node = owner_of(caster) if String(e.get("on", "")) == "owner" else caster
+			if anchor != caster and anchor is Hunter:
+				d = (anchor as Hunter).aim_dir()
+				var th = (anchor as Hunter).last_hit_by
+				if th is Ent and is_instance_valid(th) and not th.dead and anchor.flat_dist(th) < 16.0:
+					d = anchor.dir_to(th)       # the plate goes up between you and whoever is shooting
 			if String(e.get("at", "aim")) == "front":
-				at = caster.pos + Vector3(d.x, 0, d.y) * float(e.get("dist", 1.4))
+				at = anchor.pos + Vector3(d.x, 0, d.y) * float(e.get("dist", 1.4))
 			else:
 				at = _where(e, caster, ctx, "aim")
+			if caster is Kin and anchor == caster and (caster as Kin).owner_h and String(e.get("at", "aim")) != "front":
+				# a kin's wall goes up across YOUR line to the spot, the way you aimed it
+				var oh: Hunter = (caster as Kin).owner_h
+				var od := Vector2(at.x - oh.pos.x, at.z - oh.pos.z)
+				if od.length() > 0.3: d = od.normalized()
 			var g: float = m.world.ground_at(at.x, at.z)
-			at.y = g if g > World.VOID + 1.0 else caster.pos.y
-			m.verbs.add_wall(caster, at, d, e, pw)
+			at.y = g if g > World.VOID + 1.0 else anchor.pos.y
+			var wl: Dictionary = m.verbs.add_wall(anchor, at, d, e, pw)
+			wl["team"] = int(caster.team)
 		"reflect":
 			for t in _targets(e, caster):
 				m.verbs.add_mirror(t, e)
+		"behind":
+			# appear behind whoever the shot hit, facing them, with crits ready
+			var tg = ctx.get("target", null)
+			var who: Node = owner_of(caster) if caster is Kin else caster
+			print("DBG behind tg=", tg, " who=", who)
+			if tg is Ent and is_instance_valid(tg) and not tg.dead and who is Ent:
+				var back := Vector2(tg.pos.x - who.pos.x, tg.pos.z - who.pos.z).normalized()
+				var to := Vector3(tg.pos.x + back.x * 1.1, 0, tg.pos.z + back.y * 1.1)
+				if not m.world.is_void(to.x, to.z) and not m.world.is_block(to.x, to.z):
+					m.fx.ghost(who.position, who.face, col, 1.0)
+					who.teleport(Vector3(to.x, m.world.ground_at(to.x, to.z), to.z))
+					who.vel = Vector3.ZERO
+					who.face = atan2(back.x, back.y)
+					if who is Hunter: (who as Hunter).crit_t = maxf((who as Hunter).crit_t, float(e.get("crit", 1.5)))
+					m.fx.burst(who.pos + Vector3(0, 0.9, 0), col, 14, 3.0, 0.3)
+					m.sfx("cloak", who.pos, -2.0, 1.6)
 		"tether":
 			var b = ctx.get("target", null)
 			if b is Ent and is_instance_valid(b) and not b.dead:
@@ -603,5 +650,5 @@ static func _fissure(e: Dictionary, caster: Node, ctx: Dictionary, m: Node, pw: 
 				f.hurt(float(e.get("dmg", 12.0)) * pw, caster, _hit_opts(e, ctx, (side * 0.4 + d * 0.6).normalized() * float(e.get("kb", 0.0)), caster))
 			if i % 2 == 0: m.sfx("thump", at, -6.0, 1.2)
 		if i == 0: go.call()
-		else: caster.get_tree().create_timer(every * i, false).timeout.connect(go)
+		else: m.later(every * i, go)
 	m.shake(0.25, start)

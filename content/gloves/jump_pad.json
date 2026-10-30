@@ -1,11 +1,13 @@
 {
+ "id": "jump_pad",
  "name": "Springpad Glove",
+ "short": "Pad",
+ "verb": "launch pad",
  "cd": 22,
  "col": "8ff0c8",
  "stats": {
   "speed": 0.04
  },
  "icon": "jump_pad",
- "desc": "Throw down a jump pad. Anyone who steps on it is launched high. Lasts 20s.",
- "id": "jump_pad"
+ "desc": "Throw down a jump pad. Anyone who steps on it is launched high. Lasts 20s."
 }

@@ -1,0 +1,39 @@
+{
+	"id": "moon_swap",
+	"name": "Moon Swap",
+	"short": "Swap",
+	"verb": "swap",
+	"element": "lunar",
+	"icon": "swap",
+	"color": "#fff0a0",
+	"cooldown": 10,
+	"charges": 1,
+	"range": 9,
+	"from": "kin",
+	"auto": {
+		"when": "foe_in_range",
+		"range": 8
+	},
+	"desc": "Lunowl throws a moon mark 9m. The first foe it touches trades places with YOU (stunned 0.4s): pull a rival off a ledge, or step behind them.",
+	"effects": [
+		{
+			"type": "projectile",
+			"dmg": 4,
+			"speed": 30,
+			"range": 9,
+			"size": 0.2,
+			"deco": "orb",
+			"color": "#fff0a0",
+			"sfx": "throw",
+			"pitch": 1.6,
+			"on_hit": [
+				{
+					"type": "swap",
+					"who": "owner",
+					"stun": 0.4,
+					"color": "#fff0a0"
+				}
+			]
+		}
+	]
+}

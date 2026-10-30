@@ -1,26 +1,33 @@
 {
 	"id": "chain_spark",
 	"name": "Echo Chain",
+	"short": "Echo",
+	"verb": "bounce + echo",
+	"element": "echo",
 	"icon": "chain",
 	"color": "#7fe8ff",
-	"cooldown": 6,
+	"cooldown": 7,
+	"charges": 1,
 	"range": 7,
-	"desc": "A sound wave that bounces between three foes and stuns each for a moment.",
+	"from": "kin",
 	"auto": {
 		"when": "foe_in_range",
 		"range": 7
 	},
+	"desc": "A sound pulse leaps between up to 3 foes, stunning each 0.4s, then echoes 0.9s later and does it all again at half strength.",
 	"effects": [
 		{
 			"type": "chain",
 			"count": 3,
 			"first": 7,
 			"jump": 4.5,
-			"dmg": 16,
+			"dmg": 14,
 			"stun": 0.4,
-			"color": "#7fe8ff"
+			"color": "#7fe8ff",
+			"echo": {
+				"delay": 0.9,
+				"k": 0.5
+			}
 		}
-	],
-	"from": "kin",
-	"charges": 1
+	]
 }

@@ -1,0 +1,28 @@
+{
+ "id": "barrier",
+ "name": "Barrier Glove",
+ "short": "Barrier",
+ "verb": "wall",
+ "cd": 18,
+ "col": "d6c4a8",
+ "stats": {
+  "armor": 6
+ },
+ "icon": "wall",
+ "desc": "Raise a 4.5m stone wall at the cursor for 5s (220 HP): it stops shots and bodies from both sides. Knock people into it to stun them.",
+ "bot": {
+  "when": "under_fire"
+ },
+ "effects": [
+  {
+   "type": "wall",
+   "at": "aim",
+   "length": 4.5,
+   "hp": 220,
+   "time": 5,
+   "block": "all",
+   "move": true,
+   "color": "d6c4a8"
+  }
+ ]
+}

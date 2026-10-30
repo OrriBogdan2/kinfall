@@ -27,7 +27,7 @@
 	"voice": "sly and eager, talks in quick little hisses",
 	"shoulder": "kindle",
 	"abilities": [
-		"fireball",
+		"stinger_hook",
 		"flare_dash"
 	],
 	"ultimate": "blaze_mantle",

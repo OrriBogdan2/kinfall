@@ -123,6 +123,13 @@ func _auto_aim(def: AbilityDef, auto: Dictionary) -> Vector3:
 		"owner_hurt":
 			if own.hp < own.max_hp * float(auto.get("below", 0.5)) and own.regen_wait > 0.0 and randf() < 0.4 + loyalty * 0.6:
 				return own.pos
+		"owner_under_fire":
+			# a rival is shooting you: put something between you and them
+			var att = own.last_hit_by
+			if att is Kin and (att as Kin).owner_h: att = (att as Kin).owner_h
+			if att is Hunter and att.team != own.team and k.m.time - own.hurt_at < 0.8 and own.flat_dist(att) > 3.0 and randf() < 0.45 + loyalty * 0.5:
+				var d: Vector2 = own.dir_to(att)
+				return own.pos + Vector3(d.x, 0, d.y) * 2.2
 		"owner_falling":
 			# the kin saves you from the abyss: loyal kin react faster
 			if (own.below_lip or (own.over_void() and own.vel.y < -4.0 and not own.grounded)) and randf() < 0.35 + loyalty * 0.65:

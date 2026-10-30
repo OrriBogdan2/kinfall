@@ -1,0 +1,21 @@
+{
+	"id": "combat_roll",
+	"name": "Combat Roll",
+	"short": "Roll",
+	"verb": "roll",
+	"icon": "dash",
+	"color": "#bfe6ff",
+	"cooldown": 9.0,
+	"charges": 1,
+	"desc": "Medium: a quick roll that slips a third of a magazine in on the way. Roll through a hit as it lands for a perfect dodge: your next shots crit.",
+	"effects": [
+		{
+			"type": "dash",
+			"speed": 23,
+			"time": 0.15,
+			"invuln": 0.14,
+			"reload": 0.35,
+			"trail": "roll"
+		}
+	]
+}

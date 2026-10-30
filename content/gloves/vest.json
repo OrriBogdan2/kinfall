@@ -1,11 +1,13 @@
 {
+ "id": "vest",
  "name": "Plated Glove",
+ "short": "Plated",
+ "verb": "",
  "cd": 0,
  "col": "b0e4ff",
  "stats": {
   "armor": 25
  },
  "icon": "brightshield",
- "desc": "25 more armor.",
- "id": "vest"
+ "desc": "25 more armor."
 }

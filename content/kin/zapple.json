@@ -28,7 +28,7 @@
 	"shoulder": "charge",
 	"abilities": [
 		"chain_spark",
-		"overcharge"
+		"echolocate"
 	],
 	"ultimate": "stormcoat",
 	"ai": {

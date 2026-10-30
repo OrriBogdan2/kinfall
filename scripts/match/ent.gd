@@ -29,6 +29,7 @@ var slow_t := 0.0
 var root_t := 0.0
 var stun_t := 0.0
 var guard_t := 0.0          # taking less damage for a moment (Rock Guard)
+var blight_t := 0.0         # venom's anti-heal: healing on this body is cut to 40% for a while
 var guard_k := 0.0
 var marks := {}             # combo setups on this body: status -> {by, owner, until}
 var squash := 0.0           # landing / hit squash for the model
@@ -133,6 +134,8 @@ func hurt(dmg: float, by: Ent, opts := {}) -> float:
 		slow_t = maxf(slow_t, float(opts["slow"]))
 	if opts.get("root", 0.0) > 0.0:
 		root_t = maxf(root_t, float(opts["root"]))
+	if opts.get("blight", 0.0) > 0.0:
+		blight_t = maxf(blight_t, float(opts["blight"]))
 	if opts.get("stun", 0.0) > 0.0:
 		stun_t = maxf(stun_t, float(opts["stun"]))
 	for st in ["stun", "root", "slow", "burn"]:
@@ -220,6 +223,7 @@ func tick_status(dt: float) -> void:
 	if root_t > 0.0: root_t -= dt
 	if stun_t > 0.0: stun_t -= dt
 	if guard_t > 0.0: guard_t -= dt
+	if blight_t > 0.0: blight_t -= dt
 	if burn_t > 0.0 and not dead:
 		burn_t -= dt
 		if not remote:

@@ -1,33 +1,48 @@
 {
 	"id": "slam",
 	"name": "Gravity Slam",
+	"short": "Slam",
+	"verb": "leap slam",
+	"element": "gravity",
 	"icon": "slam",
 	"color": "#b48cff",
-	"cooldown": 8,
+	"cooldown": 9,
+	"charges": 1,
 	"range": 7,
-	"desc": "Your kin drops onto the spot like a meteor and blasts foes away. Great near edges.",
+	"from": "kin",
 	"auto": {
 		"when": "foe_in_range",
 		"range": 7
 	},
+	"desc": "Gravadillo drops onto the spot like a meteor: everything within 3.5m is sucked into the crater and flung up; anyone already airborne is spiked.",
 	"effects": [
 		{
 			"type": "leap",
-			"time": 0.45,
-			"height": 1.8,
+			"time": 0.5,
+			"height": 2.2,
+			"color": "#b48cff",
 			"on_land": [
+				{
+					"type": "pull",
+					"at": "here",
+					"radius": 3.5,
+					"strength": 9,
+					"color": "#b48cff"
+				},
 				{
 					"type": "area",
 					"at": "here",
-					"radius": 2.2,
-					"dmg": 20,
-					"kb": 10,
-					"lift": 6,
+					"radius": 2.4,
+					"dmg": 18,
+					"kb": 0,
+					"lift": 8,
+					"spike": {
+						"dmg": 0.5,
+						"stun": 0.8
+					},
 					"color": "#b48cff"
 				}
 			]
 		}
-	],
-	"from": "kin",
-	"charges": 1
+	]
 }

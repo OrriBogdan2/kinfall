@@ -27,8 +27,8 @@
 	"voice": "gentle, worried about you, a little formal",
 	"shoulder": "spring",
 	"abilities": [
-		"wave",
-		"bubble_guard"
+		"prism_wall",
+		"refraction"
 	],
 	"ultimate": "tidal_shell",
 	"ai": {

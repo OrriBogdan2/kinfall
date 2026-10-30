@@ -1,17 +1,22 @@
 {
 	"id": "thorn_patch",
 	"name": "Spore Patch",
+	"short": "Spores",
+	"verb": "zone",
+	"element": "spore",
 	"icon": "snare",
 	"color": "#3fe0c0",
 	"cooldown": 11,
+	"charges": 1,
 	"range": 7,
-	"desc": "A cloud of spores for 4s. Foes in it are slowed and keep taking damage.",
+	"from": "kin",
 	"auto": {
 		"when": "foes_clumped",
 		"count": 2,
 		"radius": 3,
 		"range": 7
 	},
+	"desc": "On its own, when foes bunch up, Mycroll puffs a 4s spore cloud on them: slowed and taking damage while inside.",
 	"effects": [
 		{
 			"type": "zone",
@@ -23,7 +28,5 @@
 			"slow": 0.8,
 			"color": "#a8ffe8"
 		}
-	],
-	"from": "kin",
-	"charges": 1
+	]
 }

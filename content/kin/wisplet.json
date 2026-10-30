@@ -27,7 +27,7 @@
 	"voice": "airy, teasing, dramatic",
 	"shoulder": "updraft",
 	"abilities": [
-		"gust",
+		"moon_swap",
 		"updraft"
 	],
 	"ultimate": "tempest",

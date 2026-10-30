@@ -1,11 +1,13 @@
 {
 	"id": "shoulder_charge",
 	"name": "Shoulder Charge",
-	"desc": "A heavy lunge that can't be knocked back and shoves anyone you run into.",
+	"short": "Charge",
+	"verb": "ram",
 	"icon": "ram",
 	"color": "#ffd8a8",
 	"cooldown": 12.0,
 	"charges": 2,
+	"desc": "Heavy: a short charge nothing can knock back (2 charges). Anyone you run into is bowled aside, and slammed into a wall they're stunned 1.2s.",
 	"effects": [
 		{
 			"type": "dash",
@@ -13,8 +15,10 @@
 			"time": 0.17,
 			"invuln": 0.08,
 			"shove": true,
-			"shove_kb": 9,
-			"shove_dmg": 8
+			"shove_kb": 10,
+			"shove_dmg": 8,
+			"wallstun": 1.2,
+			"trail": "dust"
 		}
 	]
 }

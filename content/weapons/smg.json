@@ -23,5 +23,5 @@
 		"far_mult": 0.6,
 		"desc": "Fast and loose. Spread grows the longer you hold it, and damage drops off at the far end."
 	},
-	"utility": "flechettes"
+	"utility": "razor_disc"
 }

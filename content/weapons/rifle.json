@@ -20,5 +20,5 @@
 		"sustain_rounds": 10,
 		"desc": "Steady and accurate. Long strings of fire lose some damage, so fire in bursts."
 	},
-	"utility": "suppressing_volley"
+	"utility": "rail_charge"
 }

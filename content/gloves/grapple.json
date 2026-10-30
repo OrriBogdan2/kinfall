@@ -1,21 +1,46 @@
 {
- "name": "Grapple Glove",
- "cd": 15,
+ "id": "grapple",
+ "name": "Hook Glove",
+ "short": "Hook",
+ "verb": "hook",
+ "cd": 12,
  "col": "e8c06a",
  "stats": {
   "speed": 0.03
  },
  "icon": "hook",
- "desc": "Zip 7 tiles toward the cursor, shoving aside anyone in the way.",
+ "desc": "Fire a hook 10m: it drags the first foe it catches to your feet (stunned 0.3s), or pulls you to the wall or rock it bites.",
+ "bot": {
+  "when": "in_range",
+  "min": 3,
+  "max": 10
+ },
  "effects": [
   {
-   "type": "rush",
-   "distance": 7.0,
-   "speed": 26.0,
-   "width": 0.9,
-   "dmg": 6.0,
-   "kb": 5.0
+   "type": "projectile",
+   "dmg": 6,
+   "speed": 32,
+   "range": 10,
+   "size": 0.18,
+   "rope": true,
+   "deco": "hook",
+   "color": "e8c06a",
+   "sfx": "throw",
+   "pitch": 0.8,
+   "on_hit": [
+    {
+     "type": "yank",
+     "gap": 1.3,
+     "stun": 0.3,
+     "color": "e8c06a"
+    }
+   ],
+   "on_wall": [
+    {
+     "type": "zip",
+     "color": "e8c06a"
+    }
+   ]
   }
- ],
- "id": "grapple"
+ ]
 }

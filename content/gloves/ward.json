@@ -1,22 +1,33 @@
 {
- "name": "Ward Glove",
+ "id": "ward",
+ "name": "Decoy Glove",
+ "short": "Decoy",
+ "verb": "decoy",
  "cd": 18,
  "col": "f2e6cf",
  "stats": {
   "armor": 8
  },
- "icon": "anchor",
- "desc": "Brace yourself: take 60% less damage for 1.5s.",
+ "icon": "vanish",
+ "desc": "Leave a glowing copy of yourself where you stand and vanish for 1.5s, moving faster. Bots keep shooting the copy.",
+ "bot": {
+  "when": "hurt",
+  "below": 0.5
+ },
  "effects": [
   {
-   "type": "guard",
-   "amount": 0.6,
-   "time": 1.5
+   "type": "decoy",
+   "time": 2.5,
+   "color": "f2e6cf"
   },
   {
-   "type": "burst",
+   "type": "cloak",
+   "time": 1.5,
    "color": "f2e6cf"
+  },
+  {
+   "type": "haste",
+   "time": 1.5
   }
- ],
- "id": "ward"
+ ]
 }

@@ -1,11 +1,13 @@
 {
+ "id": "scanner",
  "name": "Seeker Glove",
+ "short": "Seek",
+ "verb": "reveal",
  "cd": 26,
  "col": "9ab4ff",
  "stats": {
   "cdr": 0.05
  },
  "icon": "scanner",
- "desc": "Reveal every rival hunter within 26 tiles for 3s, through walls and grass.",
- "id": "scanner"
+ "desc": "Reveal every rival hunter within 26 tiles for 3s, through walls and grass."
 }
