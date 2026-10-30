@@ -17,15 +17,10 @@ void vertex() {
 
 void fragment() {
 	vec3 c = COLOR.rgb;
-	// cut stone: courses of blocks with dark mortar, each block a slightly different shade
-	vec2 q = abs(wn.y) > 0.5 ? wp.xz * vec2(2.2, 2.2) : vec2((abs(wn.x) > 0.5 ? wp.z : wp.x) * 2.0, wp.y * 3.0);
-	float row = floor(q.y);
-	q.x += mod(row, 2.0) * 0.5;
-	vec2 cell = floor(q); vec2 fq = fract(q);
-	float mortar = 1.0 - smoothstep(0.03, 0.08, min(min(fq.x, 1.0 - fq.x) * 0.6, min(fq.y, 1.0 - fq.y)));
-	c *= 0.86 + h21(cell) * 0.22;
-	c *= 0.93 + vnoise(wp.xz * 3.0 + wp.yy * 2.0) * 0.12;
-	c = mix(c, c * 0.45, mortar * (abs(wn.y) > 0.5 ? 0.6 : 1.0));
+	// the stones are real geometry now: just a little weathering across each face, and the top
+	// edges of each block catch a touch more light
+	c *= 0.92 + vnoise(wp.xz * 3.0 + wp.yy * 2.0) * 0.14;
+	c *= 0.96 + vnoise(wp.xz * 11.0 + wp.yy * 9.0) * 0.07;
 	float cut = 0.0;
 	vec4 fv = VIEW_MATRIX * vec4(focus, 1.0);
 	if (fv.z < 0.0 && VERTEX.z > fv.z + 0.4) {
@@ -52,7 +47,8 @@ void light() {
 	} else {
 		float ndl = dot(NORMAL, LIGHT);
 		float lit = smoothstep(0.0, 0.06, ndl) * ATTENUATION;
-		lit = mix(shade, 1.0, smoothstep(0.35, 0.65, lit));
-		DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR / PI * lit;
+		float band = smoothstep(0.35, 0.65, lit);
+		vec3 tone = mix(vec3(shade) * vec3(0.7, 0.66, 0.92), vec3(1.05, 1.0, 0.93), band);
+		DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR / PI * tone;
 	}
 }

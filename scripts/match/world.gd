@@ -943,60 +943,39 @@ func a0_of(isl: int) -> float:
 	return atan2(c.y - h / 2.0, c.x - w / 2.0)
 
 # ------------------------------------------------------------------ meshes
+const TerrainMesh := preload("res://scripts/match/terrain_mesh.gd")
+const RuinWalls := preload("res://scripts/match/ruin_walls.gd")
+var _rims: Array = []               # grassy rim spots from the terrain mesher, for the grass fringe
+var under := PackedFloat32Array()   # per tile: the height of the island's rocky underside (visual only)
+
 func build_meshes() -> void:
 	for c in get_children():
 		c.queue_free()
 	_assign_regions()
+	# the ground, cliffs, stairs and undersides: traced as clean contours, see terrain_mesh.gd
+	var tm := TerrainMesh.new(self)
+	var mesh := tm.build()
+	under = tm.under
+	_rims = tm.rims
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var tn := FastNoiseLite.new(); tn.seed = rng.seed + 3; tn.frequency = 0.3
-	_edge_noise = FastNoiseLite.new(); _edge_noise.seed = rng.seed + 17; _edge_noise.frequency = 0.21
-	_corner_cache.clear()
-	for z in h:
-		for x in w:
-			var i := idx(x, z)
-			if kind[i] == T_VOID or bridge.has(i):
-				continue
-			var y := level[i] * LEVEL
-			var bio := _bio(i)
-			cur_bio = bio
-			var cols := []
-			for cv in [Vector2(x, z), Vector2(x + 1, z), Vector2(x + 1, z + 1), Vector2(x, z + 1)]:
-				var v := tn.get_noise_2d(cv.x * 0.6, cv.y * 0.6) * 0.5 + 0.5
-				var v2 := tn.get_noise_2d(cv.x * 2.1 + 40.0, cv.y * 2.1) * 0.5 + 0.5
-				var col: Color = Color(bio["top"]).lerp(bio["top2"], v).lerp(Color(bio["top"]).lightened(0.08), v2 * 0.35)
-				col = col.lightened(0.035 * level[i])
-				if not paint.is_empty():
-					var pc := Color(0, 0, 0, 0); var pn := 0
-					for t in [Vector2i(int(cv.x) - 1, int(cv.y) - 1), Vector2i(int(cv.x), int(cv.y) - 1), Vector2i(int(cv.x) - 1, int(cv.y)), Vector2i(int(cv.x), int(cv.y))]:
-						if inb(t.x, t.y) and paint.has(idx(t.x, t.y)):
-							pc += paint[idx(t.x, t.y)]; pn += 1
-					if pn > 0:
-						col = col.lerp(pc / pn, minf(1.0, pn / 2.0) * (0.85 + v2 * 0.15))
-				cols.append(col)
-			if stairs.has(i):
-				_stair_mesh(st, x, z, stairs[i], y)
-			else:
-				_quad4(st, Vector3(x, y, z) + _corner(x, z), Vector3(x + 1, y, z) + _corner(x + 1, z), Vector3(x + 1, y, z + 1) + _corner(x + 1, z + 1), Vector3(x, y, z + 1) + _corner(x, z + 1), Vector3.UP, cols)
-			var bottom := depth[i] + y * 0.3
-			for dir in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
-				var nx: int = x + dir.x; var nz: int = z + dir.y
-				var ny := -1.0e9
-				if inb(nx, nz) and kind[idx(nx, nz)] != T_VOID and not bridge.has(idx(nx, nz)):
-					ny = level[idx(nx, nz)] * LEVEL
-				if ny >= y - 0.001:
-					continue
-				var lo := maxf(ny, bottom)
-				_side(st, x, z, dir, y, lo, ny <= -1.0e8)
-			# underside of the column
-			_quad(st, Vector3(x, bottom, z + 1) + _corner(x, z + 1), Vector3(x + 1, bottom, z + 1) + _corner(x + 1, z + 1), Vector3(x + 1, bottom, z) + _corner(x + 1, z), Vector3(x, bottom, z) + _corner(x, z), Vector3.DOWN, Color(bio["deep"]).darkened(0.3))
 	_island_roots(st)
-	var mesh := st.commit()
+	var roots := st.commit()
+	var mat: ShaderMaterial = terrain_material().duplicate()
+	mat.set_shader_parameter("height_tex", tm.height_texture())
+	mat.set_shader_parameter("map_size", Vector2(w, h))
+	mat.set_shader_parameter("use_ao", true)
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
-	mi.material_override = terrain_material()
+	mi.material_override = mat
 	mi.name = "Ground"
 	add_child(mi)
+	var ri := MeshInstance3D.new()
+	ri.mesh = roots
+	ri.material_override = mat
+	ri.name = "Roots"
+	ri.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	add_child(ri)
 	_decorate()
 	_build_air()
 
@@ -1029,25 +1008,6 @@ static func terrain_material() -> ShaderMaterial:
 		_terrain_mat.shader = load("res://shaders/terrain.gdshader")
 	return _terrain_mat
 
-## Island outlines don't follow the tile grid: every corner on an island's edge is nudged a little,
-## so coastlines and cliffs look carved instead of stacked. (Only what you see moves; walking still
-## follows the tiles.)
-var _edge_noise: FastNoiseLite
-var _corner_cache := {}
-func _corner(x: int, z: int) -> Vector3:
-	var key := x * 100003 + z
-	if _corner_cache.has(key):
-		return _corner_cache[key]
-	var off := Vector3.ZERO
-	var edge := false
-	for t in [Vector2i(x - 1, z - 1), Vector2i(x, z - 1), Vector2i(x - 1, z), Vector2i(x, z)]:
-		if not inb(t.x, t.y) or kind[idx(t.x, t.y)] == T_VOID or bridge.has(idx(t.x, t.y)):
-			edge = true; break
-	if edge and _edge_noise:
-		off = Vector3(_edge_noise.get_noise_2d(x * 1.7, z * 1.7), 0.0, _edge_noise.get_noise_2d(x * 1.7 + 91.0, z * 1.7 - 37.0)) * 0.5
-	_corner_cache[key] = off
-	return off
-
 ## Each island hangs a cluster of rocky roots underneath it: one big one in the middle and smaller
 ## ones scattered under the rest, so islands read as floating rocks rather than slabs.
 func _island_roots(st: SurfaceTool) -> void:
@@ -1061,22 +1021,25 @@ func _island_roots(st: SurfaceTool) -> void:
 		if cells.size() < 6:
 			continue
 		var bio: Dictionary = _isl_bio[ii] if ii < _isl_bio.size() else biome
-		var cx := 0.0; var cz := 0.0; var lo := 1e9
+		# the tip of the rock cone, and a few smaller spurs further out, all hanging from the underside
+		var lo := 1e9; var tip := Vector2i(-1, -1)
 		for c in cells:
-			cx += c.x + 0.5; cz += c.y + 0.5
 			var i := idx(c.x, c.y)
-			lo = minf(lo, depth[i] + level[i] * LEVEL * 0.3)
-		cx /= cells.size(); cz /= cells.size()
+			if kind[i] != T_VOID and i < under.size() and under[i] < lo:
+				lo = under[i]; tip = c
+		if tip.x < 0:
+			continue
 		var rad := sqrt(cells.size() / PI)
-		var top_c: Color = Color(bio["side"]).darkened(0.25)
+		var top_c: Color = Color(bio["side"]).darkened(0.25).lerp(Color(bio["deep"]), 0.5)
 		var deep_c: Color = Color(bio["deep"]).darkened(0.2)
-		_root(st, rr, Vector3(cx, lo + 0.6, cz), rad * 0.62, rad * rr.randf_range(1.0, 1.4) + 3.0, top_c, deep_c)
-		var n := clampi(int(rad * 0.9), 2, 9)
+		_root(st, rr, Vector3(tip.x + 0.5, lo + 1.2, tip.y + 0.5), clampf(rad * 0.2, 0.8, 2.6), minf(rad * rr.randf_range(0.25, 0.4) + 2.0, 8.0), top_c, deep_c)
+		var n := clampi(int(rad * 0.5), 1, 7)
 		for _k in n:
 			var c: Vector2i = cells[rr.randi_range(0, cells.size() - 1)]
 			var i := idx(c.x, c.y)
-			var b := depth[i] + level[i] * LEVEL * 0.3
-			_root(st, rr, Vector3(c.x + 0.5, b + 0.4, c.y + 0.5), rr.randf_range(0.5, 1.2) + rad * 0.12, rr.randf_range(1.5, 4.0) + rad * 0.4, top_c, deep_c)
+			if kind[i] == T_VOID or edge_dist(c.x, c.y, 3) < 3:
+				continue
+			_root(st, rr, Vector3(c.x + 0.5, under[i] + 0.5, c.y + 0.5), rr.randf_range(0.4, 0.9) + rad * 0.05, rr.randf_range(1.2, 3.0) + rad * 0.15, top_c, deep_c)
 
 func _root(st: SurfaceTool, rr: RandomNumberGenerator, at: Vector3, r: float, length: float, c0: Color, c1: Color) -> void:
 	var seg := 9
@@ -1102,114 +1065,13 @@ func _root(st: SurfaceTool, rr: RandomNumberGenerator, at: Vector3, r: float, le
 			var nrm := (b - a).cross(d - a).normalized()
 			if nrm.dot(Vector3(a.x - at.x, 0, a.z - at.z)) < 0.0: nrm = -nrm
 			st.set_normal(nrm)
+			st.set_uv(Vector2(4.0, 0.0))
 			st.set_color(ca); st.add_vertex(a)
 			st.set_color(ca); st.add_vertex(b)
 			st.set_color(cb); st.add_vertex(c)
 			st.set_color(ca); st.add_vertex(a)
 			st.set_color(cb); st.add_vertex(c)
 			st.set_color(cb); st.add_vertex(d)
-
-## A quad facing n, whatever order its corners came in.
-func _face(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, col: Color) -> void:
-	if (b - a).cross(c - a).dot(n) > 0.0:
-		_quad(st, d, c, b, a, n, col)
-	else:
-		_quad(st, a, b, c, d, n, col)
-
-## Four stone steps climbing across a tile toward dir, with their sides closed in.
-func _stair_mesh(st: SurfaceTool, x: int, z: int, dir: Vector2i, y: float) -> void:
-	var stone := Color("b9b2a6").lerp(Color(cur_bio["side"]), 0.25)
-	var n := 4
-	# local frame: u runs up the stairs (0..1), v across them (0..1)
-	var to_world := func(u: float, v: float, hgt: float) -> Vector3:
-		var fx: float; var fz: float
-		match dir:
-			Vector2i(1, 0): fx = u; fz = v
-			Vector2i(-1, 0): fx = 1.0 - u; fz = 1.0 - v
-			Vector2i(0, 1): fx = 1.0 - v; fz = u
-			_: fx = v; fz = 1.0 - u
-		return Vector3(x + fx, y + hgt, z + fz)
-	var upv := Vector3(dir.x, 0, dir.y)
-	var side_a := Vector3(-dir.y, 0, dir.x)
-	for k in n:
-		var u0 := float(k) / n; var u1 := float(k + 1) / n
-		var hgt := LEVEL * float(k + 1) / n
-		var tread := stone.lightened(0.06 * (k % 2))
-		# tread
-		_face(st, to_world.call(u0, 0.0, hgt), to_world.call(u1, 0.0, hgt), to_world.call(u1, 1.0, hgt), to_world.call(u0, 1.0, hgt), Vector3.UP, tread)
-		# riser, facing down the stairs
-		_face(st, to_world.call(u0, 0.0, hgt - LEVEL / n), to_world.call(u0, 1.0, hgt - LEVEL / n), to_world.call(u0, 1.0, hgt), to_world.call(u0, 0.0, hgt), -upv, stone.darkened(0.18))
-		# the two sides of this step, down to the ground
-		for sv in [0.0, 1.0]:
-			var nn: Vector3 = (-side_a if sv == 0.0 else side_a) if dir.x != 0 or dir.y != 0 else Vector3.ZERO
-			_face(st, to_world.call(u0, sv, 0.0), to_world.call(u1, sv, 0.0), to_world.call(u1, sv, hgt), to_world.call(u0, sv, hgt), nn, stone.darkened(0.25))
-
-func _quad4(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, cols: Array) -> void:
-	st.set_normal(n)
-	st.set_color(cols[0]); st.add_vertex(a)
-	st.set_color(cols[1]); st.add_vertex(b)
-	st.set_color(cols[2]); st.add_vertex(c)
-	st.set_color(cols[0]); st.add_vertex(a)
-	st.set_color(cols[2]); st.add_vertex(c)
-	st.set_color(cols[3]); st.add_vertex(d)
-
-func _quad(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, d: Vector3, n: Vector3, col: Color, col2 = null) -> void:
-	var c2: Color = col if col2 == null else col2
-	st.set_normal(n)
-	st.set_color(col); st.add_vertex(a)
-	st.set_color(col); st.add_vertex(b)
-	st.set_color(c2); st.add_vertex(c)
-	st.set_color(col); st.add_vertex(a)
-	st.set_color(c2); st.add_vertex(c)
-	st.set_color(c2); st.add_vertex(d)
-
-func _side(st: SurfaceTool, x: int, z: int, dir: Vector2i, top: float, lo: float, to_void: bool) -> void:
-	var n := Vector3(dir.x, 0, dir.y)
-	var p0: Vector3; var p1: Vector3
-	match dir:
-		Vector2i(1, 0): p0 = Vector3(x + 1, 0, z + 1) + _corner(x + 1, z + 1); p1 = Vector3(x + 1, 0, z) + _corner(x + 1, z)
-		Vector2i(-1, 0): p0 = Vector3(x, 0, z) + _corner(x, z); p1 = Vector3(x, 0, z + 1) + _corner(x, z + 1)
-		Vector2i(0, 1): p0 = Vector3(x, 0, z + 1) + _corner(x, z + 1); p1 = Vector3(x + 1, 0, z + 1) + _corner(x + 1, z + 1)
-		_: p0 = Vector3(x + 1, 0, z) + _corner(x + 1, z); p1 = Vector3(x, 0, z) + _corner(x, z)
-	var ti := idx(x, z)
-	if to_void and sheer.has(ti):
-		# a sheer cliff: smooth dark slate from top to bottom, no lip, nothing to hold on to
-		var slate := Color("3e3852").lerp(Color(cur_bio["deep"]), 0.25)
-		_band(st, p0, p1, top, top - 0.06, n, Color("57506e"), Color("57506e"))
-		_band(st, p0, p1, top - 0.06, lo, n, slate, Color(cur_bio["deep"]).darkened(0.35))
-		return
-	if to_void and lip.has(ti):
-		# a ledge you can grab: a pale stone lip under the grass, then the usual rock
-		var stone := Color("e6d6ae")
-		_band(st, p0, p1, top, top - 0.08, n, Color(cur_bio["top2"]).darkened(0.05), Color(cur_bio["top2"]).darkened(0.05))
-		_band(st, p0, p1, top - 0.08, top - 0.42, n, stone, stone.darkened(0.12))
-		var mid2 := maxf(lo, top - 1.6)
-		_band(st, p0, p1, top - 0.42, mid2, n, Color(cur_bio["side"]), Color(cur_bio["side"]).darkened(0.15))
-		if mid2 > lo:
-			_band(st, p0, p1, mid2, lo, n, Color(cur_bio["side"]).darkened(0.15), cur_bio["deep"])
-		return
-	# a grassy lip, then dirt fading into dark rock toward the bottom
-	var lip_h := minf(0.18, top - lo)
-	var grass: Color = Color(cur_bio["top2"]).darkened(0.12)
-	var dirt: Color = cur_bio["side"]
-	_band(st, p0, p1, top, top - lip_h, n, grass, grass)
-	var mid := maxf(lo, top - lip_h - 1.2)
-	_band(st, p0, p1, top - lip_h, mid, n, dirt, dirt.darkened(0.15))
-	if mid > lo:
-		_band(st, p0, p1, mid, lo, n, dirt.darkened(0.15), cur_bio["deep"] if to_void else dirt.darkened(0.3))
-
-func _band(st: SurfaceTool, p0: Vector3, p1: Vector3, y0: float, y1: float, n: Vector3, c0: Color, c1: Color) -> void:
-	if y0 - y1 < 0.001:
-		return
-	var a := Vector3(p0.x, y0, p0.z); var b := Vector3(p1.x, y0, p1.z)
-	var c := Vector3(p1.x, y1, p1.z); var d := Vector3(p0.x, y1, p0.z)
-	st.set_normal(n)
-	st.set_color(c0); st.add_vertex(a)
-	st.set_color(c0); st.add_vertex(b)
-	st.set_color(c1); st.add_vertex(c)
-	st.set_color(c0); st.add_vertex(a)
-	st.set_color(c1); st.add_vertex(c)
-	st.set_color(c1); st.add_vertex(d)
 
 # ------------------------------------------------------------------ regions
 ## Big maps are split into regions with their own look: meadows, autumn woods, frost, red mesas,
@@ -1333,28 +1195,11 @@ func _decorate() -> void:
 	for key in packed:
 		var g: Dictionary = packed[key]
 		_chunked(deco, g["items"], g["mesh"], g["mat"], String(g["label"]), bool(g["shadows"]))
-	# stone walls, batched: a block per tile with a cap stone on top
-	var wlist: Array = []
-	for wi in walls:
-		if kind[wi] == T_BLOCK:
-			wlist.append(wi)
-	if wlist.size() > 0:
+	# stone walls: coursed ruin masonry following each run (see ruin_walls.gd)
+	if not walls.is_empty():
 		wall_mat = ShaderMaterial.new()
 		wall_mat.shader = load("res://shaders/wall.gdshader")
-		for part_i in 2:
-			var wm := MultiMesh.new(); wm.transform_format = MultiMesh.TRANSFORM_3D; wm.use_colors = true
-			wm.mesh = Models.box(1.0, 2.0, 1.0) if part_i == 0 else Models.box(1.08, 0.22, 1.08)
-			wm.instance_count = wlist.size()
-			for k in wlist.size():
-				var wi: int = wlist[k]
-				var wx := wi % w; var wz := wi / w
-				var y0 := level[wi] * LEVEL
-				var tr := Transform3D(Basis(), Vector3(wx + 0.5, y0 + (1.0 if part_i == 0 else 2.05), wz + 0.5))
-				wm.set_instance_transform(k, tr)
-				var shade := drng.randf_range(-0.06, 0.06)
-				wm.set_instance_color(k, Color("837d74").lightened(shade) if part_i == 0 else Color("a39c90").lightened(shade))
-			var wmi := MultiMeshInstance3D.new(); wmi.multimesh = wm
-			wmi.material_override = wall_mat
+		for wmi in RuinWalls.new(self).build(wall_mat):
 			deco.add_child(wmi)
 	# tall grass to hide in: dense clumps of long blades that sway
 	var tall: Array = []
@@ -1389,6 +1234,16 @@ func _decorate() -> void:
 					fcols[drng.randi_range(0, fcols.size() - 1)]])
 			if drng.randf() < (0.06 if edge_dist(x, z, 2) < 2 else 0.015):
 				pb.append(Vector3(x + drng.randf(), level[i] * LEVEL, z + drng.randf()))
+	# a fringe of grass hanging over grassy terrace edges and coasts, so rims read soft and lived-in
+	for rm in _rims:
+		if drng.randf() > 0.6:
+			continue
+		var rp: Vector3 = rm[0]; var rn: Vector3 = rm[1]
+		var tb2 := _bio(int(rm[2]))
+		var sc2 := 0.8 + drng.randf() * 0.5
+		var tilt := Basis(rn.cross(Vector3.UP).normalized(), -0.45) if rn.length() > 0.1 else Basis()
+		xs.append([Transform3D(tilt * Basis(Vector3.UP, drng.randf() * TAU).scaled(Vector3(sc2, sc2 * 0.9, sc2)), rp + rn * 0.04 - Vector3(0, 0.03, 0)),
+			Color(tb2["top"]).lerp(Color(tb2["top2"]), drng.randf()).lightened(0.08)])
 	_chunked(deco, xs, Models.grass_mesh(false), Models.grass_material(0.08), "Grass")
 	_chunked(deco, fl, Models.flower_mesh(), Models.grass_material(0.05, true), "Flowers")
 	var pebbled := false
