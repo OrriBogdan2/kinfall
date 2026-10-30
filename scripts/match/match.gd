@@ -75,6 +75,7 @@ var rng := RandomNumberGenerator.new()
 var pending_input := {"base": false, "dash": false, "jump": false, "sig": false, "reload": false, "tonic": false, "kit": false, "throw": false, "skill": false, "ult": false, "sec": false, "gear1": false, "gear2": false, "swap": false}
 var zones: Array = []      # hero areas: dome, sanctuary, well
 var fields: Fields = null  # patches made by kin abilities (Thorn Patch)
+var verbs: Verbs = null    # walls, reflect windows, tethers, traps, bridges and yanks left by abilities
 var _bond_cb: Callable
 var _combo_cb: Callable
 var player_lost: Array = []  # your kin left behind when you went down: {uid, kin, holder}
@@ -135,6 +136,7 @@ func start(o: Dictionary) -> void:
 	world.build_meshes()
 	fx = Fx.new(); fx.name = "Fx"; add_child(fx)
 	fields = Fields.new(self)
+	verbs = Verbs.new(self)
 	if world.layout_id != "" and not o.get("tutorial", false):
 		biomes = BiomeRun.new(self)
 		if biomes.active():
@@ -2133,7 +2135,10 @@ func spawn_shot(by: Ent, at: Vector3, v2: Vector2, dmg: float, life: float, size
 	if duel and not extra.get("cos", false):
 		duel.note_shot(by)
 	shot_n += 1
-	shots.append({"sid": shot_n, "pos": at, "vel": v2, "dmg": dmg, "team": team, "by": by, "life": life, "r": size, "col": col, "x": extra, "node": mi, "prev": at, "start": at})
+	var sd := {"sid": shot_n, "pos": at, "vel": v2, "dmg": dmg, "team": team, "by": by, "life": life, "life0": life, "r": size, "col": col, "x": extra, "node": mi, "prev": at, "start": at}
+	if extra.has("deco") or extra.get("rope", false):
+		sd["deco"] = _make_deco(String(extra.get("deco", "")), col, size, extra.get("rope", false))
+	shots.append(sd)
 	if net_on and not extra.get("cos", false) and not extra.get("melee", false) and not by.remote:
 		net_event(["s", _r(at.x), _r(at.y), _r(at.z), _r(v2.x), _r(v2.y), snappedf(life, 0.01), snappedf(size, 0.01), col.to_html(false), float(extra.get("boom", 0.0)), team, 1 if extra.get("mob", false) else 0])
 	if by is Hunter and not extra.get("melee", false):
@@ -2174,7 +2179,29 @@ func _update_shots(dt: float) -> void:
 			var gp := world.ground_at(p.x, p.z)
 			var over_ok: bool = sx.has("dy") and gp <= float(sx["gmax"]) + 0.05
 			if world.is_block(p.x, p.z) and gp + World.BLOCK_H > p.y or (gp > p.y and not over_ok):
-				_shot_end(s, p, null)
+				if int(sx.get("bounce", 0)) > 0:
+					# ricochet: flip whichever way took it into the wall and keep going
+					var back := p - step / n
+					var bv: Vector2 = s["vel"]
+					var gx := world.ground_at(p.x, back.z)
+					if (world.is_block(p.x, back.z) and gx + World.BLOCK_H > p.y) or gx > p.y: bv.x = -bv.x
+					else: bv.y = -bv.y
+					s["vel"] = bv
+					sx["bounce"] = int(sx["bounce"]) - 1
+					if sx.has("hitset"): sx["hitset"] = {}
+					fx.burst(back, s["col"], 6, 3.0, 0.2, 2.0)
+					sfx("click", back, -6.0, 1.6)
+					p = back
+					s["pos"] = p
+					hit = true; break
+				_shot_end(s, p, null, "wall")
+				hit = true; break
+			var vr: String = verbs.shot_check(s, p) if verbs else ""
+			if vr == "end":
+				_shot_end(s, p, null, "wall")
+				hit = true; break
+			elif vr == "bounce":
+				p = s["pos"]
 				hit = true; break
 			var bh := _shot_break(s, p)
 			if not bh.is_empty():
@@ -2184,15 +2211,44 @@ func _update_shots(dt: float) -> void:
 				hit = true; break
 			for e in _shot_targets(s):
 				if Vector2(e.pos.x - p.x, e.pos.z - p.z).length() < e.r + s["r"] + 0.08 and shot_height_ok(e, p.y):
-					_shot_end(s, p, e)
+					if sx.has("hitset"):
+						# piercing / boomerang shots hit each thing once per pass and fly on
+						var key: int = e.get_instance_id()
+						if (sx["hitset"] as Dictionary).has(key):
+							continue
+						sx["hitset"][key] = true
+						_shot_hit(s, p, e)
+						if not sx.get("pierce", false) and not sx.get("return", false):
+							_shot_end(s, p, e, "hit")
+							hit = true; break
+						continue
+					_shot_end(s, p, e, "hit")
 					hit = true; break
 			if hit:
 				break
 		if hit:
 			continue
 		s["pos"] = p
+		if sx.get("return", false) and is_instance_valid(s["by"]):
+			if sx.get("back", false):
+				# a boomerang homes back on whoever threw it and is caught there
+				var by: Ent = s["by"]
+				var to := Vector2(by.pos.x - p.x, by.pos.z - p.z)
+				if to.length() < 0.9:
+					_shot_end(s, p, null, "caught")
+					continue
+				s["vel"] = to.normalized() * (s["vel"] as Vector2).length()
+				var pp: Vector3 = s["pos"]
+				pp.y = lerpf(p.y, by.pos.y + 0.95, 0.2)
+				s["pos"] = pp
+			elif s["life"] <= 0.0:
+				sx["back"] = true
+				sx["hitset"] = {}
+				s["life"] = float(s["life0"]) * 1.6
+				sfx("whoosh", p, -6.0, 1.5)
+				continue
 		if s["life"] <= 0.0:
-			_shot_end(s, p, null)
+			_shot_end(s, p, null, "expire")
 
 ## Shots fly level, so a target one terrace above or below still gets hit. Two terraces up and the
 ## shot goes under them into the cliff; two down and it sails over their head.
@@ -2235,19 +2291,42 @@ func _shot_targets(s: Dictionary) -> Array:
 		if not mb.dead: out.append(mb)
 	return out
 
-func _shot_end(s: Dictionary, at: Vector3, e: Ent) -> void:
+func _shot_end(s: Dictionary, at: Vector3, e: Ent, why := "") -> void:
 	shots.erase(s)
-	# data-driven abilities: effects that go off where the shot ends, or on what it hit
+	if s.has("deco") and is_instance_valid(s["deco"]):
+		(s["deco"] as Node3D).queue_free()
+	# data-driven abilities: effects that go off where the shot ends, on what it hit, or on the wall
+	# that stopped it
 	var fxx: Dictionary = s["x"]
-	if not fxx.get("cos", false) and is_instance_valid(s["by"]):
+	if not fxx.get("cos", false) and is_instance_valid(s["by"]) and not s["by"].dead:
 		var c2: Dictionary = (fxx.get("fx_ctx", {}) as Dictionary).duplicate()
 		c2["at"] = at
+		c2["end"] = why
+		c2["dir"] = (s["vel"] as Vector2).normalized()
+		if e: c2["target"] = e
 		if e and fxx.has("fx_hit"):
 			Effects.run(fxx["fx_hit"], s["by"], c2)
+		if why == "wall" and fxx.has("fx_wall"):
+			Effects.run(fxx["fx_wall"], s["by"], c2)
 		if fxx.has("fx_end"):
 			Effects.run(fxx["fx_end"], s["by"], c2)
 	if s["node"]:
 		s["node"].visible = false
+	if fxx.has("hitset"):
+		if e == null: fx.burst(at, s["col"], 5, 2.0, 0.25, 6.0, 0.6)
+		return        # piercing shots already dealt their hits on the way
+	_shot_apply(s, at, e)
+
+## A piercing or boomerang shot passing through something: its on-hit effects and damage, then on.
+func _shot_hit(s: Dictionary, at: Vector3, e: Ent) -> void:
+	var fxx: Dictionary = s["x"]
+	if not fxx.get("cos", false) and is_instance_valid(s["by"]) and fxx.has("fx_hit"):
+		var c2: Dictionary = (fxx.get("fx_ctx", {}) as Dictionary).duplicate()
+		c2["at"] = at; c2["target"] = e; c2["end"] = "hit"
+		Effects.run(fxx["fx_hit"], s["by"], c2)
+	_shot_apply(s, at, e)
+
+func _shot_apply(s: Dictionary, at: Vector3, e: Ent) -> void:
 	var x: Dictionary = s["x"]
 	if x.get("cos", false):
 		if x.get("boom", 0.0) > 0.0:
@@ -2343,6 +2422,58 @@ func _shot_end(s: Dictionary, at: Vector3, e: Ent) -> void:
 			(by as Hunter).crit_t = maxf((by as Hunter).crit_t, 1.5)
 			sfx("cloak", by.pos, -2.0, 1.6)
 
+## Shapes that ride on top of an ability's shot so it reads as what it is: a spinning disc, a hook
+## with its rope back to the thrower, a glowing orb.
+func _make_deco(kind_s: String, col: Color, size: float, rope: bool) -> Node3D:
+	var n := Node3D.new()
+	n.top_level = true
+	match kind_s:
+		"disc":
+			var d := Models.part(n, Models.cyl(size * 2.6, size * 2.6, 0.06, 18), Models.toon(col, true, 0.9), Vector3.ZERO)
+			d.name = "Spin"
+			Models.part(d, Models.box(size * 5.0, 0.08, 0.1), Models.glow_mat(Color(col.lightened(0.5), 0.9)), Vector3.ZERO)
+		"hook":
+			var hk := Models.part(n, Models.box(0.12, 0.12, 0.5), Models.toon(Color("d8c9a8"), true, 0.4), Vector3.ZERO)
+			hk.name = "Spin"
+			for sx in [-1.0, 1.0]:
+				Models.part(hk, Models.box(0.08, 0.08, 0.32), Models.toon(col, true, 0.8), Vector3(sx * 0.12, 0, -0.22), Vector3.ONE, Vector3(0, sx * 0.7, 0))
+		"orb":
+			var o := Models.part(n, Models.sphere(size * 1.6, 12), Models.glow_mat(Color(col, 0.75)), Vector3.ZERO)
+			o.name = "Spin"
+			Models.part(n, Models.sphere(size * 2.6, 12), Models.glow_mat(Color(col, 0.18)), Vector3.ZERO)
+	if rope:
+		var r := MeshInstance3D.new()
+		r.mesh = Models.box(0.05, 0.05, 1.0)
+		r.material_override = Models.glow_mat(Color(col.lightened(0.2), 0.85))
+		r.name = "Rope"
+		r.top_level = true
+		r.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		n.add_child(r)
+	add_child(n)
+	return n
+
+func _render_deco(s: Dictionary, alpha: float) -> void:
+	var n: Node3D = s["deco"]
+	if not is_instance_valid(n):
+		return
+	var at := (s["prev"] as Vector3).lerp(s["pos"], alpha)
+	n.global_position = at
+	var v: Vector2 = s["vel"]
+	var sp := n.get_node_or_null("Spin") as Node3D
+	if sp:
+		if String((s["x"] as Dictionary).get("deco", "")) == "disc":
+			sp.rotation.y = time * 22.0
+		elif v.length() > 0.5:
+			sp.rotation.y = atan2(-v.x, -v.y)
+	var rope := n.get_node_or_null("Rope") as MeshInstance3D
+	var by = s["by"]
+	if rope and is_instance_valid(by) and by is Node3D:
+		var a: Vector3 = (by as Node3D).position + Vector3(0, 0.95 if by is Hunter else 0.5, 0)
+		if a.distance_to(at) > 0.1:
+			rope.global_position = (a + at) * 0.5
+			rope.look_at(at, Vector3.UP if absf((at - a).normalized().y) < 0.95 else Vector3.RIGHT)
+			rope.scale = Vector3(1, 1, a.distance_to(at))
+
 func _boom(s: Dictionary, at: Vector3) -> void:
 	var x: Dictionary = s["x"]
 	var radius: float = x["boom"]
@@ -2399,7 +2530,10 @@ func _process(delta: float) -> void:
 		if e.unseen or (e.owner_h and (e.owner_h as Hunter).unseen and e.state == "shoulder"):
 			e.visible = false
 	for e in mobs: e.render(delta, alpha)
+	if verbs: verbs.render(alpha)
 	for s in shots:
+		if s.has("deco"):
+			_render_deco(s, alpha)
 		if s["node"]:
 			var mi: MeshInstance3D = s["node"]
 			mi.global_position = (s["prev"] as Vector3).lerp(s["pos"], alpha)
@@ -2787,6 +2921,7 @@ func step(dt: float) -> void:
 	_update_events()
 	_update_zones(dt)
 	fields.tick(dt)
+	verbs.tick(dt)
 	if biomes: biomes.tick(dt)
 	_update_tracking(dt)
 	if opts.get("tutorial", false):

@@ -38,6 +38,7 @@ var sheer := {}          # tile index -> true: a smooth cliff rim you can't grab
 var lip := {}            # tile index -> true: a rim with a stone lip you can grab (authored maps)
 var labels: Array = []   # {name, pos: Vector3, kind: "poi" | "choke"} for the map and minimap
 var layout_id := ""      # "" for a generated map, else the authored layout's id
+var dyn_walls: Array = []  # barrier walls from abilities (see Verbs): some block movement too
 var authored_portals: Array = []   # Vector2 tile spots from an authored layout, in opening order
 ## The sky train's track, when the layout has one: {pts: PackedVector3Array (x, deck height, z) every
 ## TRAIN_STEP tiles round the loop, len, stations: [arc length], names: [String], spec: the layout's train}
@@ -85,6 +86,10 @@ func island_of(x: float, z: float) -> int:
 ## Returns 0 if free, the blocking height if a wall or rock is in the way, -1 if the edge guard stops it.
 func occupy(x: float, z: float, r: float, y: float, guard: bool) -> float:
 	var worst := 0.0
+	if not dyn_walls.is_empty():
+		var wb: float = Verbs.wall_blocks(dyn_walls, x, z, r, y)
+		if wb > 0.0:
+			return wb
 	# rocks, trees and walls use a slimmer body than the terrain does, so you slide past their
 	# corners and fit through one-tile gaps instead of snagging
 	var rb := r * 0.7
@@ -116,6 +121,9 @@ func los(a: Vector3, b: Vector3, y: float) -> bool:
 		if is_block(px, pz) and ground_at(px, pz) + BLOCK_H > y:
 			return false
 		if ground_at(px, pz) > y + 0.2:
+			return false
+	for wl in dyn_walls:
+		if y > float(wl["y"]) - 0.3 and y < float(wl["y"]) + Verbs.WALL_H and Geometry2D.segment_intersects_segment(Vector2(a.x, a.z), Vector2(b.x, b.z), wl["a"], wl["b"]) != null:
 			return false
 	return true
 
