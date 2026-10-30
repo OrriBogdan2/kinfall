@@ -24,8 +24,8 @@ const ELEMENTS := {
 ## more damage. Wardens and vaults drop them, rarely.
 const UNIQUES := {
 	"sunsplitter": {"name": "Sunsplitter", "wid": "greatsword", "el": "fire", "perk": "Burns twice as hot.", "mods": {"burn_x": 2.0}},
-	"hoarfang": {"name": "Hoarfang", "wid": "sniper", "el": "frost", "perk": "Every hit freezes.", "mods": {"freeze_every": 1}},
-	"thunderclap": {"name": "Thunderclap", "wid": "minigun", "el": "storm", "perk": "Every 2nd hit arcs.", "mods": {"chain_every": 2}},
+	"hoarfang": {"name": "Hoarfang", "wid": "sniper", "el": "frost", "perk": "Freezes on every hit, not every 5th.", "mods": {"freeze_every": 1}},
+	"thunderclap": {"name": "Thunderclap", "wid": "minigun", "el": "storm", "perk": "Arcs on every 2nd hit, not every 4th.", "mods": {"chain_every": 2}},
 	"widowsting": {"name": "Widowsting", "wid": "smg", "el": "venom", "perk": "Poison bites harder and slows more.", "mods": {"burn_x": 1.8, "slow_x": 2.0}},
 	"hollowsong": {"name": "Hollowsong", "wid": "rifle", "el": "void", "perk": "Drains 20% instead of 8%.", "mods": {"leech": 0.2}},
 }

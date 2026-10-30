@@ -724,7 +724,7 @@ func open_armory() -> void:
 	top.add_child(_chip("satchel", "Stored %d/%d" % [items.size(), Econ.arm_cap()], UI.INK, "Weapons and gloves you've brought home. Full: new ones are sold as they come in"))
 	top.add_child(_chip("gem", str(int(Save.d["gems"])), UI.GOLD, "Gems"))
 	top.add_child(_chip("medkit", "%d scrap" % int(Save.d.get("scrap", 0)), Color("c8d0dc"), "Scrap: salvage spare weapons and gloves for it. Upgrades need it"))
-	top.add_child(_chip("bond", "%d embers" % Econ.embers(), Color("9ff0e0"), "Soul Embers, for the Soul Shrine"))
+	top.add_child(_chip("bond", "%d ember%s" % [Econ.embers(), "" if Econ.embers() == 1 else "s"], Color("9ff0e0"), "Soul Embers, for the Soul Shrine"))
 	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	top.add_child(sp)
 	top.add_child(_upgrade_btn("arm", "Storage", Econ.arm_cap(), Econ.ARM_CAPS))
@@ -894,7 +894,7 @@ func _preview(it: Dictionary) -> Control:
 	Look.lights(w3, Color("fff1dc"), 1.0)
 	var holder := Node3D.new(); w3.add_child(holder)
 	if String(it["t"]) == "weapon":
-		var gun := Node3D.new(); gun.scale = Vector3.ONE * 2.6; gun.rotation = Vector3(0, PI / 2, 0.15)
+		var gun := Node3D.new(); gun.scale = Vector3.ONE * 2.1; gun.rotation = Vector3(0, PI / 2, 0.15); gun.position = Vector3(0, 0, -0.5)
 		holder.add_child(gun)
 		Models.gun_parts(gun, String(it["wid"]), Models.toon(Color("4a4d5c")), Models.toon(Color("2b2a33")), Models.toon(Loot.col_of(it), true, 0.5))
 	else:
