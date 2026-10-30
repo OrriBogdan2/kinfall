@@ -69,7 +69,7 @@ func setup(opts: Dictionary) -> void:
 	tier = clampi(int(opts.get("tier", 0)), 0, Data.TIERS.size() - 1)
 	T = Data.TIERS[tier]
 	if opts.get("tutorial", false):
-		title = "First Expedition"; sub = "A short trip with Pip to learn the ropes."
+		title = "First Expedition"; sub = "A short, safe trip with %s to learn the ropes. No rivals out here yet." % String(Save.active_kin().get("name", "your kin"))
 	elif opts.get("training", false):
 		title = "Training Grounds"; sub = "Dummies, ledges and boosters. No danger here."
 	else:
@@ -174,7 +174,9 @@ func _draw() -> void:
 	c.draw_circle(br.position + Vector2(bw * prog, 5), 7.0, Color(UI.GOLD, a))
 	_text(Vector2(br.position.x, br.position.y - 10), _stage() + "…", UI.semi, 14, Color(UI.INK, a * 0.85), 0, HORIZONTAL_ALIGNMENT_LEFT)
 	_text(Vector2(br.end.x, br.position.y - 10), "%d%%" % int(prog * 100.0), UI.semi, 14, Color(UI.INK, a * 0.6), 0, HORIZONTAL_ALIGNMENT_RIGHT)
-	_wrap(Vector2(cx, sz.y - 54), "Tip: " + tip, 15, minf(640.0, sz.x - 60.0), Color(UI.INK, a * 0.75))
+	# the tip, under a small accent label
+	_text(Vector2(cx, sz.y - 58), "TIP", UI.caps, 12, Color(UI.ACCENT, a), 2)
+	_wrap(Vector2(cx, sz.y - 50), tip, 15, minf(640.0, sz.x - 60.0), Color(UI.INK, a * 0.8))
 
 func _island(p: Vector2, w: float, d: float, biome: Dictionary, a: float, sd: int) -> void:
 	var r := RandomNumberGenerator.new(); r.seed = sd

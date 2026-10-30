@@ -46,6 +46,7 @@ var debris: Array = []          # falling rocks: {node, vel, spin}
 var deep_eyes: Node3D
 var look_mat: ShaderMaterial    # the storybook screen effect
 var chapter_lbl: Label
+var pips: HBoxContainer
 
 func _ready() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -87,19 +88,19 @@ func _ready() -> void:
 	var H: Vector3 = SETS["home"]; var D: Vector3 = SETS["drop"]
 	shots = [
 		{"a": W + Vector3(-46, 30, 62), "la": W + Vector3(0, 0, 0), "b": W + Vector3(-30, 22, 46), "lb": W + Vector3(0, 2, 0), "dur": 6.0,
-			"chapter": "THE WHOLE WORLD", "tint": Color("ffd27a"), "grade": 0.22, "text": "Long ago, the world was whole, and its people lived in peace."},
+			"chapter": "BEFORE THE FALL", "tint": Color("ffd27a"), "grade": 0.22, "text": "Once, the sky held a single great land,\nand everyone who lived there shared it."},
 		{"a": W + Vector3(-24, 5, 40), "la": W + Vector3(14, 6, -30), "b": W + Vector3(-30, 8, 44), "lb": W + Vector3(2, 12, 0), "dur": 8.0,
-			"chapter": "THE WAKING", "tint": Color("ff5a3a"), "grade": 0.38, "text": "Then the Wyrm woke beneath the world.", "event": "wyrm"},
+			"chapter": "THE WAKING", "tint": Color("ff5a3a"), "grade": 0.38, "text": "But something was asleep in the clouds beneath it.\nOne night, the Wyrm woke.", "event": "wyrm"},
 		{"a": W + Vector3(-30, 22, 46), "la": W + Vector3(0, 0, 0), "b": W + Vector3(-34, 34, 70), "lb": W + Vector3(0, -22, 0), "dur": 9.0,
-			"chapter": "THE SUNDERING", "tint": Color("d0406a"), "grade": 0.42, "text": "It tore the land apart.\nThe cities burned, and fell into the clouds.", "event": "break"},
+			"chapter": "THE SUNDERING", "tint": Color("d0406a"), "grade": 0.42, "text": "It broke the land into a thousand pieces.\nThe towns burned, and fell into the clouds.", "event": "break"},
 		{"a": S + Vector3(-34, 6, 26), "la": S + Vector3(0, 2, -10), "b": S + Vector3(-8, 9, 30), "lb": S + Vector3(10, 4, -14), "dur": 8.0,
-			"chapter": "THE FLIGHT", "tint": Color("ffa04a"), "grade": 0.3, "text": "The few who survived fled into the sky,\nin ships patched together from the wreckage.", "event": "flee"},
+			"chapter": "THE FLIGHT", "tint": Color("ffa04a"), "grade": 0.3, "text": "The survivors fled on anything that could still fly,\nwith the Wyrm's fire at their backs.", "event": "flee"},
 		{"a": K + Vector3(0, 3.2, 9.5), "la": K + Vector3(0, 0.8, 0), "b": K + Vector3(-4.5, 2.4, 6.0), "lb": K + Vector3(0, 0.9, 0), "dur": 8.0,
-			"chapter": "THE KIN", "tint": Color("7ae8ff"), "grade": 0.22, "text": "They weren't alone up here. The kin, small bright creatures\nborn of the old world's light, began to choose hunters.", "event": "kin"},
+			"chapter": "THE KIN", "tint": Color("7ae8ff"), "grade": 0.22, "text": "On the broken isles, they found they weren't alone.\nSmall bright creatures, the kin, came out to meet them.", "event": "kin"},
 		{"a": H + Vector3(18, 16, 26), "la": H + Vector3(0, 0, 0), "b": H + Vector3(-10, 12, 24), "lb": H + Vector3(2, 0, -2), "dur": 7.0,
-			"chapter": "THE REBUILDING", "tint": Color("ffd88a"), "grade": 0.2, "text": "Now the Skylands are being rebuilt, one island at a time:\nfarms, bridges, homes."},
+			"chapter": "THE REBUILDING", "tint": Color("ffd88a"), "grade": 0.2, "text": "Side by side with the kin, they started over:\nfarms, bridges and homes, one island at a time."},
 		{"a": D + Vector3(-6, 30, 26), "la": D + Vector3(4, 8, -30), "b": D + Vector3(-2, 22, 10), "lb": D + Vector3(8, -6, -46), "dur": 8.0,
-			"chapter": "THE WILD ISLES", "tint": Color("b08aff"), "grade": 0.28, "text": "Now hunters fly out to the wild isles for what the fall left behind.\nAnd far below the clouds, the Wyrm sleeps.", "event": "drop"},
+			"chapter": "THE WILD ISLES", "tint": Color("b08aff"), "grade": 0.28, "text": "Now hunters fly out to the wild isles to bring back what the fall left behind.\nAnd far below the clouds, something is stirring again.", "event": "drop"},
 	]
 	_next_shot()
 
@@ -361,14 +362,37 @@ func _build_ui() -> void:
 	fade.material = wm          # scenes change with a ragged ink wipe, not a plain fade
 	fade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(fade)
-	var skip := UI.button("Skip", func(): _finish(), 100)
+	# top bar: how far through the story you are, and a hold-to-skip so a stray key never skips it
+	var skip := HoldSkip.new()
 	skip.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	skip.offset_left = -124; skip.offset_right = -24; skip.offset_top = 18; skip.offset_bottom = 60
+	skip.offset_left = -196; skip.offset_right = -24; skip.offset_top = 17; skip.offset_bottom = 61
+	skip.skipped.connect(_finish)
 	root.add_child(skip)
-	var hint := UI.label("Click or press Space to continue", 13, Color(1, 1, 1, 0.45))
-	hint.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
-	hint.position = Vector2(24, 28)
+	pips = HBoxContainer.new()
+	pips.add_theme_constant_override("separation", 8)
+	pips.set_anchors_and_offsets_preset(Control.PRESET_TOP_LEFT)
+	pips.position = Vector2(30, 33)
+	pips.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	root.add_child(pips)
+	# bottom corner: how to move on
+	var hint := UI.key_hints([["Space", "next"]], 12, Color(1, 1, 1, 0.5))
+	hint.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	hint.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	hint.offset_right = -24; hint.offset_top = -40; hint.offset_bottom = -16
 	root.add_child(hint)
+
+## One dot per scene: done ones filled, the current one long and bright.
+func _draw_pips() -> void:
+	if not pips:
+		return
+	for ch in pips.get_children():
+		ch.queue_free()
+	for i in shots.size():
+		var d := ColorRect.new()
+		d.custom_minimum_size = Vector2(22 if i == shot else 8, 8)
+		d.color = UI.ACCENT if i == shot else (Color(1, 0.9, 0.75, 0.7) if i < shot else Color(1, 1, 1, 0.18))
+		d.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		pips.add_child(d)
 
 func _next_shot() -> void:
 	shot += 1
@@ -394,6 +418,7 @@ func _next_shot() -> void:
 		Look.night(env, 0.0)
 		_sky_burn(0.0)
 	var s: Dictionary = shots[shot]
+	_draw_pips()
 	caption.text = String(s["text"])
 	caption.modulate.a = 1.0
 	caption.visible_ratio = 0.0
@@ -437,7 +462,7 @@ func _title_card() -> void:
 	big.add_theme_color_override("font_color", Color("f7a03c"))
 	big.add_theme_constant_override("outline_size", 18); big.add_theme_color_override("font_outline_color", Color("2a1530"))
 	col.add_child(big)
-	var sub := Label.new(); sub.text = "Your story starts with an egg."
+	var sub := Label.new(); sub.text = "Every hunter's story starts with an egg."
 	sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	sub.add_theme_font_override("font", UI.big); sub.add_theme_font_size_override("font_size", 26)
 	sub.add_theme_color_override("font_color", Color("ffe6c8"))
@@ -460,15 +485,14 @@ func _finish() -> void:
 	tw.tween_callback(func():
 		finished.emit()
 		Save.d["tutorial"]["prologue"] = true
-		Save.d["tutorial"]["intro"] = true      # the hatch screen's own short story is covered
+		# the hatch screen still tells its own three lines: the storm, the shrine, the eggs
 		Game.goto(then_go))
 
 func _unhandled_input(event: InputEvent) -> void:
 	if done:
 		return
-	if event.is_action_pressed("menu"):
-		_finish()
-	elif event.is_action_pressed("jump") or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
+	# Esc is held to skip (see HoldSkip); Space or a click moves on to the next scene
+	if event.is_action_pressed("jump") or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
 		if shot < shots.size() and shot_t > 0.8 and not advancing:
 			_advance()
 

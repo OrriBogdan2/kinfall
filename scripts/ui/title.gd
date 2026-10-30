@@ -18,6 +18,7 @@ var logo: Control
 var rng := RandomNumberGenerator.new()
 
 const DECK_Y := 0.0
+var cam_override: Array = []     # tooling: --title-cam=x,y,z,lx,ly,lz to try framings
 const SUN := Vector3(0.42, 0.1, -0.9)
 
 func _ready() -> void:
@@ -55,6 +56,9 @@ func _ready() -> void:
 	for i in 4:
 		_spawn_glider(i * 2.6)
 	_build_ui()
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--title-cam="):
+			cam_override = Array(a.substr(12).split(",")).map(func(x): return float(x))
 
 # ---------------------------------------------------------------- the skyship
 ## Half the deck's width at a point along it: a pointed bow ahead (-z), a squared stern behind.
@@ -318,46 +322,117 @@ func _build_ui() -> void:
 	# the menu column stays vertically centred and fits any window height
 	var col := VBoxContainer.new()
 	col.set_anchors_and_offsets_preset(Control.PRESET_LEFT_WIDE)
-	col.offset_left = 72; col.offset_right = 520; col.offset_top = 24; col.offset_bottom = -40
+	col.offset_left = 76; col.offset_right = 560; col.offset_top = 24; col.offset_bottom = -60
 	col.alignment = BoxContainer.ALIGNMENT_CENTER
-	col.add_theme_constant_override("separation", 12)
+	col.add_theme_constant_override("separation", 4)
 	root.add_child(col)
 	logo = TitleLogo.new()
 	logo.custom_minimum_size = Vector2(440, 190)
 	col.add_child(logo)
-	var tag := UI.label("Raise them. Risk them. Bring them home.", 20, Color("ffe6c8"))
+	var tag := UI.label("RAISE THEM.   RISK THEM.   BRING THEM HOME.", 14, Color("ffe2bf"), _spaced())
 	tag.autowrap_mode = TextServer.AUTOWRAP_OFF
-	tag.add_theme_constant_override("outline_size", 6)
-	tag.add_theme_color_override("font_outline_color", Color(0.06, 0.04, 0.12, 0.8))
+	tag.add_theme_constant_override("outline_size", 5)
+	tag.add_theme_color_override("font_outline_color", Color(0.06, 0.04, 0.12, 0.7))
 	col.add_child(tag)
-	col.add_child(UI.spacer(10))
+	col.add_child(UI.spacer(26))
 	var has: bool = not Save.d["roster"].is_empty()
-	var b1 := UI.primary(("Continue  ·  %s" % Save.d.get("name", "Hunter")) if has else "New game", func(): Game.goto("home" if has else "prologue"), 320)
+	# the one big button: carry on where you left off, or start a new story
+	var b1 := _menu_main(("Continue" if has else "New game"), func(): Game.goto("home" if has else "prologue"))
 	col.add_child(b1)
+	var who := UI.label(_resume_line() if has else "A short story first, then your very first egg.", 15, Color(1, 0.93, 0.84, 0.8))
+	who.autowrap_mode = TextServer.AUTOWRAP_OFF
+	who.add_theme_constant_override("outline_size", 5)
+	who.add_theme_color_override("font_outline_color", Color(0.06, 0.04, 0.12, 0.7))
+	var wm := MarginContainer.new(); wm.add_theme_constant_override("margin_left", 6); wm.add_child(who)
+	col.add_child(wm)
+	col.add_child(UI.spacer(14))
+	var items: Array = []
 	if has:
-		col.add_child(UI.button("The story so far", func(): Game.goto("prologue", {"then": "title"}), 320))
-	col.add_child(UI.button("Save files", func(): Overlay.ctx = "title"; Overlay.open_saves(), 320))
+		items.append(["The story so far", func(): Game.goto("prologue", {"then": "title"})])
 	if Bridge.net_available():
-		col.add_child(UI.button("Play online with friends", func(): Game.goto("lobby", {}), 320))
-	var srv := UI.button("Servers  ·  coming soon", func(): pass, 320)
-	srv.disabled = true
-	srv.tooltip_text = "Dedicated servers are on the way. For now, play online with friends from the lobby."
-	col.add_child(srv)
-	col.add_child(UI.button("Settings", func(): Overlay.ctx = "title"; Overlay.open_settings(), 320))
+		items.append(["Play with friends", func(): Game.goto("lobby", {})])
+	items.append(["Save files", func(): Overlay.ctx = "title"; Overlay.open_saves()])
+	items.append(["Settings", func(): Overlay.ctx = "title"; Overlay.open_settings()])
 	if not OS.has_feature("web"):
-		col.add_child(UI.button("Quit", func(): get_tree().quit(), 320))
-	for ch in col.get_children():
-		if ch is Button: (ch as Button).size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		items.append(["Quit", func(): get_tree().quit()])
+	for it in items:
+		col.add_child(_menu_item(String(it[0]), it[1]))
 	var i := 0
 	for ch in col.get_children():
-		UI.pop_in(ch, 0.15 + i * 0.08)
+		UI.pop_in(ch, 0.25 + i * 0.06)
 		i += 1
-	var ver := UI.label("Open source · made with Godot", 13, Color(1, 1, 1, 0.55))
+	# bottom corners: what this is, and how to drive the menu without a mouse
+	var ver := UI.label("Kinfall  ·  early build  ·  open source", 13, Color(1, 1, 1, 0.5))
 	ver.autowrap_mode = TextServer.AUTOWRAP_OFF
 	ver.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
-	ver.position = Vector2(24, -36)
+	ver.offset_left = 28; ver.offset_top = -40; ver.offset_bottom = -18
 	root.add_child(ver)
+	var keys := UI.key_hints([["W S", "choose"], ["Enter", "select"]], 13)
+	keys.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
+	keys.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	keys.offset_right = -28; keys.offset_top = -44; keys.offset_bottom = -16
+	root.add_child(keys)
 	b1.grab_focus()
+
+## W and S move through the menu as well as the arrow keys and a gamepad's d-pad.
+func _unhandled_input(event: InputEvent) -> void:
+	if not (event is InputEventKey and event.pressed and not event.echo):
+		return
+	var k := (event as InputEventKey).physical_keycode
+	if k != KEY_W and k != KEY_S:
+		return
+	var f := get_viewport().gui_get_focus_owner()
+	if f == null:
+		return
+	var nxt := f.find_prev_valid_focus() if k == KEY_W else f.find_next_valid_focus()
+	if nxt:
+		nxt.grab_focus()
+		get_viewport().set_input_as_handled()
+
+func _spaced() -> FontVariation:
+	var f := FontVariation.new()
+	f.base_font = UI.body
+	f.variation_opentype = {"wght": 700}
+	f.spacing_glyph = 3
+	return f
+
+## "Pip · level 4 · 12 expeditions" under Continue, so you know which save this is.
+func _resume_line() -> String:
+	var k := Save.active_kin()
+	var bits: Array = []
+	bits.append(String(Save.d.get("name", "Hunter")))
+	if not k.is_empty():
+		bits.append("%s, level %d" % [String(k.get("name", "")), int(k.get("level", 1))])
+	var n := int(Save.d.get("matches", 0))
+	bits.append("%d expedition%s" % [n, "" if n == 1 else "s"] if n > 0 else "no expeditions yet")
+	return "  ·  ".join(bits)
+
+func _menu_main(text: String, cb: Callable) -> Button:
+	var b := UI.button(text, cb)
+	b.theme_type_variation = "MenuMain"
+	b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	b.custom_minimum_size.x = 300
+	b.mouse_entered.connect(func(): if not b.has_focus(): b.grab_focus())
+	return b
+
+func _menu_item(text: String, cb: Callable) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.theme_type_variation = "MenuItem"
+	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	b.custom_minimum_size.x = 300
+	b.pressed.connect(func(): Sfx.play("click"); cb.call())
+	# pointing at an item focuses it, so mouse and keyboard always agree on which one is lit
+	b.mouse_entered.connect(func(): if not b.has_focus(): b.grab_focus())
+	b.focus_entered.connect(func():
+		Sfx.play("hover", null, -12.0, 0.05)
+		b.add_theme_stylebox_override("normal", b.get_theme_stylebox("hover", "MenuItem"))
+		b.add_theme_color_override("font_color", Color.WHITE))
+	b.focus_exited.connect(func():
+		b.remove_theme_stylebox_override("normal")
+		b.remove_theme_color_override("font_color"))
+	return b
 
 func _process(delta: float) -> void:
 	t += delta
@@ -365,8 +440,13 @@ func _process(delta: float) -> void:
 	ship.rotation = Vector3(sin(t * 0.37) * 0.008, sin(t * 0.11) * 0.01, sin(t * 0.53) * 0.012)
 	ship.position.y = sin(t * 0.61) * 0.18
 	var sway := sin(t * 0.07)
-	cam.position = Vector3(-3.4 + sway * 0.35, DECK_Y + 3.5 + sin(t * 0.23) * 0.08, 1.6 + sway * 0.2)
-	cam.look_at(ship.to_global(Vector3(2.0 + sway * 0.4, -4.0, -19.0)), Vector3.UP)
+	if cam_override.size() == 6:
+		cam.position = Vector3(cam_override[0], cam_override[1], cam_override[2])
+		cam.look_at(ship.to_global(Vector3(cam_override[3], cam_override[4], cam_override[5])), Vector3.UP)
+	else:
+		# out past the bow, looking back at you: the sunset behind you, the menu over the open sky
+		cam.position = Vector3(4.2 + sway * 0.3, DECK_Y + 1.9 + sin(t * 0.23) * 0.06, -7.2 + sway * 0.2)
+		cam.look_at(ship.to_global(Vector3(1.4 + sway * 0.15, DECK_Y + 1.1, -3.2)), Vector3.UP)
 	if flag:
 		flag.rotation = Vector3(sin(t * 7.0) * 0.12, PI / 2 + sin(t * 4.3) * 0.25, 0)
 	for isl in islands:

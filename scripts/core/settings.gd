@@ -123,14 +123,16 @@ func apply(k: String) -> void:
 			for a in v[k]:
 				_bind(a, v[k][a])
 
-## The interface is laid out for a 1280x720 window. Smaller windows (a laptop browser with its
-## toolbars) shrink it to fit, so nothing ever ends up off the bottom or side of the screen.
+## The interface is laid out for a 1280x720 window and scales with the window both ways: smaller
+## windows (a laptop browser with its toolbars) shrink it so nothing ends up off screen, and big
+## ones (1440p, 4K) grow it so it reads at the same size it was designed at instead of shrinking
+## to a postage stamp in the corner.
 func _apply_ui_scale() -> void:
 	var win := Vector2(get_tree().root.size)
 	if win.x < 10.0 or win.y < 10.0:
 		return
 	var user := clampf(float(v.get("ui_scale", 1.0)), 0.75, 1.5)
-	var fit := minf(1.0, minf(win.y / 720.0, win.x / 1240.0))
+	var fit := minf(win.y / 720.0, win.x / 1240.0)
 	var f := user * fit
 	# never let the user's own size setting push the layout past the window either
 	f = minf(f, minf(win.y / 640.0, win.x / 1100.0))
