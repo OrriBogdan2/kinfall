@@ -1985,6 +1985,17 @@ func _update_vision() -> void:
 	if looking:
 		RenderingServer.global_shader_parameter_set("vis_focus", player.model.global_position if player.model else player.pos)
 		RenderingServer.global_shader_parameter_set("vis_dir", player.aim_dir())
+		RenderingServer.global_shader_parameter_set("vis_range", (14.0 if player.crouch else VIEW_RANGE) * (1.25 if player.crouch else 1.0))
+		# teammates light up what they see too (up to three)
+		var n := 0
+		for h in hunters:
+			if n >= 3: break
+			if h == player or h.team != player.team or h.out or h.extracted or h.riding or h.dropping:
+				continue
+			var ad: Vector2 = h.aim_dir()
+			RenderingServer.global_shader_parameter_set("vis_ally%d" % n, Vector4(h.pos.x, h.pos.z, ad.x, ad.y))
+			n += 1
+		RenderingServer.global_shader_parameter_set("vis_allies", float(n))
 	_vis_t -= get_process_delta_time()
 	if _vis_t > 0.0:
 		return

@@ -58,6 +58,26 @@ vis_blocks={
 "type": "sampler2D",
 "value": ""
 }
+vis_range={
+"type": "float",
+"value": 24.0
+}
+vis_allies={
+"type": "float",
+"value": 0.0
+}
+vis_ally0={
+"type": "vec4",
+"value": Vector4(0, 0, 0, -1)
+}
+vis_ally1={
+"type": "vec4",
+"value": Vector4(0, 0, 0, -1)
+}
+vis_ally2={
+"type": "vec4",
+"value": Vector4(0, 0, 0, -1)
+}
 
 [physics]
 common/physics_ticks_per_second=60
