@@ -1837,6 +1837,17 @@ func _drop_check() -> void:
 	print("DCHECK candidates %s; live by seed: %s" % [str(sp.shown_cats().map(func(cc): return "%s %d/%d" % [cc, sp.active_of(cc).size(), sp.of(cc).size()])), str(subsets)])
 	if subsets[4101] != sp.active_ids(): ok = false; print("DCHECK FAIL the same seed rolled differently")
 	if subsets[4101] == subsets[4102] and subsets[4102] == subsets[4103]: ok = false; print("DCHECK FAIL seeds roll the same spawns")
+	# a generated map (no authored list): candidates come from its islands, the same for the same map
+	var gm := Match.new()
+	gm.world = World.new()
+	gm.world.generate(9, World.BIG_SIZE, World.BIG_ISLANDS)
+	var g1 := SpawnPlan.new(gm); g1.build({})
+	var g2 := SpawnPlan.new(gm); g2.build({})
+	var gpos: Array = g1.cands.map(func(cc): return cc["pos"])
+	var counts: Array = g1.shown_cats().map(func(cc): return "%s %d" % [cc, g1.count_of(cc)])
+	print("DCHECK generated map candidates: %s (same both times=%s)" % [str(counts), gpos == g2.cands.map(func(cc): return cc["pos"])])
+	if g1.count_of("rare_kin") < 3 or g1.count_of("vault") < 2 or g1.count_of("cache") < 4 or gpos != g2.cands.map(func(cc): return cc["pos"]): ok = false; print("DCHECK FAIL generated map candidates")
+	gm.world.free(); gm.free()
 	# rare kin only at the live rare-kin points, one at each
 	var rare: Array = m.kins.filter(func(k): return k.has_meta("rare"))
 	var live: Array = sp.active_of("rare_kin")

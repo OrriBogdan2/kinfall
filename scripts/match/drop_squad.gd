@@ -54,9 +54,12 @@ func setup() -> void:
 		plan_t = plan_len
 		for h in m.hunters:
 			if h.ctrl == "bot" and not h.remote:
-				# leaders always ping their pick; the others now and then add their own
-				if is_lead(h) or randf() < 0.35:
-					_bot_ping[h.nid] = randf_range(1.0, maxf(1.2, plan_len - 2.0)) if is_lead(h) else randf_range(2.5, maxf(2.6, plan_len - 1.0))
+				# leaders always ping their pick early on; the others now and then add theirs after it
+				# (the value is the time left on the countdown when they ping)
+				if is_lead(h):
+					_bot_ping[h.nid] = maxf(0.3, randf_range(plan_len - 3.0, plan_len - 1.2))
+				elif randf() < 0.35:
+					_bot_ping[h.nid] = randf_range(1.2, maxf(1.3, plan_len - 3.5))
 
 func leader(team: int) -> Hunter:
 	var l = leads.get(team, null)
