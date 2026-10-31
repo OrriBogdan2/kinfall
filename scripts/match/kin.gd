@@ -900,13 +900,20 @@ func render(delta: float, alpha: float) -> void:
 		body.position.y = sin(m.time * 6.0) * 0.04
 		body.rotation.x = 0.0
 		return
+	model.set_meta("kstate", "perch" if state == "shoulder" else ("attack" if lunge_t > 0.0 else ""))
 	if state == "shoulder" and owner_h and owner_h.model:
 		var sh: Node3D = owner_h.model.get_node("Rig/Torso/Shoulder")
 		global_position = sh.global_position
 		model.rotation.y = owner_h.face
 		model.scale = Vector3.ONE * lerpf(0.75, 0.55, settle) * minf(float(model.get_meta("evo_scale", 1.0)), 1.2)
 		body.position.y = absf(sin(hop_ph * 0.5)) * 0.03
+		# now and then it peeks out past its hunter's head, or nuzzles in against it
+		var nz := fmod(m.time + float(absi(nid.hash()) % 97), 9.0)
+		var peek := smoothstep(0.0, 0.3, nz) * (1.0 - smoothstep(1.1, 1.5, nz))
+		var nuz := smoothstep(4.5, 4.8, nz) * (1.0 - smoothstep(5.8, 6.2, nz))
 		body.rotation.x = 0.0
+		body.rotation.y = peek * 0.7
+		body.rotation.z = -nuz * 0.35 + sin(m.time * 9.0) * 0.06 * nuz
 		return
 	var gs := 1.0
 	if not giant.is_empty():
@@ -926,6 +933,7 @@ func render(delta: float, alpha: float) -> void:
 		body.rotation.y += delta * (4.0 if state == "dazed" else 0.0)
 	else:
 		body.rotation.z = lerpf(body.rotation.z, 0.0, delta * 8.0)
+		body.rotation.y = lerpf(body.rotation.y, 0.0, delta * 8.0)
 		body.rotation.x = -0.4 if lunge_t > 0.0 else 0.0
 	if state == "flying" and not fly.get("rush", false):
 		body.rotation.x += delta * 14.0
