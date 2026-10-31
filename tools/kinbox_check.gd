@@ -162,18 +162,53 @@ func run(m: Node) -> void:
 		if mm.has("giant") and mm.has("tiny"): both_size += 1
 		if mm.has("giant") or mm.has("tiny"): any_size += 1
 	ok(both_size == 0 and any_size > 1200, "a Giant and a Tiny parent never make a Giant Tiny egg (%d of 4000 got one size)" % any_size)
-	# shimmers, through the real breeding (traits, evolution and all)
+	# shimmers: 1 in 4096 from an egg; a shimmering parent only nudges it (1 in 2048, ~1 in 1365 with two)
 	a.erase("mutations"); b.erase("mutations")
-	var sh := [0, 0, 0]
-	var M := 3000
-	Save.d["roster"] = [a, b]
+	var pe: Array = []
 	for cs in 3:
 		a["shimmer"] = cs >= 1; b["shimmer"] = cs >= 2
-		for _j in M:
-			if Care.breed(a, b, rng).get("shimmer", false): sh[cs] += 1
-	var expd := [Mutations.SHIMMER_EGG, Mutations.SHIMMER_EGG + Mutations.SHIMMER_PARENT, Mutations.SHIMMER_EGG + 2.0 * Mutations.SHIMMER_PARENT]
-	print("KINBOX  shimmering eggs over %d each: none %.3f (%.3f), one %.3f (%.3f), both %.3f (%.3f)" % [M, sh[0] / float(M), expd[0], sh[1] / float(M), expd[1], sh[2] / float(M), expd[2]])
-	ok(absf(sh[0] / float(M) - expd[0]) < 0.02 and absf(sh[1] / float(M) - expd[1]) < 0.03 and absf(sh[2] / float(M) - expd[2]) < 0.03, "shimmer inheritance: 1 in 16, ~31% with one shimmering parent, ~56% with two")
+		pe.append(Shiny.egg_chance(a, b))
+	print("KINBOX  shimmer egg odds: none %s, one parent %s, both %s" % [Shiny.odds_text(pe[0]), Shiny.odds_text(pe[1]), Shiny.odds_text(pe[2])])
+	ok(is_equal_approx(pe[0], 1.0 / 4096.0) and is_equal_approx(pe[1], 1.0 / 2048.0) and is_equal_approx(pe[2], 3.0 / 4096.0) and is_equal_approx(Mutations.shimmer_breed_chance(a, b), pe[2]),
+		"shimmer egg odds: 1 in 4096, 1 in 2048 with one shimmering parent, 1 in 1365 with two")
+	# the roll matches the odds (a million rolls with both parents shimmering, ~732 expected)
+	var SN := 1000000
+	var sh := 0
+	for _j in SN:
+		if Shiny.roll_egg(a, b, rng): sh += 1
+	var esd := sqrt(SN * pe[2] * (1.0 - pe[2]))
+	ok(absf(sh - SN * pe[2]) < 4.0 * esd, "shimmer egg roll over %d: %d (expect %d ± %d)" % [SN, sh, int(SN * pe[2]), int(4.0 * esd)])
+	# and the real breeding (traits, evolution and all) uses those odds
+	var M := 3000
+	Save.d["roster"] = [a, b]
+	var bs := 0
+	for _j in M:
+		if Care.breed(a, b, rng).get("shimmer", false): bs += 1
+	ok(bs <= 10, "Care.breed with two shimmering parents: %d of %d eggs shimmer (expect ~%.1f): a shimmer barely passes on" % [bs, M, M * pe[2]])
+	a["shimmer"] = false; b["shimmer"] = false
+	# wild odds: 1 in 4096, x2 at rare spawn points, x1.5 in the Hollow
+	var wl: Array = []
+	for c in [[0, false], [0, true], [2, false], [2, true]]:
+		wl.append("%s%s %s" % ["Hollow" if int(c[0]) >= 2 else "Meadow", " rare spot" if c[1] else "", Shiny.odds_text(Shiny.wild_chance(int(c[0]), bool(c[1])))])
+	print("KINBOX  wild shimmer odds: %s" % ", ".join(wl))
+	var WN := 1000000
+	var wh := 0
+	for _j in WN:
+		if Shiny.roll_wild(rng, 0, false): wh += 1
+	var wsd := sqrt(WN * Shiny.WILD)
+	ok(is_equal_approx(Shiny.wild_chance(0, false), 1.0 / 4096.0) and is_equal_approx(Shiny.wild_chance(0, true), 2.0 / 4096.0) and is_equal_approx(Shiny.wild_chance(2, false), 1.5 / 4096.0) and is_equal_approx(Shiny.wild_chance(2, true), 3.0 / 4096.0)
+		and absf(wh - WN * Shiny.WILD) < 4.0 * wsd, "wild shimmers: 1 in 4096 (x2 rare spots, x1.5 Hollow); %d in %d rolls (expect %d)" % [wh, WN, int(WN * Shiny.WILD)])
+	# every species has its own hand-picked shimmer palette, not a hue turn
+	var pal_ok := true
+	for spk in Data.KIN:
+		var pl := Shiny.palette(spk)
+		if not pl["hand"] or (pl["color"] as Color).is_equal_approx(Data.KIN[spk]["color"]): pal_ok = false; print("KINBOX  no palette for ", spk)
+	ok(pal_ok, "every species (%d) has a hand-picked shimmer palette" % Data.KIN.size())
+	var shm := _kin(sps[0], "Glint"); shm["shimmer"] = true
+	var sm := Models.kin(sps[0], shm)
+	var sc: Color = ((sm.get_meta("mats") as Array)[0] as ShaderMaterial).get_shader_parameter("albedo")
+	ok(sc.is_equal_approx(Shiny.palette(sps[0])["color"]), "a shimmering %s's model wears its palette (%s)" % [Data.KIN[sps[0]]["name"], sc.to_html(false)])
+	sm.free()
 	a["shimmer"] = false; b["shimmer"] = false
 	a["mutations"] = ["crystal"]
 	var cb := 0

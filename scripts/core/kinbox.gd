@@ -333,7 +333,7 @@ static func sort_page(p: int, key: String) -> void:
 		list[i]["box_slot"] = p * PAGE + i
 
 ## Search and filter: does this kin match?
-## filter: "all", "shimmer", "mutated", "special", a species id, or a mutation id.
+## filter: "all", "shimmer", "mutated", "special", "el:<work element>", a species id, or a mutation id.
 static func matches(r: Dictionary, query: String, filter: String) -> bool:
 	if query.strip_edges() != "" and not String(r.get("name", "")).to_lower().contains(query.strip_edges().to_lower()) \
 			and not String(Data.KIN.get(String(r["species"]), {}).get("name", "")).to_lower().contains(query.strip_edges().to_lower()):
@@ -343,5 +343,6 @@ static func matches(r: Dictionary, query: String, filter: String) -> bool:
 		"shimmer": return r.get("shimmer", false)
 		"mutated": return not Mutations.of(r).is_empty()
 		"special": return Mutations.special(r)
+	if filter.begins_with("el:"): return Work.level(r, filter.substr(3)) > 0     # kin that can do a kind of work
 	if Data.KIN.has(filter): return String(r["species"]) == filter
 	return Mutations.has(r, filter)

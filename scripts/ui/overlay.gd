@@ -458,7 +458,7 @@ func open_inventory() -> void:
 			for rec in Save.d["roster"]:
 				empty = false
 				var sp: Dictionary = Data.KIN[rec["species"]]
-				cell.call(String(rec["name"]), "Lv %d" % int(rec["level"]), "%s%s%s · %s bond · %s%s" % ["in the Kin Burrow · " if KinBox.is_boxed(rec) else "", (" ".join(Mutations.tags(rec)) + " ") if Mutations.special(rec) else "", Evo.form_name(rec), Care.bond(rec)[1], Care.condition_name(rec).to_lower(), "  · partner" if rec["uid"] == Save.d.get("active", "") else ""], Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"])
+				cell.call(String(rec["name"]), "Lv %d" % int(rec["level"]), "%s%s%s · %s bond · %s%s" % ["in the Kin Burrow · " if KinBox.is_boxed(rec) else "", (" ".join(Mutations.tags(rec)) + " ") if Mutations.special(rec) else "", Evo.form_name(rec), Care.bond(rec)[1], Care.condition_name(rec).to_lower(), "  · partner" if rec["uid"] == Save.d.get("active", "") else ""], Shiny.body(rec))
 		"Kindex":
 			empty = false
 			Care.dex_sync()

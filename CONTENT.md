@@ -40,6 +40,8 @@ Those files are checked with `--grammar-check` but not used by the game yet; the
 - `animals`: the one or two real animals it's based on (shown on the hatch reveal card).
 - `desc`: a line about it for the hatch reveal card.
 - `egg`: how its egg is shown: `name` (e.g. "Venom Egg"), `temper`, `desc` and `play` (used on the first-egg picker and the Nesting Nook).
+- `work`: its work elements, the farm jobs it does on its own, each at a level 1-4, e.g. `{"bloom": 3, "forage": 2, "ranch": 1}`. Elements: ember, tide, bloom, spark, craft, forage, timber, stone, frost, haul, mend, ranch (see `scripts/core/work.gd`). Two or three per kin.
+- `shiny`: its hand-picked shimmer palette, `{"color", "belly", "glow"}` (and `"wing"` for winged kin). Shimmers are 1 in 4096 (see `scripts/core/shiny.gd`).
 
 Open `tests/kin_gallery.tscn` and press F6 to see it next to the others.
 

@@ -50,5 +50,15 @@
 		"temper": "Bold",
 		"desc": "A dark plum shell beaded with green droplets. It hisses when you lean close. Something bold is in here.",
 		"play": "Darts in, stings hard and poisons. Brave, but quick to anger."
+	},
+	"work": {
+		"ember": 3,
+		"forage": 1,
+		"mend": 1
+	},
+	"shiny": {
+		"color": "#9a2a2a",
+		"belly": "#ffd9a8",
+		"glow": "#ffc23a"
 	}
 }

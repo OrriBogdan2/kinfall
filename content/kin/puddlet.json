@@ -49,5 +49,15 @@
 		"temper": "Gentle",
 		"desc": "Pink and glassy. It throws little rainbows when it rocks. Something gentle is in here.",
 		"play": "Shields you and dazzles foes with bent light. Loyal, a bit of a worrier."
+	},
+	"work": {
+		"tide": 3,
+		"mend": 2,
+		"bloom": 1
+	},
+	"shiny": {
+		"color": "#2e3a6a",
+		"belly": "#9ad8ff",
+		"glow": "#ffe066"
 	}
 }

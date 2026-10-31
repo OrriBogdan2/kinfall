@@ -317,6 +317,8 @@ func make_deco(e: Dictionary) -> Node3D:
 	var rng := RandomNumberGenerator.new(); rng.seed = int(e.get("u", 1)) * 7919 + 13
 	var col := Color(String(e.get("c", HomeLayout.COLOURS[0])))
 	var n: Node3D = null
+	if HomeLayout.CATALOG.get(id, {}).has("work"):
+		n = WorkModels.station(id, e, rng)       # a work station (scripts/home/work_models.gd)
 	match id:
 		"flowers": n = Models.flower_bed(rng)
 		"bush":
@@ -740,19 +742,29 @@ func _deco_by_uid(u: int) -> Dictionary:
 	return {}
 
 # ------------------------------------------------------------------ prices
-func _can_pay(g: int, s: int) -> bool:
-	return int(Save.d["gems"]) >= g and int(Save.d.get("scrap", 0)) >= s
+func _can_pay(g: int, s: int, wd := 0, st := 0) -> bool:
+	return int(Save.d["gems"]) >= g and int(Save.d.get("scrap", 0)) >= s and Work.mat("wood") >= wd and Work.mat("stone") >= st
 
-func _pay(g: int, s: int) -> void:
+func _pay(g: int, s: int, wd := 0, st := 0) -> void:
 	Save.d["gems"] = int(Save.d["gems"]) - g
 	Save.d["scrap"] = int(Save.d.get("scrap", 0)) - s
+	if wd > 0: Work.add_mat("wood", -wd)
+	if st > 0: Work.add_mat("stone", -st)
 
-## What placing n of id costs after using what's in storage: [gems, scrap, from storage].
+## What's short for a price, in words ("gems", "wood"...).
+func _short(g: int, s: int, wd := 0, st := 0) -> String:
+	if int(Save.d["gems"]) < g: return "gems"
+	if int(Save.d.get("scrap", 0)) < s: return "scrap (salvage spare weapons)"
+	if Work.mat("wood") < wd: return "wood (Timber kin at a Lumber Camp make it)"
+	if Work.mat("stone") < st: return "stone (Stone kin at a Quarry make it)"
+	return "gems"
+
+## What placing n of id costs after using what's in storage: [gems, scrap, from storage, wood, stone].
 func cost_of(id: String, n: int) -> Array:
 	var inv: Dictionary = L()["inv"]
 	var have := mini(n, int(inv.get(id, 0)))
 	var p := HomeLayout.price(id, n - have)
-	return [p[0], p[1], have]
+	return [p[0], p[1], have, p[2], p[3]]
 
 func price_text(id: String) -> String:
 	var c: Dictionary = HomeLayout.CATALOG[id]
@@ -760,16 +772,20 @@ func price_text(id: String) -> String:
 	if n > 0:
 		return "×%d stored" % n
 	var g := int(c.get("gems", 0)); var s := int(c.get("scrap", 0))
-	if g == 0 and s == 0:
+	if g == 0 and s == 0 and not c.has("wood") and not c.has("stone"):
 		return "free"
 	var t := "%d gems" % g
 	if s > 0: t += " · %d scrap" % s
+	var mats: Array = []
+	if c.has("wood"): mats.append("%d wood" % int(c["wood"]))
+	if c.has("stone"): mats.append("%d stone" % int(c["stone"]))
+	if not mats.is_empty(): t += "\n" + " · ".join(mats)
 	if c.has("line") or c.has("brush"): t += " /tile"
 	return t
 
 # ------------------------------------------------------------------ undo
 func _snap() -> void:
-	undo.append({"L": L().duplicate(true), "gems": int(Save.d["gems"]), "scrap": int(Save.d.get("scrap", 0))})
+	undo.append({"L": L().duplicate(true), "gems": int(Save.d["gems"]), "scrap": int(Save.d.get("scrap", 0)), "wood": Work.mat("wood"), "stone": Work.mat("stone")})
 	if undo.size() > 40:
 		undo.pop_front()
 
@@ -783,6 +799,7 @@ func undo_last() -> bool:
 	var paint_changed: bool = str(lay["paths"]) != str(L()["paths"]) or str(lay["water"]) != str(L()["water"]) or lay["theme"] != L()["theme"]
 	Save.d["layout"] = lay
 	Save.d["gems"] = int(s["gems"]); Save.d["scrap"] = int(s["scrap"])
+	if s.has("wood"): Save.d["mats"]["wood"] = int(s["wood"]); Save.d["mats"]["stone"] = int(s["stone"])
 	apply(paint_changed)
 	Save.save_game()
 	Sfx.play("whoosh", null, -8.0)
@@ -835,8 +852,8 @@ func take(id: String) -> void:
 	_drop_held()
 	var c: Dictionary = HomeLayout.CATALOG[id]
 	var g := cost_of(id, 1)
-	if not c.has("brush") and not c.has("line") and int(g[2]) == 0 and not _can_pay(int(g[0]), int(g[1])):
-		h._toast("Not enough %s" % ("gems" if int(Save.d["gems"]) < int(g[0]) else "scrap (salvage spare weapons)"))
+	if not c.has("brush") and not c.has("line") and int(g[2]) == 0 and not _can_pay(int(g[0]), int(g[1]), int(g[3]), int(g[4])):
+		h._toast("Not enough %s" % _short(int(g[0]), int(g[1]), int(g[3]), int(g[4])))
 		return
 	held = {"kind": "deco", "id": id, "r": 0, "from": -1}
 	_make_ghost()
@@ -1297,8 +1314,8 @@ func place_held() -> bool:
 	var from := int(held.get("from", -1))
 	var n := at.size() if from < 0 else 0
 	var cost := cost_of(id, n)
-	if not _can_pay(int(cost[0]), int(cost[1])):
-		h._toast("Not enough gems" if int(Save.d["gems"]) < int(cost[0]) else "Not enough scrap (salvage spare weapons)")
+	if not _can_pay(int(cost[0]), int(cost[1]), int(cost[3]), int(cost[4])):
+		h._toast("Not enough %s" % _short(int(cost[0]), int(cost[1]), int(cost[3]), int(cost[4])))
 		return false
 	_snap()
 	if from >= 0:
@@ -1310,7 +1327,7 @@ func place_held() -> bool:
 	else:
 		lay["inv"][id] = int(lay["inv"].get(id, 0)) - int(cost[2])
 		if int(lay["inv"][id]) <= 0: lay["inv"].erase(id)
-		_pay(int(cost[0]), int(cost[1]))
+		_pay(int(cost[0]), int(cost[1]), int(cost[3]), int(cost[4]))
 		for t in at:
 			var e := {"u": HomeLayout._next_uid(lay), "id": id, "x": t.x, "z": t.y, "r": int(held["r"])}
 			if c.get("colour", false) or id == "banner": e["c"] = _held_colour()
@@ -1423,11 +1440,13 @@ func open_expand() -> void:
 		return
 	var gain := HomeLayout.expand_gain(lv, _seed())
 	var c: Array = HomeLayout.EXPAND[lv]
+	var cm: Array = HomeLayout.EXPAND_MATS[mini(lv, HomeLayout.EXPAND_MATS.size() - 1)]
 	v.add_child(UI.label("The island's edge grows out to the east and south: %d more tiles of open meadow to build on. (Step %d of %d.)" % [gain, lv + 1, HomeLayout.EXPAND.size()], 16))
-	var have := "You have %d gems and %d scrap." % [int(Save.d["gems"]), int(Save.d.get("scrap", 0))]
-	v.add_child(UI.label("Costs %d gems and %d scrap. %s" % [int(c[0]), int(c[1]), have], 15, UI.GOLD if _can_pay(int(c[0]), int(c[1])) else UI.BAD))
+	var have := "You have %d gems, %d scrap, %d wood and %d stone." % [int(Save.d["gems"]), int(Save.d.get("scrap", 0)), Work.mat("wood"), Work.mat("stone")]
+	var mt := (" · %d wood · %d stone" % [int(cm[0]), int(cm[1])]) if int(cm[0]) + int(cm[1]) > 0 else ""
+	v.add_child(UI.label("Costs %d gems · %d scrap%s. %s" % [int(c[0]), int(c[1]), mt, have], 15, UI.GOLD if _can_pay(int(c[0]), int(c[1]), int(cm[0]), int(cm[1])) else UI.BAD))
 	var btn := UI.primary("Expand  +%d tiles" % gain, func(): expand(), 240)
-	btn.disabled = not _can_pay(int(c[0]), int(c[1]))
+	btn.disabled = not _can_pay(int(c[0]), int(c[1]), int(cm[0]), int(cm[1]))
 	v.add_child(btn)
 
 func expand() -> bool:
@@ -1436,10 +1455,11 @@ func expand() -> bool:
 	if lv >= HomeLayout.EXPAND.size():
 		return false
 	var c: Array = HomeLayout.EXPAND[lv]
-	if not _can_pay(int(c[0]), int(c[1])):
+	var cm: Array = HomeLayout.EXPAND_MATS[mini(lv, HomeLayout.EXPAND_MATS.size() - 1)]
+	if not _can_pay(int(c[0]), int(c[1]), int(cm[0]), int(cm[1])):
 		return false
 	var gain := HomeLayout.expand_gain(lv, _seed())
-	_pay(int(c[0]), int(c[1]))
+	_pay(int(c[0]), int(c[1]), int(cm[0]), int(cm[1]))
 	lay["grow"] = lv + 1
 	Save.save_game()
 	undo.clear()
@@ -1551,7 +1571,8 @@ func _tab_items() -> Array:
 			var lv := int(lay["grow"])
 			if lv < HomeLayout.EXPAND.size():
 				var c: Array = HomeLayout.EXPAND[lv]
-				out.append({"t": "Expand island\n%d gems · %d scrap" % [int(c[0]), int(c[1])], "cb": func(): open_expand(), "tip": "Grow the island's edge (step %d of %d)" % [lv + 1, HomeLayout.EXPAND.size()]})
+				var cm: Array = HomeLayout.EXPAND_MATS[mini(lv, HomeLayout.EXPAND_MATS.size() - 1)]
+				out.append({"t": "Expand island\n%d gems · %d scrap%s" % [int(c[0]), int(c[1]), (" · %d wood" % int(cm[0])) if int(cm[0]) > 0 else ""], "cb": func(): open_expand(), "tip": "Grow the island's edge (step %d of %d)%s" % [lv + 1, HomeLayout.EXPAND.size(), (": also %d wood and %d stone" % [int(cm[0]), int(cm[1])]) if int(cm[0]) > 0 else ""]})
 			else:
 				out.append({"t": "Expand island\nfull size", "cb": func(): pass, "off": true})
 			if _seed() != 0:
@@ -1564,9 +1585,11 @@ func _tab_items() -> Array:
 				if String(c["cat"]) != cat: continue
 				var iid: String = id
 				var pc := cost_of(id, 1)
-				out.append({"t": "%s\n%s" % [c["name"], price_text(id)], "cb": func(): take(iid),
+				var it := {"t": "%s\n%s" % [c["name"], price_text(id)], "cb": func(): take(iid),
 					"on": held.get("kind", "") == "deco" and String(held.get("id", "")) == id and int(held.get("from", -1)) < 0,
-					"off": int(pc[2]) == 0 and not _can_pay(int(pc[0]), int(pc[1]))})
+					"off": int(pc[2]) == 0 and not _can_pay(int(pc[0]), int(pc[1]), int(pc[3]), int(pc[4]))}
+				if c.has("desc"): it["tip"] = String(c["desc"])
+				out.append(it)
 	return out
 
 # ------------------------------------------------------------------ "Make it home": the first look round

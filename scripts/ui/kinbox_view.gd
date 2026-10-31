@@ -88,6 +88,7 @@ func _build() -> void:
 	var fo := OptionButton.new()
 	var fopts: Array = [["all", "All kin"], ["special", "Any rare"], ["shimmer", "Shimmering"], ["mutated", "Any mutation"]]
 	for mid in Mutations.ids(): fopts.append([mid, Mutations.name_of(mid)])
+	for el in Work.ORDER: fopts.append(["el:" + el, "Works: %s" % Work.name_of(el)])
 	for spk in Data.KIN:
 		if not Data.KIN[spk].get("rare", false) or (Save.d["roster"] as Array).any(func(r): return String(r["species"]) == spk):
 			fopts.append([spk, String(Data.KIN[spk]["name"])])
@@ -318,6 +319,9 @@ func _cell(rec: Dictionary, where: String, slot: int) -> Control:
 	bdg.position = Vector2(CELL.x - 8 - 14 * mini(3, bdg.get_child_count()), -1)
 	while bdg.get_child_count() > 3: bdg.get_child(bdg.get_child_count() - 1).free()
 	stack.add_child(bdg)
+	var wic := WorkView.icons(rec, 12.0, 3)       # its work elements, best first
+	wic.position = Vector2(CELL.x - 20, 14)
+	stack.add_child(wic)
 	if String(rec["uid"]) == str(Save.d.get("active", "")):
 		var pw := Icons.Glyph.new("paw", UI.GOLD, 14.0)
 		pw.position = Vector2(0, 38)
@@ -409,7 +413,7 @@ func _build_detail() -> void:
 			detail.add_child(l)
 		return
 	var sp: Dictionary = Data.KIN[rec["species"]]
-	var col: Color = Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"]
+	var col: Color = Shiny.body(rec)
 	var top := UI.hbox(10)
 	top.add_child(KinPortrait.view(rec, _tree(), 76.0))
 	var tv := UI.vbox(1)
@@ -424,7 +428,7 @@ func _build_detail() -> void:
 	top.add_child(tv)
 	detail.add_child(top)
 	if rec.get("shimmer", false):
-		detail.add_child(_rare_row("shimmer", "Shimmering", "rare colours", Color("fff0a0")))
+		detail.add_child(_rare_row("shimmer", "Shimmering", "its own rare colours", Color("fff0a0")))
 	for mid in Mutations.of(rec):
 		detail.add_child(_rare_row(mid, Mutations.name_of(mid), Mutations.perk_text(mid), Mutations.col_of(mid)))
 	var bd: Array = Care.bond(rec)
@@ -433,6 +437,7 @@ func _build_detail() -> void:
 		var dt := Time.get_datetime_dict_from_unix_time(int(rec["got_t"]))
 		joined = "  ·  joined %d-%02d-%02d" % [dt["year"], dt["month"], dt["day"]]
 	detail.add_child(UI.label("Trust %d  ·  %s bond%s" % [int(rec.get("trust", 0)), bd[1], joined], 12, Color("ffb3c6")))
+	detail.add_child(WorkView.chips(rec, 18.0))
 	var cond := ("Asleep, needs on hold (%s)" % Care.condition_name(rec).to_lower()) if KinBox.is_boxed(rec) else Care.condition_name(rec)
 	if rec.has("parents"): cond += "  ·  child of %s and %s" % [rec["parents"][0], rec["parents"][1]]
 	var cl := UI.label(cond, 12, UI.MUTED)

@@ -1304,7 +1304,7 @@ func _spawn_wild() -> void:
 		var rec := Save.new_kin(sp)
 		rec["level"] = rng.randi_range(T["kin_lvl"][0], T["kin_lvl"][1])
 		Evo.simulate(rec, rng)
-		rec["shimmer"] = rng.randf() < Mutations.SHIMMER_WILD   # a rare colour you'll want to catch
+		rec["shimmer"] = Shiny.roll_wild(rng, tier)   # a rare colour you'll want to catch (1 in 4096, x1.5 in the Hollow)
 		Mutations.roll_wild(rec, rng, tier)          # and now and then a rare mutation (more in harder tiers)
 		spawn_wild(rec, p)
 
@@ -3393,6 +3393,8 @@ func _update_dex(dt: float) -> void:
 				var rare := " ".join(Mutations.tags(k.rec))
 				hud.toast(("A shimmering %s! Its colours are rare" % Data.KIN[k.species]["name"]) if Mutations.of(k.rec).is_empty() else "%s %s %s! A rare mutation" % ["An" if "AEIOU".contains(rare.substr(0, 1)) else "A", rare, Data.KIN[k.species]["name"]], Color("fff6c0"))
 				sfx("unlock", k.pos, -6.0, 1.3)
+				if k.rec.get("shimmer", false):
+					Shiny.sparkle(self, k.pos, k.species, 1.2)      # stars and a chime round it
 
 func _update_interact(dt: float) -> void:
 	for h in hunters:

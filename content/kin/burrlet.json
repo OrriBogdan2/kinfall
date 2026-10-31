@@ -50,5 +50,15 @@
 		"temper": "Curious",
 		"desc": "Soft and earthy, dusted with glowing spores that drift off when it twitches. Something curious is in here.",
 		"play": "Roots foes in place with spore clouds. Notices everything, wanders off sometimes."
+	},
+	"work": {
+		"bloom": 3,
+		"forage": 2,
+		"ranch": 1
+	},
+	"shiny": {
+		"color": "#3a5a7a",
+		"belly": "#f4e0f0",
+		"glow": "#ff8ad8"
 	}
 }

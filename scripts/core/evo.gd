@@ -168,7 +168,7 @@ static func dress(root: Node3D, rec: Dictionary) -> void:
 		return
 	var body: Node3D = root.get_node("Body/Flex") if root.has_node("Body/Flex") else root.get_node("Body")
 	var sp: Dictionary = Data.KIN[rec.get("species", "cindle")]
-	var base: Color = Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"]
+	var base: Color = Shiny.body(rec)
 	if forms.size() > 0:
 		var last: String = forms[forms.size() - 1]
 		base = base.lerp(AFF[last]["tint"], minf(0.1 * forms.size(), 0.35))

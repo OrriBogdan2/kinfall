@@ -51,5 +51,16 @@
 		"temper": "Airy",
 		"desc": "Pale and faintly glowing. At night it floats a hair above the nest. Something airy is in here.",
 		"play": "Quick and slippery. Gusts foes away and flits out of reach."
+	},
+	"work": {
+		"frost": 2,
+		"craft": 2,
+		"ranch": 1
+	},
+	"shiny": {
+		"color": "#f2a07a",
+		"belly": "#fff0dc",
+		"glow": "#ff7ab8",
+		"wing": "#ffd36a"
 	}
 }

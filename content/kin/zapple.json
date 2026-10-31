@@ -51,5 +51,16 @@
 		"temper": "Hyper",
 		"desc": "Deep blue and humming. Tap it and it taps back. Something restless is in here.",
 		"play": "Fast, loud and everywhere. Chains sound pulses between foes."
+	},
+	"work": {
+		"spark": 3,
+		"haul": 2,
+		"forage": 1
+	},
+	"shiny": {
+		"color": "#2f8a5a",
+		"belly": "#d8ffd0",
+		"glow": "#f0ff6a",
+		"wing": "#1f5a4a"
 	}
 }
