@@ -1764,8 +1764,8 @@ func _truce_check() -> void:
 	for _try in 3:
 		T._cool.clear()
 		T.emote(A[0], "truce")
-		var t0 := tt
-		while tt - t0 < 3.5 and not T.allied(0, 1): hold2.call(); m.step(Match.DT); tt += Match.DT
+		var offer_t := tt
+		while tt - offer_t < 3.5 and not T.allied(0, 1): hold2.call(); m.step(Match.DT); tt += Match.DT
 		if T.allied(0, 1): break
 	print("TCHECK reversed: the beaten squad accepted=%s after %.1fs (events %s)" % [T.allied(0, 1), tt, str(T.events.slice(-3))])
 	if not T.allied(0, 1) and not T.events.has("fake 1"): ok = false; print("TCHECK FAIL beaten squad refused")
