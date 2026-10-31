@@ -503,6 +503,7 @@ func _sim_fly(dt: float) -> void:
 	if rush:
 		var e: Dictionary = fly["e"]
 		for f in m.foes_of(team):
+			if fly.is_empty(): return      # a hit can end the flight (a knock, a recall) mid-loop
 			if fly["hit"].has(f.nid):
 				continue
 			if Vector2(f.pos.x - pos.x, f.pos.z - pos.z).length() < f.r + float(e.get("width", 1.0)) and absf(f.pos.y - pos.y) < 1.8:
@@ -517,6 +518,7 @@ func _sim_fly(dt: float) -> void:
 	elif not fly.get("leap", false):
 		# a thrown kin hits whoever it flies into: damage, a short stun, and an opening for your shots
 		for f in m.foes_of(team):
+			if fly.is_empty(): return      # a hit can end the flight (a knock, a recall) mid-loop
 			if fly["hit"].has(f.nid):
 				continue
 			if Vector2(f.pos.x - pos.x, f.pos.z - pos.z).length() < f.r + 0.5 and absf(f.pos.y + 0.6 - pos.y) < 1.6:

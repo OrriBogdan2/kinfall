@@ -780,6 +780,7 @@ func dash_with(e: Dictionary) -> void:
 ## A kin rider: foes you dash through get its status (venom's poison).
 func _pass_along() -> void:
 	for f in m.foes_of(team):
+		if dash_pass.is_empty(): return
 		if dash_pass["hit"].has(f.get_instance_id()) or flat_dist(f) > r + f.r + 0.4 or absf(f.pos.y - pos.y) > 1.4:
 			continue
 		dash_pass["hit"][f.get_instance_id()] = true
@@ -792,6 +793,7 @@ func _pass_along() -> void:
 
 func _shove_along() -> void:
 	for f in m.foes_of(team):
+		if shove.is_empty(): return
 		if shove["hit"].has(f.nid) or flat_dist(f) > r + f.r + 0.35 or absf(f.pos.y - pos.y) > 1.4:
 			continue
 		shove["hit"][f.nid] = true
