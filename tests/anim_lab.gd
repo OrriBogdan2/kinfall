@@ -342,7 +342,7 @@ func _drive(c: Dictionary, dt: float) -> void:
 	if _arg("--lab-fidget") != "" and mode == "idle":
 		a.fidget_wait = minf(a.fidget_wait, 0.2)
 	a.update(dt, s)
-	if c.has("cam") and mode in ["hop", "drop"]:
+	if c.has("cam"):
 		var cam: Camera3D = c["cam"]
 		cam.position = Vector3(h.position.x, h.position.y + 0.75 * h.scale.y, h.position.z) + (c["cam_off"] as Vector3)
 
