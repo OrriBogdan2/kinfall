@@ -188,12 +188,17 @@ func run(m: Node) -> void:
 	var wd1 := Work.mat("wood")
 	var piles_seen := 0
 	var hauled := ""
-	for i in 50:
+	for i in 150:
 		await sim.call(1.0)
 		piles_seen = maxi(piles_seen, (Work.ensure()["piles"] as Array).size())
 		for nm in took:
 			if (took[nm] as Array).has("carry"): hauled = nm
 		if Work.mat("wood") > wd1 and piles_seen > 0 and hauled != "": break
+		if i % 25 == 24:
+			var busy := []
+			for k in H.kins:
+				busy.append("%s:%s" % [k["rec"]["name"], String(k["job"]["kind"]) + "/" + String(k["job"].get("phase", "")) if k.has("job") else "-"])
+			print("WORK  haul wait %ds: piles %d, camp %s, kin %s" % [i + 1, (Work.ensure()["piles"] as Array).size(), str(Work.station(int(camp["u"]))), str(busy)])
 	ok(piles_seen > 0 and Work.mat("wood") > wd1 and hauled != "", "with a Storage Chest, split logs wait on a pile and a Haul kin (%s) carries them in (wood %d -> %d)" % [hauled, wd1, Work.mat("wood")])
 	Work.set_prio("ember", 2)
 	# ---------------------------------------------------------------- 8. hungry kin stop to eat
