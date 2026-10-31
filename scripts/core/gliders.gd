@@ -52,7 +52,16 @@ static func col(spec: String, team: Color, hero: Color) -> Color:
 
 ## The canopy mesh for a skin: a smooth, billowing sheet (arched across the span, cambered front to
 ## back like a real paraglider cell), two-sided, with normals from the curve so it shades softly.
+static var _meshes := {}
 static func mesh(id: String, team: Color, hero: Color) -> ArrayMesh:
+	var key := "%s|%s|%s" % [id, team.to_html(), hero.to_html()]
+	if _meshes.has(key):
+		return _meshes[key]
+	var am := _build(id, team, hero)
+	_meshes[key] = am
+	return am
+
+static func _build(id: String, team: Color, hero: Color) -> ArrayMesh:
 	var g := get_skin(id)
 	var cloth := col(g["cloth"], team, hero)
 	var stripe := col(g["stripe"], team, hero)
@@ -88,6 +97,7 @@ static func mesh(id: String, team: Color, hero: Color) -> ArrayMesh:
 						for i in order:
 							st.set_normal(nrm[i])
 							st.add_vertex(pts[i])
+	st.index()
 	return st.commit()
 
 ## The canopy's outline at x: [height, how far it reaches forward, how far back].

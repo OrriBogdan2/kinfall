@@ -28,18 +28,20 @@ func _ready() -> void:
 			(h.get_node("Rig/Legs") as Node3D).visible = false
 			(h.get_node("TeamRing") as Node3D).visible = false
 			h.scale = Vector3.ONE * 1.6
-			h.position = Vector3(i * 1.05, -r * 1.12 - 1.9, 0)
 			h.rotation.y = (0.6 if back else PI + 0.55)
 			add_child(h)
+			# every race is a different height: line the heads up on a grid
+			var hp: Vector3 = (h.get_node("Rig/Torso/HeadPivot") as Node3D).global_position
+			h.position += Vector3(i * 1.05, -r * 1.2, 0) - Vector3(hp.x, hp.y, 0)
 			var l := Label3D.new()
 			l.text = "%s · %s" % [Models.LOOK_RACES[r], styles[i]]
 			l.font_size = 20; l.pixel_size = 0.0028; l.outline_size = 6
-			l.position = Vector3(i * 1.05, -r * 1.12 - 0.12, 0.8)
+			l.position = Vector3(i * 1.05, -r * 1.2 - 0.42, 0.8)
 			add_child(l)
 	var cam := Camera3D.new()
 	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
-	cam.size = 7.0
-	cam.position = Vector3((cols - 1) * 0.525, -2.9, 20.0)
+	cam.size = 8.4
+	cam.position = Vector3((cols - 1) * 0.525, -2.75, 20.0)
 	add_child(cam)
 	cam.make_current()
 

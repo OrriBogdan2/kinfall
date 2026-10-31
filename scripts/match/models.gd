@@ -59,7 +59,7 @@ static var _spheres := {}
 static func sphere(r: float, seg := 16) -> SphereMesh:
 	var sg := seg + (8 if r > 0.12 else 4)
 	if seg > 8 or r >= 0.1:
-		sg = maxi(sg, int(clampf(r * 110.0, 14.0, 32.0)))
+		sg = maxi(sg, int(clampf(r * 100.0, 14.0, 28.0)))
 	sg += sg % 2
 	var key := "%.4f|%d" % [r, sg]
 	if _spheres.has(key):
@@ -74,7 +74,7 @@ static func capsule(r: float, h: float) -> CapsuleMesh:
 	if _spheres.has(key):
 		return _spheres[key]
 	var c := CapsuleMesh.new()
-	c.radius = r; c.height = h; c.radial_segments = int(clampf(r * 260.0, 16.0, 40.0)); c.rings = 12
+	c.radius = r; c.height = h; c.radial_segments = int(clampf(r * 220.0, 14.0, 32.0)); c.rings = 10
 	_spheres[key] = c
 	return c
 
@@ -92,7 +92,7 @@ static func box(x: float, y: float, z: float) -> Mesh:
 	var key := "%.4f|%.4f|%.4f" % [x, y, z]
 	if _rbox.has(key):
 		return _rbox[key]
-	var am := rounded_box(Vector3(x, y, z), r, 3 if mn > 0.03 else 2)
+	var am := rounded_box(Vector3(x, y, z), r, 3 if mn > 0.12 else 2)
 	_rbox[key] = am
 	return am
 
@@ -260,7 +260,7 @@ static func plain_cyl(top: float, bottom: float, h: float, seg := 14) -> Cylinde
 ## outlines as one clean shape. Hair-thin ones stay plain. Cached by size.
 static func cyl(top: float, bottom: float, h: float, seg := 14) -> Mesh:
 	var mr := maxf(top, bottom)
-	var radial := maxi(seg + 6, int(clampf(mr * 110.0, 12.0, 44.0)))
+	var radial := maxi(seg + 6, int(clampf(mr * 100.0, 12.0, 40.0)))
 	if mr < 0.014 or h < 0.012:
 		var c := CylinderMesh.new()
 		c.top_radius = top; c.bottom_radius = bottom; c.height = h; c.radial_segments = maxi(seg + 2, 8); c.rings = 1
@@ -275,7 +275,7 @@ static func cyl(top: float, bottom: float, h: float, seg := 14) -> Mesh:
 	if top > 0.0005: poly.append(Vector2(-top, hh))
 	if bottom > 0.0005: poly.append(Vector2(-bottom, -hh))
 	var bev := clampf(minf(h, 2.0 * mr) * 0.16, 0.0, 0.045)
-	var loop := _fillet(poly, bev, 4)
+	var loop := _fillet(poly, bev, 3)
 	var prof := _right_half(loop)
 	var am := lathe(prof, radial)
 	_cyls[key] = am
@@ -331,7 +331,7 @@ static func limb(r0: float, r1: float, h: float, bulge := 0.08) -> ArrayMesh:
 		pts.append(Vector2(cos(a) * r0, hh - r0 + sin(a) * r0))
 	var prof := smooth_curve(pts, 2)
 	prof[0] = Vector2(0, -hh); prof[prof.size() - 1] = Vector2(0, hh)
-	var am := lathe(prof, int(clampf(maxf(r0, r1) * 260.0, 16.0, 32.0)))
+	var am := lathe(prof, int(clampf(maxf(r0, r1) * 220.0, 14.0, 24.0)))
 	_lathes[key] = am
 	return am
 
@@ -345,7 +345,7 @@ static func eye_mesh(r: float, iris: Color, dark := Color("1a1620")) -> ArrayMes
 	if _eyes.has(key):
 		return _eyes[key]
 	var sm := SphereMesh.new()
-	sm.radius = r; sm.height = r * 2.0; sm.radial_segments = 36; sm.rings = 22
+	sm.radius = r; sm.height = r * 2.0; sm.radial_segments = 28; sm.rings = 18
 	var arrs := sm.get_mesh_arrays()
 	var verts: PackedVector3Array = arrs[Mesh.ARRAY_VERTEX]
 	var cols := PackedColorArray()
@@ -514,18 +514,23 @@ static func clean_look(lk: Dictionary) -> Dictionary:
 ## visual): overall size on top of the class scale (about 0.88 / 1.0 / 1.18 in all), build, boots,
 ## weapon size, and the class emblem on the pack (light: a chevron, medium: a diamond, heavy: a shield).
 const CLASS_LOOK := {
-	"light": {"size": 0.98, "build": 0.9, "boots": 0.92, "weapon": 0.9},
+	"light": {"size": 0.95, "build": 0.88, "boots": 0.9, "weapon": 0.86},
 	"medium": {"size": 1.0, "build": 1.0, "boots": 1.0, "weapon": 1.05},
 	"heavy": {"size": 1.035, "build": 1.12, "boots": 1.28, "weapon": 1.32},
 }
 
 ## The class's own marks: its emblem on top of the pack in the class colour (seen from above), a
 ## trailing scarf for lights, a plated collar and back plate for heavies.
-static func _class_marks(torso: Node3D, cls: String, bw: float, m_acc: Material, m_trim: Material) -> void:
+## The class colour, made vivid enough to read on a badge (its own material: hits flash per hunter).
+static func class_mat(cls: String) -> ShaderMaterial:
 	var cc: Color = Data.CLASSES.get(cls, {}).get("color", Color.WHITE)
 	cc = Color.from_hsv(cc.h, maxf(cc.s, 0.6), maxf(cc.v, 0.95))
-	var m_cls := toon(cc, true, 0.35)
-	m_cls.set_shader_parameter("gloss", 0.5)
+	var m := toon(cc, true, 0.35)
+	m.set_shader_parameter("gloss", 0.5)
+	return m
+
+static func _class_marks(torso: Node3D, cls: String, bw: float, m_acc: Material, m_trim: Material) -> void:
+	var m_cls := class_mat(cls)
 	var at := Vector3(0, 0.655, 0.27 * bw)
 	var tilt := Vector3(-1.05, 0, 0)          # lying back on the rolled wing, facing up and back
 	match cls:
@@ -658,6 +663,10 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 		var hm := SphereMesh.new(); hm.radius = 0.13 * pad_k; hm.height = 0.13 * pad_k; hm.is_hemisphere = true; hm.radial_segments = 30; hm.rings = 10
 		part(torso, hm, m_acc, Vector3((0.24 + (pad_k - 1.0) * 0.06) * sx * chest_w, 0.52 + (pad_k - 1.0) * 0.04, 0.0), Vector3(1.0, 0.9, 1.1), Vector3(0, 0, -0.45 * sx))
 		part(torso, cyl(0.135, 0.135, 0.025, 14), m_trim, Vector3(0.245 * sx * chest_w, 0.5, 0.0), Vector3.ONE, Vector3(0, 0, -0.45 * sx))
+		# the class badge on top of each shoulder, seen from the match camera whichever way they face
+		var top := Vector3((0.24 + (pad_k - 1.0) * 0.06) * sx * chest_w, 0.52 + (pad_k - 1.0) * 0.04, 0.0) + Vector3(0.13 * pad_k * 0.9 * sin(0.45 * sx) , 0.13 * pad_k * 0.9 * cos(0.45), 0)
+		var badge: Vector3 = {"light": Vector3(0.05, 0.02, 0.17), "medium": Vector3(0.1, 0.02, 0.1), "heavy": Vector3(0.17, 0.024, 0.15)}.get(cls, Vector3(0.1, 0.02, 0.1))
+		part(torso, box(badge.x, badge.y, badge.z), class_mat(cls), top, Vector3.ONE, Vector3(0, PI * 0.25 if cls == "medium" else 0.0, -0.45 * sx))
 	_class_marks(torso, cls, bw, m_acc, m_trim)
 	# the glider pack: a rolled wing on a back plate
 	part(torso, box(0.3, 0.34, 0.1), m_leather, Vector3(0, 0.36, 0.24 * bw))
@@ -837,10 +846,18 @@ static func _spike(n: Node3D, m: Material, at: Vector3, dir: Vector3, r: float, 
 ## along `dir`, `w` wide; `face` turns its flat side.
 static func _blade(n: Node3D, m: Material, at: Vector3, dir: Vector3, ln: float, w: float, face := 0.0, thick := 0.24) -> MeshInstance3D:
 	var d := dir.normalized()
-	var mi := part(n, sphere(0.5, 18), m, at + d * ln * 0.5)
+	var mi := part(n, _blade_mesh(), m, at + d * ln * 0.5)
 	var b := Basis(Quaternion(Vector3.UP, d)) if absf(d.dot(Vector3.UP)) < 0.9999 else (Basis.IDENTITY if d.y > 0.0 else Basis(Vector3.RIGHT, PI))
 	mi.basis = b * Basis(Vector3.UP, face) * Basis.from_scale(Vector3(w, ln, w * thick))
 	return mi
+
+static var _blade_m: SphereMesh
+## The unit ellipsoid every blade is stretched from (small on screen, so a modest segment count).
+static func _blade_mesh() -> SphereMesh:
+	if _blade_m == null:
+		_blade_m = SphereMesh.new()
+		_blade_m.radius = 0.5; _blade_m.height = 1.0; _blade_m.radial_segments = 16; _blade_m.rings = 10
+	return _blade_m
 
 ## A point on the head (centre 0, 0.86, 0, radius about 0.235) in the direction (x, y, z).
 static func _on_head(x: float, y: float, z: float, out := 0.0) -> Vector3:
