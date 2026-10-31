@@ -475,13 +475,19 @@ static func kin_on_death(m: Match, h: Hunter, b: Dictionary) -> void:
 		var k: Kin = kk
 		m.giant_free(k)
 		var on_you: bool = k.state in ["shoulder", "bench", "away"]
-		if not training and on_you and bool(m.T.get("kin_drop", false)) and b.get("node") != null:
+		if not training and on_you and bool(m.T.get("kin_drop", false)):
 			var rec: Dictionary = k.rec.duplicate(true)
-			(b["kin"] as Array).append(rec)
 			k.dead = true; k.visible = false
-			if h == m.player:
-				m.player_lost.append({"uid": String(rec.get("uid", "")), "kin": null, "box": b, "holder": null, "rec": rec})
-				m.add_feed("%s dropped into your deathbox" % rec.get("name", "Your kin"))
+			if b.get("node") != null:
+				(b["kin"] as Array).append(rec)
+				if h == m.player:
+					m.player_lost.append({"uid": String(rec.get("uid", "")), "kin": null, "box": b, "holder": null, "rec": rec})
+					m.add_feed("%s dropped into your deathbox" % rec.get("name", "Your kin"))
+			elif h == m.player:
+				# no ground to drop a box on (lost to the abyss): the kin is swept away with it and
+				# turns up at the Ransom House, same as an unclaimed box. Falling off isn't a way out.
+				m.player_lost.append({"uid": String(rec.get("uid", "")), "kin": null, "box": {}, "holder": null, "rec": rec})
+				m.add_feed("%s was lost with you to the abyss" % rec.get("name", "Your kin"))
 			continue
 		if not training and not on_you and bool(m.T.get("loose_capture", false)):
 			# loose in the world: dazed, and anyone can capture it
