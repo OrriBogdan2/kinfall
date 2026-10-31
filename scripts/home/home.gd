@@ -52,6 +52,7 @@ var petted := {}
 var hecon: HomeEcon = null       # the armory, feeders, starving, graveyard and Soul Shrine (home_econ.gd)
 var hb: HomeBuild = null         # build mode and the island's layout (home_build.gd, home_layout.gd)
 var training: HomeTraining = null  # the Training Grounds isle, where your combat kit works (home_training.gd)
+var hw: HomeWork = null            # kin at work: jobs, stations and the Job Board (home_work.gd, Work)
 
 ## The island being shown: yours, or the one you're visiting.
 func _d() -> Dictionary:
@@ -111,6 +112,8 @@ func _ready() -> void:
 	HomeLayout.make_world(world, int(lay["grow"]), int(lay.get("seed", 0)))
 	hb = HomeBuild.new(self)
 	training = HomeTraining.new(self)
+	hw = HomeWork.new(self)
+	if visit.is_empty(): Work.ensure()
 	var path_col := Color("9c7a52")
 	# your house up north, a path from its door down to the portal, branches to the market, the farm and the bridges
 	spots["house"] = Vector3(38.0, 0, 26.5)
@@ -354,6 +357,10 @@ func _ready() -> void:
 				elif which == "fetch":
 					var ke := _kin_entry(Save.active_kin())
 					if not ke.is_empty(): ppos = ke["pos"] + Vector3(1.5, 0, 1.0); cam.snap(ppos); _play_with_kin(ke))
+		if a.begins_with("--work-") and a in ["--work-demo", "--work-board", "--work-board=Kin", "--work-card", "--work-box", "--work-hover"] or a == "--shiny-lineup":
+			Save.no_write = true
+			var wd: String = a
+			get_tree().create_timer(0.3).timeout.connect(func(): hw.demo(wd))
 		if a.begins_with("--kinbox-demo"):
 			# test: a full farm and three pages in the Kin Burrow, then the box, a mutation lineup or a details card
 			KinBoxView.demo_roster()
@@ -719,6 +726,7 @@ func _process(delta: float) -> void:
 	_update_bubbles(d)
 	_train_process(d)
 	if hb: hb.tick(d)
+	if hw: hw.tick(d)
 	if training: training.tick(d)
 	cam.follow(ppos, d, panel_open == "" and train.is_empty())
 	_find_interact()
@@ -945,34 +953,18 @@ func _move_kin(d: float) -> void:
 					if not other.get("busy", false) and randf() < 0.7:
 						other["chase"] = k; other["chase_t"] = 4.0
 				k["goal"] = world.random_ground(maxi(here, 0))
-		if k.has("task"):
-			var tk: Array = k["task"]
-			var tpos: Vector3 = _plot_node(tk[0], tk[1]).position
-			k["goal"] = tpos + Vector3(0, 0, 1.0)
-			k["task_t"] = float(k.get("task_t", 15.0)) - d
-			if k["task_t"] <= 0.0:
-				k.erase("task")      # couldn't get there; try again later
-			elif Vector2(tpos.x - pos.x, tpos.z + 1.0 - pos.z).length() < 0.6:
-				k.erase("task")
-				var pd: Dictionary = Save.d[tk[0]][tk[1]]
-				if pd["crop"] != "" and (float(pd.get("wt", 0.0)) <= 0.0 or int(pd.get("wet", 2)) < 2):
-					_water(tk[0], tk[1], "kin")
-					_emote(k, "♪")
-					rec["trust"] = minf(100.0, float(rec["trust"]) + (0.07 if int(rec.get("pining", 0)) > 0 else 0.2))
-				k["t"] = randf_range(1.0, 2.0)
-		elif k["t"] <= 0.0 and not locked and rec.get("farmhand", false) and visit.is_empty() and (k["farm_t"] if k.has("farm_t") else 0.0) <= 0.0 and _dry_plot() != []:
-			k["task"] = _dry_plot()
-			k["task_t"] = 15.0
-			k["farm_t"] = 6.0
-		if k.has("farm_t"): k["farm_t"] = float(k["farm_t"]) - d
+		# work: watering (the old farmhand job), sowing, harvesting, the stations... (HomeWork)
+		if hw: hw.step(k, d)
 		var pers: Dictionary = k.get("pers", {})
-		if k["t"] <= 0.0 and not locked and not k.has("chase") and not k.has("task") and not k.has("fetch"):
+		if k["t"] <= 0.0 and not locked and not k.has("chase") and not k.has("job") and not k.has("fetch"):
 			k["t"] = randf_range(2.0, 5.0) * float(pers.get("rest", 1.0))
 			var night := sin((day_t - 0.25) * TAU) < -0.2
-			var friends: Array = kins.filter(func(o): return o != k and not o.get("busy", false) and world.island_of(o["pos"].x, o["pos"].z) == here)
+			var friends: Array = kins.filter(func(o): return o != k and not o.get("busy", false) and not o.has("job") and world.island_of(o["pos"].x, o["pos"].z) == here)
 			k.erase("stare")
 			if _care_goal(k):
 				pass
+			elif hw and hw.pick(k):
+				pass      # off to a job it's suited to
 			elif night and randf() < 0.6:
 				if here == world.island_of(spots["house"].x, spots["house"].z) and randf() < 0.45:
 					# some sleep indoors
@@ -1043,6 +1035,7 @@ func _move_kin(d: float) -> void:
 			k["hop"] += d * 10.0
 		n.get_node("Body").position.y = absf(sin(k["hop"])) * (0.26 if joy > 0.0 else (float(pers.get("hop_a", 0.14)) if hv.length() > 0.3 else 0.03))
 		_quirk(k, n, hv.length() > 0.3, d)
+		if hw: hw.pose(k, n, d)
 		n.set_meta("happy", joy > 0.0)
 		if k.has("say"):
 			k["say_t"] = float(k.get("say_t", 0.0)) - d
@@ -1457,6 +1450,12 @@ func _find_interact() -> void:
 	if hecon:
 		var hb: Dictionary = hecon.find(p2, bd if not best.is_empty() else 9.0)
 		if not hb.is_empty(): best = hb
+	if hw and visit.is_empty():
+		# work stations: any of them opens the Job Board
+		for s in HomeLayout.stations(_d()):
+			var sc := HomeLayout.deco_center(s["e"])
+			var sd := p2.distance_to(Vector2(sc.x, sc.z))
+			if sd < 1.7 and (best.is_empty() or sd < bd): bd = sd; best = {"kind": "station", "id": s["id"], "e": s["e"]}
 	interact = best
 	if panel_open != "" or best.is_empty() or building_now or chat_open or not train.is_empty() or (hb and hb.active):
 		prompt_box.visible = false
@@ -1536,6 +1535,12 @@ func _update_hover() -> void:
 	if Mutations.special(rec):
 		t += "[color=#fff0a0]%s[/color]\n" % ", ".join(Mutations.tags(rec))
 	t += "  ·  ".join(nl) + "\n"
+	if hw and visit.is_empty():
+		var jt := hw.job_text(best)
+		var wl: Array = Work.list(rec).map(func(it): return "[color=#%s]%s %d[/color]" % [Work.col_of(String(it[0])).lerp(UI.INK, 0.3).to_html(false), Work.name_of(String(it[0])), int(it[1])])
+		t += "[color=#9aa3b8]Work:[/color] %s\n" % "  ".join(wl)
+		if jt != "": t += "[color=#ffd36a]%s[/color]\n" % jt
+		if rec.get("overworked", false): t += "[color=#ff9a8a]Overworked: it needs a proper rest[/color]\n"
 	if visit.is_empty():
 		t += "[color=#ffd36a]Click[/color] details    [color=#ffd36a]%s[/color] pet    [color=#ffd36a]%s[/color] fetch    [color=#ffd36a]%s[/color] talk" % [Settings.key_cap("interact"), Settings.key_cap("play"), Settings.key_cap("talk")]
 		if rec["uid"] == Save.d.get("active", ""):
@@ -1585,6 +1590,7 @@ func _label_for(it: Dictionary) -> String:
 		"nook": return "Pair two kin for an egg"
 		"burrow": return "Open the Kin Burrow (%d asleep inside)" % KinBox.boxed().size()
 		"feeder", "grave", "graveyard", "place": return hecon.label(it)
+		"station": return "Job Board" if it["id"] == "job_board" else "%s: open the Job Board" % HomeLayout.CATALOG[it["id"]]["name"]
 	return ""
 
 func _use(it: Dictionary) -> void:
@@ -1616,6 +1622,13 @@ func _use(it: Dictionary) -> void:
 		"tryon": training.open_tryon()
 		"burrow": _open_burrow()
 		"feeder", "grave", "graveyard", "place": hecon.use(it)
+		"station": open_job_board()
+
+## The Job Board: job priorities, who's doing what, pinning kin (scripts/ui/work_view.gd).
+func open_job_board(tab := "") -> void:
+	if tab != "": WorkView.tab = tab
+	if hw: hw.scan()
+	WorkView.open(self)
 
 func _unhandled_input(event: InputEvent) -> void:
 	if hb and hb.active and panel_open == "" and not Overlay.is_open():
@@ -2028,23 +2041,7 @@ func _open_plot(arr: String, i: int) -> void:
 		var cd: Dictionary = Data.CROPS[d["crop"]]
 		var grow := int(cd["grow"])
 		if int(d["stage"]) >= grow:
-			# a tended plant gives more, and a fully tended one gives a seed back
-			var care := int(d.get("care", 0))
-			var n := 2 + (1 if care * 2 >= grow else 0)
-			Save.d["crops"][d["crop"]] = int(Save.d["crops"].get(d["crop"], 0)) + n
-			Progress.add("harvested", n)
-			var extra := ""
-			# a fully tended common crop sometimes drops a seed (rare ones never do)
-			if care >= grow and float(cd.get("weight", 1.0)) >= 1.0 and randf() < 0.5:
-				Save.add_seed(d["crop"], 1)
-				extra = " and a seed"
-			fx.burst(pn.position + Vector3(0, 0.6, 0), cd["color"], 18 + n * 4, 3.0)
-			Sfx.play("harvest")
-			_toast("%d %s%s%s" % [n, cd["name"], "" if n == 1 else "s", extra])
-			d["crop"] = ""; d["stage"] = 0; d["care"] = 0; d["wt"] = 0.0; d["wet"] = 0
-			_refresh_plot(arr, i)
-			Save.save_game()
-			_refresh_top()
+			_harvest(arr, i, "you")
 			return
 		if float(d.get("wt", 0.0)) <= 0.0 or int(d.get("wet", 2)) < 2:
 			_water(arr, i)
@@ -2083,6 +2080,37 @@ func _open_plot(arr: String, i: int) -> void:
 	if not any:
 		v.add_child(UI.empty_state("seed", "No seeds", "Find them in chests and from monsters on expeditions, or buy some at the stall."))
 	UI.subtitle(v, "Water it (%s) and it grows a stage every %d seconds while you're home." % [Settings.key_cap("interact"), int(Data.WATER_TIME)])
+
+## Picking a ripe crop (by hand, or a Forage kin). A tended plant gives more, and a fully tended
+## common one sometimes gives a seed back. Returns how many it gave.
+func _harvest(arr: String, i: int, who := "you") -> int:
+	var d: Dictionary = Save.d[arr][i]
+	if d["crop"] == "":
+		return 0
+	var cd: Dictionary = Data.CROPS[d["crop"]]
+	var grow := int(cd["grow"])
+	if int(d["stage"]) < grow:
+		return 0
+	var pn: Node3D = _plot_node(arr, i)
+	var care := int(d.get("care", 0))
+	var n := 2 + (1 if care * 2 >= grow else 0)
+	Save.d["crops"][d["crop"]] = int(Save.d["crops"].get(d["crop"], 0)) + n
+	Progress.add("harvested", n)
+	var extra := ""
+	# a fully tended common crop sometimes drops a seed (rare ones never do)
+	if care >= grow and float(cd.get("weight", 1.0)) >= 1.0 and randf() < 0.5:
+		Save.add_seed(d["crop"], 1)
+		extra = " and a seed"
+	fx.burst(pn.position + Vector3(0, 0.6, 0), cd["color"], 18 + n * 4, 3.0)
+	Sfx.play("harvest", null if who == "you" else pn.position, 0.0 if who == "you" else -8.0)
+	if who == "you":
+		_toast("%d %s%s%s" % [n, cd["name"], "" if n == 1 else "s", extra])
+	d["crop"] = ""; d["stage"] = 0; d["care"] = 0; d["wt"] = 0.0; d["wet"] = 0
+	d.erase("tend")
+	_refresh_plot(arr, i)
+	Save.save_game()
+	_refresh_top()
+	return n
 
 func _open_kitchen() -> void:
 	var v := _new_panel("Cooking pot", 560)
@@ -2560,6 +2588,8 @@ func _open_kin(rec: Dictionary) -> void:
 			c2.add_child(UI.kv("Won't eat", Care.food_name(lk["hates"]) if known.has("hates") else "???", UI.INK if known.has("hates") else UI.FAINT))
 			c2.add_child(UI.kv("Favourite game", Care.PLAY_NAMES[lk["play"]] if known.has("play") else "???", UI.INK if known.has("play") else UI.FAINT))
 			c2.add_child(UI.para("Feed it, play with it and talk to it to find out more.", 12, UI.FAINT))
+			c2.add_child(UI.spacer(4))
+			WorkView.card_section(self, rec, c2, func(): _open_kin(rec))
 			var mem: Array = rec.get("memory", [])
 			if mem.size() > 0:
 				c2.add_child(UI.spacer(4))
@@ -2679,7 +2709,7 @@ func _open_kin(rec: Dictionary) -> void:
 			rec["farmhand"] = true
 			Save.remember(rec, "farm", "was put in charge of watering the farm", 1.0)
 			Save.save_game()
-			_toast("%s will water your plants" % rec["name"])
+			_toast("%s will water your plants (a farmhand counts as Tide 1 on the Job Board)" % rec["name"])
 			_open_kin(rec)))
 
 # ---- talking: speech bubbles over the kin and a slim bar to type in

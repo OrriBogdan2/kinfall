@@ -1299,7 +1299,7 @@ func _spawn_wild() -> void:
 		var rec := Save.new_kin(sp)
 		rec["level"] = rng.randi_range(T["kin_lvl"][0], T["kin_lvl"][1])
 		Evo.simulate(rec, rng)
-		rec["shimmer"] = Shiny.roll_wild(rng, tier)   # a rare colour you'll want to catch (1 in 1024, twice that in the Hollow)
+		rec["shimmer"] = Shiny.roll_wild(rng, tier)   # a rare colour you'll want to catch (1 in 4096, x1.5 in the Hollow)
 		Mutations.roll_wild(rec, rng, tier)          # and now and then a rare mutation (more in harder tiers)
 		spawn_wild(rec, p)
 

@@ -21,8 +21,9 @@ const LOBE_R0 := Vector2(21, 15)
 const LOBE_STEP := Vector2(2.0, 1.5)
 const GAP := 3                       # tiles of sky kept between the main island and every other isle
 
-## Growing the main island: [gems, scrap] for each step.
+## Growing the main island: [gems, scrap] for each step, and [wood, stone] (from the work stations).
 const EXPAND := [[150, 4], [260, 8], [400, 14], [600, 22]]
+const EXPAND_MATS := [[0, 0], [16, 10], [30, 20], [50, 34]]
 
 ## Ground colours for every home island. region is the world's region look (trees, rocks) to use.
 const THEMES := {
@@ -62,8 +63,30 @@ const CATALOG := {
 	"pillar": {"name": "Old pillar", "cat": "Statues", "gems": 40, "scrap": 2, "block": true},
 	"kin_statue": {"name": "Kin statue", "cat": "Statues", "gems": 120, "scrap": 6, "block": true},
 	"fountain": {"name": "Fountain", "cat": "Statues", "gems": 150, "scrap": 8, "size": [2, 2], "block": true},
+	# work stations (Work, HomeWork): kin with the right element come and work them on their own.
+	# work: the element. wood / stone: building materials (Save.d["mats"]) on top of the gems.
+	"job_board": {"name": "Job Board", "cat": "Work", "gems": 30, "block": true, "work": "board",
+		"desc": "Set which jobs matter (Off to High) and see who's doing what. Pin a kin to a job, or let it rest."},
+	"lumber_camp": {"name": "Lumber Camp", "cat": "Work", "gems": 40, "size": [2, 1], "block": true, "work": "timber",
+		"desc": "Timber kin fell the wild trees within 5 tiles, then split its log pile (it grows back)."},
+	"quarry": {"name": "Quarry", "cat": "Work", "gems": 40, "size": [2, 1], "block": true, "work": "stone",
+		"desc": "Stone kin break the wild boulders within 5 tiles, then mine its rock (it grows back)."},
+	"storage_chest": {"name": "Storage Chest", "cat": "Work", "gems": 25, "block": true, "work": "haul",
+		"desc": "Haul kin bring it the wood and stone that's lying about, and take food from it to feeders that run low."},
+	"hearth_oven": {"name": "Hearth Oven", "cat": "Work", "gems": 60, "wood": 6, "stone": 4, "block": true, "work": "ember",
+		"desc": "Ember kin bake a firewood log into 2 kin kibble (3 for a skilled baker)."},
+	"workbench": {"name": "Workbench", "cat": "Work", "gems": 50, "wood": 8, "size": [2, 1], "block": true, "work": "craft",
+		"desc": "Craft kin turn 2 wood and a stone into scrap for upgrades and statues."},
+	"spark_mill": {"name": "Spark Mill", "cat": "Work", "gems": 80, "wood": 8, "stone": 6, "scrap": 2, "block": true, "work": "spark",
+		"desc": "Spark kin crank it up. While it has charge, the oven, workbench and infirmary work 50% faster."},
+	"cold_store": {"name": "Cold Store", "cat": "Work", "gems": 70, "wood": 4, "stone": 8, "block": true, "work": "frost",
+		"desc": "Frost kin keep it cold. While it's chilled, food stays fresh and every meal fills 15% more."},
+	"ranch_pen": {"name": "Ranch Pen", "cat": "Work", "gems": 60, "wood": 10, "size": [3, 2], "work": "ranch",
+		"desc": "Up to two Ranch kin lounge here and make things over time (glowcaps, sweet buns, kibble)."},
+	"infirmary": {"name": "Infirmary", "cat": "Work", "gems": 70, "wood": 6, "stone": 6, "size": [2, 1], "block": true, "work": "mend",
+		"desc": "Mend kin look after tired, glum or hungry kin, and brew tonics here when nobody needs them."},
 }
-const CATS := ["Buildings", "Fences", "Paths", "Garden", "Lights", "Furniture", "Statues", "Island"]
+const CATS := ["Buildings", "Work", "Fences", "Paths", "Garden", "Lights", "Furniture", "Statues", "Island"]
 const COLOURS := ["e0607e", "f2c84a", "5ab0f0", "8fd16a", "b48cf2", "f3eee2"]
 
 ## The farm's lamps and flower beds start out as decorations, so they can be moved or put away too.
@@ -192,10 +215,19 @@ static func deco_center(e: Dictionary) -> Vector3:
 static func blocks(id: String) -> bool:
 	return bool(CATALOG.get(id, {}).get("block", false))
 
-## [gems, scrap] for n of a catalog item.
+## [gems, scrap, wood, stone] for n of a catalog item.
 static func price(id: String, n := 1) -> Array:
 	var c: Dictionary = CATALOG.get(id, {})
-	return [int(c.get("gems", 0)) * n, int(c.get("scrap", 0)) * n]
+	return [int(c.get("gems", 0)) * n, int(c.get("scrap", 0)) * n, int(c.get("wood", 0)) * n, int(c.get("stone", 0)) * n]
+
+## The work stations placed on the island: [{e (the deco entry), id, el}].
+static func stations(d: Dictionary, el := "") -> Array:
+	var out: Array = []
+	for e in of(d).get("deco", []):
+		var c: Dictionary = CATALOG.get(String(e.get("id", "")), {})
+		if c.has("work") and (el == "" or String(c["work"]) == el):
+			out.append({"e": e, "id": String(e["id"]), "el": String(c["work"])})
+	return out
 
 # ------------------------------------------------------------------ the land
 static func lobe(level: int) -> Array:

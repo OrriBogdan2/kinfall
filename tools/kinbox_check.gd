@@ -162,50 +162,42 @@ func run(m: Node) -> void:
 		if mm.has("giant") and mm.has("tiny"): both_size += 1
 		if mm.has("giant") or mm.has("tiny"): any_size += 1
 	ok(both_size == 0 and any_size > 1200, "a Giant and a Tiny parent never make a Giant Tiny egg (%d of 4000 got one size)" % any_size)
-	# shimmers (Pokémon odds): 1 in 1024 from an egg, 1 in 256 with a shimmering parent, 1 in 128 with two
+	# shimmers: 1 in 4096 from an egg; a shimmering parent only nudges it (1 in 2048, ~1 in 1365 with two)
 	a.erase("mutations"); b.erase("mutations")
-	var SN := 400000
-	var sh := [0, 0, 0]
+	var pe: Array = []
 	for cs in 3:
 		a["shimmer"] = cs >= 1; b["shimmer"] = cs >= 2
-		for _j in SN:
-			if Shiny.roll_egg(a, b, rng): sh[cs] += 1
-	var shok := true
-	var shl: Array = []
-	for cs in 3:
-		var p: float = Shiny.EGG[cs]
-		var sd := sqrt(SN * p * (1.0 - p))
-		if absf(sh[cs] - SN * p) > 4.0 * sd: shok = false
-		shl.append("%s %d (expect %d)" % [["none", "one", "both"][cs], sh[cs], int(SN * p)])
-	print("KINBOX  shimmering eggs over %d rolls each: %s" % [SN, ", ".join(shl)])
-	ok(shok and is_equal_approx(Shiny.EGG[0], 1.0 / 1024.0) and is_equal_approx(Shiny.EGG[1], 1.0 / 256.0) and is_equal_approx(Shiny.EGG[2], 1.0 / 128.0), "shimmer eggs: 1 in 1024, 1 in 256 with one shimmering parent, 1 in 128 with two")
-	# and through the real breeding (traits, evolution and all), both parents shimmering
+		pe.append(Shiny.egg_chance(a, b))
+	print("KINBOX  shimmer egg odds: none %s, one parent %s, both %s" % [Shiny.odds_text(pe[0]), Shiny.odds_text(pe[1]), Shiny.odds_text(pe[2])])
+	ok(is_equal_approx(pe[0], 1.0 / 4096.0) and is_equal_approx(pe[1], 1.0 / 2048.0) and is_equal_approx(pe[2], 3.0 / 4096.0) and is_equal_approx(Mutations.shimmer_breed_chance(a, b), pe[2]),
+		"shimmer egg odds: 1 in 4096, 1 in 2048 with one shimmering parent, 1 in 1365 with two")
+	# the roll matches the odds (a million rolls with both parents shimmering, ~732 expected)
+	var SN := 1000000
+	var sh := 0
+	for _j in SN:
+		if Shiny.roll_egg(a, b, rng): sh += 1
+	var sd := sqrt(SN * pe[2] * (1.0 - pe[2]))
+	ok(absf(sh - SN * pe[2]) < 4.0 * sd, "shimmer egg roll over %d: %d (expect %d ± %d)" % [SN, sh, int(SN * pe[2]), int(4.0 * sd)])
+	# and the real breeding (traits, evolution and all) uses those odds
 	var M := 3000
 	Save.d["roster"] = [a, b]
-	a["shimmer"] = true; b["shimmer"] = true
 	var bs := 0
 	for _j in M:
 		if Care.breed(a, b, rng).get("shimmer", false): bs += 1
-	ok(bs >= 6 and bs <= 60, "Care.breed with two shimmering parents: %d of %d eggs shimmer (expect ~%d)" % [bs, M, int(M / 128.0)])
+	ok(bs <= 10, "Care.breed with two shimmering parents: %d of %d eggs shimmer (expect ~%.1f): a shimmer barely passes on" % [bs, M, M * pe[2]])
 	a["shimmer"] = false; b["shimmer"] = false
-	var nb := 0
-	for _j in M:
-		if Care.breed(a, b, rng).get("shimmer", false): nb += 1
-	ok(nb <= 12, "Care.breed with plain parents: %d of %d shimmer (expect ~%d)" % [nb, M, int(M / 1024.0)])
-	# wild odds: 1 in 1024, x4 at rare spawn points, x2 in the Hollow
-	var WN := 400000
+	# wild odds: 1 in 4096, x2 at rare spawn points, x1.5 in the Hollow
 	var wl: Array = []
-	var wok := true
 	for c in [[0, false], [0, true], [2, false], [2, true]]:
-		var hit := 0
-		for _j in WN:
-			if Shiny.roll_wild(rng, int(c[0]), bool(c[1])): hit += 1
-		var p := Shiny.wild_chance(int(c[0]), bool(c[1]))
-		var sd := sqrt(WN * p * (1.0 - p))
-		if absf(hit - WN * p) > 4.0 * sd: wok = false
-		wl.append("%s%s %d/%d (%s)" % ["Hollow" if int(c[0]) >= 2 else "Meadow", " rare spot" if c[1] else "", hit, WN, Shiny.odds_text(p)])
-	print("KINBOX  wild shimmers: %s" % ", ".join(wl))
-	ok(wok and is_equal_approx(Shiny.wild_chance(0, false), 1.0 / 1024.0) and is_equal_approx(Shiny.wild_chance(0, true), 4.0 / 1024.0) and is_equal_approx(Shiny.wild_chance(2, false), 2.0 / 1024.0), "wild shimmers: 1 in 1024, 1 in 256 at rare spawn points, 1 in 512 in the Hollow")
+		wl.append("%s%s %s" % ["Hollow" if int(c[0]) >= 2 else "Meadow", " rare spot" if c[1] else "", Shiny.odds_text(Shiny.wild_chance(int(c[0]), bool(c[1])))])
+	print("KINBOX  wild shimmer odds: %s" % ", ".join(wl))
+	var WN := 1000000
+	var wh := 0
+	for _j in WN:
+		if Shiny.roll_wild(rng, 0, false): wh += 1
+	var wsd := sqrt(WN * Shiny.WILD)
+	ok(is_equal_approx(Shiny.wild_chance(0, false), 1.0 / 4096.0) and is_equal_approx(Shiny.wild_chance(0, true), 2.0 / 4096.0) and is_equal_approx(Shiny.wild_chance(2, false), 1.5 / 4096.0) and is_equal_approx(Shiny.wild_chance(2, true), 3.0 / 4096.0)
+		and absf(wh - WN * Shiny.WILD) < 4.0 * wsd, "wild shimmers: 1 in 4096 (x2 rare spots, x1.5 Hollow); %d in %d rolls (expect %d)" % [wh, WN, int(WN * Shiny.WILD)])
 	# every species has its own hand-picked shimmer palette, not a hue turn
 	var pal_ok := true
 	for spk in Data.KIN:

@@ -3,17 +3,19 @@ class_name Shiny
 ## colours (content/kin/<id>.json "shiny": {color, belly, glow, wing?}), not just a hue turn.
 ## A shimmer that appears (in the wild, out of an egg) arrives with a burst of stars and a chime.
 ##
-## Odds, Pokémon style:
-##   wild           1 in 1024, x4 at rare spawn points, x2 in the Hollow (tier 2+); they stack
-##   eggs           1 in 1024, 1 in 256 with one shimmering parent, 1 in 128 with two
-## The flag lives on the kin's record as rec["shimmer"] (the same field as always).
+## Odds, very rare (owner's call: lower than Pokémon, and eggs barely helped by shiny parents):
+##   wild           1 in 4096, x2 at rare spawn points, x1.5 in the Hollow (tier 2+); they stack
+##   eggs           1 in 4096; a shimmering parent adds only a slight chance of passing it on:
+##                  1 in 2048 with one shimmering parent, about 1 in 1365 (3 in 4096) with two
+## Rare mutations keep their own inheritance (Mutations.inherit). The flag lives on the kin's
+## record as rec["shimmer"] (the same field as always).
 
-const WILD := 1.0 / 1024.0
-const RARE_SPOT_MULT := 4.0
-const HOLLOW_MULT := 2.0
+const WILD := 1.0 / 4096.0
+const RARE_SPOT_MULT := 2.0
+const HOLLOW_MULT := 1.5
 const HOLLOW_TIER := 2
 ## Egg odds by how many parents shimmer.
-const EGG := [1.0 / 1024.0, 1.0 / 256.0, 1.0 / 128.0]
+const EGG := [1.0 / 4096.0, 2.0 / 4096.0, 3.0 / 4096.0]
 
 ## Palettes for kin that don't carry one in their JSON yet (the boss-egg kin).
 const FALLBACK := {

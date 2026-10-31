@@ -264,7 +264,7 @@ static func serve(f: Dictionary, rec: Dictionary) -> Dictionary:
 	food.remove_at(pick)
 	# a better feeder makes every meal go further
 	var gained := Care.need(rec, "food") - before
-	Care.change(rec, "food", gained * (float(fdef(f)["mult"]) - 1.0))
+	Care.change(rec, "food", gained * (float(fdef(f)["mult"]) * (Work.FRESH_MULT if Work.fresh() else 1.0) - 1.0))   # a chilled Cold Store keeps it fresh
 	Care.change(rec, "joy", float(fdef(f)["joy"]))
 	res["food"] = key
 	auto_refill(f)

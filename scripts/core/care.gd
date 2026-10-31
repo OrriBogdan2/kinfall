@@ -325,7 +325,7 @@ static func feed(rec: Dictionary, f: String) -> Dictionary:
 
 ## Kin from an egg: mostly one parent's species, a blend of both personalities, a head start
 ## along a parent's way of growing, and a very small chance to shimmer (Shiny.egg_chance: 1 in
-## 1024, 1 in 256 with a shimmering parent, 1 in 128 with two).
+## 4096; a shimmering parent only nudges it, to 1 in 2048, or about 1 in 1365 with two).
 static func breed(a: Dictionary, b: Dictionary, rng: RandomNumberGenerator, sp := "") -> Dictionary:
 	if sp == "" or not Data.KIN.has(sp):
 		sp = a["species"] if rng.randf() < 0.5 else b["species"]

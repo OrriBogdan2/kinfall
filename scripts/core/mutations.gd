@@ -12,10 +12,10 @@ const MULT_MIN := 0.85
 const MULT_MAX := 1.15
 const OWNER_MAX := {"armor": 10.0, "sight": 0.15}
 
-## Shimmers (the shinies) are Shiny's: 1 in 1024 in the wild and from an egg, more at rare spawn
-## points, in the Hollow and from shimmering parents. These stay for older callers.
+## Shimmers (the shinies) are Shiny's: 1 in 4096 in the wild and from an egg, a little more at rare
+## spawn points, in the Hollow and from shimmering parents. These stay for older callers.
 const SHIMMER_WILD := Shiny.WILD
-const SHIMMER_EGG := 1.0 / 1024.0
+const SHIMMER_EGG := 1.0 / 4096.0
 
 ## How much more often wild kin are mutated in each tier, and at a rare spawn point.
 const TIER_MULT := [1.0, 1.5, 2.25, 3.0]
@@ -84,9 +84,9 @@ static func has(rec: Dictionary, id: String) -> bool:
 static func special(rec: Dictionary) -> bool:
 	return rec.get("shimmer", false) or not of(rec).is_empty()
 
-## How rare a kin is, for sorting: the shimmer counts as 1 in 1024, each mutation by its odds.
+## How rare a kin is, for sorting: the shimmer counts as 1 in 4096, each mutation by its odds.
 static func rarity_score(rec: Dictionary) -> float:
-	var s := 1024.0 if rec.get("shimmer", false) else 0.0
+	var s := 4096.0 if rec.get("shimmer", false) else 0.0
 	for id in of(rec):
 		s += float(info(id)["rarity"])
 	return s
