@@ -7,6 +7,10 @@ class_name KinModels
 ##   Echolop  (zapple)  long-eared hare + bat   Echo
 ##   Gravadillo (pebbit) armadillo + rhino beetle Gravity
 ##   Lunowl   (wisplet) owl + luna moth         Lunar
+## and the three rare kin from boss eggs:
+##   Cairnback (cairnback) tortoise + ibex, a rune cairn on its shell    Titan    (the Stone Colossus)
+##   Zephyrak  (zephyrak)  moray eel + swift, a little sky serpent       Tempest  (Stormcoil)
+##   Hivara    (hivara)    honeybee + praying mantis, a wax crown        Swarm    (the Brood Mother)
 ##
 ## Everything goes under `flex` (the part KinPuppet squashes). Front is -z, the ground is y = 0, and
 ## the whole kin stays about 0.8 tall so worn accessories and evolution parts still sit right.
@@ -50,6 +54,10 @@ static func build(species: String, flex: Node3D, c: Dictionary, mats: Array) -> 
 		"zapple": return _echolop(flex, c, mats)
 		"pebbit": return _gravadillo(flex, c, mats)
 		"wisplet": return _lunowl(flex, c, mats)
+		# the rare kin, hatched only from a lair boss's egg
+		"cairnback": return _cairnback(flex, c, mats)
+		"zephyrak": return _zephyrak(flex, c, mats)
+		"hivara": return _hivara(flex, c, mats)
 	return {}
 
 # ---------------------------------------------------------------- Vespyx: fox + scorpion, Venom
@@ -331,3 +339,179 @@ static func _lunowl(f: Node3D, c: Dictionary, mats: Array) -> Dictionary:
 		Models.part(tail, Models.box(0.05, 0.015, 0.16), body, Vector3((i - 1) * 0.05, 0.26, 0.3), Vector3.ONE, Vector3(0.3, (i - 1) * 0.35, 0))
 	Models._repivot(tail, Vector3(0, 0.28, 0.22))
 	return {"head": hp, "top": hp.y + 0.2}
+
+# ---------------------------------------------------------------- Cairnback: tortoise + ibex, Titan (rare)
+static func _cairnback(f: Node3D, c: Dictionary, mats: Array) -> Dictionary:
+	var body: Material = c["body"]; var belly: Material = c["belly"]; var dark: Material = c["dark"]; var glow: Material = c["glow"]
+	var stone := Models.toon(Color("8e8a82")); var moss := Models.toon(Color("6f9a4a"), false)
+	mats.append_array([stone, moss])
+	# a high domed shell of hexagonal plates, gold runes glowing in the seams between them
+	var sc := Vector3(0, 0.3, 0.06); var sr := Vector3(0.35, 0.27, 0.38)
+	Models.part(f, Models.sphere(0.32), dark, sc, sr / 0.32)
+	Models.part(f, Models.cyl(0.37, 0.39, 0.07, 18), belly, Vector3(0, 0.16, 0.06), Vector3(1.0, 1.0, 1.1))
+	var plate := Models.toon(Color("7d7a86"))
+	mats.append(plate)
+	for ring in [[0.62, 7, 0.0], [1.15, 1, 0.0]]:
+		for i in int(ring[1]):
+			var a := TAU * i / float(ring[1]) + float(ring[2])
+			var e := float(ring[0])
+			var d := Vector3(cos(a) * cos(e), sin(e), sin(a) * cos(e)).normalized()
+			var pp := sc + Vector3(d.x * sr.x, d.y * sr.y, d.z * sr.z) * 0.98
+			var nrm := Vector3(d.x / sr.x, d.y / sr.y, d.z / sr.z).normalized()
+			var pl := Models.part(f, Models.cyl(0.085, 0.1, 0.05, 6), plate, pp)
+			pl.basis = Basis(Quaternion(Vector3.UP, nrm)) * Basis.from_scale(Vector3(1.0, 1.0, 1.0))
+			var rn := Models.part(f, Models.cyl(0.03, 0.03, 0.02, 6), glow, pp + nrm * 0.03)
+			rn.basis = Basis(Quaternion(Vector3.UP, nrm))
+	# the little cairn of stacked stones on top, a moss tuft and a gold rune-stone
+	var cairn := Node3D.new(); cairn.name = "Cairn"; cairn.position = Vector3(0, 0.6, 0.08); f.add_child(cairn)
+	Models.part(cairn, Models.sphere(0.07, 8), stone, Vector3(0, 0.03, 0), Vector3(1.3, 0.6, 1.1))
+	Models.part(cairn, Models.sphere(0.05, 8), stone, Vector3(0.01, 0.09, 0), Vector3(1.2, 0.6, 1.0))
+	Models.part(cairn, Models.sphere(0.035, 8), glow, Vector3(0, 0.14, 0), Vector3(1.0, 0.8, 1.0))
+	Models.part(cairn, Models.sphere(0.05, 6), moss, Vector3(-0.05, 0.02, 0.04), Vector3(1.0, 0.5, 1.0))
+	# a stout neck and an ibex head: a short muzzle, a beard, great ridged horns sweeping back
+	var hp := Vector3(0, 0.3, -0.36)
+	seg(f, Vector3(0, 0.24, -0.2), hp + Vector3(0, -0.02, 0.06), 0.08, 0.07, belly)
+	Models.part(f, Models.sphere(0.12), belly, hp, Vector3(0.95, 0.9, 1.15))
+	Models.part(f, Models.sphere(0.07, 8), belly, hp + Vector3(0, -0.04, -0.1), Vector3(0.9, 0.75, 1.0))
+	Models.part(f, Models.sphere(0.02, 6), dark, hp + Vector3(0, -0.03, -0.17))
+	Models.part(f, Models.cyl(0.0, 0.03, 0.09, 5), stone, hp + Vector3(0, -0.13, -0.06), Vector3.ONE, Vector3(PI, 0, 0))
+	eyes(f, hp, Vector3(0.114, 0.108, 0.138), 0.6, 0.3, 0.03, c["eye"], c["white"])
+	var ears := Node3D.new(); ears.name = "Ears"; f.add_child(ears)
+	for sx in [-1.0, 1.0]:
+		# great ridged ibex horns sweeping up and back, gold at the tips
+		var pts := [Vector3(0.05 * sx, 0.0, 0.0), Vector3(0.09 * sx, 0.16, 0.04), Vector3(0.13 * sx, 0.26, 0.16), Vector3(0.15 * sx, 0.26, 0.3), Vector3(0.16 * sx, 0.16, 0.38)]
+		for i in pts.size() - 1:
+			seg(ears, pts[i], pts[i + 1], 0.04 - i * 0.007, 0.033 - i * 0.007, stone)
+			Models.part(ears, Models.sphere(0.036 - i * 0.006, 6), stone if i < 3 else glow, pts[i + 1], Vector3(1.0, 0.7, 1.0))
+		Models.part(ears, Models.cyl(0.0, 0.025, 0.06, 4), body, Vector3(0.11 * sx, -0.03, 0.04), Vector3(1, 1, 0.5), Vector3(0, 0, -1.2 * sx))
+	ears.position = hp + Vector3(0, 0.08, 0.0)
+	var legs := Node3D.new(); legs.name = "Legs"; f.add_child(legs)
+	for i in 4:
+		var sx := -1.0 if i % 2 == 0 else 1.0
+		var z := -0.12 if i < 2 else 0.26
+		leg(legs, "Leg%d" % i, Vector3(0.24 * sx, 0.16, z), 0.14, 0.055, belly, dark)
+	var tail := Node3D.new(); tail.name = "Tail"; f.add_child(tail)
+	Models.part(tail, Models.cyl(0.0, 0.04, 0.1, 6), belly, Vector3(0, 0.16, 0.44), Vector3.ONE, Vector3(-PI / 2 - 0.4, 0, 0))
+	Models._repivot(tail, Vector3(0, 0.17, 0.4))
+	return {"head": hp, "top": 0.78}
+
+# ---------------------------------------------------------------- Zephyrak: moray eel + swift, Tempest (rare)
+static func _zephyrak(f: Node3D, c: Dictionary, mats: Array) -> Dictionary:
+	var body: Material = c["body"]; var belly: Material = c["belly"]; var dark: Material = c["dark"]; var glow: Material = c["glow"]
+	# a long eel body held up in an S, hovering: chain of spheres from the head back to a tail fin
+	var pts: Array = []
+	for i in 10:
+		var k := i / 9.0
+		pts.append(Vector3(sin(k * PI * 1.8) * 0.24, 0.42 - k * 0.22 + sin(k * PI) * 0.1, -0.14 + k * 0.6))
+	for i in pts.size():
+		var rr := lerpf(0.13, 0.05, float(i) / pts.size())
+		Models.part(f, Models.sphere(rr, 10), body, pts[i], Vector3(1.0, 0.95, 1.15))
+		if i % 3 == 2:
+			var bnd := TorusMesh.new(); bnd.inner_radius = rr * 0.92; bnd.outer_radius = rr * 1.05; bnd.rings = 12; bnd.ring_segments = 4
+			Models.part(f, bnd, glow, pts[i], Vector3.ONE, Vector3(PI / 2, 0, 0))
+		Models.part(f, Models.sphere(rr * 0.8, 8), belly, pts[i] + Vector3(0, -rr * 0.35, 0), Vector3(1.05, 0.55, 1.1))
+		if i % 2 == 1:
+			var pm := PrismMesh.new(); pm.size = Vector3(0.02, rr * 0.9, rr * 1.2)
+			Models.part(f, pm, glow, pts[i] + Vector3(0, rr * 0.95, 0))
+	# head: a moray's blunt snout, a gaping little jaw, glowing eyes, a crest of static
+	var hp := Vector3(0, 0.56, -0.28)
+	Models.part(f, Models.sphere(0.15), body, hp, Vector3(0.95, 0.85, 1.3))
+	Models.part(f, Models.sphere(0.1, 8), belly, hp + Vector3(0, -0.06, -0.08), Vector3(0.9, 0.5, 1.2))
+	eyes(f, hp, Vector3(0.1425, 0.1275, 0.195), 0.55, 0.3, 0.036, c["eye"], c["white"])
+	for sx in [-1.0, 1.0]:
+		Models.part(f, Models.cyl(0.0, 0.01, 0.12, 4), glow, hp + Vector3(0.08 * sx, -0.06, -0.18), Vector3.ONE, Vector3(-1.2, 0, 0.6 * sx))
+	var ears := Node3D.new(); ears.name = "Ears"; f.add_child(ears)
+	for i in 3:
+		var pm2 := PrismMesh.new(); pm2.size = Vector3(0.02, 0.12 - i * 0.02, 0.1)
+		Models.part(ears, pm2, glow, Vector3(0, 0.0, i * 0.07), Vector3.ONE, Vector3(-0.3, 0, 0))
+	ears.position = hp + Vector3(0, 0.13, 0.02)
+	# swept swift's wings: long, narrow, crescent
+	var wings := Node3D.new(); wings.name = "Wings"; f.add_child(wings)
+	for sx in [-1.0, 1.0]:
+		var w := Node3D.new(); w.name = "Wing" + ("L" if sx < 0 else "R"); w.position = Vector3(0.1 * sx, 0.48, -0.06); wings.add_child(w)
+		w.rotation.z = 0.55 * sx
+		# swift's feathers: four long blades fanned back, the leading one edged with static
+		var fm := Models.toon(Color(c["wing_col"]), true, 0.25)
+		for k in 4:
+			Models.part(w, Models.box(0.46 - k * 0.07, 0.03, 0.09), fm, Vector3((0.22 - k * 0.02) * sx, 0.0, 0.03 + k * 0.07), Vector3.ONE, Vector3(0, -(0.25 + k * 0.22) * sx, 0))
+		seg(w, Vector3.ZERO, Vector3(0.44 * sx, 0.02, -0.06), 0.014, 0.006, glow, 5)
+	# a forked tail fin crackling at the tips
+	var tail := Node3D.new(); tail.name = "Tail"; f.add_child(tail)
+	var tp: Vector3 = pts[pts.size() - 1]
+	for sx in [-1.0, 1.0]:
+		Models.part(tail, Models.box(0.02, 0.14, 0.16), Models.toon(Color(c["wing_col"]), false), tp + Vector3(0.03 * sx, 0.04 * sx, 0.1), Vector3.ONE, Vector3(0.5 * sx, 0, 0.3 * sx))
+		Models.part(tail, Models.sphere(0.02, 6), glow, tp + Vector3(0.04 * sx, 0.12 * sx, 0.17))
+	Models._repivot(tail, tp)
+	var spin := Node3D.new(); spin.name = "Spin"; spin.position = Vector3(0, 0.4, 0.1); f.add_child(spin)
+	for i in 3:
+		var a := TAU * i / 3.0
+		Models.part(spin, Models.sphere(0.022, 6), glow, Vector3(cos(a) * 0.42, sin(a * 3.0) * 0.06, sin(a) * 0.42))
+	return {"head": hp, "top": hp.y + 0.2}
+
+# ---------------------------------------------------------------- Hivara: honeybee + praying mantis, Swarm (rare)
+static func _hivara(f: Node3D, c: Dictionary, mats: Array) -> Dictionary:
+	var body: Material = c["body"]; var belly: Material = c["belly"]; var dark: Material = c["dark"]; var glow: Material = c["glow"]
+	var band := Models.toon(Color("2a1e14")); var wax := Models.toon(Color("ffd860"), true, 0.35)
+	mats.append_array([band, wax])
+	# a striped bee abdomen behind, a slender mantis thorax rising up in front
+	var abd := Vector3(0, 0.26, 0.2)
+	Models.part(f, Models.sphere(0.2), body, abd, Vector3(1.0, 0.95, 1.35))
+	for i in 3:
+		var stp := TorusMesh.new(); stp.inner_radius = 0.15 - absf(i - 1) * 0.03; stp.outer_radius = 0.2 - absf(i - 1) * 0.035; stp.rings = 18; stp.ring_segments = 6
+		Models.part(f, stp, band, abd + Vector3(0, 0, -0.08 + i * 0.1), Vector3(1.0, 0.95, 1.0), Vector3(PI / 2, 0, 0))
+	Models.part(f, Models.cyl(0.0, 0.03, 0.08, 6), dark, abd + Vector3(0, -0.04, 0.29), Vector3.ONE, Vector3(-PI / 2 - 0.3, 0, 0))
+	seg(f, abd + Vector3(0, 0.02, -0.18), Vector3(0, 0.46, -0.16), 0.07, 0.06, body)
+	Models.part(f, Models.sphere(0.09), body, Vector3(0, 0.36, -0.12), Vector3(1.0, 1.2, 1.0))
+	# a fuzzy collar
+	Models.part(f, Models.sphere(0.1, 10), belly, Vector3(0, 0.44, -0.16), Vector3(1.3, 0.7, 1.2))
+	# head: a mantis triangle, big compound eyes, feathery bee antennae, a little wax crown
+	var hp := Vector3(0, 0.58, -0.2)
+	Models.part(f, Models.sphere(0.12), body, hp, Vector3(1.25, 0.95, 0.9))
+	Models.part(f, Models.cyl(0.0, 0.07, 0.1, 3), body, hp + Vector3(0, -0.08, -0.04), Vector3(1.4, 1.0, 0.8), Vector3(PI, 0, 0))
+	eyes(f, hp, Vector3(0.15, 0.114, 0.108), 0.95, 0.25, 0.05, c["eye"], c["white"])
+	var ears := Node3D.new(); ears.name = "Ears"; f.add_child(ears)
+	for sx in [-1.0, 1.0]:
+		var a := Vector3(0.04 * sx, 0.0, 0.0); var b := Vector3(0.12 * sx, 0.16, -0.08); var cc := Vector3(0.17 * sx, 0.2, -0.16)
+		seg(ears, a, b, 0.01, 0.008, dark, 5)
+		seg(ears, b, cc, 0.008, 0.006, dark, 5)
+		Models.part(ears, Models.sphere(0.022, 6), glow, cc)
+	for i in 5:
+		var a2 := TAU * i / 5.0
+		Models.part(ears, Models.cyl(0.0, 0.02, 0.06, 5), wax, Vector3(cos(a2) * 0.06, 0.06, sin(a2) * 0.05 + 0.02))
+	Models.part(ears, Models.cyl(0.07, 0.07, 0.025, 10), wax, Vector3(0, 0.03, 0.02))
+	ears.position = hp + Vector3(0, 0.1, 0.02)
+	# folded mantis blades held up in front
+	for sx in [-1.0, 1.0]:
+		var sh := Vector3(0.07 * sx, 0.4, -0.18)
+		var el := sh + Vector3(0.04 * sx, 0.1, -0.1)
+		var tip := el + Vector3(0.0, -0.17, -0.04)
+		seg(f, sh, el, 0.025, 0.022, body)
+		seg(f, el, tip, 0.022, 0.006, dark)
+		for k in 3:
+			Models.part(f, Models.cyl(0.0, 0.008, 0.03, 4), c["white"], el.lerp(tip, 0.25 + k * 0.22) + Vector3(0, 0, 0.018), Vector3.ONE, Vector3(PI / 2, 0, 0))
+	# four glassy wings
+	var wings := Node3D.new(); wings.name = "Wings"; f.add_child(wings)
+	for sx in [-1.0, 1.0]:
+		var w := Node3D.new(); w.name = "Wing" + ("L" if sx < 0 else "R"); w.position = Vector3(0.06 * sx, 0.44, -0.02); wings.add_child(w)
+		for k in 2:
+			var mm := StandardMaterial3D.new(); mm.cull_mode = BaseMaterial3D.CULL_DISABLED
+			mm.albedo_color = Color(Color(c["wing_col"]), 0.75); mm.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA; mm.rim_enabled = true; mm.rim = 0.7
+			var wm := Models.part(w, Models.sphere(0.12, 10), mm, Vector3(0.14 * sx, 0.04 - k * 0.04, 0.08 + k * 0.1), Vector3(1.4 - k * 0.3, 0.08, 0.6), Vector3(0, (0.4 + k * 0.4) * sx, 0.25 * sx))
+			wm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var legs := Node3D.new(); legs.name = "Legs"; f.add_child(legs)
+	for i in 4:
+		var sx := -1.0 if i % 2 == 0 else 1.0
+		var z := 0.0 if i < 2 else 0.18
+		leg(legs, "Leg%d" % i, Vector3(0.09 * sx, 0.22, z), 0.2, 0.018, dark, dark, 0.06 * sx)
+	var tail := Node3D.new(); tail.name = "Tail"; f.add_child(tail)
+	Models.part(tail, Models.sphere(0.01, 4), band, abd + Vector3(0, 0, 0.3))
+	Models._repivot(tail, abd + Vector3(0, 0, 0.25))
+	# its swarm: three tiny bees circling
+	var spin := Node3D.new(); spin.name = "Spin"; spin.position = Vector3(0, 0.5, 0.0); f.add_child(spin)
+	for i in 3:
+		var a := TAU * i / 3.0
+		var bee := Node3D.new(); bee.position = Vector3(cos(a) * 0.44, sin(a * 2.0) * 0.08, sin(a) * 0.44); spin.add_child(bee)
+		Models.part(bee, Models.sphere(0.025, 6), body, Vector3.ZERO, Vector3(1, 1, 1.4))
+		Models.part(bee, Models.sphere(0.012, 4), band, Vector3(0, 0, 0.012))
+		Models.part(bee, Models.sphere(0.02, 4), Models.toon(Color.WHITE, false, 0.6), Vector3(0, 0.02, 0), Vector3(1.6, 0.2, 0.8))
+	return {"head": hp, "top": hp.y + 0.22}

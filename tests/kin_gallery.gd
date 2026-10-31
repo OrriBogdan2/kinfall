@@ -22,6 +22,8 @@ func _ready() -> void:
 	ground.material_override = Models.toon(Color("5f8d45"), false)
 	add_child(ground)
 	var ids: Array = Data.KIN.keys()
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--kin-only="): ids = Array(a.substr(11).split(","))
 	var close := "--kin-close" in OS.get_cmdline_user_args()
 	var yaw := 0.0
 	for a in OS.get_cmdline_user_args():
