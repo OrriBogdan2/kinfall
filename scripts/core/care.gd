@@ -92,6 +92,10 @@ static func change(rec: Dictionary, n: String, amt: float) -> float:
 ## Time passing at home. sleeping: curled up in bed or napping.
 static func tick(rec: Dictionary, secs: float, sleeping := false) -> void:
 	ensure(rec)
+	if rec.get("boxed", false):
+		# asleep in the Kin Burrow: nothing changes
+		rec["needs_t"] = Time.get_unix_time_from_system()
+		return
 	var mins := secs / 60.0
 	var nd: Dictionary = rec["needs"]
 	var f0 := float(nd["food"])
@@ -118,6 +122,9 @@ static func tick(rec: Dictionary, secs: float, sleeping := false) -> void:
 ## Econ.catch_up_all runs that slowly, hour by hour, with the feeders.
 static func catch_up(rec: Dictionary) -> float:
 	ensure(rec)
+	if rec.get("boxed", false):
+		rec["needs_t"] = Time.get_unix_time_from_system()
+		return 0.0
 	var all := clampf(Time.get_unix_time_from_system() - float(rec["needs_t"]), 0.0, 14.0 * 86400.0)
 	var gone := minf(all, 12.0 * 3600.0)
 	if gone > 30.0:
@@ -153,6 +160,8 @@ static func starve_stage(rec: Dictionary) -> String:
 
 ## secs of time passing; zero_secs of it with an empty belly (defaults to all of it if food is 0).
 static func starve_step(rec: Dictionary, secs: float, zero_secs := -1.0) -> void:
+	if rec.get("boxed", false):
+		return
 	var z := zero_secs if zero_secs >= 0.0 else (secs if need(rec, "food") <= 0.5 else 0.0)
 	var st := float(rec.get("starve", 0.0))
 	if z > 0.0:
@@ -326,8 +335,10 @@ static func breed(a: Dictionary, b: Dictionary, rng: RandomNumberGenerator, sp :
 	Evo.ensure(baby)
 	var lead := Evo.leading(a if rng.randf() < 0.5 else b)
 	Evo.add(baby, lead, 8.0)
-	var shimmer_chance := 1.0 / 12.0 + (0.15 if a.get("shimmer", false) else 0.0) + (0.15 if b.get("shimmer", false) else 0.0)
-	baby["shimmer"] = rng.randf() < shimmer_chance
+	baby["shimmer"] = rng.randf() < Mutations.shimmer_breed_chance(a, b)
+	# rare mutations: a good chance of a parent's passing on, and its own small roll
+	var muts := Mutations.inherit(a, b, rng)
+	if not muts.is_empty(): baby["mutations"] = muts
 	baby["trust"] = 55.0
 	baby["parents"] = [String(a["name"]), String(b["name"])]
 	ensure(baby)
@@ -350,12 +361,15 @@ static func dex_mark(species: String, what: String, extra := "") -> void:
 	if not dx.has(species):
 		dx[species] = {"seen": false, "caught": false, "forms": [], "shimmer": false}
 	var e: Dictionary = dx[species]
+	if not e.has("mutations"): e["mutations"] = []
 	match what:
 		"seen": e["seen"] = true
 		"caught": e["seen"] = true; e["caught"] = true
 		"form":
 			if extra != "" and not (e["forms"] as Array).has(extra): e["forms"].append(extra)
 		"shimmer": e["shimmer"] = true
+		"mutation":
+			if extra != "" and not (e["mutations"] as Array).has(extra): e["mutations"].append(extra)
 
 ## Everything already in the roster counts toward the Kindex.
 static func dex_sync() -> void:
@@ -364,3 +378,10 @@ static func dex_sync() -> void:
 		var fn := Evo.form_name(rec)
 		if fn != String(Data.KIN[rec["species"]]["name"]): dex_mark(rec["species"], "form", fn)
 		if rec.get("shimmer", false): dex_mark(rec["species"], "shimmer")
+		for mid in Mutations.of(rec): dex_mark(rec["species"], "mutation", mid)
+
+## A new kin of yours: caught, seen through to the Kindex, shimmer and mutations noted.
+static func dex_got(rec: Dictionary) -> void:
+	dex_mark(rec["species"], "caught")
+	if rec.get("shimmer", false): dex_mark(rec["species"], "shimmer")
+	for mid in Mutations.of(rec): dex_mark(rec["species"], "mutation", mid)

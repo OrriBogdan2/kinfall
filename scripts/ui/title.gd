@@ -188,7 +188,7 @@ func _crew() -> void:
 	var recs: Array = []
 	var ak := Save.active_kin()
 	if not ak.is_empty(): recs.append(ak)
-	for r in Save.d.get("roster", []):
+	for r in KinBox.farm():
 		if recs.size() >= 3: break
 		if not recs.has(r): recs.append(r)
 	var fallback := ["cindle", "puddlet", "zapple"]

@@ -218,7 +218,7 @@ func _blocked(x: float, z: float) -> bool:
 
 # ------------------------------------------------------------------ kin
 func _spawn_kin() -> void:
-	var roster: Array = (visit.get("roster", []) if not visit.is_empty() else Save.d["roster"])
+	var roster: Array = (visit.get("roster", []) if not visit.is_empty() else KinBox.farm())    # kin in the Kin Burrow stay asleep there
 	var active: String = (visit.get("active", "") if not visit.is_empty() else Save.d.get("active", ""))
 	var here: Array = []
 	for rec in roster:
@@ -638,8 +638,10 @@ func _close_panel() -> void:
 ## Every kin you have, and who comes along on expeditions.
 func _open_journal() -> void:
 	var v := _new_panel("Kin journal", 640)
-	v.add_child(UI.label("Your kin. The one you bring on expeditions is your partner.", 14, UI.MUTED))
-	for rec in Save.d["roster"]:
+	v.add_child(UI.label("Your kin out on the farm. The one you bring on expeditions is your partner.", 14, UI.MUTED))
+	if not KinBox.boxed().is_empty():
+		v.add_child(UI.label("%d more asleep in the Kin Burrow (open it on the farm to swap them out)." % KinBox.boxed().size(), 13, Color("cdb8ff")))
+	for rec in KinBox.farm():
 		var row := UI.card(UI.CARD, 10, 10)
 		var h := UI.hbox(12); row.add_child(h)
 		var sp: Dictionary = Data.KIN[rec["species"]]

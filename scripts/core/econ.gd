@@ -286,6 +286,9 @@ static func catch_up_all() -> Array:
 	var roster: Array = Save.d["roster"]
 	var extra := {}
 	for rec in roster:
+		if KinBox.is_boxed(rec):
+			Care.catch_up(rec)      # asleep in the Kin Burrow: the clock just moves on
+			continue
 		var gone := Time.get_unix_time_from_system() - float(rec.get("needs_t", Time.get_unix_time_from_system()))
 		var ex := Care.catch_up(rec)
 		if ex > 0.0: extra[rec["uid"]] = ex
@@ -311,6 +314,7 @@ static func catch_up_all() -> Array:
 static func check_starving() -> Array:
 	var ev: Array = []
 	for rec in (Save.d["roster"] as Array).duplicate():
+		if KinBox.is_boxed(rec): continue
 		var st := Care.starve_stage(rec)
 		if st == "dead":
 			ev.append({"kind": "died", "rec": rec, "grave": kin_dies(rec, "starved")})
@@ -397,6 +401,7 @@ static func revive(g: Dictionary, rng: RandomNumberGenerator = null) -> Dictiona
 	rec["needs"] = {"food": 80.0, "energy": 60.0, "joy": 55.0, "clean": 90.0}
 	Save.remember(rec, "returned", "came back from the Soul Shrine, %s" % rec["title"], 0.0)
 	Save.d["roster"].append(rec)
+	KinBox.route_back(rec)
 	Save.d["graves"].erase(g)
 	if str(Save.d.get("active", "")) == "":
 		Save.d["active"] = rec["uid"]

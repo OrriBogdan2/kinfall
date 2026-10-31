@@ -736,6 +736,8 @@ func _finish(sp_id: String, kname: String, you: String, tutorial: bool) -> void:
 	var rec := Save.new_kin(sp_id, kname.strip_edges() if kname.strip_edges() != "" else Data.KIN_NAMES.pick_random())
 	rec["trust"] = 55.0
 	Save.remember(rec, "hatched", "hatched from an egg you chose")
+	rec["starter"] = true          # your first kin: it always stays on the farm with you
+	rec["got_t"] = Time.get_unix_time_from_system()
 	Save.d["roster"] = [rec]
 	Save.d["active"] = rec["uid"]
 	Save.d["name"] = you.strip_edges() if you.strip_edges() != "" else "Hunter"

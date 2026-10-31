@@ -87,6 +87,8 @@ func fresh() -> Dictionary:
 		"feeders": [],        # troughs on the farm: {id, kind, x, z, food: [keys], auto}
 		"feeder_inv": {},     # feeders bought but not set down yet
 		"graves": [],         # kin that died, with their memories (Econ.kin_dies)
+		"farm_lvl": 0,        # Kin Cottage expansions: room for 6 / 8 / 10 / 12 kin out on the farm (KinBox)
+		"box_v": true,        # the Kin Burrow is set up (old saves get their overflow boxed once)
 	}
 
 func _empty_plots(n: int) -> Array:
@@ -165,7 +167,11 @@ func second_kin() -> Dictionary:
 		return k
 	var best: Dictionary = {}
 	for r in d["roster"]:
-		if r["uid"] != a and (best.is_empty() or float(r.get("trust", 0.0)) > float(best.get("trust", 0.0))):
+		if r["uid"] == a: continue
+		# kin out on the farm first; one asleep in the Kin Burrow only if nobody else is around
+		var better: bool = best.is_empty() or (best.get("boxed", false) and not r.get("boxed", false)) \
+			or (best.get("boxed", false) == r.get("boxed", false) and float(r.get("trust", 0.0)) > float(best.get("trust", 0.0)))
+		if better:
 			best = r
 	if not best.is_empty():
 		d["active2"] = best["uid"]

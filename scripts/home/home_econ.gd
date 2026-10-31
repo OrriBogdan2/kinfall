@@ -97,7 +97,7 @@ func tick(d: float) -> void:
 	for f in Econ.feeders():
 		if Econ.auto_refill(f) > 0:
 			refresh_feeder(f)
-	for rec in (Save.d["roster"] as Array).duplicate():
+	for rec in KinBox.farm():
 		var st := Care.starve_stage(rec)
 		if st == "dead":
 			_kin_died(rec, Econ.kin_dies(rec, "starved"))
@@ -419,7 +419,7 @@ func open_feeder(f: Dictionary) -> void:
 		var il := UI.label("In it: " + ", ".join(parts), 14, UI.INK)
 		il.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		v.add_child(il)
-	var hungry: Array = (Save.d["roster"] as Array).filter(func(r): return Care.need(r, "food") < Econ.HUNGRY_AT).map(func(r): return String(r["name"]))
+	var hungry: Array = KinBox.farm().filter(func(r): return Care.need(r, "food") < Econ.HUNGRY_AT).map(func(r): return String(r["name"]))
 	v.add_child(UI.label(("Hungry now: " + ", ".join(hungry)) if not hungry.is_empty() else "Nobody's hungry right now.", 13, Color("ffb070") if not hungry.is_empty() else UI.GOOD))
 	# filling it
 	var row0 := UI.hbox(8)

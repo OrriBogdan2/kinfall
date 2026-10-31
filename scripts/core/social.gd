@@ -166,10 +166,10 @@ func publish_profile(force := false) -> void:
 ## What other players see of your island when they visit.
 static func profile_doc() -> Dictionary:
 	var roster: Array = []
-	for r in Save.d["roster"].slice(0, 12):
+	for r in KinBox.farm().slice(0, 12):       # visitors see the kin out on your farm
 		Evo.ensure(r)
 		roster.append({"uid": r["uid"], "species": r["species"], "name": r["name"], "level": int(r["level"]),
-			"trust": int(r["trust"]), "forms": r["forms"], "muts": r["muts"]})
+			"trust": int(r["trust"]), "forms": r["forms"], "muts": r["muts"], "shimmer": r.get("shimmer", false), "mutations": Mutations.of(r)})
 	var d := {
 		"name": Save.d.get("name", "Hunter"), "cls": Data.class_of_save(), "weapon": Save.d.get("weapon", ""),
 		"active": Save.d.get("active", ""), "roster": roster,
@@ -447,6 +447,11 @@ static func clean_kin(v) -> Dictionary:
 			out["aff"][a] = clampf(num_of(af.get(a), 0.0), 0.0, 400.0)
 	var acc := txt_of(d.get("acc"))
 	if acc != "" and Data.ACCS.has(acc): out["acc"] = acc
+	var rm: Array = []
+	for mv in arr_of(d.get("mutations")):
+		var mid := txt_of(mv)
+		if not Mutations.info(mid).is_empty() and not rm.has(mid) and rm.size() < 4: rm.append(mid)
+	if not rm.is_empty(): out["mutations"] = rm
 	return out
 
 ## A full kin record for its new owner, built from a cleaned one.
@@ -454,6 +459,7 @@ static func kin_for_buyer(c: Dictionary, seller_name: String) -> Dictionary:
 	var rec := Save.new_kin(c["species"], c["name"])
 	rec["level"] = int(c["level"])
 	rec["shimmer"] = c["shimmer"]
+	if c.has("mutations"): rec["mutations"] = (c["mutations"] as Array).duplicate()
 	for k in c["traits"]: rec["traits"][k] = c["traits"][k]
 	Evo.ensure(rec)
 	rec["forms"] = (c["forms"] as Array).duplicate()
@@ -552,7 +558,7 @@ func buy(listing_id: String, cb: Callable) -> void:
 	_busy["market"] = true
 	claim("market/" + listing_id, func(raw: Dictionary):
 		var l := clean_listing(raw)
-		if l.is_empty() or l["seller"] == me or int(Save.d["gems"]) < int(l["price"]) or (l["kind"] == "kin" and Save.d["roster"].size() >= 12):
+		if l.is_empty() or l["seller"] == me or int(Save.d["gems"]) < int(l["price"]) or (l["kind"] == "kin" and KinBox.full()):
 			_busy.erase("market")
 			cb.call("")
 			return
@@ -574,7 +580,8 @@ func buy(listing_id: String, cb: Callable) -> void:
 					if l["kind"] == "kin":
 						var nk := kin_for_buyer(l["kin"], String(l["seller_name"]))
 						Save.d["roster"].append(nk)
-						Care.dex_mark(nk["species"], "caught")
+						KinBox.route_new(nk)
+						Care.dex_got(nk)
 					elif l["kind"] == "seed": Save.add_seed(l["key"], 1)
 					else: Save.d["crops"][l["key"]] = int(Save.d["crops"].get(l["key"], 0)) + 1
 				else:
@@ -610,6 +617,7 @@ func _refund(listing_id: String) -> void:
 		var rec = m.get("rec", {})
 		if typeof(rec) == TYPE_DICTIONARY and not rec.is_empty():
 			Save.d["roster"].append(rec)
+			KinBox.route_back(rec)
 	elif Data.CROPS.has(key):
 		if m.get("kind", "") == "seed": Save.add_seed(key, 1)
 		else: Save.d["crops"][key] = int(Save.d["crops"].get(key, 0)) + 1
@@ -714,7 +722,8 @@ static func clean_island(d: Dictionary) -> Dictionary:
 				muts.append({"id": mid, "lv": clampi(int_of(m.get("lv"), 1), 1, 5), "aff": aff})
 		roster.append({"uid": txt_of(r.get("uid"), "", 24), "species": sp, "name": say_of(r.get("name"), "Kin", 14),
 			"level": clampi(int_of(r.get("level"), 1), 1, 999), "trust": clampf(num_of(r.get("trust"), 50.0), 0.0, 100.0),
-			"forms": forms.slice(0, 50), "muts": muts.slice(0, 40), "traits": Data.KIN[sp]["traits"].duplicate(), "memory": []})
+			"forms": forms.slice(0, 50), "muts": muts.slice(0, 40), "traits": Data.KIN[sp]["traits"].duplicate(), "memory": [],
+			"shimmer": r.get("shimmer", false) == true, "mutations": arr_of(r.get("mutations")).map(func(x): return txt_of(x)).filter(func(x): return not Mutations.info(x).is_empty()).slice(0, 4)})
 		if roster.size() >= 12:
 			break
 	var plots := func(src) -> Array:

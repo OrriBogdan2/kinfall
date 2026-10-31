@@ -157,8 +157,8 @@ func apply_result(r: Dictionary) -> Dictionary:
 			Care.ensure(nk)
 			nk["needs"] = {"food": 45.0, "energy": 40.0, "joy": 45.0, "clean": 30.0}
 			d["roster"].append(nk)
-			Care.dex_mark(nk["species"], "caught")
-			if nk.get("shimmer", false): Care.dex_mark(nk["species"], "shimmer")
+			KinBox.route_new(nk)      # the farm if there's room; a repeat species goes to the Kin Burrow
+			Care.dex_got(nk)
 			out["caught"].append(nk)
 	d["items"]["tonic"] = int(r.get("tonics", d["items"].get("tonic", 0)))
 	if r.has("rift_keys"):
@@ -230,8 +230,8 @@ func apply_result(r: Dictionary) -> Dictionary:
 	# kin who stayed home rest in the cottages and train in the yard
 	var rest := (2.0 if Save.has_building("cottage") else 0.0) + (2.0 if Save.has_building("cottage2") else 0.0)
 	for hk in d["roster"]:
-		if hk == k or brought.has(hk) or out["caught"].has(hk):
-			continue
+		if hk == k or brought.has(hk) or out["caught"].has(hk) or KinBox.is_boxed(hk):
+			continue      # (kin asleep in the Kin Burrow don't rest or train)
 		if rest > 0.0:
 			hk["trust"] = clampf(float(hk["trust"]) + rest, 0.0, 100.0)
 		if Save.has_building("dojo"):
