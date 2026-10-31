@@ -52,6 +52,7 @@ func _ready() -> void:
 	_build_ship()
 	_crew()
 	_build_clouds()
+	_build_shafts()
 	_build_birds()
 	for i in 4:
 		_spawn_glider(i * 2.6)
@@ -109,27 +110,55 @@ func _build_ship() -> void:
 		if z0 >= 4.5: continue
 		var len := 4.55 - z0
 		Models.part(ship, Models.box(0.025, 0.01, len), Models.toon(Color("7a5236"), false), Vector3(x, DECK_Y + 0.006, z0 + len * 0.5))
-	# hull: the sides sweep down and in to a keel, with a red stripe under the rail
-	var hs := SurfaceTool.new(); hs.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var rings: Array = [[1.0, 0.0, 0.0], [1.02, -0.35, 0.0], [0.86, -1.3, 0.25], [0.42, -2.3, 0.6]]
-	var cols := [Color("8a5f3c"), Color("d9604a"), Color("7a5236"), Color("5a3b26")]
-	for r in rings.size() - 1:
-		var ra: Array = rings[r]; var rb: Array = rings[r + 1]
+	# hull: smooth sides that bulge out under the rail and sweep down and in to a keel, with a red
+	# stripe under the rail. Normals follow the curve, so the hull shades as one polished shape.
+	var prof := [[1.0, 0.0], [1.025, -0.12], [1.04, -0.3], [1.03, -0.5], [0.98, -0.8], [0.9, -1.15], [0.78, -1.5], [0.62, -1.85], [0.44, -2.15], [0.24, -2.38], [0.06, -2.48]]
+	var band_cols := [Color("d9604a"), Color("d9604a"), Color("8a5f3c"), Color("7a5236"), Color("7a5236"), Color("6a4630"), Color("6a4630"), Color("5a3b26"), Color("5a3b26"), Color("4e3322")]
+	var grid: Array = []
+	for r in prof.size():
+		var row: Array = []
+		var sc: float = prof[r][0]
 		for i in n:
-			var p0: Vector2 = ol[i]; var p1: Vector2 = ol[(i + 1) % n]
-			var a := Vector3(p0.x * ra[0], DECK_Y + ra[1], p0.y * ra[0] + ra[2]); var b := Vector3(p1.x * ra[0], DECK_Y + ra[1], p1.y * ra[0] + ra[2])
-			var c := Vector3(p1.x * rb[0], DECK_Y + rb[1], p1.y * rb[0] + rb[2]); var d := Vector3(p0.x * rb[0], DECK_Y + rb[1], p0.y * rb[0] + rb[2])
-			var nrm := (d - a).cross(b - a).normalized()
-			if nrm.dot(Vector3(a.x, 0, a.z + 1.0)) < 0.0: nrm = -nrm
-			for v in [a, b, c, a, c, d]:
-				hs.set_normal(nrm)
-				hs.set_color(cols[r] if r != 0 else cols[1])
-				hs.add_vertex(v)
+			var p: Vector2 = ol[i]
+			row.append(Vector3(p.x * sc, DECK_Y + float(prof[r][1]), p.y * sc + (1.0 - sc) * 0.9))
+		grid.append(row)
+	var gn: Array = []
+	for r in prof.size():
+		var row: Array = []
+		for i in n:
+			var a: Vector3 = grid[r][(i + 1) % n] - grid[r][(i - 1 + n) % n]
+			var d: Vector3 = grid[mini(r + 1, prof.size() - 1)][i] - grid[maxi(r - 1, 0)][i]
+			var nrm := a.cross(d).normalized()
+			var c0: Vector3 = grid[r][i]
+			if nrm.dot(Vector3(c0.x, 0.0, c0.z + 1.0)) < 0.0: nrm = -nrm
+			row.append(nrm)
+		gn.append(row)
+	var hs := SurfaceTool.new(); hs.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for r in prof.size() - 1:
+		for i in n:
+			var j := (i + 1) % n
+			var quad := [[r, i], [r, j], [r + 1, j], [r + 1, i]]
+			var pa: Vector3 = grid[r][i]; var pb: Vector3 = grid[r][j]; var pc: Vector3 = grid[r + 1][j]
+			var flip: bool = (pb - pa).cross(pc - pa).dot(gn[r][i]) > 0.0
+			var order := [0, 2, 1, 0, 3, 2] if flip else [0, 1, 2, 0, 2, 3]
+			for k in order:
+				var q: Array = quad[k]
+				hs.set_color(band_cols[r])
+				hs.set_normal(gn[q[0]][q[1]])
+				hs.add_vertex(grid[q[0]][q[1]])
 	var hull := MeshInstance3D.new(); hull.mesh = hs.commit()
-	var hm := Models.vtoon()
-	hm.set_shader_parameter("albedo", Color(0.8, 0.78, 0.8))
+	var hm := Models.vtoon_outlined()
+	hm.set_shader_parameter("albedo", Color(0.82, 0.8, 0.82))
+	hm.set_shader_parameter("gloss", 0.2)
 	hull.material_override = hm
 	ship.add_child(hull)
+	# a brass trim line along the top of the stripe
+	for i in n:
+		var p0: Vector2 = ol[i] * 1.03; var p1: Vector2 = ol[(i + 1) % n] * 1.03
+		var a := Vector3(p0.x, DECK_Y - 0.33, p0.y); var b := Vector3(p1.x, DECK_Y - 0.33, p1.y)
+		if a.distance_to(b) < 0.01: continue
+		var tr := Models.part(ship, Models.box(0.05, 0.05, a.distance_to(b) + 0.04), brass, (a + b) * 0.5)
+		tr.look_at_from_position((a + b) * 0.5, b, Vector3.UP)
 	# gunwale: posts and a rail all the way round
 	for i in n:
 		var p0: Vector2 = ol[i] * 0.97; var p1: Vector2 = ol[(i + 1) % n] * 0.97
@@ -279,6 +308,29 @@ func _build_clouds() -> void:
 		if absf(mi.position.x) < 9.0 and mi.position.y > -8.0: mi.position.x += 14.0 * signf(mi.position.x + 0.01)
 		add_child(mi)
 		clouds.append({"node": mi, "speed": rng.randf_range(3.5, 6.5)})
+
+## Long soft shafts of the low sun slanting across the sky behind the ship (they converge toward
+## the point opposite the sun, as real ones do), drifting slowly.
+var shafts: Array = []
+func _build_shafts() -> void:
+	var sh: Shader = load("res://shaders/light_shaft.gdshader")
+	var axis := -SUN.normalized()      # away from the sun, into the view
+	for i in 7:
+		var mi := MeshInstance3D.new()
+		var q := QuadMesh.new(); q.size = Vector2(1, 1); q.center_offset = Vector3(0, 0.5, 0)
+		mi.mesh = q
+		var m := ShaderMaterial.new(); m.shader = sh
+		m.set_shader_parameter("seed", rng.randf() * 10.0)
+		m.set_shader_parameter("intensity", rng.randf_range(0.05, 0.11))
+		m.set_shader_parameter("color", Color("ffd2a0").lerp(Color("ffb0c8"), rng.randf() * 0.5))
+		mi.material_override = m
+		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		var at := Vector3(rng.randf_range(-60.0, 12.0), rng.randf_range(-8.0, 14.0), rng.randf_range(16.0, 60.0))
+		mi.basis = Basis(Quaternion(Vector3.UP, axis)) * Basis.from_scale(Vector3(rng.randf_range(3.0, 9.0), rng.randf_range(120.0, 200.0), 1.0))
+		mi.position = at
+		mi.extra_cull_margin = 200.0
+		add_child(mi)
+		shafts.append([mi, m, float(m.get_shader_parameter("intensity")), rng.randf() * TAU])
 
 func _build_birds() -> void:
 	birds = Node3D.new(); birds.position = Vector3(-14, 6.0, -40); add_child(birds)
@@ -473,6 +525,9 @@ func _process(delta: float) -> void:
 			h.queue_free()
 			gliders.erase(g)
 			_spawn_glider()
+	# the sun shafts breathe slowly
+	for shf in shafts:
+		(shf[1] as ShaderMaterial).set_shader_parameter("intensity", float(shf[2]) * (0.75 + 0.25 * sin(t * 0.3 + float(shf[3]))))
 	# birds wheel in the distance
 	if birds:
 		birds.position = Vector3(-14 + sin(t * 0.05) * 30.0, 6.0 + sin(t * 0.2) * 1.5, -40 + cos(t * 0.05) * 10.0)

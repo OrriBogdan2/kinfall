@@ -89,9 +89,19 @@ func _build() -> void:
 	e.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	e.ambient_light_color = Color("d8dcf2")
 	e.ambient_light_energy = 0.7
+	# the same filmic colour as the outdoor scenes, so the kin looks as polished here as in the world
+	e.tonemap_mode = Environment.TONE_MAPPER_FILMIC
+	e.tonemap_exposure = 1.08
+	e.tonemap_white = 6.0
+	e.adjustment_enabled = true
+	e.adjustment_contrast = 1.05
+	e.adjustment_saturation = 1.1
 	env.environment = e
 	vp.add_child(env)
-	var key := DirectionalLight3D.new(); key.rotation = Vector3(-0.7, 0.6, 0); key.light_energy = 1.15
+	var key := DirectionalLight3D.new(); key.rotation = Vector3(-0.7, 0.6, 0); key.light_energy = 1.2
+	key.light_color = Color("fff1e0")
+	key.shadow_enabled = true; key.shadow_opacity = 0.6; key.shadow_blur = 1.5
+	key.directional_shadow_max_distance = 8.0
 	vp.add_child(key)
 	var back := DirectionalLight3D.new(); back.rotation = Vector3(-0.3, PI, 0); back.light_energy = 0.7
 	back.light_color = glow.lightened(0.3)
@@ -106,7 +116,7 @@ func _build() -> void:
 	vp.add_child(turn)
 	var plate := MeshInstance3D.new()
 	plate.mesh = Models.cyl(0.62, 0.66, 0.06, 40)
-	plate.material_override = Models.toon(col.darkened(0.55))
+	plate.material_override = Models.shiny(col.darkened(0.55), 0.35)
 	plate.position.y = -0.03
 	turn.add_child(plate)
 	var rim := MeshInstance3D.new()
