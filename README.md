@@ -154,7 +154,7 @@ Kinfall is open source and anyone can fork it. New kin, abilities and items are 
 
 ## Community
 
-Join the Discord: DISCORD_INVITE_LINK
+Join the Discord: [https://discord.gg/PfzQAEqzkV](https://discord.gg/PfzQAEqzkV)
 
 ## License
 
