@@ -357,7 +357,7 @@ func _ready() -> void:
 				elif which == "fetch":
 					var ke := _kin_entry(Save.active_kin())
 					if not ke.is_empty(): ppos = ke["pos"] + Vector3(1.5, 0, 1.0); cam.snap(ppos); _play_with_kin(ke))
-		if a.begins_with("--work-") and a in ["--work-demo", "--work-board", "--work-board=Kin", "--work-card", "--work-box", "--work-hover"] or a == "--shiny-lineup":
+		if a.begins_with("--work-") and a in ["--work-demo", "--work-board", "--work-board=Kin", "--work-card", "--work-box", "--work-hover", "--work-close", "--work-build"] or a == "--shiny-lineup":
 			Save.no_write = true
 			var wd: String = a
 			get_tree().create_timer(0.3).timeout.connect(func(): hw.demo(wd))
@@ -2588,13 +2588,13 @@ func _open_kin(rec: Dictionary) -> void:
 			c2.add_child(UI.kv("Won't eat", Care.food_name(lk["hates"]) if known.has("hates") else "???", UI.INK if known.has("hates") else UI.FAINT))
 			c2.add_child(UI.kv("Favourite game", Care.PLAY_NAMES[lk["play"]] if known.has("play") else "???", UI.INK if known.has("play") else UI.FAINT))
 			c2.add_child(UI.para("Feed it, play with it and talk to it to find out more.", 12, UI.FAINT))
-			c2.add_child(UI.spacer(4))
+			c2.add_child(UI.spacer(2))
 			WorkView.card_section(self, rec, c2, func(): _open_kin(rec))
 			var mem: Array = rec.get("memory", [])
 			if mem.size() > 0:
 				c2.add_child(UI.spacer(4))
 				c2.add_child(UI.section("Remembers", UI.FAINT.lightened(0.2)))
-				for i in range(maxi(0, mem.size() - 2), mem.size()):
+				for i in range(maxi(0, mem.size() - 1), mem.size()):
 					var t := String(mem[i]["text"])
 					c2.add_child(UI.para("\u201c%s\u201d" % (t.substr(0, 1).to_upper() + t.substr(1)), 13, UI.INK.darkened(0.1)))
 			if String(rec.get("title", "")) != "":

@@ -160,7 +160,10 @@ func run(m: Node) -> void:
 		var steps := int(secs / 0.05)
 		for i in steps:
 			for k in H.kins:
-				if k.has("job"): took[String(k["rec"]["name"])] = String(k["job"]["kind"])
+				if k.has("job"):
+					var nm := String(k["rec"]["name"])
+					if not took.has(nm): took[nm] = []
+					if not (took[nm] as Array).has(String(k["job"]["kind"])): took[nm].append(String(k["job"]["kind"]))
 				for n in Care.NEEDS: k["rec"]["needs"][n] = maxf(float(k["rec"]["needs"][n]), 60.0)
 			H.day_t = 0.5
 			H._move_kin(0.05)
@@ -175,18 +178,24 @@ func run(m: Node) -> void:
 	ok(int(Save.d["items"].get("kibble", 0)) > kib0, "the Hearth Oven baked kibble (%d -> %d)" % [kib0, int(Save.d["items"].get("kibble", 0))])
 	ok(float(Work.station(int(mill["u"])).get("charge", 0.0)) > 0.0, "the Spark Mill got cranked (charge %d%%)" % int(float(Work.station(int(mill["u"])).get("charge", 0.0))))
 	ok(float(Work.station(int(camp["u"])).get("ready", 0.0)) > 0.0 and int(Work.ensure()["made"].get("wood", 0)) > 0, "the Lumber Camp's logs were split into wood (%d made)" % int(Work.ensure()["made"].get("wood", 0)))
-	ok(took.get("Drip", "") == "water" and took.get("Ash", "") == "bake" and took.get("Zip", "") == "power", "the right kin did them: Drip watered, Ash baked, Zip cranked the mill")
+	ok((took.get("Drip", []) as Array).has("water") and (took.get("Ash", []) as Array).has("bake") and (took.get("Zip", []) as Array).has("power") and (took.get("Moss", []) as Array).has("plant"),
+		"the right kin did them: Drip watered, Ash baked, Zip cranked the mill, Moss sowed")
 	# ---------------------------------------------------------------- 7. hauling to the chest
 	_deco(lay, "storage_chest", 50, 36)
 	H.hb.apply(false)
 	Work.station(int(camp["u"]))["ready"] = 0.0
+	Work.set_prio("ember", 0)        # the oven would burn the wood as it comes in
 	var wd1 := Work.mat("wood")
 	var piles_seen := 0
-	for i in 40:
+	var hauled := ""
+	for i in 50:
 		await sim.call(1.0)
 		piles_seen = maxi(piles_seen, (Work.ensure()["piles"] as Array).size())
-		if Work.mat("wood") > wd1 and piles_seen > 0: break
-	ok(piles_seen > 0 and Work.mat("wood") > wd1, "with a Storage Chest, split logs wait on a pile and a Haul kin carries them in (wood %d -> %d)" % [wd1, Work.mat("wood")])
+		for nm in took:
+			if (took[nm] as Array).has("carry"): hauled = nm
+		if Work.mat("wood") > wd1 and piles_seen > 0 and hauled != "": break
+	ok(piles_seen > 0 and Work.mat("wood") > wd1 and hauled != "", "with a Storage Chest, split logs wait on a pile and a Haul kin (%s) carries them in (wood %d -> %d)" % [hauled, wd1, Work.mat("wood")])
+	Work.set_prio("ember", 2)
 	# ---------------------------------------------------------------- 8. hungry kin stop to eat
 	var drip: Dictionary = ent.call("puddlet")
 	var f: Dictionary = Econ.feeders()[0] if not Econ.feeders().is_empty() else {}
@@ -195,6 +204,10 @@ func run(m: Node) -> void:
 		H.hecon.refresh_feeder(f)
 	Save.d["plots"][0] = {"crop": "sunroot", "stage": 0, "care": 0, "wt": 0.0}
 	hw.scan()
+	for kk in ["indoors", "leap", "exiting", "going_in", "called_t", "busy", "eat", "nap_go"]: drip.erase(kk)
+	drip["nap_t"] = 0.0
+	(drip["node"] as Node3D).visible = true
+	drip["pos"] = Vector3(46.0, 0, 34.0); (drip["node"] as Node3D).position = drip["pos"]
 	var wj: Array = hw.jobs.filter(func(j): return j["kind"] == "water")
 	if not wj.is_empty(): hw.drop(drip); hw.take(drip, wj[0])
 	var had := drip.has("job")

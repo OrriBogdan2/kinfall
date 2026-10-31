@@ -138,18 +138,39 @@ static func card_section(h: Node, rec: Dictionary, parent: VBoxContainer, reopen
 	if h.get("hw") and not k.is_empty(): doing = h.hw.job_text(k)
 	var why := Work.why_not(rec)
 	var line := doing if doing != "" else (why if why != "" else ("Pinned to %s jobs" % Work.name_of(Work.pin(rec)) if Work.pin(rec) != "" else "Takes whatever it's best at"))
-	if rec.get("overworked", false): line += "  ·  overworked: let it rest"
-	parent.add_child(UI.para(line, 12, Color("ffb0a0") if rec.get("overworked", false) else UI.MUTED))
-	var row := UI.hbox(4)
-	row.add_child(UI.choice("Any job", Work.pin(rec) == "" and not rec.get("work_rest", false), func(): Work.set_pin(rec, ""); Save.save_game(); reopen.call(), 0))
-	row.add_child(UI.choice("Rest only", rec.get("work_rest", false), func(): Work.set_rest(rec, not rec.get("work_rest", false)); _drop(h, rec); Save.save_game(); reopen.call(), 0))
-	for it in Work.list(rec).slice(0, 3):
-		var el := String(it[0])
-		var b := UI.choice(Work.name_of(el), Work.pin(rec) == el, func(): Work.set_pin(rec, "" if Work.pin(rec) == el else el); _drop(h, rec); Save.save_game(); reopen.call(), 0)
-		b.tooltip_text = "Pin %s to %s jobs only" % [rec["name"], Work.ELEMENTS[el]["job"].to_lower()]
-		row.add_child(b)
-	for b in row.get_children(): (b as Button).add_theme_font_size_override("font_size", 12)
+	if rec.get("overworked", false): line = "Overworked: let it rest"
+	var row := UI.hbox(8)
+	var dl := UI.label(line, 12, Color("ffb0a0") if rec.get("overworked", false) else UI.MUTED)
+	dl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	dl.clip_text = true
+	dl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(dl)
+	row.add_child(pin_menu(h, rec, reopen))
 	parent.add_child(row)
+
+## Any job / Rest only / Only <element>: one dropdown.
+static func pin_menu(h: Node, rec: Dictionary, reopen: Callable) -> OptionButton:
+	var opt := OptionButton.new()
+	opt.add_item("Any job"); opt.set_item_metadata(0, "")
+	opt.add_item("Rest only"); opt.set_item_metadata(1, "rest")
+	var sel := 1 if rec.get("work_rest", false) else 0
+	for it in Work.list(rec):
+		opt.add_item("Only %s" % Work.name_of(String(it[0])))
+		opt.set_item_metadata(opt.item_count - 1, String(it[0]))
+		if Work.pin(rec) == String(it[0]): sel = opt.item_count - 1
+	opt.select(sel)
+	opt.custom_minimum_size.x = 136
+	opt.add_theme_font_size_override("font_size", 13)
+	opt.item_selected.connect(func(i: int):
+		var m := String(opt.get_item_metadata(i))
+		if m == "rest": Work.set_rest(rec, true)
+		else: Work.set_pin(rec, m)
+		_drop(h, rec)
+		Save.save_game()
+		reopen.call())
+	opt.tooltip_text = "Pin it to one kind of job, or keep it to resting"
+	opt.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	return opt
 
 static func _drop(h: Node, rec: Dictionary) -> void:
 	if h.get("hw") == null: return
@@ -175,7 +196,7 @@ static func open(h: Node) -> void:
 			if k.has("job"): busy[k["job"]["el"]] = (busy.get(k["job"]["el"], []) as Array) + [String(k["rec"]["name"])]
 		var grid := GridContainer.new()
 		grid.columns = 2
-		grid.add_theme_constant_override("h_separation", 26); grid.add_theme_constant_override("v_separation", 8)
+		grid.add_theme_constant_override("h_separation", 26); grid.add_theme_constant_override("v_separation", 2)
 		v.add_child(grid)
 		for el in Work.ORDER:
 			grid.add_child(_job_row(h, el, int(counts.get(el, 0)), busy.get(el, [])))
@@ -203,8 +224,8 @@ static func open(h: Node) -> void:
 static func _job_row(h: Node, el: String, waiting: int, who: Array) -> Control:
 	var r := UI.hbox(10)
 	r.custom_minimum_size.x = 470
-	r.add_child(Icon.new(el, 30.0))
-	var tv := UI.vbox(1)
+	r.add_child(Icon.new(el, 28.0))
+	var tv := UI.vbox(0)
 	tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var e: Dictionary = Work.ELEMENTS[el]
 	var top := UI.hbox(8)
@@ -241,7 +262,20 @@ static func _job_row(h: Node, el: String, waiting: int, who: Array) -> Control:
 			Sfx.play("click")
 			open(h), 0)
 		b.add_theme_font_size_override("font_size", 12)
-		b.custom_minimum_size = Vector2(54, 30)
+		b.custom_minimum_size = Vector2(52, 26)
+		# a compact segmented control: the chosen one filled, the rest faint
+		var on := cur == i
+		var sbn := StyleBoxFlat.new()
+		sbn.set_corner_radius_all(8)
+		sbn.content_margin_top = 3; sbn.content_margin_bottom = 3; sbn.content_margin_left = 6; sbn.content_margin_right = 6
+		sbn.bg_color = Color(UI.ACCENT, 0.24) if on else Color(1, 1, 1, 0.05)
+		if on: sbn.border_color = Color(UI.ACCENT, 0.8); sbn.set_border_width_all(1)
+		var sbh := sbn.duplicate() as StyleBoxFlat
+		sbh.bg_color = Color(UI.ACCENT, 0.32) if on else Color(1, 1, 1, 0.12)
+		for stn in ["normal", "focus"]: b.add_theme_stylebox_override(stn, sbn)
+		for stn in ["hover", "pressed"]: b.add_theme_stylebox_override(stn, sbh)
+		b.add_theme_color_override("font_color", UI.ACCENT_HI if on else UI.MUTED)
+		b.add_theme_color_override("font_hover_color", UI.INK)
 		if i == 0 and cur == 0: b.add_theme_color_override("font_color", Color("ff9a8a"))
 		seg.add_child(b)
 	seg.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -280,24 +314,6 @@ static func _kin_row(h: Node, w: Dictionary) -> Control:
 	elif Care.want(rec) != "": mood = "Wants: %s" % String(Care.NEED_INFO[Care.want(rec)]["name"]).to_lower()
 	if mood != "": dv.add_child(UI.label(mood, 11, Color("ffb0a0") if rec.get("overworked", false) else UI.FAINT))
 	r.add_child(dv)
-	var opt := OptionButton.new()
-	opt.add_item("Any job"); opt.set_item_metadata(0, "")
-	opt.add_item("Rest only"); opt.set_item_metadata(1, "rest")
-	var sel := 1 if rec.get("work_rest", false) else 0
-	for it in Work.list(rec):
-		opt.add_item("Only %s" % Work.name_of(String(it[0])))
-		opt.set_item_metadata(opt.item_count - 1, String(it[0]))
-		if Work.pin(rec) == String(it[0]): sel = opt.item_count - 1
-	opt.select(sel)
-	opt.custom_minimum_size.x = 140
-	opt.item_selected.connect(func(i: int):
-		var m := String(opt.get_item_metadata(i))
-		if m == "rest": Work.set_rest(rec, true)
-		else: Work.set_pin(rec, m)
-		_drop(h, rec)
-		Save.save_game()
-		open(h))
-	opt.tooltip_text = "Pin it to one kind of job, or keep it to resting"
-	opt.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var opt := pin_menu(h, rec, func(): open(h))
 	r.add_child(opt)
 	return card

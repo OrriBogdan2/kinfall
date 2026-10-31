@@ -776,8 +776,10 @@ func price_text(id: String) -> String:
 		return "free"
 	var t := "%d gems" % g
 	if s > 0: t += " · %d scrap" % s
-	if c.has("wood"): t += " · %d wood" % int(c["wood"])
-	if c.has("stone"): t += " · %d stone" % int(c["stone"])
+	var mats: Array = []
+	if c.has("wood"): mats.append("%d wood" % int(c["wood"]))
+	if c.has("stone"): mats.append("%d stone" % int(c["stone"]))
+	if not mats.is_empty(): t += "\n" + " · ".join(mats)
 	if c.has("line") or c.has("brush"): t += " /tile"
 	return t
 

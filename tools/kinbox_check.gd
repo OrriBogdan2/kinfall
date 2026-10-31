@@ -176,8 +176,8 @@ func run(m: Node) -> void:
 	var sh := 0
 	for _j in SN:
 		if Shiny.roll_egg(a, b, rng): sh += 1
-	var sd := sqrt(SN * pe[2] * (1.0 - pe[2]))
-	ok(absf(sh - SN * pe[2]) < 4.0 * sd, "shimmer egg roll over %d: %d (expect %d ± %d)" % [SN, sh, int(SN * pe[2]), int(4.0 * sd)])
+	var esd := sqrt(SN * pe[2] * (1.0 - pe[2]))
+	ok(absf(sh - SN * pe[2]) < 4.0 * esd, "shimmer egg roll over %d: %d (expect %d ± %d)" % [SN, sh, int(SN * pe[2]), int(4.0 * esd)])
 	# and the real breeding (traits, evolution and all) uses those odds
 	var M := 3000
 	Save.d["roster"] = [a, b]

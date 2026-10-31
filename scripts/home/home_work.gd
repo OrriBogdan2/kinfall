@@ -305,10 +305,12 @@ func _tag(tag: Label3D, s: Dictionary, st: Dictionary, now: float) -> void:
 			line = "ready" if left <= 0.0 else "grows back in %ds" % int(ceil(left))
 		"spark_mill": line = "charge %d%%" % int(float(st.get("charge", 0.0)))
 		"cold_store": line = "chilled %d%%" % int(float(st.get("chill", 0.0)))
-		"hearth_oven": line = "%d wood · %d kibble" % [Work.mat("wood"), int(Save.d["items"].get("kibble", 0))]
-		"workbench": line = "%d wood · %d stone" % [Work.mat("wood"), Work.mat("stone")]
+		"hearth_oven": line = "%d kibble" % int(Save.d["items"].get("kibble", 0)) if Work.mat("wood") > 0 else "needs wood"
+		"workbench": line = "%d scrap" % int(Save.d.get("scrap", 0)) if Work.mat("wood") >= 2 and Work.mat("stone") >= 1 else "needs wood and stone"
 		"storage_chest": line = "%d wood · %d stone" % [Work.mat("wood"), Work.mat("stone")]
-		"infirmary": line = "%d tonics" % int(Save.d["items"].get("tonic", 0))
+		"infirmary":
+			var tn := int(Save.d["items"].get("tonic", 0))
+			line = "%d tonic%s" % [tn, "" if tn == 1 else "s"]
 		"job_board": line = "%s set jobs" % Settings.key_cap("interact")
 	var who := ""
 	for k in h.kins:
@@ -898,8 +900,9 @@ static func demo_save() -> Dictionary:
 func demo(which: String) -> void:
 	h.day_t = 0.45
 	var mid := Vector3(55.5, 0, 35.5)
-	h.ppos = Vector3(50.2, 0, 37.2); h.player.position = h.ppos
-	h.cam.zoom_to = 1.25; h.cam.zoom = 1.25; h.cam.snap(mid)
+	# the camera follows you: stand in the middle of it all, out of sight
+	h.ppos = Vector3(54.8, 0, 34.6); h.player.position = h.ppos; h.player.visible = false
+	h.cam.zoom_to = 0.92; h.cam.zoom = 0.92; h.cam.snap(h.ppos)
 	if which == "--shiny-lineup":
 		for k in h.kins: (k["node"] as Node3D).visible = false; k["busy"] = true
 		var sps: Array = Data.KIN.keys()
@@ -907,7 +910,7 @@ func demo(which: String) -> void:
 			for sh in 2:
 				var rec := Save.new_kin(sps[i]); rec["level"] = 6; rec["shimmer"] = sh == 1
 				var n := Models.kin(sps[i], rec)
-				n.position = Vector3(50.0 + i * 2.1, 0, 33.0 + sh * 2.6)
+				n.position = Vector3(49.9 + i * 2.1, 0, 33.2 + sh * 2.5)
 				n.rotation.y = PI * 0.15
 				n.scale *= 1.5
 				h.add_child(n)
@@ -919,8 +922,9 @@ func demo(which: String) -> void:
 				l.position = n.position + Vector3(0, 1.75, 0)
 				h.add_child(l)
 				if sh == 1: Shiny.sparkle(h, n.position, sps[i], 1.3, false)
-		h.cam.zoom_to = 1.0; h.cam.zoom = 1.0; h.cam.snap(Vector3(55.2, 0, 35.2))
-		h.ppos = Vector3(56.0, 0, 41.0); h.player.position = h.ppos
+		for u in h.hb.nodes: (h.hb.nodes[u] as Node3D).visible = false
+		h.ppos = Vector3(55.2, 0, 34.6); h.player.position = h.ppos
+		h.cam.zoom_to = 0.62; h.cam.zoom = 0.62; h.cam.snap(h.ppos)
 		return
 	scan()
 	var used := {}
@@ -939,6 +943,12 @@ func demo(which: String) -> void:
 		J["phase"] = "work"; J["left"] = 999.0; J["dur"] = 1400.0
 		_hold(k, String(J["kind"]))
 		k["t"] = 999.0
+	if which == "--work-close":
+		h.ppos = Vector3(55.6, 0, 34.0); h.player.position = h.ppos
+		h.cam.zoom_to = 0.5; h.cam.zoom = 0.5; h.cam.snap(h.ppos)
+	if which == "--work-build":
+		h.get_tree().create_timer(0.6).timeout.connect(func():
+			h.hb.toggle(); h.hb.cat = "Work"; h.hb.take("hearth_oven"); h.hb.debug_m = Vector2(61.5, 39.5); h.hb._build_bar())
 	if which.begins_with("--work-board"):
 		var tb := which.substr(13) if which.length() > 13 else "Jobs"
 		h.get_tree().create_timer(0.6).timeout.connect(func(): h.open_job_board(tb))

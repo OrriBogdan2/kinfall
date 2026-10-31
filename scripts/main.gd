@@ -68,7 +68,7 @@ func _ready() -> void:
 				if (Data.CLASSES[c]["weapons"] as Array).has(a.substr(9)): Save.d["cls"] = c
 		if a == "--ability-demo": opts["ability_demo"] = true
 		if a == "--fresh": Save.d = Save.fresh()
-		if a in ["--work-demo", "--work-board", "--work-board=Kin", "--work-card", "--work-box", "--work-hover", "--shiny-lineup"]:
+		if a in ["--work-demo", "--work-board", "--work-board=Kin", "--work-card", "--work-box", "--work-hover", "--work-close", "--work-build", "--shiny-lineup"]:
 			Save.no_write = true; Save.d = HomeWork.demo_save()     # a made-up farm at work (screenshots)
 		if a.begins_with("--test-kin="):
 			# test: a save with one kin "species:level:trust", ready to play at home
