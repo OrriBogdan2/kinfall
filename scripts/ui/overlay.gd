@@ -6,7 +6,7 @@ extends CanvasLayer
 signal closed
 
 var root: Control
-var dim: ColorRect
+var dim: ColorRect              # the blurred backdrop (UI.backdrop)
 var host: CenterContainer
 var fps_lbl: Label
 var page := ""                  # "" when nothing is open
@@ -27,11 +27,8 @@ func _ready() -> void:
 	root.theme = UI.theme()
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(root)
-	dim = ColorRect.new()
-	dim.color = Color(0.02, 0.03, 0.06, 0.6)
-	dim.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	dim.mouse_filter = Control.MOUSE_FILTER_STOP
-	dim.visible = false
+	# behind every overlay menu: the screen blurred and darkened, fading in and out
+	dim = UI.backdrop()
 	root.add_child(dim)
 	host = CenterContainer.new()
 	host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -81,7 +78,7 @@ func _input(event: InputEvent) -> void:
 			else: open_admin()
 			get_viewport().set_input_as_handled()
 			return
-	if page != "" and event.is_action_pressed("menu"):
+	if page != "" and (event.is_action_pressed("menu") or (event is InputEventJoypadButton and event.is_action_pressed("ui_cancel"))):
 		back()
 		get_viewport().set_input_as_handled()
 
@@ -102,8 +99,10 @@ func _page(name: String, title_txt: String, width := 620.0, scroll := false) -> 
 	if page != "" and page != name and not stack.has(page):
 		stack.append(page)
 	var was_open := page != ""
+	var same := page == name
 	page = name
-	dim.visible = true
+	if not was_open:
+		UI.show_backdrop(dim, true)
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	if not was_open and Game.main:
 		var s = Game.main.screen_node()
@@ -111,6 +110,8 @@ func _page(name: String, title_txt: String, width := 620.0, scroll := false) -> 
 			s.on_menu_opened()
 	var pb := UI.scroll_panel(title_txt, width, back, "Back" if stack.size() > 0 else "Close", scroll)
 	host.add_child(pb[0])
+	if not same:
+		UI.pop_in(pb[0])
 	return pb[1]
 
 func back() -> void:
@@ -133,145 +134,209 @@ func close() -> void:
 	stack.clear()
 	listening = ""
 	delete_armed = -1
-	dim.visible = false
+	UI.show_backdrop(dim, false)
 	Sfx.play("whoosh", null, -14.0)
 	closed.emit()
 
-## The Esc menu.
+## The Esc menu: Resume on top, the places you go most next, the rare ones as quiet links, and
+## leaving at the bottom.
 func open_pause(where: String) -> void:
 	ctx = where
 	stack.clear()
 	page = ""
-	var v := _page("pause", "Paused" if where == "match" else "Menu", 420)
-	var bw := 360.0
-	v.add_child(UI.primary("Resume", close, bw))
+	var v := _page("pause", "Paused" if where == "match" else "Menu", 440)
+	UI.subtitle(v, {"match": "The expedition waits while you're here", "home": "Your island", "town": "In town", "interior": "At home"}.get(where, ""))
+	var bw := 388.0
+	var item := func(txt: String, icon: String, cb: Callable, key := "", tier := "") -> Button:
+		var b := UI.button(txt, cb, bw, icon)
+		if tier != "": b.theme_type_variation = tier
+		b.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		if key != "": UI.with_key(b, key)
+		v.add_child(b)
+		return b
+	var res: Button = item.call("Resume", "next", close, "Esc", "Primary")
 	if where != "match":
-		v.add_child(UI.button("Inventory  (%s)" % Settings.key_cap("inventory"), open_inventory, bw))
-	v.add_child(UI.button("Settings", open_settings, bw))
-	v.add_child(UI.button("Controls", func(): tab = "Controls"; open_settings(), bw))
+		item.call("Inventory", "bag", open_inventory, Settings.key_cap("inventory"))
+	item.call("Settings", "gear", func():
+		if tab == "Controls": tab = "Audio"
+		open_settings())
+	item.call("Controls", "dash", func(): tab = "Controls"; open_settings())
+	if where != "match":
+		item.call("Save files", "satchel", open_saves)
+	# the rarely used ones: quiet text links in a row
+	var minor := HFlowContainer.new()
+	minor.add_theme_constant_override("h_separation", 4); minor.add_theme_constant_override("v_separation", 2)
 	if where == "home":
-		v.add_child(UI.button("Change how you look", func():
+		minor.add_child(UI.ghost("Change your look", func():
 			close()
-			Game.goto("hatch", {"create": true}), bw))
+			Game.goto("hatch", {"create": true})))
 	var scr = Game.main.screen_node() if Game.main else null
 	if scr and scr.has_method("unstick"):
-		v.add_child(UI.button("I'm stuck", func():
+		minor.add_child(UI.ghost("I'm stuck", func():
 			close()
 			scr.unstick()
-			Sfx.play("whoosh"), bw))
+			Sfx.play("whoosh")))
 	if admin_allowed():
-		v.add_child(UI.button("Admin tools  (F1)", open_admin, bw))
+		minor.add_child(UI.ghost("Admin tools  (F1)", open_admin))
+	if minor.get_child_count() > 0:
+		v.add_child(minor)
+	v.add_child(UI.spacer(2))
 	if where == "match":
 		var m = Game.main.screen_node()
 		var tut: bool = m.opts.get("tutorial", false) or m.opts.get("training", false)
-		v.add_child(UI.button("Leave the training area" if m.opts.get("training", false) else ("Skip the tutorial" if tut else "Leave match (you lose what you carry)"), func():
+		var leave := func():
 			close()
 			m.paused = false
 			if m.player and m.player.out: Life.make_gone(m, m.player)
 			m.result = {"extracted": tut, "why": "left"}
-			m._finish(), bw))
+			m._finish()
+		if tut:
+			item.call("Leave the training area" if m.opts.get("training", false) else "Skip the tutorial", "back", leave)
+		else:
+			var lb: Button = item.call("Leave match", "back", func():
+				UI.confirm(root, "Leave the match?", "You lose everything you carry, and any kin you brought is left behind.", "Leave", leave), "", "Danger")
+			lb.tooltip_text = "You lose what you carry"
 	else:
-		v.add_child(UI.button("Save files", open_saves, bw))
-		v.add_child(UI.button("Save and go to the main menu", func():
+		item.call("Save and go to the main menu", "home", func():
 			Save.save_game()
 			close()
-			Game.goto("title"), bw))
+			Game.goto("title"))
 	if not OS.has_feature("web"):
-		v.add_child(UI.button("Save and quit the game", func():
+		var q: Button = item.call("Save and quit the game", "close", func():
 			Save.save_game()
-			get_tree().quit(), bw))
+			get_tree().quit(), "", "Ghost")
+		q.add_theme_color_override("font_color", UI.MUTED)
+	res.grab_focus.call_deferred()
 
 # ------------------------------------------------------------------ settings
 func open_settings() -> void:
 	_show_settings()
 
 func _show_settings() -> void:
-	var v := _page("settings", "Settings", 680, true)
-	var tabs := UI.hbox(6)
-	for t in ["Audio", "Video", "Controls", "Gameplay", "Accessibility"]:
-		var tn: String = t
-		var b := UI.choice(t, t == tab, func(): tab = tn; UI._page_of.erase("Settings"); _show_settings())
-		tabs.add_child(b)
-	tabs.set_meta("pg_keep", true)
-	v.add_child(tabs)
+	var v := _page("settings", "Settings", 720, true)
+	UI.shell_tabs(v, ["Audio", "Video", "Controls", "Gameplay", "Accessibility"], tab, func(t):
+		tab = t; UI._page_of.erase("Settings"); _show_settings())
 	match tab:
 		"Audio":
-			_slider(v, "Master volume", "master", 0.0, 1.0)
+			_group(v, "Volume")
+			_slider(v, "Master", "master", 0.0, 1.0)
 			_slider(v, "Music", "music", 0.0, 1.0)
 			_slider(v, "Sound effects", "sfx", 0.0, 1.0)
 			_slider(v, "Ambience (wind, rain)", "ambience", 0.0, 1.0)
+			_group(v, "Window")
 			_toggle(v, "Mute when the window isn't focused", "mute_unfocused")
 		"Video":
+			_group(v, "Display")
 			_toggle(v, "Fullscreen", "fullscreen")
 			if not OS.has_feature("web"):
 				_toggle(v, "V-sync", "vsync")
 			_choice(v, "Frame rate limit", "max_fps", [[0, "None"], [30, "30"], [60, "60"], [120, "120"], [144, "144"]])
+			_group(v, "Quality")
 			_choice(v, "Anti-aliasing", "msaa", [[0, "Off"], [2, "2x"], [4, "4x"]])
 			_toggle(v, "Shadows", "shadows")
 			_toggle(v, "Show frame rate", "show_fps")
 		"Controls":
-			v.add_child(UI.label("Click Change, then press a key or mouse button. Esc cancels.", 13, UI.MUTED))
-			for a in Settings.ACTIONS:
-				var row := UI.hbox(10)
-				var l := UI.label(a[1], 15); l.custom_minimum_size.x = 230
-				row.add_child(l)
-				var cur := UI.label(Settings.binding_text(a[0]), 15, UI.GOLD)
-				cur.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-				row.add_child(cur)
-				var an: String = a[0]
-				row.add_child(UI.button("Change", func():
-					listening = an
-					cur.text = "Press a key..."
-					listen_lbl = cur, 110))
-				v.add_child(row)
-			v.add_child(UI.label("Esc always opens this menu. Reloading is automatic.", 13, UI.MUTED))
+			UI.subtitle(v, "Click a key, then press the new one. Esc cancels.")
+			var groups := [["Moving", ["up", "down", "left", "right", "jump", "glide", "dash", "crouch"]],
+				["Fighting", ["fire", "secondary", "gear1", "signature", "throw", "ultimate", "tonic", "base"]],
+				["Squad and map", ["map", "scores", "emote", "pass_lead", "separate"]],
+				["At home", ["interact", "play", "talk", "details", "inventory"]]]
+			var named := {}
+			for a in Settings.ACTIONS: named[String(a[0])] = String(a[1])
+			var shown := {}
+			for g in groups:
+				_group(v, String(g[0]))
+				for an in g[1]:
+					if not named.has(an): continue
+					shown[an] = true
+					_bind_row(v, an, named[an])
+			var rest: Array = Settings.ACTIONS.filter(func(a): return not shown.has(String(a[0])))
+			if not rest.is_empty():
+				_group(v, "Other")
+				for a in rest: _bind_row(v, String(a[0]), String(a[1]))
+			v.add_child(UI.para("Esc always opens the menu. Reloading is automatic."))
 		"Gameplay":
-			var name_row := UI.hbox(10)
-			var nl := UI.label("Your name", 15); nl.custom_minimum_size.x = 230
-			name_row.add_child(nl)
+			_group(v, "You")
+			var name_row := _row(v, "Your name")
 			var ne := LineEdit.new(); ne.text = Save.d.get("name", "Hunter"); ne.max_length = 16
-			ne.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			ne.custom_minimum_size.x = 280
 			ne.text_changed.connect(func(t):
 				Save.d["name"] = t.strip_edges() if t.strip_edges() != "" else "Hunter"
 				Save.save_game())
 			name_row.add_child(ne)
-			v.add_child(name_row)
+			_group(v, "Camera")
 			_choice(v, "Expedition camera", "cam_style", CamRig.STYLES.keys().map(func(k): return [k, CamRig.STYLES[k]["name"]]))
 			_choice(v, "Camera follow", "cam_follow", [["supervive", "Supervive (leans to the cursor)"], ["standard", "Standard Dynamic"], ["dynamic", "Fully Dynamic"], ["locked", "Locked"]])
-			_slider(v, "Camera lean toward the cursor", "cam_lead", 0.0, 1.5)
-			_toggle(v, "Hold Shift for the long dash (tap for the short one)", "dash_hold")
+			_slider(v, "Lean toward the cursor", "cam_lead", 0.0, 1.5)
+			_group(v, "Combat")
+			_toggle(v, "Hold Shift for the long dash", "dash_hold", "Tap Shift for the short one")
+			_toggle(v, "Quick cast", "cast_on_press", "Abilities fire the moment you press them. Off: hold to aim, release to cast")
+			_toggle(v, "Tap to crouch", "crouch_toggle", "Instead of holding the crouch key")
 			_toggle(v, "Damage numbers", "damage_numbers")
 			_toggle(v, "Tips during matches", "tips")
-			_toggle(v, "Abilities fire the moment you press them (off: hold to aim, release to cast)", "cast_on_press")
-			_toggle(v, "Tap to crouch (instead of holding the crouch key)", "crouch_toggle")
-			_toggle(v, "Kin use their abilities on their own (they can spend cooldowns you wanted)", "kin_auto")
+			_group(v, "Kin")
+			_toggle(v, "Kin use abilities on their own", "kin_auto", "They can spend cooldowns you wanted")
 			if admin_allowed():
-				_choice(v, "Bot difficulty (admin)", "bot_diff", [["auto", "Auto (by tier)"]] + Data.BOT_ORDER.map(func(k): return [k, Data.BOT_DIFF[k]["name"]]))
-				_toggle(v, "Mod mode: everything unlocked, free building and bridges, god mode, spawn kin (F1)", "mod_mode")
+				_group(v, "Admin")
+				_choice(v, "Bot difficulty", "bot_diff", [["auto", "Auto (by tier)"]] + Data.BOT_ORDER.map(func(k): return [k, Data.BOT_DIFF[k]["name"]]))
+				_toggle(v, "Mod mode", "mod_mode", "Everything unlocked, free building and bridges, god mode, spawn kin (F1)")
 		"Accessibility":
+			_group(v, "Readability")
 			_slider(v, "Interface size", "ui_scale", 0.75, 1.5, 0.05)
+			_group(v, "Comfort")
 			_slider(v, "Screen shake", "shake", 0.0, 1.5)
 			_toggle(v, "Fewer flashes", "reduce_flashes")
-	var foot := UI.hbox(8)
-	foot.add_child(UI.button("Reset everything to defaults", func():
-		Settings.reset_all()
-		_show_settings()))
-	v.add_child(foot)
+	UI.footer_left(v).add_child(UI.ghost("Reset to defaults", func():
+		UI.confirm(root, "Reset every setting?", "Volume, video, gameplay and every key binding go back to how the game ships.", "Reset", func():
+			Settings.reset_all()
+			_show_settings())))
+	var done := UI.with_key(UI.primary("Done", back, 120), "Esc")
+	UI.footer(v).add_child(done)
+	(v.get_meta("shell") as Control).set_meta("primary", done)
 
-func _row(v: VBoxContainer, label_txt: String) -> HBoxContainer:
-	var r := UI.hbox(10)
-	var l := UI.label(label_txt, 15); l.custom_minimum_size.x = 260
-	r.add_child(l)
+## A small heading over a group of settings rows.
+func _group(v: VBoxContainer, txt: String) -> void:
+	if v.get_child_count() > 0:
+		v.add_child(UI.spacer(4))
+	v.add_child(UI.section(txt, UI.FAINT.lightened(0.2)))
+
+## One settings row: the name on the left (with an optional hint under it), the control on the right.
+func _row(v: VBoxContainer, label_txt: String, hint := "") -> HBoxContainer:
+	var r := UI.hbox(16)
+	r.custom_minimum_size.y = 38
+	var lc := UI.vbox(0); lc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lc.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	lc.add_child(UI.label(label_txt, UI.T_BODY))
+	if hint != "":
+		var h := UI.para(hint, 12, UI.MUTED)
+		lc.add_child(h)
+	r.add_child(lc)
 	v.add_child(r)
 	return r
+
+func _bind_row(v: VBoxContainer, an: String, what: String) -> void:
+	var r := _row(v, what)
+	r.custom_minimum_size.y = 34
+	var keys := UI.hbox(4)
+	keys.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var txt := Settings.binding_text(an)
+	var b := UI.button(txt if txt != "" else "Not set", Callable(), 180)
+	b.tooltip_text = "Click, then press a key or mouse button"
+	b.pressed.connect(func():
+		listening = an
+		b.text = "Press a key..."
+		b.theme_type_variation = "Chosen"
+		listen_lbl = null)
+	r.add_child(b)
 
 func _slider(v: VBoxContainer, label_txt: String, key: String, lo: float, hi: float, step := 0.05) -> void:
 	var r := _row(v, label_txt)
 	var sl := HSlider.new(); sl.min_value = lo; sl.max_value = hi; sl.step = step
-	sl.value = float(Settings.get_v(key)); sl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	sl.custom_minimum_size.x = 200
-	var pct := UI.label("%d%%" % int(round(sl.value * 100.0)), 14, UI.MUTED); pct.custom_minimum_size.x = 52
-	# the interface size only changes when you let go, so the slider doesn't run away from the mouse
+	sl.value = float(Settings.get_v(key))
+	sl.custom_minimum_size.x = 228
+	sl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var pct := UI.label("%d%%" % int(round(sl.value * 100.0)), UI.T_SMALL, UI.MUTED, UI.semi); pct.custom_minimum_size.x = 44
+	pct.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	if key == "ui_scale":
 		# applies when you let go (or click the track), so the slider doesn't run away from the mouse
 		sl.drag_ended.connect(func(_c): Settings.set_v(key, sl.value))
@@ -286,16 +351,19 @@ func _slider(v: VBoxContainer, label_txt: String, key: String, lo: float, hi: fl
 	r.add_child(sl)
 	r.add_child(pct)
 
-func _toggle(v: VBoxContainer, label_txt: String, key: String) -> void:
-	var r := _row(v, label_txt)
+func _toggle(v: VBoxContainer, label_txt: String, key: String, hint := "") -> void:
+	var r := _row(v, label_txt, hint)
 	var cb := CheckButton.new()
 	cb.button_pressed = bool(Settings.get_v(key))
+	cb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	cb.toggled.connect(func(on): Settings.set_v(key, on))
 	r.add_child(cb)
 
 func _choice(v: VBoxContainer, label_txt: String, key: String, opts: Array) -> void:
 	var r := _row(v, label_txt)
 	var ob := OptionButton.new()
+	ob.custom_minimum_size.x = 280
+	ob.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	var cur = Settings.get_v(key)
 	for i in opts.size():
 		ob.add_item(String(opts[i][1]), i)
@@ -315,29 +383,33 @@ var inv_tab := "Items"
 func open_inventory() -> void:
 	if Progress.day1_mark("inventory") != "":
 		Sfx.play("unlock", null, -8.0)
-	var v := _page("inventory", "Inventory", 720)
-	var tabs := UI.hbox(6)
-	for t in ["Items", "Seeds", "Crops", "Furniture", "Kin", "Kindex"]:
-		var tn: String = t
-		tabs.add_child(UI.choice(t, t == inv_tab, func(): inv_tab = tn; UI._page_of.erase("Inventory"); open_inventory()))
-	tabs.set_meta("pg_keep", true)
-	v.add_child(tabs)
+	var v := _page("inventory", "Inventory", 760)
+	UI.head_extra(v).add_child(UI.chip("gem", str(int(Save.d["gems"])), UI.GOLD, "Gems"))
+	var icon_of := {"Items": "tonic", "Seeds": "seed", "Crops": "seed", "Furniture": "home", "Kin": "paw", "Kindex": "egg"}
+	UI.shell_tabs(v, ["Items", "Seeds", "Crops", "Furniture", "Kin", "Kindex"], inv_tab, func(t):
+		inv_tab = t; UI._page_of.erase("Inventory"); open_inventory())
 	var grid := GridContainer.new(); grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 10); grid.add_theme_constant_override("v_separation", 10)
 	v.add_child(grid)
-	var cell := func(title_txt: String, count_txt: String, desc: String, col: Color, action_txt := "", action := Callable()) -> void:
+	var cell := func(title_txt: String, count_txt: String, desc: String, col: Color, action_txt := "", action := Callable(), icon := "") -> void:
 		var c := UI.card(UI.CARD, 12, 12)
-		c.custom_minimum_size = Vector2(210, 0)
-		var cv := UI.vbox(4); c.add_child(cv)
-		var top := UI.hbox(8)
-		var sw := ColorRect.new(); sw.color = col; sw.custom_minimum_size = Vector2(14, 14); sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		top.add_child(sw)
-		var tl := UI.label(title_txt, 15); tl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		top.add_child(tl)
-		top.add_child(UI.label(count_txt, 15, UI.GOLD))
+		c.custom_minimum_size = Vector2(222, 0)
+		var cv := UI.vbox(6); c.add_child(cv)
+		var top := UI.hbox(10)
+		var dot := PanelContainer.new()
+		var dsb := UI._box(Color(col, 0.16), 10); UI._pad(dsb, 6, 6)
+		dot.add_theme_stylebox_override("panel", dsb)
+		dot.add_child(UI.IconDot.new(icon if icon != "" else String(icon_of.get(inv_tab, "gem")), col, 20.0))
+		dot.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
+		top.add_child(dot)
+		var tc := UI.vbox(0); tc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var tl := UI.label(title_txt, UI.T_BODY, UI.INK, UI.semi); tl.clip_text = true
+		tc.add_child(tl)
+		if count_txt != "": tc.add_child(UI.label(count_txt, UI.T_SMALL, UI.GOLD))
+		top.add_child(tc)
 		cv.add_child(top)
 		if desc != "":
-			var dl := UI.label(desc, 12, UI.MUTED); dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			var dl := UI.para(desc, 12, UI.MUTED)
 			cv.add_child(dl)
 		if action.is_valid():
 			cv.add_child(UI.button(action_txt, action))
@@ -346,8 +418,8 @@ func open_inventory() -> void:
 	match inv_tab:
 		"Items":
 			empty = false
-			cell.call("Gems", str(int(Save.d["gems"])), "Spend them at the stall, on buildings and furniture.", Color("7ef0d0"))
-			cell.call("Tonics", "×%d" % int(Save.d["items"].get("tonic", 0)), "Heal 45 in a match (key %s)." % Settings.key_cap("tonic"), Color("8ff0a0"))
+			cell.call("Gems", str(int(Save.d["gems"])), "Spend them at the stall, on buildings and furniture.", UI.GOLD, "", Callable(), "gem")
+			cell.call("Tonics", "×%d" % int(Save.d["items"].get("tonic", 0)), "Heal 45 in a match (key %s)." % Settings.key_cap("tonic"), Color("8ff0a0"), "", Callable(), "tonic")
 			for f in Care.FOODS:
 				var fn := int(Save.d["items"].get(f, 0))
 				if fn > 0: cell.call(Care.FOODS[f]["name"], "×%d" % fn, Care.FOODS[f]["desc"] + " Feed it from a kin's card.", Care.FOODS[f]["col"])
@@ -403,31 +475,41 @@ func open_inventory() -> void:
 				if e.get("shimmer", false): desc += " Shimmer found!"
 				cell.call(String(sp["name"]), "★" if e.get("shimmer", false) else ("✓" if e.get("caught", false) else ""), desc, sp["color"])
 	if empty:
-		v.add_child(UI.label({"Seeds": "No seeds. Find them on expeditions or buy them at the stall.", "Crops": "No crops yet. Harvest your plots.", "Furniture": "Nothing stored. Furniture you buy or put away lands here.", "Kin": "No kin yet."}.get(inv_tab, ""), 14, UI.MUTED))
+		var es: Array = {"Seeds": ["No seeds", "Find them on expeditions or buy them at the stall."], "Crops": ["No crops yet", "Harvest your plots."],
+			"Furniture": ["Nothing stored", "Furniture you buy or put away lands here."], "Kin": ["No kin yet", "Hatch an egg to get your first."]}.get(inv_tab, ["Nothing here", ""])
+		v.add_child(UI.empty_state(String(icon_of.get(inv_tab, "gem")), es[0], es[1]))
 
 # ------------------------------------------------------------------ save files
 func open_saves() -> void:
-	var v := _page("saves", "Save files", 620)
-	v.add_child(UI.label("Each save has its own island, kin and gems. Settings are shared by all of them.", 14, UI.MUTED))
+	var v := _page("saves", "Save files", 640)
+	UI.subtitle(v, "Each save has its own island, kin and gems. Settings are shared.")
+	var first: Button = null
 	for n in range(1, Save.SLOTS + 1):
 		var info := Save.slot_info(n)
-		var c := UI.card(UI.CARD, 12, 12)
-		if n == Save.slot: UI.set_card_border(c, UI.ACCENT)
-		var h := UI.hbox(10); c.add_child(h)
+		var playing: bool = n == Save.slot
+		var c := UI.card(Color(UI.ACCENT, 0.1) if playing else UI.CARD, 14, 14)
+		if playing: UI.set_card_border(c, Color(UI.ACCENT, 0.6), 1)
+		var h := UI.hbox(14); c.add_child(h)
+		var num := UI.title(str(n), 30, UI.ACCENT_HI if playing else UI.MUTED)
+		num.custom_minimum_size.x = 26
+		num.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		h.add_child(num)
 		var col := UI.vbox(2); col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		h.add_child(col)
 		var sn: int = n
 		if info["exists"]:
-			col.add_child(UI.label("Save %d · %s%s" % [n, info["name"], "  (playing)" if n == Save.slot else ""], 17, UI.INK))
-			col.add_child(UI.label("%d kin · %d gems · %d expeditions · last played %s" % [info["kin"], info["gems"], info["matches"], info["when"]], 13, UI.MUTED))
-			if n == Save.slot:
-				h.add_child(UI.label("Playing", 14, UI.GOLD))
-			else:
-				h.add_child(UI.button("Play", func(): _play_slot(sn), 90))
-			if delete_armed == n:
-				var playing: bool = n == Save.slot
-				h.add_child(UI.button("Yes, delete it" if playing else "Really delete?", func():
-					delete_armed = -1
+			var tr := UI.hbox(8)
+			tr.add_child(UI.label(String(info["name"]), UI.T_HEAD, UI.INK, UI.big))
+			if playing: tr.add_child(UI.tag("Playing", UI.ACCENT))
+			col.add_child(tr)
+			col.add_child(UI.label("%d kin  ·  %d gems  ·  %d expeditions  ·  %s" % [info["kin"], info["gems"], info["matches"], info["when"]], UI.T_SMALL, UI.MUTED))
+			if not playing:
+				var pb := UI.primary("Play", func(): _play_slot(sn), 96)
+				pb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+				h.add_child(pb)
+				if first == null: first = pb
+			var del := UI.icon_button("close", func():
+				UI.confirm(root, "Delete save %d?" % sn, ("This is the save you're playing: deleting it takes you back to the title. " if playing else "") + "Its island, kin and gems are gone for good.", "Delete", func():
 					Save.delete_slot(sn)
 					if playing:
 						# that was the save in play: start over from the title, on this now-empty slot
@@ -435,17 +517,17 @@ func open_saves() -> void:
 						close()
 						Game.goto("title")
 					else:
-						open_saves(), 150))
-				if playing:
-					col.add_child(UI.label("This is the save you're playing. Deleting it takes you back to the title.", 13, UI.BAD))
-			else:
-				h.add_child(UI.button("Delete", func():
-					delete_armed = sn
-					open_saves(), 90))
+						open_saves()), "Delete this save", 12.0)
+			del.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			h.add_child(del)
 		else:
-			col.add_child(UI.label("Save %d · empty" % n, 17, UI.MUTED))
-			h.add_child(UI.button("New game", func(): _play_slot(sn), 130))
+			col.add_child(UI.label("Empty slot", UI.T_HEAD, UI.MUTED, UI.big))
+			col.add_child(UI.label("Start a new story here", UI.T_SMALL, UI.FAINT))
+			var nb := UI.button("New game", func(): _play_slot(sn), 120, "plus")
+			nb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			h.add_child(nb)
 		v.add_child(c)
+	if first: first.grab_focus.call_deferred()
 
 func _play_slot(n: int) -> void:
 	Save.use_slot(n)
