@@ -150,6 +150,13 @@ func lair_of(p: Vector3, pad := 0.0) -> Dictionary:
 		if inside(L, p, pad): return L
 	return {}
 
+## The lair's boss, or null once it's gone (or was never spawned here).
+func boss_of(L: Dictionary) -> Boss:
+	var b = L.get("boss_mob")
+	if b == null or not is_instance_valid(b):
+		return null
+	return b as Boss
+
 ## The lair whose dial this hunter is working, or {}.
 func puzzle_of(h: Hunter) -> Dictionary:
 	for L in list:
@@ -161,7 +168,7 @@ func boss_for(p: Hunter) -> Boss:
 	if p == null:
 		return null
 	for L in list:
-		var b: Boss = L["boss_mob"]
+		var b: Boss = boss_of(L)
 		if b and is_instance_valid(b) and not b.dead and not b.dormant and inside(L, p.pos, 4.0):
 			return b
 	return null
@@ -424,7 +431,7 @@ func open(L: Dictionary, by: Hunter, how: String) -> void:
 			m.hud.toast("%s IS OPEN" % String(L["name"]).to_upper(), color_of(L))
 
 func wake(L: Dictionary, by: Ent) -> void:
-	var b: Boss = L["boss_mob"]
+	var b: Boss = boss_of(L)
 	if b == null or not is_instance_valid(b) or b.dead or not b.dormant:
 		return
 	b.dormant = false
@@ -489,7 +496,7 @@ func spawn_add(L: Dictionary, kind: String, at: Vector3) -> void:
 	var a := m.spawn_mob(kind, at)
 	a.camp = L["c"]
 	a.st = "chase"
-	var b: Boss = L["boss_mob"]
+	var b: Boss = boss_of(L)
 	if b and is_instance_valid(b): a.tgt = b.tgt
 	L["adds"].append(a)
 
@@ -754,7 +761,7 @@ func demo(mode: String) -> void:
 			# keep the needle sweeping and a lock half done for the shot
 			pass
 		if mode == "fight":
-			var b: Boss = L["boss_mob"]
+			var b: Boss = boss_of(L)
 			if b and is_instance_valid(b) and not b.dead:
 				P.hp = P.max_hp
 				for o in m.hunters:
@@ -793,6 +800,6 @@ func demo(mode: String) -> void:
 					o.ctrl = "idle"
 			m.cam.snap(P.pos)
 			wake(L, P)
-			var b: Boss = L["boss_mob"]
+			var b: Boss = boss_of(L)
 			if mode == "egg" and b:
 				b.hurt(b.max_hp * 2.0, P, {"src": "test"})

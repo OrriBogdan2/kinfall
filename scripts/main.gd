@@ -514,6 +514,10 @@ func _mantle_check() -> void:
 		o.ctrl = "idle"
 		if o != h: o.teleport(m.world.random_ground())
 	h.ctrl = "local"      # players mantle on a jump/fall, not by walking into walls
+	# the kin sits this one out: a kin fainting off a cliff mid-trial would wipe the downed hunter's squad
+	for kk in [h.kin, h.kin2]:
+		if kk: m.kins.erase(kk); kk.queue_free()
+	h.kin = null; h.kin2 = null
 	var w: World = m.world
 	var tried := 0; var ok := 0; var clip := 0; var worst := 0.0; var durs: Array = []
 	for downed_case in [false, true]:
@@ -525,7 +529,11 @@ func _mantle_check() -> void:
 				for d in [Vector2(1, 0), Vector2(-1, 0), Vector2(0, 1), Vector2(0, -1)]:
 					# on an authored map only rims with a lip can be grabbed; sheer ones are checked below
 					var rim_ok := w.lip.is_empty() or w.lip.has(w.idx(int(floor(g.x + d.x * 0.9)), int(floor(g.z + d.y * 0.9)))) or w.lip.has(w.idx(int(floor(g.x)), int(floor(g.z))))
-					if w.is_void(g.x + d.x * 1.6, g.z + d.y * 1.6) and not w.is_void(g.x, g.z) and k % 12 == trial and rim_ok:
+					# (and open air where the hunter hangs: not under a bridge running past the rim)
+					var open_below := true
+					for dd in [1.1, 1.6, 2.2, 2.8, 3.4]:
+						if not w.is_void(g.x + d.x * dd + d.y * 0.4, g.z + d.y * dd + d.x * 0.4) or not w.is_void(g.x + d.x * dd - d.y * 0.4, g.z + d.y * dd - d.x * 0.4): open_below = false
+					if w.is_void(g.x + d.x * 1.6, g.z + d.y * 1.6) and not w.is_void(g.x, g.z) and k % 12 == trial and rim_ok and open_below:
 						at = g; dir = d; break
 				if at != Vector3.INF: break
 			if at == Vector3.INF: continue
