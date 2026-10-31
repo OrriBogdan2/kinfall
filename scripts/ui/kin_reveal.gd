@@ -185,7 +185,7 @@ func _info_card() -> PanelContainer:
 		v.add_child(UI.label("Part %s" % " · part ".join(animals.map(func(a): return String(a).to_lower())), 15, UI.MUTED))
 	if rare:
 		var boss := String(Data.MOBS.get(String(sp.get("boss", rec.get("from_boss", ""))), {}).get("name", "a lair boss"))
-		v.add_child(UI.label("RARE KIN  ·  from the egg %s guarded" % boss, 15, UI.GOLD))
+		v.add_child(UI.label("RARE KIN  ·  its egg was guarded by %s" % boss, 15, UI.GOLD))
 	if rec.get("shimmer", false):
 		v.add_child(UI.label("Shimmering! Rare colours.", 15, UI.GOLD))
 	var desc := String(sp.get("desc", ""))

@@ -1932,7 +1932,7 @@ func _draw_perk_offer(sz: Vector2) -> void:
 	var total := ids.size() * cw + (ids.size() - 1) * gap
 	var x := sz.x * 0.5 - total * 0.5
 	var y := sz.y - 290.0         # below your hunter, above your perk badges and bars
-	var head: String = {"shrine": "THE SHRINE OFFERS A PERK", "chest": "SOMETHING ELSE IN THE CHEST", "boss": "THE WARDEN'S POWER", "brute": "SPOILS OF THE BRUTE"}.get(String(off.get("src", "")), "PICK A PERK")
+	var head: String = {"shrine": "THE SHRINE OFFERS A PERK", "chest": "SOMETHING ELSE IN THE CHEST", "boss": "A BOSS'S POWER", "brute": "SPOILS OF THE BRUTE"}.get(String(off.get("src", "")), "PICK A PERK")
 	_ctext(Vector2(sz.x * 0.5, y - 12), String(head) + "  ·  lasts this expedition", 13, Color(GOLD, 0.95), big)
 	var pulse := 0.5 + 0.5 * sin(m.time * 4.0)
 	for i in ids.size():

@@ -836,6 +836,9 @@ func demo(mode: String) -> void:
 			var b: Boss = boss_of(L)
 			if b and is_instance_valid(b) and not b.dead:
 				P.hp = P.max_hp
+				if not inside(L, P.pos, -1.0):
+					var back: Vector3 = L["c"] + Vector3(L["out"].x, 0, L["out"].y) * 2.0
+					P.teleport(Vector3(back.x, m.world.ground_at(back.x, back.z), back.z))
 				for o in m.hunters:
 					if o != P and o.team == P.team: o.hp = o.max_hp
 		return
@@ -857,14 +860,14 @@ func demo(mode: String) -> void:
 			L["targets"][0]["hit"] = true
 			m.cam.snap(P.pos)
 		"exterior":
-			var at: Vector3 = L["dial"] + Vector3(L["out"].x, 0, L["out"].y) * 5.0 + Vector3(-L["out"].y, 0, L["out"].x) * 2.0
+			var at: Vector3 = L["dial"] + Vector3(L["out"].x, 0, L["out"].y) * 1.2 + Vector3(-L["out"].y, 0, L["out"].x) * 1.5
 			P.teleport(Vector3(at.x, m.world.ground_at(at.x, at.z), at.z))
+			m.cam.zoom_to = 1.7; m.cam.zoom = 1.7
 			m.cam.snap(P.pos)
 		"fight", "egg":
 			open(L, P, "dial")
-			L["gate_k"] = 1.0
-			_tick_gate(L, 0.0)
-			var at: Vector3 = L["c"] + Vector3(L["out"].x, 0, L["out"].y) * 3.5
+			L["gate_k"] = 0.999
+			var at: Vector3 = L["c"] + Vector3(L["out"].x, 0, L["out"].y) * 2.0
 			P.teleport(Vector3(at.x, m.world.ground_at(at.x, at.z), at.z))
 			for o in m.hunters:
 				if o != P and o.team == P.team:
