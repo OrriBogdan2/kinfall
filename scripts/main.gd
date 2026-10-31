@@ -262,6 +262,11 @@ func _ready() -> void:
 		load("res://tools/speaktest.gd").new().run()
 		get_tree().quit()
 		return
+	if "--kinbox-check" in args:
+		var kbc = load("res://tools/kinbox_check.gd").new()      # the farm cap, the Kin Burrow and rare mutations
+		set_meta("kinbox_check", kbc)      # kept alive while it waits on frames
+		kbc.run(self)
+		return
 	if "--economy-check" in args:
 		_economy_check()
 		return
