@@ -324,7 +324,7 @@ func _haul_jobs() -> void:
 	if not chest.is_empty():
 		for p in Work.ensure()["piles"]:
 			var pp := Vector3(float(p["x"]), 0, float(p["z"]))
-			_job("carry:%d" % int(p["id"]), "haul", "carry", pp + Vector3(0.45, 0, 0.3), pp, {"pile": int(p["id"]), "to": to, "what": String(p["mat"])})
+			_job("carry:%d" % int(p["id"]), "haul", "carry", pp + Vector3(0.3, 0, 0.2), pp, {"pile": int(p["id"]), "to": to, "what": String(p["mat"])})
 	if h.hecon == null:
 		return
 	var pick: Vector3 = to if to != Vector3.INF else h._seat({"rec": {"uid": "pantry"}}, h.spots["pot"], 1.3)
@@ -680,12 +680,13 @@ func _finish(k: Dictionary, J: Dictionary) -> bool:
 				h.hb._reach_cache.clear()
 				h.hb.refresh_grid()
 				var m := "wood" if J["kind"] == "chop" else "stone"
-				_out(at, m, 3 + (1 if lv >= 3 else 0), nm, String(J["el"]))
+				_out(k["pos"], m, 3 + (1 if lv >= 3 else 0), nm, String(J["el"]))
 				h.fx.dust(at, 14)
 				Sfx.play("thump", at, -6.0, 0.1, 0.8)
 		"log", "ore":
 			Work.station(int(J["u"]))["ready"] = Time.get_unix_time_from_system() + REGROW
-			_out(at, "wood" if J["kind"] == "log" else "stone", 2 + (1 if lv >= 3 else 0), nm, String(J["el"]))
+			# the pile goes down at the worker's feet: the station's centre is inside its own footprint
+			_out(k["pos"], "wood" if J["kind"] == "log" else "stone", 2 + (1 if lv >= 3 else 0), nm, String(J["el"]))
 			Sfx.play("thump", at, -10.0, 0.1, 1.2)
 		"bake":
 			if Work.mat("wood") < 1: return false
@@ -784,7 +785,7 @@ func _deliver(k: Dictionary, J: Dictionary) -> void:
 
 ## Wood or stone made: onto a pile for a hauler, or straight into your stores.
 func _out(at: Vector3, m: String, n: int, who: String, el: String) -> void:
-	if _make_pile(at + Vector3(randf_range(-0.3, 0.3), 0, randf_range(-0.3, 0.3)), m, n):
+	if _make_pile(at + Vector3(randf_range(-0.15, 0.15), 0, randf_range(-0.15, 0.15)), m, n):
 		produced(at, "%s left %d %s for a hauler" % [who, n, m], el, m)
 		return
 	Work.add_mat(m, n)
