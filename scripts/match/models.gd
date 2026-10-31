@@ -576,6 +576,14 @@ static func class_mat(cls: String) -> ShaderMaterial:
 	m.set_shader_parameter("gloss", 0.5)
 	return m
 
+## A named pivot on the torso that parts hang from (skirt, cape, scarf), made once and shared.
+static func _pivot(torso: Node3D, nm: String, at: Vector3) -> Node3D:
+	var n := torso.get_node_or_null(nm) as Node3D
+	if n == null:
+		n = Node3D.new(); n.name = nm; n.position = at
+		torso.add_child(n)
+	return n
+
 static func _class_marks(torso: Node3D, cls: String, bw: float, m_acc: Material, m_trim: Material) -> void:
 	var m_cls := class_mat(cls)
 	var at := Vector3(0, 0.655, 0.27 * bw)
@@ -584,9 +592,10 @@ static func _class_marks(torso: Node3D, cls: String, bw: float, m_acc: Material,
 		"light":
 			for sx in [-1.0, 1.0]:
 				part(torso, box(0.035, 0.15, 0.025), m_cls, at + Vector3(0.045 * sx, 0.0, 0.0), Vector3.ONE, tilt + Vector3(0, 0, 0.6 * sx))
-			# a long scarf trailing from the collar
+			# a long scarf trailing from the collar (on its own pivot, so it streams behind)
+			var scarf := _pivot(torso, "Scarf", Vector3(0, 0.6, 0.18 * bw))
 			for sx in [-1.0, 1.0]:
-				_blade(torso, m_acc, Vector3(0.06 * sx, 0.6, 0.18 * bw), Vector3(0.12 * sx, -0.45, 1.0), 0.48 - (sx + 1.0) * 0.05, 0.1, PI * 0.5, 0.18)
+				_blade(scarf, m_acc, Vector3(0.06 * sx, 0.0, 0.0), Vector3(0.12 * sx, -0.45, 1.0), 0.48 - (sx + 1.0) * 0.05, 0.1, PI * 0.5, 0.18)
 		"medium":
 			part(torso, box(0.12, 0.12, 0.025), m_cls, at, Vector3.ONE, tilt + Vector3(0, 0, PI * 0.25))
 		"heavy":
@@ -679,19 +688,22 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 	part(torso, cyl(0.21 * bw, (0.22 if fem else 0.2) * bw, 0.14, 16), m_pants, Vector3(0, 0.02, 0))
 	# the class shapes the clothes: light hunters wear a fitted jacket and a short cape, medium ones
 	# the long field coat, heavy ones plate armour over a padded skirt
+	# (the skirt, cape and scarf hang from their own pivots so HunterAnim can swing them)
+	var skirt_n := _pivot(torso, "Skirt", Vector3(0, 0.07, 0))
 	match cls:
 		"light":
-			part(torso, skirt(0.215 * bw, 0.24 * bw, 0.16, 8, 0.045), m_body, Vector3(0, 0.0, 0.01))
-			part(torso, box(0.42 * bw, 0.5, 0.03), m_acc, Vector3(0, 0.3, 0.27 * bw), Vector3.ONE, Vector3(0.18, 0, 0))   # cape
+			part(skirt_n, skirt(0.215 * bw, 0.24 * bw, 0.16, 8, 0.045), m_body, Vector3(0, -0.07, 0.01))
+			var cape_n := _pivot(torso, "Cape", Vector3(0, 0.54, 0.25 * bw))
+			part(cape_n, box(0.42 * bw, 0.5, 0.03), m_acc, Vector3(0, -0.24, 0.02 * bw), Vector3.ONE, Vector3(0.18, 0, 0))   # cape
 			part(torso, cyl(0.19, 0.24, 0.12, 14), m_acc, Vector3(0, 0.6, 0.02))   # cowl
 		"heavy":
-			part(torso, skirt(0.245 * bw, 0.33 * bw, 0.26, 7, 0.06), m_pants, Vector3(0, -0.05, 0.01))
+			part(skirt_n, skirt(0.245 * bw, 0.33 * bw, 0.26, 7, 0.06), m_pants, Vector3(0, -0.12, 0.01))
 			for k in 6:
 				var a := TAU * k / 6.0 + PI / 6.0
-				part(torso, box(0.17 * bw, 0.22, 0.04), m_trim, Vector3(sin(a) * 0.29 * bw, -0.07, cos(a) * 0.29 * bw), Vector3.ONE, Vector3(-0.22 * cos(a), a, 0.22 * sin(a)))   # tassets
+				part(skirt_n, box(0.17 * bw, 0.22, 0.04), m_trim, Vector3(sin(a) * 0.29 * bw, -0.14, cos(a) * 0.29 * bw), Vector3.ONE, Vector3(-0.22 * cos(a), a, 0.22 * sin(a)))   # tassets
 			part(torso, box(0.36 * bw, 0.3, 0.08), m_trim, Vector3(0, 0.36, -0.24 * bw), Vector3.ONE, Vector3(0.08, 0, 0))   # breastplate
 		_:
-			part(torso, skirt((0.225 if fem else 0.235) * bw, (0.35 if fem else 0.3) * bw, 0.26, 9, 0.075), m_body, Vector3(0, -0.05, 0.01))
+			part(skirt_n, skirt((0.225 if fem else 0.235) * bw, (0.35 if fem else 0.3) * bw, 0.26, 9, 0.075), m_body, Vector3(0, -0.12, 0.01))
 	# chest: a sculpted torso (waist, ribcage, broad shoulders) under the open jacket
 	part(torso, torso_mesh(), m_body, Vector3(0, 0.33, 0), Vector3(chest_w, 1.0, bw * 0.9))
 	if fem:
@@ -750,15 +762,17 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 			part(torso, sphere(0.265), m_acc, Vector3(0, 0.92, 0.05), Vector3(1.0, 0.95, 1.05))  # hood
 			part(torso, cyl(0.0, 0.08, 0.2, 8), m_acc, Vector3(0, 1.14, 0.18), Vector3.ONE, Vector3(0.9, 0, 0))
 			part(torso, cyl(0.2, 0.26, 0.1), m_acc, Vector3(0, 0.62, 0))  # scarf
-			part(torso, box(0.12, 0.4, 0.04), m_acc, Vector3(0.12, 0.46, 0.26), Vector3.ONE, Vector3(0.3, 0, 0.2))
-			part(torso, box(0.1, 0.42, 0.03), m_acc, Vector3(-0.12, 0.4, 0.27), Vector3.ONE, Vector3(0.35, 0, -0.25))
+			var tails := _pivot(torso, "Scarf", Vector3(0, 0.6, 0.18 * bw))
+			part(tails, box(0.12, 0.4, 0.04), m_acc, Vector3(0.12, 0.46, 0.26) - tails.position, Vector3.ONE, Vector3(0.3, 0, 0.2))
+			part(tails, box(0.1, 0.42, 0.03), m_acc, Vector3(-0.12, 0.4, 0.27) - tails.position, Vector3.ONE, Vector3(0.35, 0, -0.25))
 		"nyx":
 			part(torso, sphere(0.265), m_dark, Vector3(0, 0.92, 0.04), Vector3(1.0, 0.95, 1.05))
 			part(torso, box(0.36, 0.07, 0.06), toon(hc, false, 1.0), Vector3(0, 0.88, -0.21))   # glowing visor
 			for sx in [-1.0, 1.0]:
 				part(torso, cyl(0.0, 0.05, 0.24), m_hero, Vector3(0.14 * sx, 1.16, 0.02), Vector3.ONE, Vector3(-0.2, 0, -0.5 * sx))
 				part(torso, box(0.05, 0.28, 0.03), toon(Color("e8e0ff"), true, 0.3), Vector3(0.16 * sx, 0.12, 0.27), Vector3.ONE, Vector3(0.5, 0, 0.6 * sx))   # back daggers
-			part(torso, box(0.5, 0.56, 0.04), m_dark, Vector3(0, 0.26, 0.3), Vector3.ONE, Vector3(0.25, 0, 0))  # cape
+			var ncape := _pivot(torso, "Cape", Vector3(0, 0.54, 0.25 * bw))
+			part(ncape, box(0.5, 0.56, 0.04), m_dark, Vector3(0, 0.26, 0.3) - ncape.position, Vector3.ONE, Vector3(0.25, 0, 0))  # cape
 		"kestrel":
 			part(torso, cyl(0.23, 0.25, 0.12), m_hero, Vector3(0, 1.02, 0))
 			part(torso, box(0.4, 0.08, 0.1), toon(Color("2b2a33")), Vector3(0, 0.9, -0.18))
@@ -812,24 +826,27 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 	# the arms and the gun move together from the shoulders ("Aim"), for recoil, reloads and poses
 	var aim := Node3D.new(); aim.name = "Aim"; aim.position = Vector3(0, 0.5, 0.0); torso.add_child(aim)
 	var gun := Node3D.new(); gun.name = "Gun"; gun.position = Vector3(0.22, -0.18, -0.18); aim.add_child(gun)
-	# arms: sleeve, a cuff in the trim colour and a glove
-	var arm_r := part(aim, limb(0.082, 0.064, 0.42, 0.12), m_body, Vector3(0.25, -0.02, -0.08), Vector3.ONE, Vector3(1.2, 0, 0.15), "ArmR")
-	var arm_l := part(aim, limb(0.082, 0.064, 0.46, 0.12), m_body, Vector3(-0.11, -0.04, -0.16), Vector3.ONE, Vector3(1.25, 0, -0.7), "ArmL")
-	for arm in [arm_r, arm_l]:
-		part(arm, cyl(0.074, 0.08, 0.06, 12), m_trim, Vector3(0, -0.15, 0))
+	# arms: they hang from the shoulders with an elbow and a hand on joints of their own, so HunterAnim
+	# can put the hands on the weapon's grips (solving the elbows) or let them swing free.
+	# ArmXPivot (shoulder) > sleeve, Elbow > forearm "ArmX" and a cuff in the trim colour, Hand > glove
+	for sx in [-1.0, 1.0]:
+		var sd := "L" if sx < 0.0 else "R"
+		var piv := Node3D.new(); piv.name = "Arm%sPivot" % sd; piv.position = Vector3(0.215 * sx * chest_w, 0.5, 0.0)
+		torso.add_child(piv)
+		part(piv, limb(0.086, 0.072, 0.25, 0.1), m_body, Vector3(0, -0.1, 0))
+		var elbow := Node3D.new(); elbow.name = "Elbow"; elbow.position = Vector3(0, -0.21, 0); piv.add_child(elbow)
+		part(elbow, limb(0.075, 0.062, 0.22, 0.12), m_body, Vector3(0, -0.09, 0), Vector3.ONE, Vector3.ZERO, "Arm" + sd)
+		part(elbow, cyl(0.074, 0.08, 0.06, 12), m_trim, Vector3(0, -0.15, 0))
 		# a gloved hand: a rounded palm and a thumb
-		part(arm, sphere(0.084, 16), m_leather, Vector3(0, -0.245, 0), Vector3(0.95, 1.3, 0.88))
-		part(arm, sphere(0.038, 12), m_leather, Vector3(0.0, -0.205, -0.065), Vector3(1.0, 1.4, 1.0))
-		part(arm, cyl(0.07, 0.082, 0.05, 16), m_leather, Vector3(0, -0.175, 0))      # a glove cuff
+		var hand := Node3D.new(); hand.name = "Hand"; hand.position = Vector3(0, -0.235, 0); elbow.add_child(hand)
+		part(hand, sphere(0.084, 16), m_leather, Vector3.ZERO, Vector3(0.95, 1.3, 0.88))
+		part(hand, sphere(0.038, 12), m_leather, Vector3(0.0, 0.04, -0.065), Vector3(1.0, 1.4, 1.0))
+		part(hand, cyl(0.07, 0.082, 0.05, 16), m_leather, Vector3(0, 0.07, 0))      # a glove cuff
+		merge_static(piv); merge_static(elbow); merge_static(hand)
 	gun_parts(gun, weapon, m_gun, m_dark, m_acc)
 	gun.scale = Vector3.ONE * float(CLASS_LOOK.get(cls, {}).get("weapon", 1.0))     # heavies carry big guns
 	# a magazine that comes out and goes back in on a reload
 	part(gun, box(0.06, 0.15, 0.09), m_acc, Vector3(0, -0.13, -0.24), Vector3.ONE, Vector3(0.15, 0, 0), "Mag")
-	# the support arm swings from the shoulder, so it can reach for a fresh magazine
-	var sh_l: Vector3 = arm_l.transform * Vector3(0, 0.21, 0)
-	var arm_piv := Node3D.new(); arm_piv.name = "ArmLPivot"; arm_piv.position = sh_l; aim.add_child(arm_piv)
-	aim.remove_child(arm_l); arm_piv.add_child(arm_l)
-	arm_l.position -= sh_l
 	var muzzle := Node3D.new(); muzzle.name = "Muzzle"; muzzle.position = Vector3(0, 0.02, -0.75); gun.add_child(muzzle)
 	var shoulder := Node3D.new(); shoulder.name = "Shoulder"; shoulder.position = Vector3(-0.3, 0.8, 0.04); torso.add_child(shoulder)
 	# a paraglider canopy that unfolds above the pack: an arched wing in stripes, with lines down to the harness
@@ -865,6 +882,8 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 	merge_static(torso)
 	merge_static(head)
 	merge_static(hair_n)
+	for nm in ["Skirt", "Cape", "Scarf"]:
+		if torso.has_node(nm): merge_static(torso.get_node(nm))
 	for nm in ["LegL", "LegR"]:
 		merge_static(legs.get_node(nm))
 		merge_static(legs.get_node(nm + "/Knee"))
@@ -880,11 +899,26 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 		aim.scale = Vector3(lerpf(1.0, bk, 0.75), 1.0, 1.0)
 		shoulder.position.x *= bk
 		legs.scale = Vector3(bk, 1.0, bk)
+		var bks := Vector3(bk, 1.0 + (bk - 1.0) * 0.35, bk)
+		for nm in ["Skirt", "Cape", "Scarf"]:
+			var pv := torso.get_node_or_null(nm) as Node3D
+			if pv:
+				pv.position *= bks; pv.scale = bks
+		# arms: thicker or thinner, but the same length (the elbows are solved to the grips)
+		for sd in ["L", "R"]:
+			var ap := torso.get_node("Arm%sPivot" % sd) as Node3D
+			ap.position.x *= bk
+			for n in [ap, ap.get_node("Elbow"), ap.get_node("Elbow/Hand")]:
+				for ch in (n as Node3D).get_children():
+					if ch is MeshInstance3D: (ch as Node3D).scale = Vector3(bk, 1.0, bk)
 	bake_part_y(root)
 	root.set_meta("mats", collect_mats(root))
 	for mm in root.get_meta("mats"):
 		(mm as ShaderMaterial).set_shader_parameter("paint", 0.012)    # clean, sleek surfaces: barely any blotching
 	root.set_meta("race", rid)
+	root.set_meta("cls", cls)
+	root.set_meta("wid", weapon)
+	HunterAnim.rest_pose(root)       # hands on the weapon even where nothing animates it (portraits, galleries)
 	var rs := float(race["scale"])
 	var ck := float(CLASS_LOOK.get(cls, {}).get("size", 1.0))
 	root.scale = Vector3.ONE * float(Data.CLASSES[cls]["scale"]) * rs * ck
@@ -1883,7 +1917,8 @@ static func kin(species: String, rec := {}) -> Node3D:
 	var acc: String = rec.get("acc", "")
 	if acc != "" and Data.ACCS.has(acc):
 		accessory(body, acc)
-	root.add_child(KinPuppet.new())
+	var pup: Node = KinPuppet.new(); pup.set("species", species)
+	root.add_child(pup)
 	if int(rec.get("level", 1)) < 4 and (rec.get("forms", []) as Array).is_empty() and not rec.is_empty():
 		# hatchlings are small
 		root.set_meta("evo_scale", 0.82)

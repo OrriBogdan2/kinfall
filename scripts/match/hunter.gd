@@ -201,6 +201,9 @@ func init_hunter(match_node: Node, id: String, team_id: int, class_id: String, n
 	glide_max = GLIDE_TIME * float(cdat.get("glide_cap", 1.0))
 	base_speed = cdat["speed"]
 	runner = AbilityRunner.new(self)
+	if not CombatBus.ability_used.is_connected(_on_ability_used):
+		CombatBus.ability_used.connect(_on_ability_used)
+		CombatBus.kin_thrown.connect(_on_kin_thrown)
 	dodge_def = Content.class_dodge(cls)
 	_kit_from_weapon()
 	dashes = max_dashes()
@@ -2194,6 +2197,82 @@ func _render_weapon_fx(delta: float) -> void:
 		var br: Node3D = model.find_child("Barrels", true, false)
 		if br: br.rotation.z += delta * spin * 40.0
 
+## For the animation: when this hunter last cast an ability (or threw its kin), and which.
+var cast_at := -9.0
+var cast_slot := ""
+func _on_ability_used(caster: Node, _id: String, slot: String) -> void:
+	if caster == self and slot != "dodge" and slot != "primary" and m:
+		cast_at = m.time
+		cast_slot = "ult" if slot in ["ult", "ultimate"] else slot
+
+func _on_kin_thrown(_k: Node, owner: Node) -> void:
+	if owner == self and m:
+		cast_at = m.time
+		cast_slot = "throw"
+
+## The state HunterAnim poses the model from (one dictionary, refilled every frame).
+var anim_s := {}
+const DODGE_ANIM := {"light": "phase", "medium": "roll", "heavy": "charge"}
+func _anim_state(stretch: float) -> void:
+	var s := anim_s
+	s["vel"] = vel; s["face"] = face
+	s["grounded"] = grounded and pad.is_empty()
+	s["gliding"] = gliding and not diving
+	s["diving"] = diving
+	s["rolling"] = roll_t > 0.0
+	s["dash_dir"] = roll_dir
+	s["dash_kind"] = "lunge" if not strike_at_end.is_empty() else ("rush" if move_kind == "rush" else String(DODGE_ANIM.get(cls, "roll")))
+	s["crouch"] = crouch_k
+	s["downed"] = downed
+	s["ledge"] = grap.size() > 0
+	var mk := -1.0
+	if pad.has("face"):
+		mk = clampf(float(pad["t"]) / maxf(0.01, float(pad["dur"])), 0.0, 1.0)
+	s["mantle"] = mk
+	s["stomp"] = (fmod(float(stomp["t"]), Life.R["stomp_cycle"]) / Life.R["stomp_cycle"]) if not stomp.is_empty() else -1.0
+	s["reload"] = (1.0 - reload_t / maxf(0.1, float(wpn["reload"]))) if reload_t > 0.0 and not wpn.get("melee", false) else -1.0
+	s["drink"] = (1.0 - drink_t / DRINK_TIME) if drink_t > 0.0 else -1.0
+	s["recoil"] = recoil
+	s["flash"] = clampf(flash_t / 0.12, 0.0, 1.0)
+	s["fired"] = idle_fire
+	s["wid"] = wid
+	s["swing_n"] = swing_n
+	var cd: Array = wpn.get("combo_dmg", [])
+	var cn: int = maxi(1, cd.size() if cd.size() > 0 else (wpn.get("combo", [1.0]) as Array).size())
+	s["combo"] = -1 if combo_i == 0 else (combo_i - 1) % cn
+	s["charge"] = clampf((mel_hold - 0.15) / maxf(0.1, float(wpn.get("charge_time", 1.0))), 0.0, 1.0) if mel_hold > 0.15 else 0.0
+	s["cast"] = m.time - cast_at
+	s["cast_slot"] = cast_slot
+	s["hit_t"] = m.time - hurt_at
+	if last_hit_by and is_instance_valid(last_hit_by):
+		s["hit_dir"] = Vector2(pos.x - last_hit_by.pos.x, pos.z - last_hit_by.pos.z)
+	s["stun"] = stun_t > 0.0
+	s["base"] = (1.0 - base_t / BASE_TIME) if base_t > 0.0 else -1.0
+	s["squash"] = squash
+	s["stretch"] = stretch
+	s["kin_on_shoulder"] = kin != null and (kin as Kin).state == "shoulder"
+	# reviving a teammate: standing on their wisp
+	var rv := false
+	if grounded and not downed:
+		for o in m.hunters:
+			if o != self and o.downed and o.team == team and self in (o.get_meta("revivers", []) as Array):
+				rv = true
+				break
+	s["reviving"] = rv
+	# an emote bubble over us
+	var em := ""
+	var et := 99.0
+	if m.truce:
+		for e in m.truce.shown:
+			if e["h"] == self:
+				em = String(e["id"]); et = float(e["t"])
+	s["emote"] = em
+	s["emote_t"] = et
+	if not grounded and not gliding and not downed:
+		s["air_h"] = clampf(pos.y - m.world.ground_at(pos.x, pos.z), 0.0, 30.0)
+	else:
+		s.erase("air_h")
+
 func render(delta: float, alpha: float) -> void:
 	super.render(delta, alpha)
 	if absf(step_vis) > 0.001:
@@ -2214,16 +2293,21 @@ func render(delta: float, alpha: float) -> void:
 	var hv := Vector2(vel.x, vel.z)
 	var spd := hv.length()
 	crouch_k = move_toward(crouch_k, 1.0 if crouch else 0.0, delta * 8.0)
-	anim.update(delta, {"vel": vel, "face": face, "grounded": grounded and pad.is_empty(), "gliding": gliding and not diving, "rolling": roll_t > 0.0,
-		"crouch": crouch_k, "downed": downed, "ledge": grap.size() > 0 or mantle_k() > 0.0, "stomp": (fmod(float(stomp["t"]), Life.R["stomp_cycle"]) / Life.R["stomp_cycle"]) if not stomp.is_empty() else -1.0, "reload": (1.0 - reload_t / maxf(0.1, float(wpn["reload"]))) if reload_t > 0.0 else -1.0, "drink": (1.0 - drink_t / DRINK_TIME) if drink_t > 0.0 else -1.0,
-		"recoil": recoil, "flash": clampf(flash_t / 0.12, 0.0, 1.0), "fired": idle_fire})
+	var stretch := 0.0
+	if roll_t > 0.0:
+		stretch = 0.25 if anim.dash_kind != "roll" else 0.0
+	elif not gliding and not grounded and pad.is_empty():
+		stretch = clampf(vel.y / 30.0, -0.1, 0.18)
+	_anim_state(stretch)
+	anim.update(delta, anim_s)
 	if anim.stepped and not downed and not crouch:
 		Sfx.step(pos, -14.0 if is_local() else -20.0)
-	var sq := squash
-	var stretch := 0.0
+	if anim.slammed and not downed:
+		# a heavy coming down hard: a ring of dust where they land
+		m.fx.dust(pos, 12)
+		if is_local(): m.shake(0.18, pos)
 	var tc: Color = Data.TEAM_COLORS[team % Data.TEAM_COLORS.size()]
 	if roll_t > 0.0:
-		stretch = 0.25
 		ghost_t -= delta
 		if ghost_t <= 0.0 and model.visible:
 			ghost_t = 0.028
@@ -2241,21 +2325,13 @@ func render(delta: float, alpha: float) -> void:
 		if wind_t <= 0.0:
 			wind_t = 0.09
 			m.fx.burst(pos + Vector3(randf_range(-0.8, 0.8), 1.9, randf_range(-0.4, 0.4)), Color(1, 1, 1, 0.5), 2, 1.0, 0.4, -1.0, 0.7, Vector3(-vel.x, 0, -vel.z).normalized(), 20.0)
-	elif not grounded and pad.is_empty():
-		stretch = clampf(vel.y / 30.0, -0.1, 0.18)
 	# little puffs of dust while running, and a kick of dust when you turn hard
 	if grounded and spd > 4.0 and not downed:
 		step_t -= delta
 		if step_t <= 0.0:
 			step_t = 0.32
 			m.fx.dust(pos, 2)
-	rig.scale = Vector3(1.0 + sq * 0.35 - stretch * 0.3, 1.0 - sq * 0.4 + stretch * 0.15, 1.0 + sq * 0.35 + stretch * 0.5)
-	if downed:
-		rig.rotation.x = lerpf(rig.rotation.x, -1.35, delta * 8.0)
-		rig.position.y = 0.15
-	else:
-		# skydiving: flat out, belly to the ground, tipped toward where you steer
-		rig.rotation.x = lerpf(rig.rotation.x, -1.15 if diving else 0.0, delta * (5.0 if diving else 10.0))
+	# (the rig's squash, the skydive and lying downed are posed by HunterAnim)
 	glide_k = move_toward(glide_k, 1.0 if gliding and not diving else 0.0, delta * (7.0 if gliding else 9.0))
 	var gl: Node3D = torso.get_node("Glider")
 	gl.visible = glide_k > 0.02
@@ -2268,15 +2344,7 @@ func render(delta: float, alpha: float) -> void:
 	if halo:
 		halo.rotation.y += delta * 2.0
 		halo.position.y = 1.26 + sin(m.time * 3.0) * 0.03
-	var gun: Node3D = torso.get_node("Aim/Gun")
-	gun.position.z = -0.18 + recoil * 0.08
-	if wpn.get("melee", false):
-		# a swing sweeps the weapon across in front of you, alternating sides each hit
-		var sk := swing_t / 0.18
-		var side := 1.0 if swing_n % 2 == 0 else -1.0
-		gun.rotation.y = side * lerpf(-1.3, 1.3, sk) if swing_t > 0.0 else lerpf(gun.rotation.y, 0.0, minf(1.0, delta * 10.0))
-		gun.position.z = -0.18
-	gun.visible = not downed
+	# (the weapon's pose, recoil and melee swings are HunterAnim's too)
 	# cloaked: allies see a shimmer, enemies see nothing unless very close
 	var lp: Ent = m.local_player()
 	var see := true

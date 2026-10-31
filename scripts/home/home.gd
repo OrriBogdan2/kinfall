@@ -890,7 +890,10 @@ func _move_player(d: float) -> void:
 	player.rotation.y = pface
 	if p_anim == null or p_anim.model != player:
 		p_anim = HunterAnim.new(player)
-	p_anim.update(d, {"vel": Vector3(hv.x, pvy if air else 0.0, hv.y), "face": pface, "grounded": not air, "fired": 99.0})
+	var ps := {"vel": Vector3(hv.x, pvy if air else 0.0, hv.y), "face": pface, "grounded": not air, "gliding": gliding, "rolling": dash_t > 0.0, "dash_dir": dash_v, "fired": 99.0}
+	if air and not gliding and gh > World.VOID + 1.0:
+		ps["air_h"] = clampf(py - gh, 0.0, 30.0)
+	p_anim.update(d, ps)
 	if p_anim.stepped:
 		Sfx.step(null, -20.0)
 
@@ -1037,6 +1040,7 @@ func _move_kin(d: float) -> void:
 		_quirk(k, n, hv.length() > 0.3, d)
 		if hw: hw.pose(k, n, d)
 		n.set_meta("happy", joy > 0.0)
+		n.set_meta("kstate", "sleep" if float(k.get("nap_t", 0.0)) > 0.0 else "")
 		if k.has("say"):
 			k["say_t"] = float(k.get("say_t", 0.0)) - d
 			(k["say"] as Label3D).visible = k["say_t"] > 0.0
