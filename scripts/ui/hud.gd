@@ -2300,6 +2300,19 @@ func _tip_lines(id: String, p: Hunter) -> Array:
 	return out
 
 ## Point the cursor at a monster, a kin or another hunter to see what it is.
+## A rival kin's kit in one or two lines: its ability names and what each does, so you learn the
+## counters by looking (the kin's species always means the same kit).
+func _kit_lines(lines: Array, k: Kin) -> void:
+	if k == null or k.runner == null:
+		return
+	for slot in ["k1", "k2"]:
+		var d: AbilityDef = k.runner.def_of(slot)
+		if d == null: continue
+		var tag := "E" if slot == "k1" else "auto"
+		var desc := String(d.desc)
+		if desc.length() > 70: desc = desc.substr(0, 68) + "…"
+		lines.append(["%s  %s: %s" % [tag, d.display_name, desc], Color(d.color).lightened(0.25)])
+
 func _draw_world_hover(sz: Vector2, p: Hunter) -> void:
 	var mp := c.get_local_mouse_position()
 	var cam := m.cam
@@ -2352,13 +2365,24 @@ func _draw_world_hover(sz: Vector2, p: Hunter) -> void:
 		elif k.lost_from == "you" and k.lost_uid != "":
 			lines.append(["Your lost kin! Held by %s. Take it back." % (k.owner_h.pname if k.owner_h else "a rival"), GOLD])
 		else:
-			lines.append(["A rival hunter's kin.", BAD])
+			lines.append(["%s's kin." % (k.owner_h.pname if k.owner_h else "A rival hunter"), BAD])
+			_kit_lines(lines, k)
 	elif best is Hunter:
 		var h: Hunter = best
 		var ally: bool = h.team == p.team
 		lines.append([h.pname, GOOD if ally else Data.TEAM_COLORS[h.team % Data.TEAM_COLORS.size()]])
 		lines.append(["%s class  ·  %s  ·  %s" % [String(h.cls).capitalize(), String(h.wpn.get("name", "")), "teammate" if ally else "rival"], MUTED])
-		lines.append(["Health %d / %d   ·   Armor %d / %d" % [int(ceil(h.hp)), int(h.max_hp), int(ceil(h.armor)), int(h.max_armor)], INK])
+		lines.append(["Health %d / %d   ·   Armor %d / %d (%s)" % [int(ceil(h.hp)), int(h.max_hp), int(ceil(h.armor)), int(h.max_armor), String(Hunter.ARMOR_TIERS[h.armor_tier][0])], INK])
+		if not ally:
+			# know your opponent: their right click, dodge, glove and kin, so you can play around them
+			var util: AbilityDef = h.runner.def_of("utility") if h.runner else null
+			if util: lines.append(["%s: %s" % [Settings.key_cap("secondary"), util.display_name], Color(util.color).lightened(0.2)])
+			if h.dodge_def: lines.append(["Dodge: %s" % h.dodge_def.display_name, Color("bfe6ff")])
+			if not (h.gear[0] as Dictionary).is_empty() and Gear.ALL.has(String(h.gear[0]["id"])):
+				lines.append(["Glove: %s" % String(Gear.ALL[String(h.gear[0]["id"])]["name"]), Gear.ALL[String(h.gear[0]["id"])]["col"]])
+			if h.kin and not (h.kin as Kin).dead:
+				lines.append(["Kin: %s the %s" % [(h.kin as Kin).rec.get("name", "Kin"), Data.KIN[(h.kin as Kin).species]["name"]], Data.KIN[(h.kin as Kin).species]["color"]])
+				_kit_lines(lines, h.kin)
 		if h.downed:
 			lines.append(["Down. %s" % ("Hold %s next to them to revive." % Settings.key_cap("interact") if ally else "Finish them before they're revived."), BAD if not ally else GOOD])
 	var w := 300.0

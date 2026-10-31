@@ -61,6 +61,13 @@ static func take_ground(m, h, wp: Dictionary) -> void:
 	var it := ground_item(wp)
 	match String(it.get("t", "weapon")):
 		"weapon":
+			if not Loot.usable(h, it):
+				# another class's weapon: it can only be carried home
+				if wants(h, it):
+					stash(m, h, wp)
+				elif h == m.player and m.hud:
+					m.hud.toast("%s is a %s weapon  ·  pack full" % [Loot.name_of(it), String(Data.CLASSES[Loot.class_of(it)]["name"])], Color("a2a8bb"))
+				return
 			if Loot.value(it) > Loot.value(Loot.of_hand(h)) or not wants(h, it):
 				# better than what you hold (or the pack's no use): it goes in your hands
 				var old := Loot.of_hand(h)
@@ -193,7 +200,7 @@ static func smart_loot(m, h, b: Dictionary) -> int:
 		Life.take_item(m, h, b, {"key": "caught", "i": 0})
 		n += 1
 	# hands: the best weapon in the box if it beats yours (yours goes back in the box, so it can still be packed)
-	var bw := _best_weapon(b)
+	var bw := _best_weapon(b, h)
 	if not bw.is_empty() and Loot.value(bw["it"]) > Loot.value(Loot.of_hand(h)):
 		_box_to_hand(m, h, b, bw)
 		n += 1
@@ -250,10 +257,10 @@ static func box_weapon_item(b: Dictionary) -> Dictionary:
 		b["weapon"] = w
 	return w
 
-static func _best_weapon(b: Dictionary) -> Dictionary:
+static func _best_weapon(b: Dictionary, h = null) -> Dictionary:
 	var best := {}; var bv := -1
 	for c in _box_things(b):
-		if String(c["it"].get("t", "")) == "weapon" and Loot.value(c["it"]) > bv:
+		if String(c["it"].get("t", "")) == "weapon" and Loot.usable(h, c["it"]) and Loot.value(c["it"]) > bv:
 			bv = Loot.value(c["it"]); best = c
 	return best
 

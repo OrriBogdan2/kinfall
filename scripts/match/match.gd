@@ -645,7 +645,10 @@ func _apply_armory_kit(h: Hunter) -> void:
 	h.pack_cap = Econ.pack_cap()
 	for it in opts.get("kit_items", []):
 		match String(it.get("t", "")):
-			"weapon": Loot.equip(h, it)
+			"weapon":
+				if Loot.usable(h, it): Loot.equip(h, it)
+				elif h == player and hud:
+					hud.toast("%s is a %s weapon  ·  using your class weapon" % [Loot.name_of(it), String(Data.CLASSES[Loot.class_of(it)]["name"])], Color("a2a8bb"))
 			"glove":
 				if Gear.ALL.has(String(it["id"])):
 					h.gear[Gear.slot_of(String(it["id"]))] = {"id": it["id"], "rar": int(it["rar"])}
@@ -1101,7 +1104,10 @@ func _pickup_label(h: Hunter, wp: Dictionary) -> String:
 	var fill := "%d/%d" % [h.pack.size(), h.pack_cap]
 	var into_hand := false
 	match String(it.get("t", "")):
-		"weapon": into_hand = Loot.value(it) > Loot.value(Loot.of_hand(h)) or not Pack.wants(h, it)
+		"weapon":
+			if not Loot.usable(h, it):
+				return "%s  ·  %s weapon: press %s to pack it (%s)" % [nm, String(Data.CLASSES[Loot.class_of(it)]["name"]), k, fill]
+			into_hand = Loot.value(it) > Loot.value(Loot.of_hand(h)) or not Pack.wants(h, it)
 		"glove":
 			var cur: Dictionary = h.gear[Gear.slot_of(String(it["id"]))]
 			into_hand = cur.is_empty() or Loot.value(it) > Loot.value({"t": "glove", "id": cur["id"], "rar": cur["rar"]}) or not Pack.wants(h, it)
@@ -1133,7 +1139,7 @@ func _update_wpicks(dt: float) -> void:
 					_take_gear(h, wp)
 					break
 				continue
-			if int(wp["rar"]) > h.wrar and h.flat_dist(wp["pos"]) < 1.4 and absf(h.pos.y - float(wp["pos"].y)) < 1.0:
+			if int(wp["rar"]) > h.wrar and Loot.usable(h, Pack.ground_item(wp)) and h.flat_dist(wp["pos"]) < 1.4 and absf(h.pos.y - float(wp["pos"].y)) < 1.0:
 				_take_weapon(h, wp)
 				break
 

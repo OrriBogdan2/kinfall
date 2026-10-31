@@ -69,6 +69,21 @@ static func of_hand(h) -> Dictionary:
 	return {"t": "weapon", "wid": h.wid, "rar": h.wrar, "el": "", "uq": ""}
 
 ## A found weapon is worth keeping; the plain one your class carries isn't (it's always free).
+## Which class wields this weapon ("light", "medium" or "heavy"), or "" if any can.
+static func class_of(it: Dictionary) -> String:
+	if String(it.get("t", "weapon")) != "weapon":
+		return ""
+	var wid := String(it.get("wid", ""))
+	for c in Data.CLASSES:
+		if (Data.CLASSES[c]["weapons"] as Array).has(wid): return String(c)
+	return ""
+
+## Classes keep to their own weapons (a Heavy carries the big guns): anything else can still be
+## packed and carried home, just not held.
+static func usable(h, it: Dictionary) -> bool:
+	var c := class_of(it)
+	return c == "" or h == null or c == String(h.cls)
+
 static func keepable(it: Dictionary) -> bool:
 	if it.is_empty():
 		return false
