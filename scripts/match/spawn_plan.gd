@@ -211,7 +211,9 @@ func spawn_all() -> void:
 					c["ref"] = fn.call(self, c)
 
 func _spawn_rare(p: Vector3, r: RandomNumberGenerator) -> Kin:
-	var sp: String = Data.KIN.keys()[r.randi_range(0, Data.KIN.size() - 1)]
+	# (the boss-egg species never turn up in the wild: Data.common_kin)
+	var pool: Array = Data.common_kin()
+	var sp: String = pool[r.randi_range(0, pool.size() - 1)]
 	var rec := Save.new_kin(sp)
 	var lv: Array = m.T.get("kin_lvl", [1, 3])
 	rec["level"] = int(lv[1]) + r.randi_range(2, 4)

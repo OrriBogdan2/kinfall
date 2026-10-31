@@ -1,0 +1,38 @@
+{
+	"id": "cairn_colossus",
+	"name": "Cairn Colossus",
+	"form": "giant",
+	"time": 8,
+	"color": "#ffd36a",
+	"desc": "Cairnback rises into a rune-carved colossus for 8s: towering health, and every stomp quakes the ground and stuns.",
+	"giant": {
+		"scale": 2.7,
+		"hp": 280,
+		"dmg": 2.6,
+		"range": 2.9,
+		"speed": 0.95,
+		"stomp": [
+			{
+				"type": "area",
+				"at": "self",
+				"radius": 2.8,
+				"dmg": 15,
+				"kb": 11,
+				"lift": 7,
+				"stun": 0.4,
+				"color": "#ffd36a"
+			}
+		]
+	},
+	"on_start": [
+		{
+			"type": "area",
+			"at": "self",
+			"radius": 5.0,
+			"dmg": 24,
+			"kb": 14,
+			"lift": 8,
+			"color": "#ffd36a"
+		}
+	]
+}

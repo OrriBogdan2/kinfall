@@ -21,6 +21,8 @@ extends Resource
 @export var animals: Array = []         # the one or two real animals it is based on
 @export var desc := ""                   # a line for the reveal card and the Kindex
 @export var egg: Dictionary = {}         # name temper desc play: how its egg is shown
+@export var rare := false                # only hatches from a lair boss's Rare Egg (never wild, never a starter)
+@export var boss := ""                   # the boss whose egg it comes from
 
 static func from_dict(d: Dictionary) -> KinDef:
 	var k := KinDef.new()
@@ -42,6 +44,8 @@ static func from_dict(d: Dictionary) -> KinDef:
 	k.animals = d.get("animals", [])
 	k.desc = String(d.get("desc", ""))
 	k.egg = d.get("egg", {})
+	k.rare = bool(d.get("rare", false))
+	k.boss = String(d.get("boss", ""))
 	return k
 
 ## The entry the rest of the game reads from Data.KIN.
@@ -52,5 +56,8 @@ func to_species() -> Dictionary:
 		"skill": String(abilities[0]) if abilities.size() > 0 else "", "abilities": abilities, "ultimate": ultimate,
 		"shoulder": shoulder if shoulder != "" else "spring", "traits": traits, "ai": ai, "throw_hit": throw_hit,
 		"animals": animals, "desc": desc, "egg": egg}
+	if rare:
+		out["rare"] = true
+		out["boss"] = boss
 	if wing.a > 0.0: out["wing"] = wing
 	return out

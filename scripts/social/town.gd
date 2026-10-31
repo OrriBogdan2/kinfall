@@ -123,7 +123,7 @@ func _build_hub() -> void:
 	for fb in [Vector3(21, 0, 16.5), Vector3(29, 0, 16.5), Vector3(21, 0, 27.8), Vector3(29, 0, 27.8)]:
 		var b := Models.flower_bed(drng); b.position = fb; add_child(b)
 	# a few wild kin wander the square
-	var sp: Array = Data.KIN.keys()
+	var sp: Array = Data.common_kin()
 	for i in 5:
 		var rec := Save.new_kin(sp[drng.randi_range(0, sp.size() - 1)])
 		rec["level"] = drng.randi_range(1, 14)
@@ -748,7 +748,7 @@ func _open_project(k: String) -> void:
 ## Test-only: a guild's worth of made-up members so the isle can be looked at offline.
 func _fake_members() -> Array:
 	var out := []
-	var sp: Array = Data.KIN.keys()
+	var sp: Array = Data.common_kin()
 	var rng := RandomNumberGenerator.new(); rng.seed = 3
 	for i in 7:
 		var rec := Save.new_kin(sp[i % sp.size()])

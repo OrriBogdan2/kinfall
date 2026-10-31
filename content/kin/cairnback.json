@@ -1,0 +1,57 @@
+{
+	"id": "cairnback",
+	"name": "Cairnback",
+	"type": "titan",
+	"rare": true,
+	"boss": "colossus",
+	"color": "#6a6f7a",
+	"belly": "#d8c59a",
+	"glow": "#ffd36a",
+	"stats": {
+		"hp": 150,
+		"dmg": 13,
+		"speed": 5.6,
+		"range": 1.5
+	},
+	"look": {
+		"ears": "none",
+		"body": "cairnback",
+		"tail": "none",
+		"feet": "none",
+		"aura": "pebbles"
+	},
+	"traits": {
+		"bravery": 0.85,
+		"loyalty": 0.8,
+		"temper": 0.25,
+		"curiosity": 0.35
+	},
+	"voice": "ancient and calm, speaks slowly like grinding stone, fiercely protective",
+	"shoulder": "bedrock",
+	"abilities": [
+		"boulder_heave",
+		"rock_guard"
+	],
+	"ultimate": "cairn_colossus",
+	"ai": {
+		"aggression": 0.55,
+		"loyalty": 0.8,
+		"caution": 0.2,
+		"style": "tank"
+	},
+	"throw_hit": {
+		"kb": 8,
+		"stun": 0.5
+	},
+	"animals": [
+		"Tortoise",
+		"Ibex"
+	],
+	"desc": "A tortoise with an ibex's sweeping horns, carrying a little rune-carved cairn on its shell. Hatched from the Stone Colossus's egg.",
+	"egg": {
+		"name": "Cairn Egg",
+		"temper": "Ancient",
+		"desc": "Heavy as a millstone and warm as a hearth, with gold runes that glow when you touch it. The Colossus guarded it.",
+		"play": "A wall of stone. Heaves boulders that quake and stun."
+	}
+}

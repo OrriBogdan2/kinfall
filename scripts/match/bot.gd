@@ -175,7 +175,7 @@ func think(m: Match, h: Hunter, dt: float) -> void:
 			move = _path_dir(m, h, goal)
 			inp["aim"] = Vector3(h.pos.x + move.x * 3.0, h.pos.y + 0.9, h.pos.z + move.y * 3.0)
 			inp["aim_y"] = h.pos.y
-			if h.flat_dist(goal) < 1.2 and a["goal_kind"] in ["chest", "catch", "revive", "box", "dock", "uplink", "hatch"]:
+			if h.flat_dist(goal) < 1.2 and a["goal_kind"] in ["chest", "catch", "revive", "box", "dock", "uplink", "hatch", "lair_dial"]:
 				inp["interact"] = true
 				move = Vector2.ZERO
 			elif h.flat_dist(goal) < 1.0 and a["goal_kind"] in ["beacon", "board", "yard"]:
@@ -419,8 +419,11 @@ func _choose(m: Match, h: Hunter) -> void:
 	if best == null:
 		for mb in m.mobs:
 			if mb.dead: continue
+			# a sleeping boss can't be hurt; an awake one is worth walking up to
+			if mb is Boss and (mb as Boss).dormant: continue
 			var d := h.flat_dist(mb)
-			if d < 8.0 and absf(mb.pos.y - h.pos.y) < 2.0 and m.world.los(h.pos, mb.pos, h.pos.y + 0.95):
+			var reach := 16.0 if mb is Boss else 8.0
+			if d < reach and absf(mb.pos.y - h.pos.y) < 2.0 and m.world.los(h.pos, mb.pos, h.pos.y + 0.95):
 				var s := 10.0 - d
 				if mb.tgt == h: s += 5.0
 				if s > bs: bs = s; best = mb
@@ -476,6 +479,11 @@ func _choose(m: Match, h: Hunter) -> void:
 			goal = pp; gk = "ping"
 		else:
 			a.erase("ping_goal")
+	# boss lairs: a dropped Rare Egg, or (bolder bots) a lair to open and its boss to fight
+	if goal == Vector3.INF and m.lairs and not m.lairs.list.is_empty():
+		var lg: Array = m.lairs.bot_goal(h, time_left < 170.0 or a.get("leave", false))
+		if not lg.is_empty():
+			goal = lg[0]; gk = String(lg[1])
 	if goal == Vector3.INF and m.exits and not m.exits.list.is_empty():
 		# heading home: late in the match, with a good haul, or just because
 		if not a.get("leave", false) and randf() < 0.0015:
@@ -523,7 +531,7 @@ func _choose(m: Match, h: Hunter) -> void:
 		a["goal_since"] = m.time
 	elif goal != Vector3.INF:
 		var d := h.flat_dist(goal)
-		if d < 2.0 and String(a.get("goal_kind", "")) in ["board", "yard", "beacon"]:
+		if d < 2.0 and String(a.get("goal_kind", "")) in ["board", "yard", "beacon", "lair_dial"]:
 			a["goal_since"] = m.time      # there and waiting (holding a dock, charging an uplink) is fine
 		if d < float(a.get("goal_best", 1e9)) - 0.5:
 			a["goal_best"] = d

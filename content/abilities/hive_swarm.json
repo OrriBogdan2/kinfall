@@ -1,0 +1,39 @@
+{
+	"id": "hive_swarm",
+	"name": "Hive Swarm",
+	"short": "Swarm",
+	"verb": "cone + cloud",
+	"element": "swarm",
+	"icon": "burst",
+	"color": "#ffd23f",
+	"cooldown": 9,
+	"charges": 1,
+	"range": 6,
+	"from": "kin",
+	"auto": {
+		"when": "foe_in_range",
+		"range": 5
+	},
+	"desc": "Hivara looses a buzzing swarm in a 5m cone: stung, poisoned and slowed. The swarm then hangs over the spot for 3s, stinging anyone inside.",
+	"effects": [
+		{
+			"type": "cone",
+			"radius": 5,
+			"arc": 0.5,
+			"dmg": 12,
+			"burn": 4,
+			"slow": 1.2,
+			"color": "#ffd23f"
+		},
+		{
+			"type": "zone",
+			"at": "aim",
+			"radius": 2.2,
+			"time": 3,
+			"every": 0.5,
+			"dmg": 3,
+			"slow": 0.6,
+			"color": "#ffe680"
+		}
+	]
+}

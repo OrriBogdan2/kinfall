@@ -43,6 +43,7 @@ var tut_down_t := 0.0
 var tut_wait := 0.0
 var tut_throws0 := 0
 var exits: Exits = null     # the ways out: skiff docks, rift hatches, outpost uplinks (see Exits)
+var lairs: Lairs = null     # boss lairs: sealed arenas, their bosses and Rare Eggs (see Lairs)
 var truce: Truce = null     # emotes and truces between squads (see Truce)
 var skydrop: DropSquad = null  # the planning phase before the ship sets off, drop leaders and formations (see DropSquad)
 var spawn_plan: SpawnPlan = null   # which of the map's candidate spawns are live this match (see SpawnPlan)
@@ -210,8 +211,10 @@ func start(o: Dictionary) -> void:
 		# the map is fixed; what's out on it this time isn't (rare kin, vaults, item caches, boss lairs)
 		spawn_plan = SpawnPlan.new(self)
 		spawn_plan.build(layout)
+		if lairs: lairs.plug_into(spawn_plan)     # which boss lairs are live this match
 		spawn_plan.roll(seed_val)
 		spawn_plan.spawn_all()
+	if lairs: lairs.ensure_live()
 	skydrop = DropSquad.new(self)
 	skydrop.setup()
 	var Hud = load("res://scripts/ui/hud.gd")
@@ -300,6 +303,8 @@ func _spawn_pads_and_exits() -> void:
 	exits = Exits.new()
 	exits.setup(self)
 	truce = Truce.new(self)
+	lairs = Lairs.new()
+	lairs.setup(self)
 
 func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String, kin_rec: Dictionary, at: Vector3, kit := {}, kin_rec2 := {}) -> Hunter:
 	var h := Hunter.new()
@@ -372,7 +377,7 @@ func bot_kit() -> Dictionary:
 	return {"weapon": "?", "perk": ""}
 
 func bot_kin_record() -> Dictionary:
-	var sp: String = Data.KIN.keys()[rng.randi_range(0, Data.KIN.size() - 1)]
+	var sp: String = Data.common_kin()[rng.randi_range(0, Data.common_kin().size() - 1)]
 	var rec := Save.new_kin(sp)
 	rec["trust"] = rng.randf_range(40, 80)
 	rec["level"] = rng.randi_range(1, 4 + tier * 3)
@@ -439,7 +444,7 @@ func _spawn_hunters() -> void:
 				var rec: Dictionary = Save.active_kin()
 				var rec2: Dictionary = Save.second_kin()
 				if opts.has("demo_kin"):
-					var ids: Array = Data.KIN.keys()
+					var ids: Array = Data.common_kin()
 					var sp0 := String(opts["demo_kin"])
 					rec = Save.new_kin(sp0 if Data.KIN.has(sp0) else "cindle")
 					rec["name"] = Data.KIN[rec["species"]]["name"]
@@ -1295,7 +1300,7 @@ func _spawn_wild() -> void:
 	if net_on and not is_host:
 		return
 	for p in world.wild_spots:
-		var sp: String = Data.KIN.keys()[rng.randi_range(0, Data.KIN.size() - 1)]
+		var sp: String = Data.common_kin()[rng.randi_range(0, Data.common_kin().size() - 1)]
 		var rec := Save.new_kin(sp)
 		rec["level"] = rng.randi_range(T["kin_lvl"][0], T["kin_lvl"][1])
 		Evo.simulate(rec, rng)
@@ -1830,7 +1835,8 @@ func on_mob_dead(mb: Mob, by: Ent, _o: Dictionary) -> void:
 		tut_kills += 1
 		player.add_stat("mobs")
 	if biomes: biomes.on_mob_dead(mb)
-	var big_mob: bool = mb.mkind in ["brute", "warden"]
+	if lairs: lairs.on_mob_dead(mb, credit)
+	var big_mob: bool = mb.mkind in ["brute", "warden"] or mb.md.get("boss", false)
 	sfx("die_big" if big_mob else "die_small", mb.pos, -5.0, randf_range(0.9, 1.15))
 	if credit == player: sfx("kill", null, -12.0, 1.4)
 	fx.burst(mb.pos + Vector3(0, 0.6, 0), mb.md["color"], 22, 5.0, 0.6)
@@ -2892,6 +2898,10 @@ func _gather_input() -> void:
 	if paused:
 		player.inp["move"] = Vector2.ZERO
 	player.inp["interact"] = Input.is_action_pressed("interact")
+	if lairs and not lairs.puzzle_of(player).is_empty():
+		var pad := Input.get_connected_joypads().size() > 0 and (Input.is_joy_button_pressed(0, JOY_BUTTON_A) or Input.is_joy_button_pressed(0, JOY_BUTTON_X))
+		player.inp["interact"] = player.inp["interact"] or (player.inp["fire"] and not (hud and hud.mouse_on_ui())) or pad
+		player.inp["fire"] = false
 	# hold Space or Mouse 5 (Mouse 4 works too) in the air to glide; the mouse buttons never jump
 	player.inp["glide"] = (Input.is_action_pressed("jump") or Input.is_action_pressed("glide")) and not paused
 	player.inp["dash_hold"] = Input.is_action_pressed("dash") and bool(Settings.get_v("dash_hold"))
@@ -3276,6 +3286,11 @@ func step(dt: float) -> void:
 		_watch_death()
 	_update_dex(dt)
 	if exits: exits.tick(dt)
+	if lairs:
+		lairs.bot_pickups()
+		lairs.tick(dt)
+		if opts.has("lair_demo") and player and not player.dropping:
+			lairs.demo(String(opts["lair_demo"]))
 	if truce: truce.tick(dt)
 	if spawn_plan: spawn_plan.tick(dt)
 	_update_events()
@@ -3478,6 +3493,10 @@ func _update_interact(dt: float) -> void:
 			# (using an exit beats picking up a weapon or opening a chest that happens to be there)
 			var ex := exits.interact_for(h)
 			if best.is_empty() or (ex.has("act") and String(best.get("kind", "")) in ["weapon", "chest", "shrine"]): best = ex
+		# 6. the lairs: work a gate's dial, light a rune
+		if lairs:
+			var lx := lairs.interact_for(h)
+			if not lx.is_empty() and (best.is_empty() or not String(best.get("kind", "")) in ["revive", "finish", "boxrev", "loot", "catch", "exit"]): best = lx
 		if h == player:
 			interact = best
 		if best.is_empty() or not want:
@@ -3541,6 +3560,8 @@ func _update_interact(dt: float) -> void:
 					_use_shrine(h, sh)
 			"exit":
 				exits.hold(h, best, dt)
+			"lair":
+				lairs.hold(h, best, dt)
 
 func _catch(h: Hunter, k: Kin) -> void:
 	if opts.get("training", false):

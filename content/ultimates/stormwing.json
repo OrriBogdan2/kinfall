@@ -1,0 +1,28 @@
+{
+	"id": "stormwing",
+	"name": "Stormwing",
+	"form": "armor",
+	"time": 7,
+	"color": "#9ff4ff",
+	"desc": "Zephyrak coils round you as living storm for 7s: 35% faster, dashes back on every hit, and each shot arcs to a second foe.",
+	"owner": {
+		"speed": 1.35,
+		"dmg": 1.2,
+		"refill_dash": true
+	},
+	"shots": {
+		"chain": 1
+	},
+	"on_start": [
+		{
+			"type": "chain",
+			"count": 5,
+			"first": 9,
+			"jump": 5,
+			"dmg": 14,
+			"stun": 0.7,
+			"color": "#9ff4ff",
+			"from": "owner"
+		}
+	]
+}

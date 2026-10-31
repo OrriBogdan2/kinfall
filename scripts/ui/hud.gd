@@ -203,6 +203,8 @@ func _draw_all() -> void:
 	if p and (p.out or p.downed) and m.killcam_text != "":
 		_ctext(Vector2(sz.x * 0.5, maxf(sz.y * 0.22, 104.0 + alerts_h)), m.killcam_text, 22, Color("ff9a8a"), big)
 	_draw_top(sz)
+	if p and m.lairs:
+		_draw_boss_bar(sz, p)
 	if p and not m.duel:
 		_draw_alerts(sz, p)
 	else:
@@ -232,6 +234,8 @@ func _draw_all() -> void:
 			_draw_squad_pings(p)
 		if not p.riding:
 			_draw_prompt(sz, p)
+			if m.lairs and not p.out and not map_open():
+				_draw_lair_dial(sz, p)
 			if not map_open(): _draw_crosshair(p)
 		if p.downed:
 			_draw_downed(sz, p)
@@ -292,6 +296,7 @@ func _draw_world_labels() -> void:
 	if m.opts.get("tutorial", false) and m.tut_target != Vector3.INF and m.player and not m.player.out:
 		_draw_waypoint(m.tut_target, m.tut_label, Color("8fe3c8"))
 	_draw_exit_labels()
+	_draw_lair_labels()
 	_draw_truce_marks()
 	for bc in m.beacons:
 		if bc["used"] or cam.is_position_behind(bc["pos"]):
@@ -328,7 +333,9 @@ func _draw_world_labels() -> void:
 		if mb.dead or cam.is_position_behind(mb.position):
 			continue
 		var hy := 1.4
-		if mb.mkind == "brute": hy = 2.4
+		if mb is Boss: hy = 4.8 if mb.mkind == "colossus" else 3.4
+		elif mb.mkind == "ward": hy = 3.0
+		elif mb.mkind == "brute": hy = 2.4
 		elif mb.mkind == "warden": hy = 3.4
 		var sp := cam.unproject_position(mb.position + Vector3(0, hy, 0))
 		if mb.stagger_t > 0.0:
@@ -339,6 +346,11 @@ func _draw_world_labels() -> void:
 		# compact bar; rare and mutated monsters (mb.rarity, mb.mutations) wear a tinted frame and
 		# little icons for their mutations, and always show their bar
 		var rare: bool = int(mb.rarity) > 0 or not mb.mutations.is_empty()
+		if mb is Boss:
+			if not (mb as Boss).dormant and m.lairs.boss_for(m.player) != mb:
+				_ctext(sp + Vector2(0, -26), String(mb.md["name"]), 15, Lairs.color_of((mb as Boss).lair), big)
+				_bar(Rect2(sp + Vector2(-50, -18), Vector2(100, 7)), clampf(mb.hp / mb.max_hp, 0.0, 1.0), Color("ff6a5a"))
+			continue
 		if mb.hp < mb.max_hp or rare:
 			var bw := 64.0 if mb.mkind in ["brute", "warden"] else 48.0
 			var br := Rect2(sp + Vector2(-bw * 0.5, 0), Vector2(bw, 6))
@@ -614,6 +626,8 @@ func _draw_minimap(sz: Vector2) -> void:
 				if busy and x["kind"] != "hatch": _edge_arrow(inner, inner.get_center(), pv, Exits.color_of(x))
 				continue
 			_draw_exit_icon(pv, x, 1.0 if not riding else 0.8)
+	if m.lairs:
+		_draw_map_lairs(inner, to_map, on_map, riding)
 	if m.spawn_plan and full_map and m.player:
 		# this match's spawns your squad knows are there (vaults from the start; the rest once scouted)
 		for cnd in m.spawn_plan.cands:
@@ -1918,7 +1932,7 @@ func _draw_perk_offer(sz: Vector2) -> void:
 	var total := ids.size() * cw + (ids.size() - 1) * gap
 	var x := sz.x * 0.5 - total * 0.5
 	var y := sz.y - 290.0         # below your hunter, above your perk badges and bars
-	var head: String = {"shrine": "THE SHRINE OFFERS A PERK", "chest": "SOMETHING ELSE IN THE CHEST", "boss": "THE WARDEN'S POWER", "brute": "SPOILS OF THE BRUTE"}.get(String(off.get("src", "")), "PICK A PERK")
+	var head: String = {"shrine": "THE SHRINE OFFERS A PERK", "chest": "SOMETHING ELSE IN THE CHEST", "boss": "A BOSS'S POWER", "brute": "SPOILS OF THE BRUTE"}.get(String(off.get("src", "")), "PICK A PERK")
 	_ctext(Vector2(sz.x * 0.5, y - 12), String(head) + "  ·  lasts this expedition", 13, Color(GOLD, 0.95), big)
 	var pulse := 0.5 + 0.5 * sin(m.time * 4.0)
 	for i in ids.size():
@@ -1949,6 +1963,7 @@ func _draw_prompt(sz: Vector2, p: Hunter) -> void:
 			"catch": prog = it["ent"].catch_prog
 			"chest": prog = it["chest"]["prog"]
 			"exit": prog = float(it["x"]["hold"].get(p.nid, 0.0)) / float(it["need"]) if it.has("need") else 0.0
+			"lair": prog = float(it["rune"]["prog"]) if it.has("rune") else 0.0
 		var s: String = it["label"]
 		var w := body.get_string_size(s, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
 		_panel(Rect2(Vector2(sz.x * 0.5 - w * 0.5 - 16, y - 22), Vector2(w + 32, 32)))
@@ -2449,6 +2464,10 @@ func _draw_map_labels(w: World, inner: Rect2, view: Rect2, k: float, overview: b
 			c.draw_colored_polygon(PackedVector2Array([pv + Vector2(0, -6), pv + Vector2(4.5, 2), pv + Vector2(-4.5, 2)]), Color("9af0ff"))
 			if overview:
 				_ctext(pv + Vector2(0, 15), "%s  %dm" % [nm, int(round(float(lb.get("height", 0.0))))], 10, Color("c8f6ff"))
+			continue
+		if String(lb["kind"]) == "lair":
+			if overview:
+				_ctext(pv + Vector2(0, 18), nm, 11, Color("ffe2b0"), big)
 			continue
 		if String(lb["kind"]) == "rail":
 			# a train stop: a small amber square, named in the overview
@@ -3028,3 +3047,162 @@ func _draw_truce_marks() -> void:
 		elif m.truce.allied(me.team, h.team):
 			# a white flag beside their name plate
 			_flag(tp + Vector2(-66, -12), 0.7, Color("f4f1e6"))
+
+# ------------------------------------------------------------------ boss lairs
+## A lair on the minimap: a padlock while sealed, an open gate once open, a pulsing horned skull
+## while its boss is awake, a tick once cleared.
+func _lair_icon(pv: Vector2, L: Dictionary, k := 1.0) -> void:
+	var col: Color = Lairs.color_of(L)
+	var dark := Color(0, 0, 0, 0.75)
+	match String(L["state"]):
+		"dormant":
+			c.draw_circle(pv, 4.5 * k, dark)
+			c.draw_circle(pv, 3.2 * k, Color(0.5, 0.52, 0.58, 0.8))
+		"sealed":
+			c.draw_rect(Rect2(pv - Vector2(6, 3) * k, Vector2(12, 10) * k).grow(1.5), dark)
+			c.draw_rect(Rect2(pv - Vector2(6, 3) * k, Vector2(12, 10) * k), col)
+			c.draw_arc(pv + Vector2(0, -3) * k, 4.0 * k, PI, TAU, 10, dark, 4.0 * k)
+			c.draw_arc(pv + Vector2(0, -3) * k, 4.0 * k, PI, TAU, 10, col, 2.0 * k)
+			c.draw_circle(pv + Vector2(0, 2) * k, 1.6 * k, dark)
+		"open":
+			c.draw_rect(Rect2(pv - Vector2(7, 7) * k, Vector2(14, 14) * k).grow(1.5), dark)
+			c.draw_rect(Rect2(pv - Vector2(7, 7) * k, Vector2(14, 14) * k), col, false, 2.5 * k)
+			c.draw_rect(Rect2(pv + Vector2(-2.5, 3) * k, Vector2(5, 5) * k), dark)
+		"awake":
+			var ph := fmod(m.time * 1.4, 1.0)
+			c.draw_arc(pv, (9.0 + ph * 9.0) * k, 0, TAU, 24, Color(BAD, 0.85 * (1.0 - ph)), 2.0, true)
+			c.draw_circle(pv, 8.0 * k, dark)
+			c.draw_circle(pv, 6.5 * k, BAD)
+			for sx in [-1.0, 1.0]:
+				c.draw_colored_polygon(PackedVector2Array([pv + Vector2(4.5 * sx, -3) * k, pv + Vector2(8.5 * sx, -10) * k, pv + Vector2(2.0 * sx, -5.5) * k]), BAD)
+				c.draw_circle(pv + Vector2(2.4 * sx, -0.5) * k, 1.4 * k, dark)
+			c.draw_rect(Rect2(pv + Vector2(-2.5, 2.5) * k, Vector2(5, 1.6) * k), dark)
+		"cleared":
+			c.draw_circle(pv, 7.0 * k, dark)
+			c.draw_circle(pv, 5.5 * k, Color(0.55, 0.58, 0.64, 0.9))
+			c.draw_polyline(PackedVector2Array([pv + Vector2(-3, 0) * k, pv + Vector2(-0.8, 2.6) * k, pv + Vector2(3.4, -2.6) * k]), dark, 2.0 * k)
+
+func _draw_map_lairs(inner: Rect2, to_map: Callable, on_map: Callable, overview: bool) -> void:
+	for L in m.lairs.list:
+		var pv: Vector2 = to_map.call(L["c"])
+		if on_map.call(pv, 6.0):
+			_lair_icon(pv, L, 1.0 if not overview else 0.9)
+		elif L["state"] == "awake":
+			_edge_arrow(inner, inner.get_center(), pv, BAD)
+	# a dropped Rare Egg (and whoever just picked it up) shows to everyone for a few seconds
+	for e in m.lairs.egg_pings:
+		var at: Vector3 = e["pos"]
+		if e.get("follow") != null and is_instance_valid(e["follow"]): at = (e["follow"] as Hunter).pos
+		var pv: Vector2 = to_map.call(at)
+		var ph := fmod(m.time * 1.8, 1.0)
+		if on_map.call(pv, 4.0):
+			c.draw_arc(pv, 6.0 + ph * 12.0, 0, TAU, 24, Color(GOLD, 1.0 - ph), 2.5, true)
+			c.draw_set_transform(pv, 0.0, Vector2(0.8, 1.05))
+			c.draw_circle(Vector2.ZERO, 6.5, Color(0, 0, 0, 0.75))
+			c.draw_circle(Vector2.ZERO, 5.0, Color("ffd36a"))
+			c.draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		else:
+			_edge_arrow(inner, inner.get_center(), pv, GOLD)
+
+## Over each lair nearby: what's going on at its gate. Someone working the dial shows a small dial
+## over the lectern so everyone can see it turning; runes being lit show their fill.
+func _draw_lair_labels() -> void:
+	if m.lairs == null or m.player == null:
+		return
+	var cam := m.cam
+	var p: Hunter = m.player
+	for L in m.lairs.list:
+		var d := p.flat_dist(L["dial"])
+		var u = L["user"]
+		if L["state"] == "sealed" and u != null and not is_same(u, p) and d < 40.0 and not cam.is_position_behind(L["dial"]):
+			var sp := cam.unproject_position(L["dial"] + Vector3(0, 3.0, 0))
+			_dial_widget(sp, 26.0, L, false)
+			_ctext(sp + Vector2(0, -36), "%s is opening the gate" % (u as Hunter).pname, 13, Lairs.color_of(L), big)
+		for rn in L["runes"]:
+			if rn["lit"] or float(rn["prog"]) <= 0.0 or p.flat_dist(rn["pos"]) > 30.0 or cam.is_position_behind(rn["pos"]):
+				continue
+			var rp := cam.unproject_position(rn["pos"] + Vector3(0, 2.6, 0))
+			_bar(Rect2(rp + Vector2(-34, 0), Vector2(68, 6)), float(rn["prog"]), Lairs.color_of(L))
+	# a Rare Egg on the ground nearby: a marker you can follow
+	for L in m.lairs.list:
+		var wp = L.get("egg_wp")
+		if wp != null and m.wpicks.has(wp) and p.flat_dist(wp["pos"]) < 70.0 and not p.out:
+			_draw_waypoint(wp["pos"], "Rare Egg", GOLD)
+
+## The dial: a ring with the lit arcs (gold until hit, then dim green), the needle, and pips for the
+## locks. Drawn big for whoever is working it, small over the lectern for everyone else.
+func _dial_widget(ctr: Vector2, rad: float, L: Dictionary, big_one: bool) -> void:
+	var col: Color = Lairs.color_of(L)
+	var jam := float(L["jam"]) > 0.0
+	var w := maxf(3.0, rad * (0.16 if big_one else 0.2))
+	c.draw_circle(ctr, rad + w * 1.4, Color(0.03, 0.03, 0.06, 0.82))
+	c.draw_arc(ctr, rad, 0, TAU, 64, Color(1, 1, 1, 0.14) if not jam else Color(BAD, 0.5), w, true)
+	for t in L["targets"]:
+		var a := float(t["a"]); var tw := float(t["w"])
+		var tc: Color = Color(GOOD, 0.55) if t["hit"] else col.lightened(0.25)
+		if not t["hit"] and not jam:
+			tc = tc.lerp(Color.WHITE, 0.25 + 0.25 * sin(m.time * 9.0))
+		c.draw_arc(ctr, rad, a - tw * 0.5, a + tw * 0.5, 16, tc, w * (1.0 if t["hit"] else 1.35), true)
+	# the needle, with a short glowing trail behind it
+	var nd := float(L["needle"]); var dirn := float(L["dir"])
+	for i in 6:
+		var ta := nd - dirn * i * 0.06
+		c.draw_line(ctr, ctr + Vector2(cos(ta), sin(ta)) * rad * 1.08, Color(1, 0.97, 0.85, 0.22 - i * 0.035), w * 0.7, true)
+	var tip := ctr + Vector2(cos(nd), sin(nd)) * rad * 1.12
+	c.draw_line(ctr, tip, Color(BAD, 0.95) if jam else Color("fff4d0"), w * 0.75, true)
+	c.draw_circle(tip, w * 0.6, Color("fff4d0") if not jam else BAD)
+	c.draw_circle(ctr, w * 0.9, col)
+	# the locks: one pip each, filled once open
+	var n := int(L["locks"])
+	var px0 := ctr.x - (n - 1) * (rad * 0.22) * 0.5
+	for i in n:
+		var pp := Vector2(px0 + i * rad * 0.22, ctr.y + rad + w * 2.4)
+		c.draw_circle(pp, rad * 0.07 + 1.0, Color(0, 0, 0, 0.8))
+		c.draw_circle(pp, rad * 0.07, col if i < int(L["lock"]) else (Color(INK, 0.9) if i == int(L["lock"]) else Color(1, 1, 1, 0.22)))
+
+func _draw_lair_dial(sz: Vector2, p: Hunter) -> void:
+	var L: Dictionary = m.lairs.puzzle_of(p)
+	if L.is_empty():
+		return
+	var ctr := Vector2(sz.x * 0.5 - minf(290.0, sz.x * 0.26), sz.y * 0.5 - 45.0)
+	var rad := 86.0
+	_dial_widget(ctr, rad, L, true)
+	var col: Color = Lairs.color_of(L)
+	_ctext(ctr + Vector2(0, -rad - 42), String(L["name"]).to_upper(), 15, col, big)
+	_ctext(ctr + Vector2(0, -rad - 24), "LOCK %d OF %d" % [mini(int(L["lock"]) + 1, int(L["locks"])), int(L["locks"])], 13, INK, big)
+	var jam := float(L["jam"]) > 0.0
+	var key := Settings.key_cap("interact")
+	var hint := "JAMMED" if jam else "%s  ·  CLICK  ·  (A)   to stop on a lit arc" % key
+	_ctext(ctr + Vector2(0, rad + 48), hint, 14 if not jam else 18, BAD if jam else INK, big)
+	var lit: int = (L["targets"] as Array).filter(func(t): return t["hit"]).size()
+	_ctext(ctr + Vector2(0, rad + 68), "%d of %d arcs  ·  a miss rings the chime" % [lit, (L["targets"] as Array).size()], 12, MUTED)
+
+## At the top of the screen while you're in a lair with its boss awake: name, phase, health with
+## marks at the phase lines, and the enrage clock.
+func _draw_boss_bar(sz: Vector2, p: Hunter) -> void:
+	var b: Boss = m.lairs.boss_for(p)
+	if b == null:
+		return
+	var col: Color = Lairs.color_of(b.lair)
+	var w := minf(560.0, sz.x * 0.46)
+	var r := Rect2(Vector2(sz.x * 0.5 - w * 0.5, 30), Vector2(w, 16))
+	_rounded(Rect2(r.position - Vector2(14, 22), r.size + Vector2(28, 50)), Color(0.04, 0.04, 0.07, 0.85), 10, Color(col, 0.6), 2)
+	_text(r.position + Vector2(0, -6), String(b.md["name"]).to_upper(), 15, col, big)
+	var ph := "PHASE %d" % (b.phase + 1)
+	_text(Vector2(r.end.x - big.get_string_size(ph, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x, r.position.y - 6), ph, 13, INK, big)
+	var frac := clampf(b.hp / b.max_hp, 0.0, 1.0)
+	c.draw_rect(r, Color(0, 0, 0, 0.6))
+	var ct := _chip_of(b, frac)
+	if ct > frac:
+		c.draw_rect(Rect2(r.position + Vector2(w * frac, 0), Vector2(w * (ct - frac), r.size.y)), Color(1.0, 0.95, 0.88, 0.8))
+	var hc := Color("ff5a4a") if b.enraged else (Color("e0b0ff") if b.stagger_t > 0.0 else Color("ff8a5a"))
+	c.draw_rect(Rect2(r.position, Vector2(w * frac, r.size.y)), hc)
+	for mk in [0.66, 0.33]:
+		c.draw_line(r.position + Vector2(w * mk, -3), r.position + Vector2(w * mk, r.size.y + 3), Color(1, 1, 1, 0.8), 2.0)
+	_ctext(r.get_center() + Vector2(0, 5), "%d / %d" % [int(ceil(b.hp)), int(b.max_hp)], 12, INK, big)
+	var left := float(b.md.get("enrage", 150.0)) - b.awake_t
+	var et := "ENRAGED" if b.enraged else "ENRAGE IN %s" % _fmt(maxf(0.0, left))
+	_ctext(Vector2(sz.x * 0.5, r.end.y + 20), et, 12, BAD if b.enraged or left < 20.0 else MUTED, big)
+	if b.invul_t > 0.0:
+		_ctext(Vector2(sz.x * 0.5, r.end.y + 44), "PHASE %d" % (b.phase + 1), 22, col, big)
+	feed_top = maxf(feed_top, r.end.y + 34.0)

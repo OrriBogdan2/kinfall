@@ -1,0 +1,47 @@
+{
+	"id": "boulder_heave",
+	"name": "Boulder Heave",
+	"short": "Heave",
+	"verb": "lob + quake",
+	"element": "titan",
+	"icon": "slam",
+	"color": "#ffd36a",
+	"cooldown": 9,
+	"charges": 1,
+	"range": 8,
+	"from": "kin",
+	"auto": {
+		"when": "foe_in_range",
+		"range": 8
+	},
+	"desc": "Cairnback heaves a rune-lit boulder 8m. Where it lands everyone within 2.6m is thrown up and stunned; anyone already airborne is spiked.",
+	"effects": [
+		{
+			"type": "projectile",
+			"dmg": 10,
+			"speed": 13,
+			"range": 8,
+			"size": 0.38,
+			"to_aim": true,
+			"color": "#ffd36a",
+			"sfx": "throw",
+			"pitch": 0.7,
+			"on_end": [
+				{
+					"type": "area",
+					"at": "here",
+					"radius": 2.6,
+					"dmg": 20,
+					"kb": 7,
+					"lift": 7,
+					"stun": 0.5,
+					"spike": {
+						"dmg": 0.5,
+						"stun": 0.8
+					},
+					"color": "#ffd36a"
+				}
+			]
+		}
+	]
+}

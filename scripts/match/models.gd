@@ -1311,6 +1311,8 @@ static func nest_egg(c: Color, spot: Color) -> Node3D:
 # ---------------------------------------------------------------- monsters
 static func mob(kind: String) -> Node3D:
 	var md: Dictionary = Data.MOBS[kind]
+	if md.get("boss", false) or md.get("ward", false):
+		return BossModels.build(kind)
 	var pk := Assets.mob(kind, md["color"]) if Assets.on() else null
 	if pk:
 		if kind == "warden":

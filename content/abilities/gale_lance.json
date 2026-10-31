@@ -1,0 +1,48 @@
+{
+	"id": "gale_lance",
+	"name": "Gale Lance",
+	"short": "Lance",
+	"verb": "rush + arc",
+	"element": "tempest",
+	"icon": "dash",
+	"color": "#9ff4ff",
+	"cooldown": 8,
+	"charges": 1,
+	"range": 8,
+	"from": "kin",
+	"auto": {
+		"when": "foe_in_range",
+		"range": 7
+	},
+	"desc": "Zephyrak spears 8m through the air, shocking everything it passes, then bursts in a ring of wind that throws foes back and arcs lightning to two more.",
+	"effects": [
+		{
+			"type": "rush",
+			"distance": 8,
+			"speed": 28,
+			"width": 1.2,
+			"dmg": 13,
+			"stun": 0.3,
+			"color": "#9ff4ff",
+			"on_end": [
+				{
+					"type": "area",
+					"at": "here",
+					"radius": 2.0,
+					"dmg": 8,
+					"kb": 8,
+					"color": "#d6fbff"
+				},
+				{
+					"type": "chain",
+					"count": 2,
+					"first": 6,
+					"jump": 4.5,
+					"dmg": 9,
+					"stun": 0.3,
+					"color": "#9ff4ff"
+				}
+			]
+		}
+	]
+}

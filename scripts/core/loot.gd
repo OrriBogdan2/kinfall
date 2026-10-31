@@ -3,6 +3,7 @@ class_name Loot
 ##   weapon  {t:"weapon", wid, rar, el, uq, uid}   a rarity, maybe an element, maybe a named unique
 ##   glove   {t:"glove", id, rar, uid}
 ##   valuable{t:"val", id, uid}                   sold at home; a Soul Ember revives a kin
+##   rare egg{t:"val", id:"rare_egg", sp, boss, uid}  a lair boss's egg: takes a pack slot, hatches at home
 ## Their worth (value) drives smart loot and what the backpack keeps. The element riders run on the
 ## weapon's own hits (Hunter._emit_shot / _strike call rider()).
 
@@ -38,7 +39,16 @@ const VALUABLES := {
 	"kin_idol": {"name": "Kin Idol", "col": Color("ffb0d0"), "value": 58, "rar": 3, "desc": "A little carved kin. Collectors pay a lot."},
 	"crown_shard": {"name": "Crown Shard", "col": Color("ffd23f"), "value": 105, "rar": 4, "desc": "A piece of an old crown. Worth a fortune."},
 	"soul_ember": {"name": "Soul Ember", "col": Color("9ff0e0"), "value": 140, "rar": 4, "desc": "A warm, glowing ember. The Soul Shrine needs one to raise it, and one for every kin it brings back."},
+	# worth more than anything else you can carry, so smart loot and a full pack always keep it
+	"rare_egg": {"name": "Rare Egg", "col": Color("ffcf4a"), "value": 400, "rar": 4, "desc": "A boss's egg, big and glowing gold. Carry it home and it hatches into a rare kin."},
 }
+
+## A lair boss's egg as a backpack item: which rare kin hatches from it, and who guarded it.
+static func rare_egg(sp: String, boss := "") -> Dictionary:
+	return {"t": "val", "id": "rare_egg", "sp": sp, "boss": boss, "uid": _uid()}
+
+static func is_rare_egg(it: Dictionary) -> bool:
+	return String(it.get("t", "")) == "val" and String(it.get("id", "")) == "rare_egg"
 
 ## What each kind of thing is worth by rarity (Common..Legendary). Weapons weigh a little more than
 ## gloves: they're the whole loadout.
@@ -124,6 +134,8 @@ static func name_of(it: Dictionary) -> String:
 			var r := rar_of(it)
 			return "%s%s" % [(String(Data.RARITY[r]["name"]) + " ") if r > 0 else "", gd.get("name", it.get("id", "Glove"))]
 		"val":
+			if is_rare_egg(it) and Data.KIN.has(String(it.get("sp", ""))):
+				return "Rare " + Data.egg_name(String(it["sp"]))
 			return String(VALUABLES.get(String(it.get("id", "")), {}).get("name", "Trinket"))
 	var uq := String(it.get("uq", ""))
 	if uq != "" and UNIQUES.has(uq):
@@ -148,7 +160,7 @@ static func el_col(it: Dictionary) -> Color:
 static func icon_of(it: Dictionary) -> String:
 	match String(it.get("t", "weapon")):
 		"glove": return Gear.icon_of(String(it.get("id", "")))
-		"val": return "bond" if String(it.get("id", "")) == "soul_ember" else "gem"
+		"val": return "bond" if String(it.get("id", "")) == "soul_ember" else ("egg" if is_rare_egg(it) else "gem")
 	return String(it.get("wid", "rifle"))
 
 ## One line under the name: what it does.
@@ -159,6 +171,7 @@ static func sub_of(it: Dictionary) -> String:
 			if not Gear.ALL.has(id): return "Glove"
 			return ("Active glove  ·  " if Gear.active(id) else "Passive glove  ·  ") + Gear.stat_text(id, rar_of(it))
 		"val":
+			if is_rare_egg(it): return "Rare Egg  ·  carry it home and it hatches a rare kin"
 			return "Treasure  ·  sells for %d gems" % sell_price(it) if String(it.get("id", "")) != "soul_ember" else "Revives a kin at the Soul Shrine"
 	var bits: Array = []
 	var r: Dictionary = Data.RARITY[rar_of(it)]
