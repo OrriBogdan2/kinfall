@@ -166,6 +166,9 @@ var dropping := false         # gliding down from the sky at the start of a matc
 var drop_from := Vector2.INF  # where the drop started
 var diving := false           # the skydive part of the drop, before the glider opens
 var riding := false           # aboard the skyship, waiting to jump
+var drop_follow: Hunter = null  # gliding down in formation behind this squad's drop leader (see DropSquad)
+var drop_slot := 0            # which slot of the formation
+var drop_solo := false        # broke away from the squad's drop
 var bless_t := 0.0
 var wrar := 0                 # rarity of the weapon in hand, 0 for the one you brought
 var winst: Dictionary = {}    # the weapon in hand as an item you can carry home (Loot), {} for the plain one
@@ -1603,6 +1606,8 @@ func _physics(dt: float) -> void:
 		if dropping:
 			# the drop goes where you point and stops when you let go: no fixed heading to circle on
 			hv = Vector2(vel.x, vel.z).lerp(mv * gs, 1.0 - exp(-(3.0 if diving else 4.0) * dt))
+			if drop_follow != null and m.skydrop:
+				hv = m.skydrop.follow_hv(self, gs)     # in formation: the leader steers
 		# wind roads carry you along (either way), updrafts lift you
 		in_current = false
 		if not dropping:
@@ -1642,6 +1647,8 @@ func _physics(dt: float) -> void:
 		var sink := (DIVE_FALL if diving else DROP_FALL) if dropping else (3.0 if glide_fuel <= 0.001 else glide_fall(Vector2(vel.x, vel.z).length()))
 		if dropping:
 			vel.y = lerpf(vel.y, -sink, 1.0 - exp(-4.0 * dt))
+			if drop_follow != null and m.skydrop:
+				vel.y = m.skydrop.follow_vy(self)
 		else:
 			if vel.y < -sink:
 				vel.y = move_toward(vel.y, -sink, GLIDE_CATCH * dt)    # the canopy catches you over a beat
@@ -1816,7 +1823,7 @@ func _update_glide(dt: float) -> void:
 		if diving:
 			var void_below: bool = m.world.is_void(pos.x, pos.z)
 			var above: float = pos.y - (World.VOID if void_below else m.world.ground_at(pos.x, pos.z))
-			if (not void_below and above < DEPLOY_H) or (void_below and pos.y < 7.0):
+			if (not void_below and above < DEPLOY_H) or (void_below and pos.y < 7.0) or (drop_follow != null and not drop_follow.diving):
 				_deploy()
 		if pos.y < -1.5:
 			dropping = false
