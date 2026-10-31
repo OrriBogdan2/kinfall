@@ -258,6 +258,9 @@ func _ready() -> void:
 	if "--pack-gallery" in args:
 		add_child(load("res://tests/pack_gallery.gd").new())
 		return
+	if "--flora-gallery" in args:
+		add_child(load("res://tests/flora_gallery.gd").new())
+		return
 	if Array(args).any(func(a): return String(a).begins_with("--art-view=")):
 		add_child(load("res://tests/art_view.gd").new())
 		return

@@ -954,6 +954,10 @@ func a0_of(isl: int) -> float:
 # ------------------------------------------------------------------ meshes
 const TerrainMesh := preload("res://scripts/match/terrain_mesh.gd")
 const RuinWalls := preload("res://scripts/match/ruin_walls.gd")
+const SkyDeco := preload("res://scripts/match/sky_deco.gd")
+const Landmarks := preload("res://scripts/match/landmarks.gd")
+var landmarks = null
+var _deco: Node3D = null
 var _rims: Array = []               # grassy rim spots from the terrain mesher, for the grass fringe
 var under := PackedFloat32Array()   # per tile: the height of the island's rocky underside (visual only)
 
@@ -974,6 +978,11 @@ func build_meshes() -> void:
 	mat.set_shader_parameter("height_tex", tm.height_texture())
 	mat.set_shader_parameter("map_size", Vector2(w, h))
 	mat.set_shader_parameter("use_ao", true)
+	if Flora.on():
+		var bt := _biome_textures()
+		mat.set_shader_parameter("biome_tex", bt[0])
+		mat.set_shader_parameter("path_tex", bt[1])
+		mat.set_shader_parameter("use_biome", true)
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
 	mi.material_override = mat
@@ -986,7 +995,27 @@ func build_meshes() -> void:
 	ri.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(ri)
 	_decorate()
+	if Flora.on() and islands.size() > 1 and not "--no-landmarks" in OS.get_cmdline_user_args():
+		landmarks = Landmarks.new(self)
+		landmarks.build(_deco)
 	_build_air()
+
+## Per tile, for the terrain shader's painted ground: the biome style (R, nearest) and the painted
+## paths and soil (G, smoothed).
+func _biome_textures() -> Array:
+	var bi := Image.create(w, h, false, Image.FORMAT_R8)
+	var pi := Image.create(w, h, false, Image.FORMAT_RG8)
+	var lip_paint := Color("dccb9c"); var sheer_paint := Color("7d7896")
+	for z in h:
+		for x in w:
+			var i := idx(x, z)
+			if kind[i] == T_VOID:
+				continue
+			var st := Flora.STYLES.find(Flora.style_ok(style_at(i)))
+			bi.set_pixel(x, z, Color(float(maxi(st, 0)) / 8.0, 0, 0))
+			if paint.has(i) and paint[i] != lip_paint and paint[i] != sheer_paint:
+				pi.set_pixel(x, z, Color(0, 1, 0))
+	return [ImageTexture.create_from_image(bi), ImageTexture.create_from_image(pi)]
 
 ## Scatter batches split into 16x16-tile chunks, so the camera only draws the ones it can see.
 func _chunked(parent: Node3D, items: Array, mesh: Mesh, mat: Material, label: String, shadows := false) -> void:
@@ -1174,6 +1203,7 @@ func _build_air() -> void:
 func _decorate() -> void:
 	var drng := RandomNumberGenerator.new(); drng.seed = rng.seed + 11
 	var deco := Node3D.new(); deco.name = "Deco"; add_child(deco)
+	_deco = deco
 	var packed := {}      # imported models, batched: group key -> {mesh, mat, items}
 	for z in h:
 		for x in w:
@@ -1199,7 +1229,7 @@ func _decorate() -> void:
 				n = Models.rock(drng, drng.randf_range(0.9, 1.25))
 			n.position = Vector3(x + 0.5, y, z + 0.5)
 			deco.add_child(n)
-	if Assets.on():
+	if Assets.on() or Flora.on():
 		_cliff_rocks(packed, drng)
 	for key in packed:
 		var g: Dictionary = packed[key]
@@ -1233,8 +1263,16 @@ func _decorate() -> void:
 				continue
 			var painted := paint.has(i)
 			var tb := _bio(i)
-			for _k in (1 if painted else 2):
-				if drng.randf() < (0.15 if painted else 0.6):
+			# lush swathes and barer patches instead of an even sprinkle; sparser on snow, ash and gloom
+			var st_i := style_at(i) if Flora.on() else ""
+			var lush := 0.6
+			var tries := 2
+			if Flora.on():
+				var ln := 0.5 + 0.5 * sin(x * 0.21 + z * 0.13 + sin(z * 0.17) * 2.0) * cos(z * 0.19 - x * 0.07)
+				lush = clampf(0.25 + ln * 0.75, 0.0, 0.95)
+				tries = 3 if st_i in ["meadow", "bloom", "storm"] else 1
+			for _k in (1 if painted else tries):
+				if drng.randf() < (0.15 if painted else lush):
 					var sc := 0.75 + drng.randf() * 0.6
 					xs.append([Transform3D(Basis(Vector3.UP, drng.randf() * TAU).scaled(Vector3(sc, sc, sc)), Vector3(x + drng.randf(), level[i] * LEVEL, z + drng.randf())),
 						Color(tb["top"]).lerp(Color(tb["top2"]), drng.randf()).lightened(0.05)])
@@ -1256,7 +1294,7 @@ func _decorate() -> void:
 	_chunked(deco, xs, Models.grass_mesh(false), Models.grass_material(0.08), "Grass")
 	_chunked(deco, fl, Models.flower_mesh(), Models.grass_material(0.05, true), "Flowers")
 	var pebbled := false
-	if pb.size() > 0 and Assets.on():
+	if pb.size() > 0 and (Assets.on() or Flora.on()):
 		var peb := {}
 		for p in pb:
 			if not _pack_prop(peb, "pebble", idx(int(p.x), int(p.z)), p, drng):
@@ -1290,6 +1328,10 @@ func _decorate() -> void:
 	sea.position = Vector3(w / 2.0, -18.0, h / 2.0)
 	sea.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(sea)
+	if Flora.on() and not "--no-sky-deco" in OS.get_cmdline_user_args():
+		var cdeep: Color = clouds[0] if clouds.size() == 2 else Color(0.06, 0.07, 0.13)
+		var clight: Color = clouds[1] if clouds.size() == 2 else Color(0.22, 0.24, 0.38)
+		SkyDeco.new(self).build(deco, cdeep, clight, drng)
 	# far below and around: little drifting islets and loose rocks, for depth
 	var top_c: Color = biome.get("top", Color("5f8d45"))
 	var side_c: Color = biome.get("side", Color("8b6d52"))
@@ -1309,7 +1351,10 @@ func _decorate() -> void:
 			deco.add_child(isl)
 		else:
 			var r: Node3D = null
-			if Assets.on():
+			if Flora.on():
+				r = Flora.node("rock", style_at(idx(clampi(int(at.x), 0, w - 1), clampi(int(at.z), 0, h - 1))), drng.randi_range(0, 2), drng.randf_range(0.8, 2.2))
+				r.rotation = Vector3(drng.randf_range(-0.4, 0.4), drng.randf() * TAU, drng.randf_range(-0.4, 0.4))
+			elif Assets.on():
 				r = Assets.prop("hexagon/mountain_" + ["A", "B", "C"][drng.randi_range(0, 2)], drng.randf_range(0.8, 2.2), false,
 					{"tint": Color.WHITE.lerp(side_c.lightened(0.2), 0.45), "bright": 1.05})
 				if r: r.rotation = Vector3(drng.randf_range(-0.3, 0.3), drng.randf() * TAU, drng.randf_range(-0.3, 0.3))
@@ -1381,6 +1426,8 @@ func style_at(i: int) -> String:
 ## in groups, picked and sized for the tile's biome. False if the model isn't available, so the
 ## caller can build the old primitive one instead. Purely visual: what blocks stays the map data.
 func _pack_prop(groups: Dictionary, what: String, i: int, p: Vector3, r: RandomNumberGenerator) -> bool:
+	if Flora.on() and what in ["tree", "rock", "cliff", "under", "pebble", "ruin"]:
+		return _flora_prop(groups, what, i, p, r)
 	if not Assets.on():
 		return false
 	var style := style_at(i)
@@ -1394,6 +1441,75 @@ func _pack_prop(groups: Dictionary, what: String, i: int, p: Vector3, r: RandomN
 		"under": list = Assets.under(style)
 		_: return false
 	return _pack_prop_variant(groups, what, i, p, r, Assets.pick(list, r))
+
+## What grows at the foot of trees and boulders, per style: [kind, weight].
+const FLORA_UNDER := {
+	"meadow": [["bush", 4], ["fern", 2], ["flower", 3], ["mushroom", 1], ["pebble", 1]],
+	"bloom": [["bush", 4], ["flower", 4], ["fern", 2], ["mushroom", 1]],
+	"frost": [["bush", 3], ["pebble", 3], ["crystal", 1], ["fern", 1]],
+	"ember": [["bush", 3], ["pebble", 3], ["crystal", 1], ["mushroom", 1]],
+	"storm": [["bush", 3], ["fern", 2], ["reed", 2], ["pebble", 2], ["mushroom", 1]],
+	"gloom": [["crystal", 3], ["mushroom", 3], ["bush", 2], ["pebble", 1]],
+}
+
+## Adds one of the sculpted props (Flora) at p to the batches: a tree, a boulder (cover, or lodged
+## in a cliff), undergrowth or a pebble, in the tile's biome style. Purely visual.
+func _flora_prop(groups: Dictionary, what: String, i: int, p: Vector3, r: RandomNumberGenerator, force_kind := "") -> bool:
+	var style := Flora.style_ok(style_at(i))
+	var kind := what
+	var s := 1.0
+	var sy := 1.0
+	var b := Basis(Vector3.UP, r.randf() * TAU)
+	var pos := p
+	match what:
+		"tree":
+			s = r.randf_range(0.88, 1.12)
+			pos += Vector3(r.randf_range(-0.12, 0.12), 0, r.randf_range(-0.12, 0.12))
+			b = Basis(Vector3(r.randf_range(-1, 1), 0, r.randf_range(-1, 1)).normalized(), r.randf_range(0.0, 0.05)) * b
+		"rock":
+			s = r.randf_range(0.95, 1.2)
+			sy = r.randf_range(1.0, 1.3)
+		"cliff":
+			kind = "rock"
+			s = r.randf_range(1.0, 1.5)
+			sy = r.randf_range(1.2, 1.8)
+			b = Basis(Vector3(r.randf_range(-1, 1), 0, r.randf_range(-1, 1)).normalized(), r.randf_range(0.1, 0.35)) * b
+		"under":
+			var list: Array = FLORA_UNDER.get(style, FLORA_UNDER["meadow"])
+			var tot := 0.0
+			for e in list: tot += float(e[1])
+			var q := r.randf() * tot
+			for e in list:
+				q -= float(e[1])
+				if q <= 0.0:
+					kind = String(e[0]); break
+			s = r.randf_range(0.8, 1.2)
+			if kind == "pebble": s *= 1.8
+		"pebble":
+			s = r.randf_range(0.6, 1.4)
+		"ruin":
+			kind = "pillar"
+			s = r.randf_range(0.95, 1.08)
+	if force_kind != "":
+		kind = force_kind
+	var v := r.randi_range(0, Flora.VARIANTS - 1)
+	var am := Flora.mesh(kind, style, v)
+	b = b * Basis.from_scale(Vector3(s, s * sy, s))
+	var tr := Transform3D(b, pos)
+	var jit := r.randf_range(-0.06, 0.06)
+	var col := Color(1, 1, 1).lightened(jit) if jit > 0.0 else Color(1, 1, 1).darkened(-jit)
+	if kind == "flower":
+		var fcols := [Color("ffffff"), Color("ffb0d8"), Color("fff0a0"), Color("c8b8ff"), Color("ffc890"), Color("a8e0ff")]
+		col = fcols[r.randi_range(0, fcols.size() - 1)]
+	var key := "flora/%s/%s/%d" % [kind, style, v]
+	if not groups.has(key):
+		var big := kind in ["tree", "rock", "pillar"] and what != "cliff"
+		groups[key] = {"mesh": am, "mat": Flora.material(kind, kind in ["rock", "pillar", "crystal"] and what != "cliff"), "items": [], "label": "%s_%s_%d" % [kind, style, v],
+			"shadows": big}
+	_last_item = [tr, col]
+	_last_top = (tr.basis * Vector3(0, am.get_aabb().end.y, 0)).y
+	groups[key]["items"].append(_last_item)
+	return true
 
 var _last_item: Array = []     # the [transform, colour] _pack_prop_variant last added, and its top
 var _last_top := 0.0
