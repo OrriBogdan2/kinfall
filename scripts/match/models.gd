@@ -644,7 +644,7 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 	for mm in [m_body, m_shirt, m_pants, m_acc, m_hero, m_trim]:
 		painted(mm, 1)
 	painted(m_leather, 2); painted(m_dark, 2, 0.18, 0.2, 0.2)
-	painted(m_skin, 4, 0.16, 0.3, 0.18)
+	painted(m_skin, 4, 0.0, 0.0, 0.16)     # no part gradient on skin: the jaw, nose and ears would show seams
 	painted(m_hair, 5, 0.26, 0.22, 0.22)
 	painted(m_gun, 3, 0.12, 0.1, 0.1); painted(m_gold, 3, 0.1, 0.0, 0.0)
 	var rig := Node3D.new(); rig.name = "Rig"; root.add_child(rig)

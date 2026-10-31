@@ -116,7 +116,7 @@ func _build() -> void:
 	vp.add_child(turn)
 	var plate := MeshInstance3D.new()
 	plate.mesh = Models.cyl(0.62, 0.66, 0.06, 40)
-	plate.material_override = Models.shiny(col.darkened(0.55), 0.12)
+	plate.material_override = Models.toon(col.darkened(0.6))
 	plate.position.y = -0.03
 	turn.add_child(plate)
 	var rim := MeshInstance3D.new()
