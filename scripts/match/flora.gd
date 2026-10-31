@@ -24,7 +24,7 @@ static var _noise: FastNoiseLite
 const PAL := {
 	"meadow": {"leaf": [Color("213e2c"), Color("3a6c38"), Color("74a442"), Color("c0d470")], "bark": [Color("3a2a26"), Color("6e4c36")],
 		"stone": [Color("5d5a62"), Color("948c88"), Color("c4bcb0")], "cap": [Color("4c7a34"), Color("8cb850")], "bush": [Color("27502f"), Color("4b8a40"), Color("9cc858")]},
-	"bloom": {"leaf": [Color("7a3462"), Color("c8689a"), Color("f2a4c6"), Color("ffe0ef")], "bark": [Color("3e2a30"), Color("7a5248")],
+	"bloom": {"leaf": [Color("94507e"), Color("dc8cb6"), Color("fbbcd8"), Color("fff0f6")], "bark": [Color("3e2a30"), Color("7a5248")],
 		"stone": [Color("4e5a5c"), Color("7e8a86"), Color("b4beb0")], "cap": [Color("2f7a5c"), Color("5cb88a")], "bush": [Color("1f5a48"), Color("36906a"), Color("72c890")]},
 	"frost": {"leaf": [Color("14303a"), Color("22504e"), Color("3c7a68"), Color("7ab09a")], "bark": [Color("2e2a34"), Color("5e5260")],
 		"stone": [Color("4a5670"), Color("7a8aa4"), Color("b0bed2")], "cap": [Color("c4d6ea"), Color("f4f9ff")], "bush": [Color("1d4248"), Color("3a6a6a"), Color("7aa8a2")]},
@@ -37,6 +37,8 @@ const PAL := {
 }
 
 const SUN := Vector3(0.45, 0.75, 0.45)
+## Finer canopy clumps (more triangles); off by default, the gallery's close-ups can turn it on.
+static var LOD_FINE := false
 
 static func on() -> bool:
 	return not ("--prim-art" in OS.get_cmdline_user_args() or "--pack-flora" in OS.get_cmdline_user_args())
@@ -209,8 +211,9 @@ static func _blob(b: MB, ctr: Vector3, rad: Vector3, blobs: Array, mass: Array, 
 		for o in blobs:
 			var oc: Vector3 = o["c"]
 			if oc.is_equal_approx(ctr): continue
+			# only right where this clump tucks under the next (points inside it are hidden anyway)
 			var dd := (p - oc).length() / float(o["r"])
-			cr = maxf(cr, 1.0 - smoothstep(0.95, 1.45, dd))
+			cr = maxf(cr, 1.0 - smoothstep(1.0, 1.22, dd))
 		var depth := clampf(1.0 - (p - mc).length() / mr, 0.0, 1.0)
 		var hf := clampf((p.y - y0) / maxf(0.01, y1 - y0), 0.0, 1.0)
 		var up := nn.y
@@ -222,7 +225,7 @@ static func _blob(b: MB, ctr: Vector3, rad: Vector3, blobs: Array, mass: Array, 
 			# each clump keeps its own form too: a lit crown and a shaded belly
 			col = col.lerp(pal[2], smoothstep(0.25, 0.95, own.y) * 0.3)
 			col = col.lerp(pal[0], smoothstep(-0.15, -0.85, own.y) * 0.45)
-		col = col.lerp(pal[0], clampf(cr * 0.7 + depth * 0.5, 0.0, 0.85))
+		col = col.lerp(pal[0], clampf(cr * 0.6 + depth * 0.45, 0.0, 0.7))
 		col.a = 1.0 - glow
 		b.add(p, nn, col, mat_id, clampf(p.y / maxf(ht, 0.01), 0.0, 1.0), 1.0)
 	var ids: PackedInt32Array = I[1]
@@ -355,7 +358,9 @@ static func _broadleaf(b: MB, style: String, variant: int, r: RandomNumberGenera
 	var seed := r.randf() * 50.0
 	for k in blobs.size():
 		var bl: Dictionary = blobs[k]
-		_blob(b, bl["c"], bl["s"], blobs, mass, P["leaf"], lo, hi, ht, 0.16 if not storm else 0.1, seed + k * 3.7, 2, 5.0 if bloom else 0.0, 0.0, 0.32 if storm else 0.0)
+		# the core is finely divided; the clumps bulging out of it are cheaper (it's their outline
+		# that shows, and the noise breaks up their facets)
+		_blob(b, bl["c"], bl["s"], blobs, mass, P["leaf"], lo, hi, ht, 0.16 if not storm else 0.1, seed + k * 3.7, 2 if k == 0 or LOD_FINE else 1, 5.0 if bloom else 0.0, 0.0, 0.32 if storm else 0.0)
 	if ember:
 		# embers smouldering in the crown
 		for k in 7:

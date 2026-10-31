@@ -97,9 +97,10 @@ vec3 ground_rich(vec3 c, float n_in, out vec3 emit) {
 		// bloom: drifts of fallen petals, small and pink, thick in some places and absent in others
 		float drift = smoothstep(0.5, 0.75, fbm3(wpos.xz * 0.16 + 2.0));
 		vec2 pp = wpos.xz + vec2(vnoise(wpos.xz * 2.0)) * 0.3;
-		float d = cell_dot(vec2(pp.x * 0.7, pp.y), 3.4, 0.11, 5.0, pick) * step(0.35 + (1.0 - drift) * 0.6, pick);
-		c = mix(c, mix(vec3(0.95, 0.5, 0.72), vec3(1.0, 0.76, 0.88), pick), d * near_k * 0.7);
-		c = mix(c, c * vec3(1.06, 0.95, 1.0), drift * 0.25);
+		float d = cell_dot(vec2(pp.x * 0.7, pp.y), 3.4, 0.12, 5.0, pick) * step(0.2 + (1.0 - drift) * 0.7, pick);
+		float d2 = cell_dot(vec2(pp.y * 0.8, pp.x) + 3.3, 4.2, 0.1, 8.0, pick) * step(0.45 + (1.0 - drift) * 0.5, pick);
+		c = mix(c, mix(vec3(0.95, 0.5, 0.72), vec3(1.0, 0.78, 0.9), pick), max(d, d2) * near_k * 0.75);
+		c = mix(c, c * vec3(1.12, 0.92, 1.02), drift * 0.3);
 	} else if (b == 2) {
 		// frost: snow drifts in soft ridges, blue on their lee side, sparkling on top
 		float dn = fbm3(wpos.xz * 0.25);
@@ -122,12 +123,22 @@ vec3 ground_rich(vec3 c, float n_in, out vec3 emit) {
 		float cin = cell_dot(wpos.xz, 4.0, 0.08, 4.0, pick) * step(0.82, pick);
 		c = mix(c, vec3(0.2, 0.14, 0.13), cin * near_k);
 	} else if (b == 4) {
-		// storm: cracked slate slabs showing through the grass
+		// storm: slabs of cracked slate showing through the grass (irregular cells: the gap between
+		// the nearest and second-nearest scattered point)
 		float sl = smoothstep(0.55, 0.7, fbm3(wpos.xz * 0.3 + 2.0));
-		vec2 cq = wpos.xz * 0.9 + vec2(vnoise(wpos.xz * 1.5)) * 0.35;
-		vec2 cf = fract(cq);
-		float seam = 1.0 - smoothstep(0.0, 0.05, min(min(cf.x, 1.0 - cf.x), min(cf.y, 1.0 - cf.y)));
-		float tone = h21(floor(cq));
+		vec2 cq = wpos.xz * 0.85 + vec2(vnoise(wpos.xz * 1.5), vnoise(wpos.xz * 1.5 + 7.0)) * 0.3;
+		vec2 ci = floor(cq);
+		float f1 = 9.0; float f2 = 9.0; vec2 cell = ci;
+		for (int j = -1; j <= 1; j++) {
+			for (int i = -1; i <= 1; i++) {
+				vec2 g = ci + vec2(float(i), float(j));
+				vec2 o = g + vec2(h21(g + 1.7), h21(g + 9.2));
+				float dd = length(cq - o);
+				if (dd < f1) { f2 = f1; f1 = dd; cell = g; } else if (dd < f2) { f2 = dd; }
+			}
+		}
+		float seam = 1.0 - smoothstep(0.02, 0.07, f2 - f1);
+		float tone = h21(cell);
 		vec3 slate = mix(vec3(0.42, 0.44, 0.58), vec3(0.56, 0.58, 0.72), tone);
 		c = mix(c, slate * (1.0 - seam * 0.45), sl * 0.7 * (1.0 - path));
 	} else if (b == 5) {
