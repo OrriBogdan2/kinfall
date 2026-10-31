@@ -97,8 +97,14 @@ func emote(h: Hunter, id: String, from_net := false) -> void:
 				if b != h and b.ctrl == "bot" and (b.team == h.team or allied(b.team, h.team)) and b.flat_dist(h) < 30.0:
 					b.ai["follow"] = {"h": h, "until": m.time + 25.0}
 
+## Quick replies that aren't on the wheel (bots answering a squad ping).
+const REPLIES := [
+	{"id": "omw", "name": "On my way!", "col": Color("8fd8ff")},
+	{"id": "here", "name": "Let's go here!", "col": Color("ffd36a")},
+]
+
 static func emote_def(id: String) -> Dictionary:
-	for e in EMOTES:
+	for e in EMOTES + REPLIES:
 		if e["id"] == id: return e
 	return EMOTES[0]
 

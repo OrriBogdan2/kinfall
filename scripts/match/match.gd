@@ -44,6 +44,8 @@ var tut_wait := 0.0
 var tut_throws0 := 0
 var exits: Exits = null     # the ways out: skiff docks, rift hatches, outpost uplinks (see Exits)
 var truce: Truce = null     # emotes and truces between squads (see Truce)
+var skydrop: DropSquad = null  # the planning phase before the ship sets off, drop leaders and formations (see DropSquad)
+var spawn_plan: SpawnPlan = null   # which of the map's candidate spawns are live this match (see SpawnPlan)
 var time := 0.0
 var acc := 0.0
 var player: Hunter = null
@@ -204,6 +206,14 @@ func start(o: Dictionary) -> void:
 		spawn_weapon("smg", 4, b0 + Vector3(3.0, 0, 1.6), "", false)
 	if not opts.get("duel", false):
 		_spawn_wild()
+	if not (opts.get("duel", false) or opts.get("tutorial", false) or opts.get("training", false)):
+		# the map is fixed; what's out on it this time isn't (rare kin, vaults, item caches, boss lairs)
+		spawn_plan = SpawnPlan.new(self)
+		spawn_plan.build(layout)
+		spawn_plan.roll(seed_val)
+		spawn_plan.spawn_all()
+	skydrop = DropSquad.new(self)
+	skydrop.setup()
 	var Hud = load("res://scripts/ui/hud.gd")
 	hud = Hud.new()
 	hud.name = "Hud"
@@ -211,6 +221,8 @@ func start(o: Dictionary) -> void:
 	hud.setup(self)
 	if player and player.dropping:
 		hud.toast("Steer to choose where you land", Color("f3eee2"))
+	if skydrop.planning and player:
+		hud.open_map(true)
 	if player:
 		cam.snap(player.pos)
 	if opts.get("duel", false) and player:
@@ -524,8 +536,24 @@ func ship_pos() -> Vector3:
 		return Vector3.ZERO
 	return (ship["a"] as Vector3).lerp(ship["b"], clampf(time / float(ship["dur"]), 0.0, 1.0))
 
-func ship_jump(h: Hunter) -> void:
+## When a bot aboard should jump to come down on a spot: as the ship passes nearest it.
+func plan_jump(h: Hunter, at: Vector3) -> void:
+	if ship.is_empty() or not ship.has("a"):
+		return
+	h.ai["land"] = at
+	var a: Vector3 = ship["a"]; var b: Vector3 = ship["b"]
+	var ab := Vector2(b.x - a.x, b.z - a.z)
+	var k := clampf(Vector2(at.x - a.x, at.z - a.z).dot(ab) / ab.length_squared(), 0.04, 0.97)
+	h.ai["jump_at"] = clampf(k * float(ship["dur"]) - 2.2 + randf_range(-0.5, 0.5), maxf(0.6, time + 0.2), float(ship["ride"]) - 0.5)
+
+## Off the ship. A squadmate waiting on the drop leader can't jump by themselves (force: they're
+## jumping with the leader, or the ship has reached the end of its run).
+func ship_jump(h: Hunter, force := false) -> void:
 	if not h.riding:
+		return
+	if not force and skydrop and skydrop.waits(h):
+		if h == player and hud:
+			hud.toast_small("%s leads the drop  ·  %s to go solo" % [skydrop.leader(h.team).pname, Settings.key_cap("separate")], Color("ffd27a"))
 		return
 	h.riding = false
 	var off := Vector3(rng.randf_range(-0.8, 0.8), 0, rng.randf_range(-0.8, 0.8))
@@ -539,7 +567,12 @@ func ship_jump(h: Hunter) -> void:
 	h.vel = ship["dir"] * 3.0
 	if h == player:
 		sfx("whoosh", null, -2.0)
-		if hud: hud.toast("Steer with %s%s%s%s  ·  %s opens your glider early" % [Settings.key_cap("up"), Settings.key_cap("left"), Settings.key_cap("down"), Settings.key_cap("right"), Settings.key_cap("jump")], Color("cfeaff"))
+		if hud and not force:
+			hud.toast("Steer with %s%s%s%s  ·  %s opens your glider early" % [Settings.key_cap("up"), Settings.key_cap("left"), Settings.key_cap("down"), Settings.key_cap("right"), Settings.key_cap("jump")], Color("cfeaff"))
+		elif hud:
+			hud.toast("Gliding in formation  ·  %s to break away" % Settings.key_cap("separate"), Color("cfeaff"))
+	if skydrop and skydrop.is_lead(h):
+		skydrop.on_lead_jump(h)
 
 func _update_ship(dt: float) -> void:
 	if ship.is_empty():
@@ -559,8 +592,17 @@ func _update_ship(dt: float) -> void:
 		if not h.riding or h.remote:
 			continue
 		var auto: bool = h.ctrl == "bot" or opts.get("autoplay", false)
+		var lead: Hunter = skydrop.leader(h.team) if skydrop else null
+		if lead and lead != h and lead.remote and not h.drop_solo and not lead.riding and lead.dropping:
+			# online: the leader jumped on their own machine; join them
+			ship_jump(h, true)
+			h.drop_follow = lead
+			h.drop_slot = skydrop._free_slot(lead)
+			continue
+		if skydrop and skydrop.waits(h):
+			continue          # jumps with the leader
 		if done or (auto and time >= float(h.ai.get("jump_at", 0.0))):
-			ship_jump(h)
+			ship_jump(h, done)
 	if done and time > float(ship["dur"]) * 1.5:
 		n.queue_free()
 		ship["node"] = null
@@ -700,13 +742,7 @@ func _clear_spot(at: Vector3) -> Vector3:
 
 func _spawn_chests() -> void:
 	for cs in world.chest_spots:
-		var p: Vector3 = cs["pos"]
-		var t := int(cs["tier"])
-		var n := Models.chest(t)
-		n.position = p
-		n.rotation.y = rng.randf() * TAU
-		add_child(n)
-		chests.append({"pos": p, "open": false, "prog": 0.0, "node": n, "tier": t})
+		add_chest(cs["pos"], int(cs["tier"]))
 	for sp in world.shrine_spots:
 		var n := Models.shrine()
 		n.position = sp
@@ -720,6 +756,15 @@ func _spawn_chests() -> void:
 
 # ------------------------------------------------------------------ breakables and found weapons
 const BREAK_HP := {"pot": 6.0, "crate": 22.0, "barrel": 12.0}
+
+func add_chest(p: Vector3, t: int) -> Dictionary:
+	var n := Models.chest(t)
+	n.position = p
+	n.rotation.y = rng.randf() * TAU
+	add_child(n)
+	var c := {"pos": p, "open": false, "prog": 0.0, "node": n, "tier": t}
+	chests.append(c)
+	return c
 
 func _spawn_breakables() -> void:
 	for b in world.break_spots:
@@ -1343,6 +1388,53 @@ func direction_word(from: Vector3, to: Vector3) -> String:
 func ping(p: Vector3, col: Color) -> void:
 	pings.append({"pos": p, "col": col, "t": 0.0})
 	sfx("ping", null, -10.0)
+
+## Squad members' colours on the map and their pings (in squad order).
+const MATE_COLS := [Color("ffd23f"), Color("5fd0ff"), Color("8ff0a0"), Color("ff9be8"), Color("ffa25f")]
+func mate_col(h: Hunter) -> Color:
+	var i := 0
+	for x in hunters:
+		if x == h: break
+		if x.team == h.team: i += 1
+	return MATE_COLS[i % MATE_COLS.size()]
+
+const SQUAD_PING_T := 45.0
+## A squad ping: one per hunter (a new one moves it), seen by their squad on the map, the minimap and
+## as a marker in the world; it lasts a while or until its owner takes it down.
+func squad_ping(h: Hunter, p: Vector3, from_net := false) -> void:
+	if h == null:
+		return
+	if not world.is_void(p.x, p.z):
+		p.y = world.ground_at(p.x, p.z)
+	else:
+		p.y = 0.0
+	unping(h, true)
+	pings.append({"pos": p, "col": mate_col(h), "t": 0.0, "by": h, "team": h.team, "life": SQUAD_PING_T})
+	if player and h.team == player.team:
+		sfx("ping", null, -6.0, 1.15)
+	if net_on and not from_net:
+		net_event(["sping", h.nid, p.x, p.y, p.z])
+	if skydrop:
+		skydrop.on_ping(h, p)
+	if not from_net:
+		for b in hunters:
+			if b != h and b.team == h.team and b.ctrl == "bot" and not b.remote and not b.out:
+				b.ai["ping_goal"] = {"pos": p, "until": time + 30.0, "by": h}
+
+func unping(h: Hunter, quiet := false, from_net := false) -> void:
+	for pg in pings.duplicate():
+		if pg.get("by") == h:
+			pings.erase(pg)
+			for b in hunters:
+				if b.ctrl == "bot" and b.ai.has("ping_goal") and (b.ai["ping_goal"] as Dictionary).get("by") == h:
+					b.ai.erase("ping_goal")
+	if not quiet and net_on and not from_net:
+		net_event(["unping", h.nid])
+
+func my_ping() -> Dictionary:
+	for pg in pings:
+		if player and pg.get("by") == player: return pg
+	return {}
 
 func kin_bark(k: Kin, txt: String, cat: String) -> void:
 	for b in bubbles:
@@ -2760,7 +2852,7 @@ func _process(delta: float) -> void:
 		if b["t"] > 2.6: bubbles.erase(b)
 	for p in pings.duplicate():
 		p["t"] += delta
-		if p["t"] > 4.0: pings.erase(p)
+		if p["t"] > float(p.get("life", 4.0)): pings.erase(p)
 	for f in feed.duplicate():
 		f["t"] += delta
 		if f["t"] > 6.0: feed.erase(f)
@@ -2787,6 +2879,7 @@ func _gather_input() -> void:
 	player.inp["aim"] = _mouse_aim()
 	player.inp["aim_y"] = aim_y      # the height of whatever you're pointing at (shots climb or dip to it)
 	player.inp["fire"] = Input.is_action_pressed("fire") and not paused and not (hud and hud.mouse_on_ui())
+	var map_up: bool = hud != null and hud.map_open()      # the map takes the mouse buttons
 	if paused:
 		player.inp["move"] = Vector2.ZERO
 	player.inp["interact"] = Input.is_action_pressed("interact")
@@ -2820,6 +2913,8 @@ func _gather_input() -> void:
 	for a in [["dash", "dash"], ["jump", "jump"], ["signature", "sig"], ["reload", "reload"], ["tonic", "tonic"], ["throw", "throw"], ["ultimate", "ult"], ["secondary", "sec"], ["gear1", "gear1"]]:
 		if a[0] == "tonic" and (not perk_offer.is_empty() or not _perk_keys_down.is_empty()):
 			continue       # 1, 2 and 3 pick a perk while a choice is open
+		if map_up and a[0] in ["secondary", "throw"]:
+			continue       # right click takes your ping down while the map is up
 		if a[0] == "secondary" and aim_hold != "" and aim_hold != "secondary" and Input.is_action_just_pressed("secondary"):
 			aim_hold = ""          # right click while aiming something else cancels the cast
 			continue
@@ -2848,6 +2943,21 @@ func _gather_input() -> void:
 			pending_input[a[1]] = true
 
 func _unhandled_input(event: InputEvent) -> void:
+	if hud and hud.map_open() and (event.is_action_pressed("menu") or event.is_action_pressed("map")):
+		hud.close_map()
+		get_viewport().set_input_as_handled()
+		return
+	if event.is_action_pressed("map") and hud and player and not over and not Overlay.is_open() and hud.map_allowed():
+		hud.open_map(false)
+		get_viewport().set_input_as_handled()
+		return
+	if skydrop and player and not player.out and not paused:
+		if event.is_action_pressed("pass_lead") and skydrop.pass_lead(player):
+			get_viewport().set_input_as_handled()
+			return
+		if event.is_action_pressed("separate") and skydrop.separate(player):
+			get_viewport().set_input_as_handled()
+			return
 	if event.is_action_pressed("menu") and hud and (hud.swap_open() or hud.pack_open()):
 		hud.close_swap(); hud.close_pack()
 		get_viewport().set_input_as_handled()
@@ -2870,6 +2980,18 @@ func _on_menu_closed() -> void:
 
 func step(dt: float) -> void:
 	if over:
+		return
+	if skydrop and skydrop.planning:
+		# planning the drop: the ship waits at the edge of the map and the match clock waits with it
+		skydrop.tick_plan(dt)
+		if String(opts.get("map_demo", "")) == "plan" and player and skydrop.clock > 1.2 and not has_meta("map_demo_done"):
+			# test: your ping on a vault, beside the bots' picks
+			set_meta("map_demo_done", true)
+			var vs: Array = spawn_plan.active_of("vault") if spawn_plan else []
+			squad_ping(player, vs[0]["pos"] if not vs.is_empty() else world.spawns[0])
+		_update_ship(dt)
+		if net_on:
+			Net.tick(dt)
 		return
 	time += dt
 	if Game.god and player and not player.out:
@@ -3051,6 +3173,29 @@ func step(dt: float) -> void:
 	if opts.get("ring_demo", false) and player and player.gliding:
 		player.inp["glide"] = true
 		player.inp["move"] = Vector2(player.vel.x, player.vel.z).normalized()
+	if String(opts.get("map_demo", "")) == "mid" and player and hud and time > 0.6 and not has_meta("map_demo_done"):
+		# test: the map mid-match, with a few spawns scouted (found, empty and taken) and squad pings
+		set_meta("map_demo_done", true)
+		var n_k := 0
+		for cnd in (spawn_plan.cands if spawn_plan else []):
+			if cnd["cat"] in ["rare_kin", "cache"] and n_k < 6 and (n_k % 2 == 0 or cnd["active"]):
+				cnd["known"][player.team] = true; n_k += 1
+		for cnd in (spawn_plan.active_of("vault").slice(0, 1) if spawn_plan else []):
+			if cnd["ref"] is Dictionary: cnd["ref"]["open"] = true
+		for x in hunters:
+			if x.team == player.team and x != player:
+				squad_ping(x, world.free_spot_near(x.pos + Vector3(14, 0, -6), [], 1.0, 0.5, 12.0)); break
+		squad_ping(player, player.pos + Vector3(-20, 0, 12))
+		hud.open_map(false)
+	if opts.get("drop_demo", false) and player and not ship.is_empty():
+		# test: skip ahead to the middle of the ride, the leader jumps and steers; the squad follows
+		if not has_meta("drop_demo_t"):
+			set_meta("drop_demo_t", true)
+			time = float(ship["dur"]) * 0.5 - 2.0
+		if player.riding and time > float(ship["dur"]) * 0.5 - 1.0:
+			ship_jump(player)
+		if player.dropping:
+			player.inp["move"] = Vector2(0.8, -0.6).normalized() if fmod(time, 6.0) < 3.0 else Vector2(0.3, 1.0).normalized()
 	if opts.get("truce_demo", false) and truce:
 		truce.demo()
 	if opts.has("exit_demo") and exits and player and not player.dropping:
@@ -3087,6 +3232,7 @@ func step(dt: float) -> void:
 			hist.append("%.1f:(%.1f,%.1f,%.1f) v(%.1f,%.1f,%.1f) g%d f%.2f r%.2f gr%d void%d gl%d fuel%.1f kb%.1f dn%d st%.1f cd%.1f %s" % [time, h.pos.x, h.pos.y, h.pos.z, h.vel.x, h.vel.y, h.vel.z, int(h.grounded), h.fly_t, h.roll_t, int(h.grap.size() > 0), int(h.over_void()), int(h.gliding), h.glide_fuel, time - h.kb_t, int(h.downed), h.stun_t, h.grap_cd, String(h.ai.get("goal_kind", ""))])
 			if hist.size() > 10: hist.pop_front()
 			h.set_meta("hist", hist)
+	if skydrop: skydrop.tick(dt)
 	for k in kins: k.sim(dt)
 	for mb in mobs: mb.sim(dt)
 	_separate()
@@ -3114,6 +3260,7 @@ func step(dt: float) -> void:
 	_update_dex(dt)
 	if exits: exits.tick(dt)
 	if truce: truce.tick(dt)
+	if spawn_plan: spawn_plan.tick(dt)
 	_update_events()
 	_update_zones(dt)
 	fields.tick(dt)
@@ -4614,6 +4761,19 @@ func _net_ev(x, from: String) -> void:
 		"emo":
 			var eh: Hunter = ents_by_id.get(String(x[1]), null) as Hunter
 			if truce and eh: truce.emote(eh, String(x[2]), true)
+		"sping":
+			var ph: Hunter = ents_by_id.get(String(x[1]), null) as Hunter
+			if ph: squad_ping(ph, Vector3(x[2], x[3], x[4]), true)
+		"unping":
+			var uh: Hunter = ents_by_id.get(String(x[1]), null) as Hunter
+			if uh: unping(uh, true, true)
+		"lead":
+			var lh: Hunter = ents_by_id.get(String(x[1]), null) as Hunter
+			var lt: Hunter = ents_by_id.get(String(x[2]), null) as Hunter
+			if skydrop and lh and lt: skydrop.pass_lead(lh, lt, true)
+		"dsep":
+			var sh: Hunter = ents_by_id.get(String(x[1]), null) as Hunter
+			if skydrop and sh: skydrop.separate(sh, true)
 		"ext":
 			who = ents_by_id.get(String(x[1]), null)
 			if who is Hunter and not who.extracted:

@@ -468,6 +468,14 @@ func _choose(m: Match, h: Hunter) -> void:
 			if h.flat_dist(fh) > 3.0: goal = fh.pos; gk = "follow"
 		else:
 			a.erase("follow")
+	# a squadmate pinged somewhere: go and have a look
+	if goal == Vector3.INF and a.has("ping_goal"):
+		var pg: Dictionary = a["ping_goal"]
+		var pp: Vector3 = pg["pos"]
+		if m.time < float(pg["until"]) and h.flat_dist(pp) > 3.5 and not m.world.is_void(pp.x, pp.z):
+			goal = pp; gk = "ping"
+		else:
+			a.erase("ping_goal")
 	if goal == Vector3.INF and m.exits and not m.exits.list.is_empty():
 		# heading home: late in the match, with a good haul, or just because
 		if not a.get("leave", false) and randf() < 0.0015:
