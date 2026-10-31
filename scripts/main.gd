@@ -1894,13 +1894,16 @@ func _boss_check() -> void:
 		var atks := {}
 		var track := func(): if b.atk != "": atks[b.atk] = true
 		run.call(6.0, track)
+		if b.buried: b._clear_attack()      # (a burrowed Brood Mother can't be hit: bring her up for the scripted hits)
 		b.hurt(b.max_hp * 0.36, P, {"src": "shot"})
 		run.call(0.1, track)
 		var p1 := b.phase
 		var hp_a := b.hp
+		if b.buried: b._clear_attack()
 		b.hurt(100.0, P, {"src": "shot"})
 		var invul_ok := hp_a - b.hp < 30.0
 		run.call(8.0, track)
+		if b.buried: b._clear_attack()
 		b.hurt(b.max_hp * 0.4, P, {"src": "shot"})
 		run.call(0.1, track)
 		var p2 := b.phase
@@ -1911,9 +1914,11 @@ func _boss_check() -> void:
 		ok.call(p1 == 1 and p2 == 2 and invul_ok and enr, "%s: phase 2 at 66%%, phase 3 at 33%% (shrugs off hits while it roars), enraged after %ds" % [b.md["name"], int(b.md["enrage"])])
 		ok.call(atks.size() >= 3, "%s used %d attacks: %s" % [b.md["name"], atks.size(), str(atks.keys())])
 		var w0 := m.wpicks.size()
+		spot.call(P, L["c"] + Vector3(L["out"].x, 0, L["out"].y) * 3.0)     # (a shove may have sent you out of the lair)
 		P.lvl = 1; P.xp = 0.0
 		var xp0 := P.xp
 		b.hp = 1.0
+		if b.buried: b._clear_attack()
 		b.hurt(5.0, P, {"src": "shot"})
 		run.call(0.2)
 		var ew = L.get("egg_wp")

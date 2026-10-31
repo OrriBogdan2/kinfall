@@ -3138,7 +3138,7 @@ func _draw_lair_dial(sz: Vector2, p: Hunter) -> void:
 	var L: Dictionary = m.lairs.puzzle_of(p)
 	if L.is_empty():
 		return
-	var ctr := Vector2(sz.x * 0.5 - minf(270.0, sz.x * 0.24), sz.y * 0.5 - 20.0)
+	var ctr := Vector2(sz.x * 0.5 - minf(290.0, sz.x * 0.26), sz.y * 0.5 - 45.0)
 	var rad := 86.0
 	_dial_widget(ctr, rad, L, true)
 	var col: Color = Lairs.color_of(L)
