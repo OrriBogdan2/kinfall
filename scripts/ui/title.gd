@@ -113,7 +113,7 @@ func _build_ship() -> void:
 	# hull: smooth sides that bulge out under the rail and sweep down and in to a keel, with a red
 	# stripe under the rail. Normals follow the curve, so the hull shades as one polished shape.
 	var prof := [[1.0, 0.0], [1.025, -0.12], [1.04, -0.3], [1.03, -0.5], [0.98, -0.8], [0.9, -1.15], [0.78, -1.5], [0.62, -1.85], [0.44, -2.15], [0.24, -2.38], [0.06, -2.48]]
-	var band_cols := [Color("d9604a"), Color("d9604a"), Color("6e4a32"), Color("62412c"), Color("5a3b28"), Color("543725"), Color("4e3322"), Color("48301f"), Color("422c1d"), Color("3c281b")]
+	var band_cols := [Color("d9604a"), Color("7a4e34"), Color("6e4a32"), Color("62412c"), Color("5a3b28"), Color("543725"), Color("4e3322"), Color("48301f"), Color("422c1d"), Color("3c281b")]
 	var grid: Array = []
 	for r in prof.size():
 		var row: Array = []
@@ -154,8 +154,8 @@ func _build_ship() -> void:
 	ship.add_child(hull)
 	# a brass trim line along the top of the stripe
 	for i in n:
-		var p0: Vector2 = ol[i] * 1.03; var p1: Vector2 = ol[(i + 1) % n] * 1.03
-		var a := Vector3(p0.x, DECK_Y - 0.33, p0.y); var b := Vector3(p1.x, DECK_Y - 0.33, p1.y)
+		var p0: Vector2 = ol[i] * 1.028; var p1: Vector2 = ol[(i + 1) % n] * 1.028
+		var a := Vector3(p0.x, DECK_Y - 0.125, p0.y); var b := Vector3(p1.x, DECK_Y - 0.125, p1.y)
 		if a.distance_to(b) < 0.01: continue
 		var tr := Models.part(ship, Models.box(0.05, 0.05, a.distance_to(b) + 0.04), brass, (a + b) * 0.5)
 		tr.look_at_from_position((a + b) * 0.5, b, Vector3.UP)
@@ -321,11 +321,11 @@ func _build_shafts() -> void:
 		mi.mesh = q
 		var m := ShaderMaterial.new(); m.shader = sh
 		m.set_shader_parameter("seed", rng.randf() * 10.0)
-		m.set_shader_parameter("intensity", rng.randf_range(0.12, 0.22))
+		m.set_shader_parameter("intensity", rng.randf_range(0.18, 0.32))
 		m.set_shader_parameter("color", Color("ffd2a0").lerp(Color("ffb0c8"), rng.randf() * 0.5))
 		mi.material_override = m
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		var at := Vector3(rng.randf_range(-60.0, 12.0), rng.randf_range(-8.0, 14.0), rng.randf_range(16.0, 60.0))
+		var at := Vector3(rng.randf_range(-70.0, 0.0), rng.randf_range(-22.0, 4.0), rng.randf_range(20.0, 70.0))
 		mi.basis = Basis(Quaternion(Vector3.UP, axis)) * Basis.from_scale(Vector3(rng.randf_range(5.0, 14.0), rng.randf_range(120.0, 200.0), 1.0))
 		mi.position = at
 		mi.extra_cull_margin = 200.0
