@@ -182,6 +182,11 @@ func _info_card() -> PanelContainer:
 		v.add_child(UI.label("Part %s" % " · part ".join(animals.map(func(a): return String(a).to_lower())), 15, UI.MUTED))
 	if rec.get("shimmer", false):
 		v.add_child(UI.label("Shimmering! Rare colours.", 15, UI.GOLD))
+	for mid in Mutations.of(rec):
+		var mr := UI.hbox(8)
+		mr.add_child(Mutations.Badge.new(mid, 20.0))
+		mr.add_child(UI.label("%s! %s" % [Mutations.name_of(mid), Mutations.perk_text(mid)], 15, Mutations.col_of(mid)))
+		v.add_child(mr)
 	var desc := String(sp.get("desc", ""))
 	if desc != "":
 		var dl := UI.label(desc, 15, UI.INK)
@@ -270,6 +275,9 @@ func _play_intro() -> void:
 	title_lbl.text = "You hatched %s %s!" % [_a_an(String(sp["name"])), sp["name"]]
 	if rec.get("shimmer", false):
 		title_lbl.text = "A shimmering %s!" % sp["name"]
+	if not Mutations.of(rec).is_empty():
+		var pre: String = ("shimmering " if rec.get("shimmer", false) else "") + Mutations.prefix(rec)
+		title_lbl.text = "%s %s %s!" % ["An" if "aeiouAEIOU".contains(pre.substr(0, 1)) else "A", pre, sp["name"]]
 	sub_lbl.text = "%s kin" % String(sp.get("type", "")).capitalize()
 	var tt := create_tween()
 	tt.tween_interval(0.35)

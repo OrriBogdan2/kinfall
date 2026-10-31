@@ -217,6 +217,7 @@ func _spawn_rare(p: Vector3, r: RandomNumberGenerator) -> Kin:
 	rec["level"] = int(lv[1]) + r.randi_range(2, 4)
 	Evo.simulate(rec, r)
 	rec["shimmer"] = r.randf() < 0.35          # a rare colour, much more often than out in the open
+	Mutations.roll_wild(rec, r, m.tier, true)  # and rare mutations, five times as often
 	var k := m.spawn_wild(rec, p)
 	k.set_meta("rare", true)
 	return k

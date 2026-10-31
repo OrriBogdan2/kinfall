@@ -325,6 +325,8 @@ func make_hunter(id: String, team: int, cls: String, pname: String, ctrl: String
 		kins.append(k)
 		ents_by_id[k.nid] = k
 		h.kin = k
+		if Mutations.owner_stat(kin_rec, "armor") > 0.0:
+			h.refresh_gear(); h.armor = h.max_armor      # a Crystal kin hardens its hunter's armor
 	if TWO_KIN and not kin_rec2.is_empty() and not kin_rec.is_empty():
 		# (retired) everyone brought two kin: the second waited on the bench until you swapped
 		var k2 := Kin.new()
@@ -1291,7 +1293,8 @@ func _spawn_wild() -> void:
 		var rec := Save.new_kin(sp)
 		rec["level"] = rng.randi_range(T["kin_lvl"][0], T["kin_lvl"][1])
 		Evo.simulate(rec, rng)
-		rec["shimmer"] = rng.randf() < 1.0 / 25.0   # a rare colour you'll want to catch
+		rec["shimmer"] = rng.randf() < Mutations.SHIMMER_WILD   # a rare colour you'll want to catch
+		Mutations.roll_wild(rec, rng, tier)          # and now and then a rare mutation (more in harder tiers)
 		spawn_wild(rec, p)
 
 func spawn_wild(rec: Dictionary, at: Vector3, dazed := false) -> Kin:
@@ -2176,7 +2179,7 @@ func sees(team_i: int, p: Vector3, crouched := false, revealed := false) -> bool
 		if d < near:
 			return true
 		# sneaking (Ctrl) slows you but lets you see further, as in Supervive
-		if d > rng * (1.25 if h.crouch else 1.0) or (in_grass and not revealed):
+		if d > rng * (1.25 if h.crouch else 1.0) * (1.0 + h.gear_stat("sight")) or (in_grass and not revealed):
 			continue
 		if not revealed and rel.normalized().dot(h.aim_dir()) < VIEW_COS:
 			continue
@@ -3364,9 +3367,10 @@ func _update_dex(dt: float) -> void:
 	for k in kins:
 		if k.is_wild() and not k.dead and player.flat_dist(k) < 11.0:
 			Care.dex_mark(k.species, "seen")
-			if k.rec.get("shimmer", false) and not _shimmer_told.has(k.nid):
+			if Mutations.special(k.rec) and not _shimmer_told.has(k.nid):
 				_shimmer_told[k.nid] = true
-				hud.toast("A shimmering %s! Its colours are rare" % Data.KIN[k.species]["name"], Color("fff6c0"))
+				var rare := " ".join(Mutations.tags(k.rec))
+				hud.toast(("A shimmering %s! Its colours are rare" % Data.KIN[k.species]["name"]) if Mutations.of(k.rec).is_empty() else "%s %s %s! A rare mutation" % ["An" if "AEIOU".contains(rare.substr(0, 1)) else "A", rare, Data.KIN[k.species]["name"]], Color("fff6c0"))
 				sfx("unlock", k.pos, -6.0, 1.3)
 
 func _update_interact(dt: float) -> void:
@@ -4558,7 +4562,7 @@ func _ser(e: Ent) -> Array:
 		var k: Kin = e
 		return ["k", k.nid, _r(k.pos.x), _r(k.pos.y), _r(k.pos.z), _r(k.face), _r(k.hp), _r(k.max_hp), KIN_STATES.find(k.state), k.species,
 			k.owner_h.nid if k.owner_h else "", int(k.rec.get("level", 1)), String(k.rec.get("name", "")), _r(k.catch_prog), _r(k.vel.x), _r(k.vel.z),
-			1 if k.rec.get("shimmer", false) else 0, String(k.rec.get("acc", ""))]
+			1 if k.rec.get("shimmer", false) else 0, String(k.rec.get("acc", "")), ",".join(Mutations.of(k.rec))]
 	var mb: Mob = e
 	return ["m", mb.nid, _r(mb.pos.x), _r(mb.pos.y), _r(mb.pos.z), _r(mb.face), _r(mb.hp), _r(mb.max_hp), MOB_STATES.find(mb.st), mb.mkind,
 		_r(mb.atk_dir.x), _r(mb.atk_dir.y), _r(mb.st_t), _r(mb.vel.x), _r(mb.vel.z), _r(mb.stag_open), _r(mb.stagger_t)]
@@ -4623,6 +4627,8 @@ func _net_make(it: Array) -> Ent:
 			if it.size() > 17:
 				rec["shimmer"] = int(it[16]) == 1
 				rec["acc"] = String(it[17])
+			if it.size() > 18 and String(it[18]) != "":
+				rec["mutations"] = Array(String(it[18]).split(","))
 			var k := Kin.new()
 			k.init_kin(self, nid, rec["species"], rec, owner)
 			add_child(k)
