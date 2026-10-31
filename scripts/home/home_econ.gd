@@ -564,7 +564,7 @@ func open_graveyard() -> void:
 		var g: Dictionary = gs[i]
 		var rc := UI.card(UI.CARD, 12, 12)
 		var r := UI.hbox(12); rc.add_child(r)
-		r.add_child(UI.IconDot.new("paw", Data.KIN.get(String(g["species"]), {}).get("color", UI.INK), 22.0))
+		r.add_child(UI.IconDot.new("paw", Color(Data.KIN.get(String(g["species"]), {}).get("color", UI.INK)).lerp(Color.WHITE, 0.3), 22.0))
 		var info := UI.vbox(2); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var sp: Dictionary = Data.KIN.get(String(g["species"]), {})
 		var nrow := UI.hbox(8)
@@ -670,7 +670,7 @@ func open_shrine() -> void:
 		var cv := UI.vbox(4); card.add_child(cv)
 		var sp: Dictionary = Data.KIN.get(String(g["species"]), {})
 		var nr := UI.hbox(10)
-		nr.add_child(UI.IconDot.new("paw", sp.get("color", UI.INK), 20.0))
+		nr.add_child(UI.IconDot.new("paw", Color(sp.get("color", UI.INK)).lerp(Color.WHITE, 0.3), 20.0))
 		nr.add_child(UI.label(String(g["name"]), UI.T_HEAD, UI.INK, UI.big))
 		if g.get("soul", false): nr.add_child(UI.tag("Soul kept", Color("9ff0e0")))
 		cv.add_child(nr)
@@ -689,7 +689,8 @@ func open_shrine() -> void:
 		else:
 			var gg2 := g
 			var why2 := Econ.revive_why(g)
-			var b2 := UI.primary("Bring back  ·  1 ember, %d gems" % Econ.revive_cost(g), func(): _revive(gg2), 280)
+			var b2 := UI.button("Bring back  ·  1 ember, %d gems" % Econ.revive_cost(g), func(): _revive(gg2), 280, "bond")
+			b2.add_theme_color_override("font_color", Color("bff8ec"))
 			b2.disabled = why2 != ""
 			b2.tooltip_text = why2
 			r.add_child(b2)
@@ -732,6 +733,7 @@ func open_shrine_lot() -> void:
 
 # ------------------------------------------------------------------ the Armory
 func open_armory() -> void:
+	if fix_loadout_class(): Save.save_game()      # weapons are class-locked
 	var v: VBoxContainer = h._new_panel("Armory", 960, true)
 	var items: Array = Econ.armory().duplicate()
 	items.sort_custom(func(a, b): return Loot.value(a) > Loot.value(b))
@@ -800,6 +802,28 @@ func _loadout_line() -> String:
 		if not g.is_empty(): bits.append(Loot.name_of(g))
 	return ", ".join(bits)
 
+## Which class can use a stored weapon ("light", "medium", "heavy"), from the class weapon lists
+## (Loot.class_of does the same once it lands). "" for gloves and anything unknown.
+static func wclass(it: Dictionary) -> String:
+	if String(it.get("t", "")) != "weapon":
+		return ""
+	var wid := String(it.get("wid", ""))
+	for c in Data.CLASSES:
+		if (Data.CLASSES[c]["weapons"] as Array).has(wid): return String(c)
+	return ""
+
+## Weapons are class-locked: drops an armory weapon from the loadout when it doesn't fit the class
+## you've picked (you take the class weapon instead). True when it changed anything.
+static func fix_loadout_class() -> bool:
+	var w := Econ.loadout("weapon")
+	if w.is_empty():
+		return false
+	var wc := wclass(w)
+	if wc != "" and wc != Data.class_of_save():
+		Econ.set_loadout("weapon", "")
+		return true
+	return false
+
 func _in_loadout(it: Dictionary) -> String:
 	for s in ["weapon", "glove0", "glove1"]:
 		if String(Save.d["loadout"].get(s, "")) == String(it.get("uid", "")): return s
@@ -813,7 +837,7 @@ func _tile(it: Dictionary) -> Control:
 		arm_pick = uid
 		open_armory(), 8, Loot.col_of(it))
 	card.custom_minimum_size = Vector2(124, 100)
-	card.tooltip_text = "%s\n%s\nWorth %d" % [Loot.name_of(it), Loot.sub_of(it), Loot.value(it)]
+	card.tooltip_text = "%s\n%s\nWorth %d%s" % [Loot.name_of(it), Loot.sub_of(it), Loot.value(it), ("\n%s weapon" % Data.CLASSES[wclass(it)]["name"]) if wclass(it) != "" else ""]
 	var cv := UI.vbox(2); card.add_child(cv)
 	var top := UI.hbox(4)
 	top.add_child(Icons.Glyph.new(Loot.icon_of(it), Loot.el_col(it), 32.0))
@@ -821,6 +845,12 @@ func _tile(it: Dictionary) -> Control:
 	if _in_loadout(it) != "":
 		top.add_child(UI.IconDot.new("check", UI.GOOD, 16.0))
 	cv.add_child(top)
+	var wc := wclass(it)
+	if wc != "":
+		# weapons are class-locked: say whose it is, dimmer when it isn't your class's
+		var ct := UI.tag(String(Data.CLASSES[wc]["name"]), Data.CLASSES[wc]["color"] if wc == Data.class_of_save() else UI.FAINT)
+		ct.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+		cv.add_child(ct)
 	var bar := ColorRect.new(); bar.color = Color(Loot.col_of(it), 0.85); bar.custom_minimum_size = Vector2(22, 3)
 	bar.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	cv.add_child(bar)
@@ -862,6 +892,10 @@ func _detail(it: Dictionary) -> Control:
 		if gdesc != "":
 			var gd2 := UI.label(gdesc, 13, UI.MUTED); gd2.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			col.add_child(gd2)
+	var dwc := wclass(it)
+	if dwc != "":
+		col.add_child(UI.label("%s weapon%s" % [Data.CLASSES[dwc]["name"], "" if dwc == Data.class_of_save() else "  ·  your class is %s" % Data.CLASSES[Data.class_of_save()]["name"]],
+			UI.T_SMALL, Data.CLASSES[dwc]["color"] if dwc == Data.class_of_save() else Color("ffb3a8")))
 	var slot := "weapon" if String(it["t"]) == "weapon" else Econ.glove_slot(it)
 	var on := _in_loadout(it) != ""
 	var row := UI.hbox(8)
@@ -871,7 +905,12 @@ func _detail(it: Dictionary) -> Control:
 		lb.tooltip_text = "Picked for your next expedition. Click to leave it at home"
 		row.add_child(lb)
 	else:
-		row.add_child(UI.primary("Take it next time", func(): Econ.set_loadout(slot, uid); Sfx.play("pickup"); Save.save_game(); open_armory(), 170))
+		var tb := UI.primary("Take it next time", func(): Econ.set_loadout(slot, uid); Sfx.play("pickup"); Save.save_game(); open_armory(), 170)
+		var wc := wclass(it)
+		if wc != "" and wc != Data.class_of_save():
+			tb.disabled = true
+			tb.tooltip_text = "%s weapon: switch to %s in the expedition panel to take it" % [Data.CLASSES[wc]["name"], Data.CLASSES[wc]["name"]]
+		row.add_child(tb)
 	var precious := Loot.rar_of(it) >= 3
 	var do_sell := func():
 		var g := Econ.sell(uid)
@@ -989,10 +1028,16 @@ func _treasure(v: VBoxContainer) -> void:
 func loadout_rows(parent: VBoxContainer, reopen: Callable) -> void:
 	if not Save.has_building("armory") and Econ.armory().is_empty():
 		return
+	if fix_loadout_class(): Save.save_game()
 	parent.add_child(UI.section("From your armory"))
+	var cls := Data.class_of_save()
+	var other: Dictionary = {}       # class name -> how many stored weapons only it can use
+	for it in Econ.armory():
+		var wc := wclass(it)
+		if wc != "" and wc != cls: other[String(Data.CLASSES[wc]["name"])] = int(other.get(String(Data.CLASSES[wc]["name"]), 0)) + 1
 	for slot in ["weapon", "glove0", "glove1"]:
 		var pool: Array = Econ.armory().filter(func(it):
-			if slot == "weapon": return String(it.get("t", "")) == "weapon"
+			if slot == "weapon": return String(it.get("t", "")) == "weapon" and wclass(it) == cls
 			return String(it.get("t", "")) == "glove" and Econ.glove_slot(it) == slot)
 		if pool.is_empty() and slot != "weapon":
 			continue
@@ -1019,6 +1064,12 @@ func loadout_rows(parent: VBoxContainer, reopen: Callable) -> void:
 			b.disabled = ids.size() <= 1
 			row.add_child(b)
 		parent.add_child(card)
+		if slot == "weapon" and not other.is_empty():
+			var bits: Array = []
+			for cn in other: bits.append("%d %s" % [int(other[cn]), String(cn).to_lower()])
+			var ol := UI.label("Also stored: %s weapon%s (switch class to take them)" % [", ".join(bits), "" if other.size() == 1 and int(other.values()[0]) == 1 else "s"], 12, UI.FAINT)
+			ol.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			parent.add_child(ol)
 	var pl := UI.label("%sBackpack: %d slots  ·  what you take can be lost if you go down" % ["An armory weapon replaces the one above  ·  " if not Econ.loadout("weapon").is_empty() else "", Econ.pack_cap()], 12, UI.MUTED)
 	pl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	parent.add_child(pl)

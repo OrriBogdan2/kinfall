@@ -1560,7 +1560,7 @@ func _build_hub() -> void:
 		b.custom_minimum_size = Vector2(62, 58)
 		b.tooltip_text = "%s  (%d)" % [it[1], i + 1]
 		var ic := UI.IconDot.new(String(it[2]), UI.INK, 22.0)
-		ic.position = Vector2(20, 7)
+		ic.position = Vector2(23, 9)
 		b.add_child(ic)
 		var lb := UI.label(String(it[1]), 11, UI.MUTED, UI.semi)
 		lb.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1569,7 +1569,7 @@ func _build_hub() -> void:
 		lb.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		b.add_child(lb)
 		var kc := UI.keycap(str(i + 1), 10)
-		kc.position = Vector2(3, 3)
+		kc.position = Vector2(2, 2)
 		kc.modulate.a = 0.75
 		b.add_child(kc)
 		b.mouse_entered.connect(func(): ic.col = UI.ACCENT_HI; ic.queue_redraw(); lb.add_theme_color_override("font_color", UI.INK))
@@ -2610,6 +2610,8 @@ func _open_expedition() -> void:
 		var ck: String = cname_of[nm]
 		Save.d["cls"] = ck
 		Save.d["weapon"] = Data.CLASSES[ck]["weapon"]
+		# weapons are class-locked: an armory weapon for another class drops back to the class weapon
+		if HomeEcon.fix_loadout_class(): _toast("Your armory weapon is for another class: taking the %s instead" % Data.weapon_stats(Data.CLASSES[ck]["weapon"])["name"])
 		Save.save_game()
 		_refresh_player_model()
 		_open_expedition(), {}, 120)
