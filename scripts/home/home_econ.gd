@@ -407,9 +407,7 @@ func open_feeder(f: Dictionary) -> void:
 	var bits: Array = ["Seats %d" % int(fd["seats"])]
 	if float(fd["mult"]) > 1.0: bits.append("meals fill %d%% more" % int(round((float(fd["mult"]) - 1.0) * 100.0)))
 	if float(fd["joy"]) > 0.0: bits.append("cheers them up")
-	var dl := UI.label("%s  ·  %s" % [fd["desc"], "  ·  ".join(bits)], 13, UI.MUTED)
-	dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	v.add_child(dl)
+	UI.subtitle(v, "%s  ·  %s" % [fd["desc"], "  ·  ".join(bits)])
 	# what's in it
 	if Econ.fill(f) > 0:
 		var counts := {}
@@ -436,17 +434,22 @@ func open_feeder(f: Dictionary) -> void:
 		open_feeder(f), 160)
 	fill_b.disabled = Econ.room_in(f) <= 0
 	fill_b.tooltip_text = "Fills it with kibble and everyday crops from your pantry (never treats or rare crops)"
-	row0.add_child(fill_b)
+	UI.footer(v).add_child(fill_b)
+	UI.with_key(fill_b, "Enter")
+	(v.get_meta("shell") as Control).set_meta("primary", fill_b)
 	if fd["auto"]:
 		var on: bool = f.get("auto", true)
-		var ab := UI.choice("Refills itself: %s" % ("on" if on else "off"), on, func():
+		var ab := CheckButton.new()
+		ab.text = "Refills itself from your pantry"
+		ab.button_pressed = on
+		ab.tooltip_text = "Below half full, it tops itself up from your pantry"
+		ab.toggled.connect(func(_on):
 			f["auto"] = not bool(f.get("auto", true))
 			if f["auto"]: Econ.auto_refill(f); refresh_feeder(f)
 			Save.save_game()
-			open_feeder(f), 200)
-		ab.tooltip_text = "Below half full, it tops itself up from your pantry"
+			open_feeder(f))
 		row0.add_child(ab)
-	v.add_child(row0)
+		v.add_child(row0)
 	v.add_child(UI.section("Put in by hand"))
 	var any := false
 	for key in Care.FOODS.keys() + Data.CROPS.keys():
@@ -470,12 +473,12 @@ func open_feeder(f: Dictionary) -> void:
 			r.add_child(b)
 		v.add_child(r)
 	if not any:
-		v.add_child(UI.label("Your pantry's empty. Buy kin kibble at the market stall, or harvest crops.", 14, UI.MUTED))
+		v.add_child(UI.para("Your pantry's empty. Buy kin kibble at the market stall, or harvest crops.", UI.T_SMALL, UI.MUTED))
 	# moving it, and the ones in storage
 	v.add_child(UI.section("Feeders"))
 	var mv := UI.hbox(8)
-	mv.add_child(UI.button("Move it", func(): start_carry(String(f["kind"]), String(f["id"])), 120))
-	var stb := UI.button("Put it in storage", func(): store_feeder(f); h._close_panel(), 170)
+	mv.add_child(UI.button("Move it", func(): start_carry(String(f["kind"]), String(f["id"])), 120, "dash"))
+	var stb := UI.ghost("Put it in storage", func(): store_feeder(f); h._close_panel(), 170)
 	stb.disabled = Econ.feeders().size() <= 1
 	stb.tooltip_text = "Keep at least one out" if Econ.feeders().size() <= 1 else "Its food goes back in your pantry"
 	mv.add_child(stb)
@@ -487,7 +490,7 @@ func open_feeder(f: Dictionary) -> void:
 		l2.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		r2.add_child(l2)
 		var kd: String = kind
-		r2.add_child(UI.primary("Set one down", func(): start_carry(kd), 150))
+		r2.add_child(UI.button("Set one down", func(): start_carry(kd), 150, "plus"))
 		v.add_child(r2)
 	var more := UI.label("Bigger and better feeders at the market stall (Farm). Up to %d on the farm." % Econ.MAX_FEEDERS, 12, UI.MUTED)
 	v.add_child(more)
@@ -553,29 +556,33 @@ func refuse_reason() -> String:
 func open_graveyard() -> void:
 	var v: VBoxContainer = h._new_panel("Graveyard", 620, true)
 	var gs: Array = Econ.graves()
+	UI.subtitle(v, "Kin who didn't make it rest here")
 	if gs.is_empty():
-		var l := UI.label("Nobody rests here. Keep your kin fed and it stays that way.", 15, UI.MUTED)
-		l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		v.add_child(l)
+		v.add_child(UI.empty_state("heart", "Nobody rests here", "Keep your kin fed and it stays that way."))
 		return
 	for i in range(gs.size() - 1, -1, -1):
 		var g: Dictionary = gs[i]
-		var r := UI.hbox(10)
+		var rc := UI.card(UI.CARD, 12, 12)
+		var r := UI.hbox(12); rc.add_child(r)
+		r.add_child(UI.IconDot.new("paw", Data.KIN.get(String(g["species"]), {}).get("color", UI.INK), 22.0))
 		var info := UI.vbox(2); info.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var sp: Dictionary = Data.KIN.get(String(g["species"]), {})
-		info.add_child(UI.label(String(g["name"]) + ("  ·  soul kept in the shrine" if g.get("soul", false) else ""), 17, sp.get("color", UI.INK), UI.big))
+		var nrow := UI.hbox(8)
+		nrow.add_child(UI.label(String(g["name"]), UI.T_HEAD, UI.INK, UI.big))
+		if g.get("soul", false): nrow.add_child(UI.tag("Soul kept", Color("9ff0e0")))
+		info.add_child(nrow)
 		info.add_child(UI.label(Econ.epitaph(g), 12, UI.MUTED))
 		r.add_child(info)
 		var gg := g
-		r.add_child(UI.button("Visit", func(): open_grave(gg), 90))
-		v.add_child(r)
+		var vb := UI.button("Visit", func(): open_grave(gg), 90)
+		vb.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		r.add_child(vb)
+		v.add_child(rc)
 
 func open_grave(g: Dictionary) -> void:
 	var sp: Dictionary = Data.KIN.get(String(g["species"]), {})
 	var v: VBoxContainer = h._new_panel("%s%s" % [g["name"], (", " + String(g["title"])) if String(g.get("title", "")) != "" else ""], 620, true)
-	var el := UI.label(Econ.epitaph(g), 15, sp.get("color", UI.INK))
-	el.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	v.add_child(el)
+	UI.subtitle(v, Econ.epitaph(g))
 	var days := int((Time.get_unix_time_from_system() - float(g.get("t", 0.0))) / 86400.0)
 	var gm := int(g["rec"].get("matches", 0))
 	var when := "today" if days <= 0 else ("%d day%s ago" % [days, "" if days == 1 else "s"])
@@ -648,20 +655,25 @@ func _revive(g: Dictionary) -> void:
 # ------------------------------------------------------------------ the Soul Shrine
 func open_shrine() -> void:
 	var v: VBoxContainer = h._new_panel("Soul Shrine", 640, true)
-	var l := UI.label("The ember keeps the souls of kin buried here. With a Soul Ember and some gems it can bring one back, changed by where it's been.", 14, UI.MUTED)
-	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	v.add_child(l)
-	v.add_child(UI.label("Soul Embers: %d  ·  souls kept: %d of %d  ·  gems: %d" % [Econ.embers(), Econ.souls_kept(), Econ.SHRINE_SLOTS, int(Save.d["gems"])], 15, Color("bff8ec"), UI.semi))
+	UI.subtitle(v, "Keeps the souls of kin buried here. An ember and some gems bring one back, changed.")
+	var hx := UI.head_extra(v)
+	hx.add_child(UI.chip("bond", str(Econ.embers()), Color("9ff0e0"), "Soul Embers"))
+	hx.add_child(UI.chip("heart", "%d/%d" % [Econ.souls_kept(), Econ.SHRINE_SLOTS], Color("bff8ec"), "Souls kept"))
+	hx.add_child(UI.chip("gem", str(int(Save.d["gems"])), UI.GOLD, "Gems"))
 	var gs: Array = Econ.graves()
 	if gs.is_empty():
-		v.add_child(UI.label("The graveyard is empty.", 14, UI.MUTED))
+		v.add_child(UI.empty_state("heart", "The graveyard is empty", "Nobody needs bringing back."))
 		return
 	for i in range(gs.size() - 1, -1, -1):
 		var g: Dictionary = gs[i]
 		var card := UI.card(UI.CARD, 10, 10)
 		var cv := UI.vbox(4); card.add_child(cv)
 		var sp: Dictionary = Data.KIN.get(String(g["species"]), {})
-		cv.add_child(UI.label(String(g["name"]), 18, sp.get("color", UI.INK), UI.big))
+		var nr := UI.hbox(10)
+		nr.add_child(UI.IconDot.new("paw", sp.get("color", UI.INK), 20.0))
+		nr.add_child(UI.label(String(g["name"]), UI.T_HEAD, UI.INK, UI.big))
+		if g.get("soul", false): nr.add_child(UI.tag("Soul kept", Color("9ff0e0")))
+		cv.add_child(nr)
 		cv.add_child(UI.label(Econ.epitaph(g), 12, UI.MUTED))
 		var r := UI.hbox(8)
 		if not g.get("soul", false):
@@ -692,13 +704,17 @@ func open_shrine() -> void:
 func open_shrine_lot() -> void:
 	var bd: Dictionary = Data.BUILDINGS["shrine"]
 	var v: VBoxContainer = h._new_panel("Build the Soul Shrine", 520)
-	var dl := UI.label(String(bd["desc"]), 15)
-	dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	v.add_child(dl)
+	UI.subtitle(v, String(bd["desc"]))
 	var ex := int(Save.d.get("extracts", 0))
-	v.add_child(UI.label("%s  3 successful expeditions  (%d)" % ["✓" if ex >= 3 else "·", ex], 15, UI.GOOD if ex >= 3 else UI.MUTED))
-	v.add_child(UI.label("%s  A Soul Ember to light it  (%d)" % ["✓" if Econ.embers() > 0 else "·", Econ.embers()], 15, UI.GOOD if Econ.embers() > 0 else UI.MUTED))
-	v.add_child(UI.label("%s  %d gems  (%d)" % ["✓" if int(Save.d["gems"]) >= int(bd["cost"]) else "·", int(bd["cost"]), int(Save.d["gems"])], 15, UI.GOOD if int(Save.d["gems"]) >= int(bd["cost"]) else UI.MUTED))
+	v.add_child(UI.section("What it needs"))
+	var need := func(ok: bool, txt: String) -> void:
+		var r := UI.hbox(10)
+		r.add_child(UI.IconDot.new("check" if ok else "lock", UI.GOOD if ok else UI.FAINT, 16.0))
+		r.add_child(UI.label(txt, UI.T_BODY, UI.INK if ok else UI.MUTED))
+		v.add_child(r)
+	need.call(ex >= 3, "3 successful expeditions  (%d)" % ex)
+	need.call(Econ.embers() > 0, "A Soul Ember to light it  (%d)" % Econ.embers())
+	need.call(int(Save.d["gems"]) >= int(bd["cost"]), "%d gems  (you have %d)" % [int(bd["cost"]), int(Save.d["gems"])])
 	var why := Econ.shrine_why()
 	var btn := UI.primary("Build it", func():
 		if Econ.shrine_why() != "" or Save.has_building("shrine"): return
@@ -721,35 +737,24 @@ func open_armory() -> void:
 	items.sort_custom(func(a, b): return Loot.value(a) > Loot.value(b))
 	var weapons: Array = items.filter(func(it): return String(it.get("t", "")) == "weapon")
 	var gloves: Array = items.filter(func(it): return String(it.get("t", "")) == "glove")
-	# the top line: what's stored, scrap and gems, and the two upgrades
-	var top := UI.hbox(8)
-	top.add_child(_chip("satchel", "Stored %d/%d" % [items.size(), Econ.arm_cap()], UI.INK, "Weapons and gloves you've brought home. Full: new ones are sold as they come in"))
+	UI.subtitle(v, "Next expedition: %s" % _loadout_line())
+	# what's stored, scrap and gems sit by the title; the two upgrades in the footer
+	var top := UI.head_extra(v)
+	top.add_child(_chip("satchel", "%d/%d" % [items.size(), Econ.arm_cap()], UI.INK, "Stored: weapons and gloves you've brought home. Full: new ones are sold as they come in"))
 	top.add_child(_chip("gem", str(int(Save.d["gems"])), UI.GOLD, "Gems"))
-	top.add_child(_chip("medkit", "%d scrap" % int(Save.d.get("scrap", 0)), Color("c8d0dc"), "Scrap: salvage spare weapons and gloves for it. Upgrades need it"))
-	top.add_child(_chip("bond", "%d ember%s" % [Econ.embers(), "" if Econ.embers() == 1 else "s"], Color("9ff0e0"), "Soul Embers, for the Soul Shrine"))
-	var sp := Control.new(); sp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(sp)
-	top.add_child(_upgrade_btn("arm", "Storage", Econ.arm_cap(), Econ.ARM_CAPS))
-	top.add_child(_upgrade_btn("pack", "Backpack", Econ.pack_cap(), Econ.PACK_CAPS))
-	v.add_child(top)
-	var tabs := UI.hbox(6)
-	for t in [["Weapons", weapons.size()], ["Gloves", gloves.size()], ["Treasure", _treasure_n()]]:
-		var tn: String = t[0]
-		tabs.add_child(UI.choice("%s  %d" % [t[0], t[1]], arm_tab == tn, func(): arm_tab = tn; arm_pick = ""; open_armory(), 140))
-	var lo_l := UI.label("Next expedition: %s" % _loadout_line(), 13, UI.GOLD)
-	lo_l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	lo_l.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	lo_l.clip_text = true
-	tabs.add_child(lo_l)
-	v.add_child(tabs)
+	top.add_child(_chip("medkit", "%d" % int(Save.d.get("scrap", 0)), Color("c8d0dc"), "Scrap: salvage spare weapons and gloves for it. Upgrades need it"))
+	top.add_child(_chip("bond", "%d" % Econ.embers(), Color("9ff0e0"), "Soul Embers, for the Soul Shrine"))
+	var fl := UI.footer_left(v)
+	fl.add_child(_upgrade_btn("arm", "Storage", Econ.arm_cap(), Econ.ARM_CAPS))
+	fl.add_child(_upgrade_btn("pack", "Backpack", Econ.pack_cap(), Econ.PACK_CAPS))
+	UI.shell_tabs(v, ["Weapons", "Gloves", "Treasure"], arm_tab, func(t): arm_tab = t; arm_pick = ""; open_armory(),
+		{"Weapons": weapons.size(), "Gloves": gloves.size(), "Treasure": _treasure_n()})
 	if arm_tab == "Treasure":
 		_treasure(v)
 		return
 	var list: Array = weapons if arm_tab == "Weapons" else gloves
 	if list.is_empty():
-		var el := UI.label("Nothing here yet. %s you carry out of an expedition (in your hands or your backpack) ends up here." % ("Weapons" if arm_tab == "Weapons" else "Gloves"), 15, UI.MUTED)
-		el.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		v.add_child(el)
+		v.add_child(UI.empty_state(("rifle" if arm_tab == "Weapons" else "satchel"), "Nothing here yet", "%s you carry out of an expedition (in your hands or your backpack) end up here." % ("Weapons" if arm_tab == "Weapons" else "Gloves")))
 		return
 	if Econ.find(arm_pick).is_empty() or not list.has(Econ.find(arm_pick)):
 		arm_pick = String(list[0]["uid"])
@@ -760,20 +765,13 @@ func open_armory() -> void:
 	var grid := GridContainer.new(); grid.columns = 4
 	grid.add_theme_constant_override("h_separation", 8); grid.add_theme_constant_override("v_separation", 8)
 	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	grid.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
 	for x in list:
 		grid.add_child(_tile(x))
 	cols.add_child(grid)
 
 func _chip(icon: String, txt: String, col: Color, tip: String) -> Control:
-	var c := UI.card(Color(col, 0.12), 6, 999)
-	c.tooltip_text = tip
-	c.mouse_filter = Control.MOUSE_FILTER_PASS
-	var hb := UI.hbox(6); c.add_child(hb)
-	hb.add_child(Icons.Glyph.new(icon, col, 15.0))
-	var l := UI.label(txt, 14, UI.INK, UI.semi)
-	l.autowrap_mode = TextServer.AUTOWRAP_OFF
-	hb.add_child(l)
-	return c
+	return UI.chip(icon, txt, col, tip, 14)
 
 func _upgrade_btn(which: String, what: String, now: int, caps: Array) -> Control:
 	var lvl := int(Save.d.get(which + "_lvl", 0))
@@ -783,13 +781,13 @@ func _upgrade_btn(which: String, what: String, now: int, caps: Array) -> Control
 		l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		return l
 	var c: Array = costs[lvl]
-	var b := UI.button("%s %d → %d  ·  %dg %ds" % [what, now, int(caps[lvl + 1]), int(c[0]), int(c[1])], func():
+	var b := UI.ghost("%s %d → %d  ·  %dg %ds" % [what, now, int(caps[lvl + 1]), int(c[0]), int(c[1])], func():
 		var why := Econ.upgrade(which)
 		if why != "": h._toast(why); return
 		Sfx.play("unlock")
 		Save.save_game()
 		h._refresh_top()
-		open_armory())
+		open_armory(), 0, "plus")
 	b.disabled = int(Save.d["gems"]) < int(c[0]) or int(Save.d.get("scrap", 0)) < int(c[1])
 	b.tooltip_text = "%s: %d gems and %d scrap" % ["More room in the armory" if which == "arm" else "More backpack slots on expeditions", int(c[0]), int(c[1])]
 	return b
@@ -810,29 +808,27 @@ func _in_loadout(it: Dictionary) -> String:
 ## One stored thing as a square tile: its icon in its element colour, its rarity as the border.
 func _tile(it: Dictionary) -> Control:
 	var sel := String(it["uid"]) == arm_pick
-	var card := UI.card(Color(Loot.col_of(it), 0.16 if sel else 0.07), 8, 10)
-	UI.set_card_border(card, Color(Loot.col_of(it), 0.95 if sel else 0.4), 3 if sel else 2)
-	card.custom_minimum_size = Vector2(124, 104)
-	card.mouse_filter = Control.MOUSE_FILTER_STOP
+	var uid := String(it["uid"])
+	var card := UI.tile_card(sel, func():
+		arm_pick = uid
+		open_armory(), 8, Loot.col_of(it))
+	card.custom_minimum_size = Vector2(124, 100)
 	card.tooltip_text = "%s\n%s\nWorth %d" % [Loot.name_of(it), Loot.sub_of(it), Loot.value(it)]
 	var cv := UI.vbox(2); card.add_child(cv)
 	var top := UI.hbox(4)
-	top.add_child(Icons.Glyph.new(Loot.icon_of(it), Loot.el_col(it), 34.0))
-	var tsp := Control.new(); tsp.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	top.add_child(tsp)
+	top.add_child(Icons.Glyph.new(Loot.icon_of(it), Loot.el_col(it), 32.0))
+	top.add_child(UI.fill())
 	if _in_loadout(it) != "":
-		top.add_child(UI.label("✓", 18, UI.GOOD, UI.big))
+		top.add_child(UI.IconDot.new("check", UI.GOOD, 16.0))
 	cv.add_child(top)
-	var nm := UI.label(Loot.name_of(it), 13, Loot.col_of(it), UI.semi)
+	var bar := ColorRect.new(); bar.color = Color(Loot.col_of(it), 0.85); bar.custom_minimum_size = Vector2(22, 3)
+	bar.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	cv.add_child(bar)
+	var nm := UI.label(Loot.name_of(it), 12, Loot.col_of(it).lerp(UI.INK, 0.25), UI.semi)
 	nm.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	nm.custom_minimum_size.x = 104
+	nm.max_lines_visible = 2
 	cv.add_child(nm)
-	var uid := String(it["uid"])
-	card.gui_input.connect(func(ev):
-		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT:
-			arm_pick = uid
-			Sfx.play("click")
-			open_armory())
 	return card
 
 ## The picked thing: turning in a little window, what it does, and what you can do with it.
@@ -871,23 +867,28 @@ func _detail(it: Dictionary) -> Control:
 	var row := UI.hbox(8)
 	var uid := String(it["uid"])
 	if on:
-		var lb := UI.button("✓ Taking it", func(): Econ.set_loadout(slot, ""); Save.save_game(); open_armory(), 190)
+		var lb := UI.button("Taking it", func(): Econ.set_loadout(slot, ""); Save.save_game(); open_armory(), 170, "check")
 		lb.tooltip_text = "Picked for your next expedition. Click to leave it at home"
 		row.add_child(lb)
 	else:
-		row.add_child(UI.primary("Take it next time", func(): Econ.set_loadout(slot, uid); Sfx.play("pickup"); Save.save_game(); open_armory(), 190))
-	row.add_child(UI.button("Sell  %d" % Loot.sell_price(it), func():
+		row.add_child(UI.primary("Take it next time", func(): Econ.set_loadout(slot, uid); Sfx.play("pickup"); Save.save_game(); open_armory(), 170))
+	var precious := Loot.rar_of(it) >= 3
+	var do_sell := func():
 		var g := Econ.sell(uid)
 		Sfx.play("pickup"); h._toast("Sold for %d gems" % g)
-		arm_pick = ""; Save.save_game(); h._refresh_top(); open_armory(), 90))
-	row.add_child(UI.button("Salvage  +%d" % Loot.scrap_of(it), func():
+		arm_pick = ""; Save.save_game(); h._refresh_top(); open_armory()
+	var do_salvage := func():
 		var n := Econ.salvage(uid)
 		Sfx.play("build", null, -6.0); h._toast("+%d scrap" % n)
-		arm_pick = ""; Save.save_game(); open_armory(), 110))
+		arm_pick = ""; Save.save_game(); open_armory()
+	row.add_child(UI.ghost("Sell  %d" % Loot.sell_price(it), func():
+		if precious: UI.confirm(h.panel_host.get_parent(), "Sell %s?" % Loot.name_of(it), "It's gone for good. You get %d gems." % Loot.sell_price(it), "Sell", do_sell)
+		else: do_sell.call(), 0, "gem"))
+	row.add_child(UI.ghost("Salvage  +%d" % Loot.scrap_of(it), func():
+		if precious: UI.confirm(h.panel_host.get_parent(), "Salvage %s?" % Loot.name_of(it), "It's broken down for %d scrap." % Loot.scrap_of(it), "Salvage", do_salvage)
+		else: do_salvage.call(), 0, "medkit"))
 	col.add_child(row)
-	var risk := UI.label("What you take is at risk: go down and it's in your deathbox.", 12, UI.MUTED)
-	risk.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	col.add_child(risk)
+	col.add_child(UI.para("What you take is at risk: go down and it's in your deathbox.", 12, UI.FAINT))
 	return col
 
 func _preview(it: Dictionary) -> Control:
