@@ -278,6 +278,10 @@ func feeders_owned() -> int:
 func start_carry(kind: String, from := "") -> void:
 	if not carry.is_empty():
 		return
+	if h.hb:
+		# set down through build mode: a ghost shows where it fits, and it waits in storage until it's placed
+		h.hb.take_feeder(kind, from)
+		return
 	if from == "":
 		var inv: Dictionary = Save.d["feeder_inv"]
 		if int(inv.get(kind, 0)) <= 0: return

@@ -387,9 +387,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo and visit.is_empty() and panel_open == "" and not Overlay.is_open():
 		var kc := (event as InputEventKey).physical_keycode
-		if kc == KEY_B:
+		if event.is_action_pressed("build"):
 			_toggle_decorate()
-		elif decorating and kc == KEY_R and not held.is_empty():
+		elif decorating and event.is_action_pressed("rotate") and not held.is_empty():
 			held["r"] = (int(held["r"]) + 1) % 4
 			_make_ghost()
 		elif decorating and (kc == KEY_DELETE or kc == KEY_X) and not held.is_empty():
@@ -547,7 +547,7 @@ func _build_ui() -> void:
 	prompt_box.add_child(prompt_lbl)
 	root_ui.add_child(prompt_box)
 	if visit.is_empty():
-		deco_btn = UI.primary("Decorate  (B)", _toggle_decorate, 200)
+		deco_btn = UI.primary("Decorate  (%s)" % Settings.key_cap("build"), _toggle_decorate, 200)
 		deco_btn.set_anchors_preset(Control.PRESET_BOTTOM_LEFT)
 		deco_btn.position = Vector2(16, -64)
 		root_ui.add_child(deco_btn)
@@ -566,7 +566,7 @@ func _build_ui() -> void:
 
 func _deco_button_text() -> void:
 	if deco_btn:
-		deco_btn.text = "Done decorating  (B)" if decorating else "Decorate  (B)"
+		deco_btn.text = ("Done decorating  (%s)" if decorating else "Decorate  (%s)") % Settings.key_cap("build")
 	var g := root_ui.find_child("Gems", true, false)
 	if g: (g as Label).text = "%d gems" % int(Save.d["gems"])
 

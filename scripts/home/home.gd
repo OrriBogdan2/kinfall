@@ -50,6 +50,8 @@ var visit: Dictionary = {}     # when visiting someone: their island snapshot (s
 var visit_id := ""
 var petted := {}
 var hecon: HomeEcon = null       # the armory, feeders, starving, graveyard and Soul Shrine (home_econ.gd)
+var hb: HomeBuild = null         # build mode and the island's layout (home_build.gd, home_layout.gd)
+var training: HomeTraining = null  # the Training Grounds isle, where your combat kit works (home_training.gd)
 
 ## The island being shown: yours, or the one you're visiting.
 func _d() -> Dictionary:
@@ -104,7 +106,10 @@ func _ready() -> void:
 		Save.d["buildings"] = Data.BUILDINGS.keys()
 	_build_env()
 	world = World.new(); add_child(world)
-	world.make_home(4242)
+	var lay := HomeLayout.ensure(_d())
+	HomeLayout.make_world(world, int(lay["grow"]), int(lay.get("seed", 0)))
+	hb = HomeBuild.new(self)
+	training = HomeTraining.new(self)
 	var path_col := Color("9c7a52")
 	# your house up north, a path from its door down to the portal, branches to the market, the farm and the bridges
 	spots["house"] = Vector3(38.0, 0, 26.5)
@@ -116,6 +121,10 @@ func _ready() -> void:
 	world.paint_path(Vector2i(39, 38), Vector2i(50, 38), path_col, false)
 	world.paint_path(Vector2i(44, 21), Vector2i(44, 28), path_col, false)
 	world.paint_path(Vector2i(28, 31), Vector2i(28, 34), path_col, false)
+	# out to the newer bridges: the Orchard Isle (north-east), Pine Hollow (north-west), Blossom Grove (south-west)
+	world.paint_path(Vector2i(48, 28), Vector2i(61, 28), path_col, false)
+	world.paint_path(Vector2i(29, 25), Vector2i(29, 29), path_col, false)
+	world.paint_path(Vector2i(34, 42), Vector2i(34, 46), path_col, false)
 	spots["stall"] = Vector3(30.5, 0, 33.0)
 	world.set_block_rect(29, 32, 31, 33)
 	spots["pot"] = Vector3(42.5, 0, 27.5)
@@ -127,10 +136,11 @@ func _ready() -> void:
 			world.paint_tile(x, z, Color("6b4a33"))
 	world.set_block_rect(32, 36, 34, 38)   # pond
 	# a few trees around the rim of every island, kept away from paths, lots and bridges
-	world.add_trees_on_rim(34)
-	var keep_clear: Array = [[36, 34, 40, 44], [42, 28, 50, 40], [41, 20, 47, 26], [22, 28, 28, 32], [53, 36, 66, 43]]
+	world.add_trees_on_rim(54)
+	var keep_clear: Array = [[36, 34, 40, 44], [42, 28, 50, 40], [41, 20, 47, 26], [22, 28, 28, 32], [46, 26, 62, 30], [27, 23, 31, 30], [32, 41, 36, 47]]
+	keep_clear.append_array(training_reserved())
 	for b in Data.BUILDINGS:
-		var rc: Array = Data.BUILDINGS[b]["rect"]
+		var rc: Array = HomeLayout.rect_of(b, _d())
 		keep_clear.append([rc[0] - 1, rc[1] - 1, rc[2] + 1, rc[3] + 2])
 	for k in Data.ISLES:
 		var rc: Array = Data.ISLES[k]["bridge"]
@@ -145,14 +155,15 @@ func _ready() -> void:
 		bridges[k] = {"tiles": world.bridge_tiles(Data.ISLES[k]["bridge"]), "built": _has_br(k)}
 		if bridges[k]["built"]:
 			world.open_bridge(bridges[k]["tiles"])
-	for b in Data.BUILDINGS:
-		if _has_b(b):
-			var rc: Array = Data.BUILDINGS[b]["rect"]
-			world.set_block_rect(rc[0], rc[1], rc[2], rc[3])
+	training.prepare()
+	if visit.is_empty():
+		HomeLayout.rescue_feeders(world)
+	# the layout's buildings, decorations, paths, ponds and colour theme
+	hb.prepare_world()
 	if "--print-home" in OS.get_cmdline_user_args():
-		for z in range(16, 46):
+		for z in range(0, world.h):
 			var line := "%2d " % z
-			for x in range(18, 60):
+			for x in range(0, world.w):
 				var i := world.idx(x, z)
 				line += "." if world.kind[i] == World.T_VOID else ("#" if world.kind[i] == World.T_BLOCK else ("o" if world.paint.has(i) else "g"))
 			print(line)
@@ -178,12 +189,7 @@ func _ready() -> void:
 	var pond := Models.pond(1.9, 1.5); pond.position = Vector3(33.5, 0, 37.5); add_child(pond)
 	for fp in [[Vector3(45.4, 0, 29.4), 0.0, 5.0], [Vector3(45.4, 0, 37.6), 0.0, 5.0], [Vector3(47.8, 0, 33.5), PI / 2, 8.0], [Vector3(42.4, 0, 35.6), PI / 2, 4.0]]:
 		var f := Models.fence(fp[2]); f.position = fp[0]; f.rotation.y = fp[1]; add_child(f)
-	for lp in [Vector3(36.2, 0, 30.0), Vector3(39.6, 0, 35.5), Vector3(36.4, 0, 35.6), Vector3(41.0, 0, 30.0), Vector3(26.0, 0, 29.2), Vector3(51.2, 0, 36.6)]:
-		var l := Models.lamp(); l.position = lp; add_child(l)
-		for ch in l.get_children():
-			if ch is OmniLight3D: lamps.append(ch)
-	for fb in [Vector3(35.6, 0, 28.6), Vector3(40.4, 0, 28.6), Vector3(39.6, 0, 37.4)]:
-		var fbed := Models.flower_bed(drng); fbed.position = fb; add_child(fbed)
+	# (the farm's lamps and flower beds are decorations now: see HomeLayout.STOCK)
 	spots["ferry"] = Vector3(42.2, 0, 40.6)
 	var fpost := Models.ferry_post(); fpost.position = spots["ferry"]; fpost.rotation.y = -0.4; add_child(fpost)
 	var sign_post := Models.signpost(["Expeditions"]); sign_post.position = Vector3(39.8, 0, 38.2); sign_post.rotation.y = -0.3; add_child(sign_post)
@@ -285,6 +291,10 @@ func _ready() -> void:
 		if a.begins_with("--drill="):
 			var dstat := a.substr(8)
 			get_tree().create_timer(0.4).timeout.connect(func(): _start_drill(Save.active_kin(), dstat))
+		if a in ["--build-demo", "--decor-demo", "--training-demo", "--overview-demo"]:
+			Save.no_write = true
+			var which: String = a
+			get_tree().create_timer(0.05).timeout.connect(func(): _build_demo(which))
 		if a == "--home-night": day_t = 0.97
 		if a == "--home-noon": day_t = 0.5
 		if a == "--home-rain":
@@ -344,6 +354,9 @@ func _ready() -> void:
 	_setup_care()
 	if visit.is_empty():
 		hecon.build()
+	training.build()
+	hb.build_visuals()
+	hb.assign_beds()
 	if "--kin-lineup" in dbg:
 		var lr := RandomNumberGenerator.new(); lr.seed = 11
 		var sps: Array = Data.KIN.keys()
@@ -363,6 +376,8 @@ func _ready() -> void:
 		hecon.show_away()
 	if not visit.is_empty():
 		pass
+	elif hb.needs_making():
+		hb.open_make_home()
 	elif not Save.d["tutorial"].get("home", false):
 		_open_welcome()
 	else:
@@ -385,23 +400,33 @@ func _rect_center(rc: Array) -> Vector3:
 	return Vector3((rc[0] + rc[2] + 1) * 0.5, 0, (rc[1] + rc[3] + 1) * 0.5)
 
 func _isle_open(isle: String) -> bool:
-	return isle == "main" or _has_br(isle)
+	return isle == "main" or isle == "training" or _has_br(isle)
+
+## Tile rects [x0, z0, x1, z1] the Training Grounds keep clear (none until it's built).
+func training_reserved() -> Array:
+	return HomeTraining.reserved()
+
+## Spots on the Training Grounds that must stay reachable.
+func training_targets() -> Array:
+	return training.targets() if training else []
 
 # ---- buildings and building sites
 func _build_lots() -> void:
 	for b in Data.BUILDINGS:
 		var bd: Dictionary = Data.BUILDINGS[b]
-		var rc: Array = bd["rect"]
+		var pl := HomeLayout.place_of(b, _d())
+		var rc: Array = HomeLayout.rect_of(b, _d())
 		var at := _rect_center(rc)
-		var holder := Node3D.new(); holder.position = at; add_child(holder)
+		var holder := Node3D.new(); holder.position = at; holder.rotation.y = int(pl["r"]) * PI * 0.5; add_child(holder)
 		var built := _has_b(b)
 		var n: Node3D
 		if built:
 			n = Models.building(b)
 		else:
-			n = Models.lot(rc[2] - rc[0] + 1.0, rc[3] - rc[1] + 1.0, bd["name"], "%d gems" % int(bd["cost"]))
+			var sz := HomeLayout.base_size(b)
+			n = Models.lot(sz.x, sz.y, bd["name"], "%d gems" % int(bd["cost"]))
 		holder.add_child(n)
-		lots[b] = {"node": holder, "built": built, "at": at, "door": at + Vector3(0, 0, (rc[3] - rc[1] + 1) * 0.5 + 1.1)}
+		lots[b] = {"node": holder, "built": built, "at": at, "door": HomeLayout.door_at(b, int(pl["x"]), int(pl["z"]), int(pl["r"]))}
 
 func _build_bridges() -> void:
 	for k in Data.ISLES:
@@ -552,9 +577,10 @@ func _build_plots() -> void:
 		plots.append(p)
 		_refresh_plot("plots", i)
 	if _has_b("greenhouse") and _d().get("gh_plots", []).size() >= 4:
+		var oc: Vector2 = Data.ISLES["orchard"]["c"]
 		for i in 4:
 			var p := Models.plot()
-			p.position = Vector3(57.5 + i * 2.2, 0, 40.4)
+			p.position = Vector3(oc.x - 3.3 + i * 2.2, 0, oc.y + 3.0)
 			add_child(p)
 			gh_plots.append(p)
 			_refresh_plot("gh_plots", i)
@@ -602,6 +628,7 @@ func _spawn_kin() -> void:
 		if isl == 0 and ri2 >= 0 and ri2 < 6:
 			kd["bed"] = Vector3(32.9 + (ri2 % 3) * 1.6, 0, 27.2 + (ri2 / 3) * 1.6)
 		kins.append(kd)
+	if hb and hb.astar: hb.assign_beds()
 
 # ------------------------------------------------------------------ loop
 ## Sun, sky, lamps and the occasional rain shower.
@@ -671,8 +698,12 @@ func _process(delta: float) -> void:
 	if hecon: hecon.tick(d)
 	_update_bubbles(d)
 	_train_process(d)
+	if hb: hb.tick(d)
+	if training: training.tick(d)
 	cam.follow(ppos, d, panel_open == "" and train.is_empty())
 	_find_interact()
+	if hb and hb.active:
+		return
 	if panel_open == "" and not building_now and not Overlay.is_open() and not chat_open and train.is_empty() and not interact.is_empty():
 		if Input.is_action_just_pressed("interact"):
 			_use(interact)
@@ -681,53 +712,140 @@ func _process(delta: float) -> void:
 			elif Input.is_action_just_pressed("talk"): _open_chat(interact["k"]["rec"])
 			elif Input.is_action_just_pressed("details"): _open_kin(interact["k"]["rec"])
 
+# ---- moving at home: walk, jump, dash (Shift, your class's dodge) and glide (hold Space in the air).
+# py is your feet's height (terraces are 0.8 each). Off the edge you can glide over to another isle;
+# drop into the sky and the wind sets you back down where you last stood.
+var gliding := false
+var glide_hold := 0.0
+var dash_t := 0.0
+var dash_v := Vector2.ZERO
+var dash_charges := 2.0
+var safe_at := Vector3(38.0, 0, 34.5)
+var glider_node: MeshInstance3D = null
+const MANTLE := 1.5            # ledges this far above your feet pop you up when you jump at them
+const MANTLE_ABYSS := 12.0     # falling past an island's cliff, you can still catch its edge from this far below
+const FALL_RESPAWN := -14.0
+
+func _dodge() -> Dictionary:
+	var dd := Content.class_dodge(training._cls() if training and training.in_zone else Data.class_of_save())
+	var out := {"charges": 2, "cd": Hunter.DASH_REGEN, "speed": Hunter.DASH_SPEED, "time": Hunter.DASH_TIME}
+	if dd:
+		out["charges"] = dd.charges; out["cd"] = dd.cooldown
+		for e in dd.effects:
+			if typeof(e) == TYPE_DICTIONARY and String(e.get("type", "")) == "dash":
+				out["speed"] = float(e.get("speed", out["speed"])); out["time"] = float(e.get("time", out["time"]))
+				break
+	return out
+
+func dashing() -> bool:
+	return dash_t > 0.0
+
+func start_dash(dir: Vector2, speed: float, time: float) -> void:
+	if dir.length() < 0.1:
+		dir = Vector2(-sin(pface), -cos(pface))
+	dash_v = dir.normalized() * speed
+	dash_t = time
+	gliding = false
+	Sfx.play("whoosh", null, -6.0, 0.1, 1.2)
+	if fx: fx.dust(ppos, 6)
+
+## The ground under a point: its terrace height, or World.VOID over the sky.
+func _ground_h(x: float, z: float) -> float:
+	return world.ground_at(x, z)
+
 func _move_player(d: float) -> void:
 	var mv := Vector2.ZERO
-	if panel_open == "" and not Overlay.is_open() and not chat_open and train.is_empty():
+	var can_act := panel_open == "" and not Overlay.is_open() and not chat_open and train.is_empty()
+	if can_act:
 		mv = Vector2(Input.get_axis("left", "right"), Input.get_axis("up", "down"))
 		if mv.length() > 1.0: mv = mv.normalized()
+	var dg := _dodge()
+	dash_charges = minf(float(dg["charges"]), dash_charges + d / maxf(0.1, float(dg["cd"])))
+	var gh := _ground_h(ppos.x, ppos.z)
+	var air := py > gh + 0.001 or pvy > 0.0
+	if can_act and Input.is_action_just_pressed("dash") and dash_charges >= 1.0 and dash_t <= 0.0:
+		dash_charges -= 1.0
+		start_dash(mv if mv.length() > 0.1 else Vector2(-sin(pface), -cos(pface)), float(dg["speed"]), float(dg["time"]))
 	var hv := Vector2(pvel.x, pvel.z)
-	var air := py > 0.001 or pvy > 0.0
-	hv += (mv * SPEED - hv) * (1.0 - exp(-(14.0 if not air else 6.0) * d))
-	# the island edge is an invisible wall: walking and jumping both stop at it
+	if dash_t > 0.0:
+		dash_t -= d
+		hv = dash_v
+		if dash_t <= 0.0: hv = dash_v * (Hunter.DASH_CARRY_AIR if air else Hunter.DASH_CARRY_GROUND)
+	else:
+		var spd := Hunter.GLIDE_SPEED * 1.15 if gliding else SPEED
+		hv += (mv * spd - hv) * (1.0 - exp(-(14.0 if not air else (4.0 if gliding else 6.0)) * d))
+	# on the ground the island's edge stops you; in the air (a jump, a glide) you can sail out past it
+	var guard := not air
 	var p0 := ppos
 	var nx := ppos.x + hv.x * d
-	if world.occupy(nx, ppos.z, 0.38, 0.0, true) == 0.0: ppos.x = nx
-	else: hv.x = 0.0
+	var ox := world.occupy(nx, ppos.z, 0.38, py, guard)
+	if ox == 0.0: ppos.x = nx
+	elif not _mantle(nx, ppos.z, ox, air): hv.x = 0.0
+	else: ppos.x = nx
 	var nz := ppos.z + hv.y * d
-	if world.occupy(ppos.x, nz, 0.38, 0.0, true) == 0.0: ppos.z = nz
-	else: hv.y = 0.0
+	var oz := world.occupy(ppos.x, nz, 0.38, py, guard)
+	if oz == 0.0: ppos.z = nz
+	elif not _mantle(ppos.x, nz, oz, air): hv.y = 0.0
+	else: ppos.z = nz
 	pvel = Vector3(hv.x, 0, hv.y)
 	# caught on a corner: slip around it. Boxed in on every side: step out to open ground.
-	if mv.length() > 0.3 and Vector2(ppos.x - p0.x, ppos.z - p0.z).length() < SPEED * d * 0.3:
+	if not air and mv.length() > 0.3 and Vector2(ppos.x - p0.x, ppos.z - p0.z).length() < SPEED * d * 0.3:
 		var dn := mv.normalized()
 		var slid := false
 		for side in [Vector2(-dn.y, dn.x), Vector2(dn.y, -dn.x)]:
 			var t: Vector2 = Vector2(ppos.x, ppos.z) + (side * 0.8 + dn * 0.4) * SPEED * d
-			if world.occupy(t.x, t.y, 0.38, 0.0, true) == 0.0:
+			if world.occupy(t.x, t.y, 0.38, py, true) == 0.0:
 				ppos.x = t.x; ppos.z = t.y; slid = true
 				break
 		var boxed := not slid
 		if boxed:
 			for i in 8:
 				var a2 := TAU * i / 8.0
-				if world.occupy(ppos.x + cos(a2) * 0.2, ppos.z + sin(a2) * 0.2, 0.38, 0.0, true) == 0.0:
+				if world.occupy(ppos.x + cos(a2) * 0.2, ppos.z + sin(a2) * 0.2, 0.38, py, true) == 0.0:
 					boxed = false; break
 		wedge_t = wedge_t + d if boxed else 0.0
 		if wedge_t > 0.8:
 			wedge_t = 0.0
 			unstick()
-	# jumping, just for fun
-	if panel_open == "" and not Overlay.is_open() and not chat_open and train.is_empty() and not air and Input.is_action_just_pressed("jump"):
+	gh = _ground_h(ppos.x, ppos.z)
+	air = py > gh + 0.001 or pvy > 0.0
+	# jump; in the air, a second press (or holding Space, or the glide key) opens the glider
+	var jump_now := can_act and Input.is_action_just_pressed("jump")
+	if jump_now and not air:
 		pvy = JUMP_V
+		air = true
+		glide_hold = 0.0
 		Sfx.play("jump", null, -12.0)
-	if air or pvy > 0.0:
-		pvy -= GRAV * d
+	elif air and can_act:
+		var holding := Input.is_action_pressed("jump") or Input.is_action_pressed("glide")
+		glide_hold = glide_hold + d if holding else 0.0
+		if not gliding and dash_t <= 0.0 and (jump_now or Input.is_action_just_pressed("glide") or (holding and glide_hold > Hunter.GLIDE_ENGAGE and pvy < 2.0)):
+			gliding = true
+			Sfx.play("whoosh", null, -10.0, 0.1, 0.8)
+		elif gliding and not holding:
+			gliding = false
+	if air:
+		if gliding and pvy <= 0.0:
+			pvy = move_toward(pvy, -Hunter.GLIDE_SINK, Hunter.GLIDE_CATCH * d)
+		else:
+			pvy -= GRAV * d
 		py += pvy * d
-		if py <= 0.0:
-			py = 0.0
+		if gh > World.VOID + 1.0 and py <= gh:
+			if py < gh - 0.6:
+				Sfx.play("land", null, -8.0)     # caught the edge from below and climbed up
+			py = gh
 			pvy = 0.0
+			gliding = false
 			Sfx.step(null, -16.0)
+		elif py < FALL_RESPAWN:
+			_respawn_safe()
+	else:
+		py = gh
+		pvy = 0.0
+		gliding = false
+		if gh > World.VOID + 1.0 and world.kind[world.idx(int(floor(ppos.x)), int(floor(ppos.z)))] == World.T_GROUND:
+			safe_at = ppos
+	_glider_look()
 	player.position = ppos + Vector3(0, py, 0)
 	# face the mouse; with the mouse outside the window, face where you're walking
 	var vp := get_viewport()
@@ -744,7 +862,7 @@ func _move_player(d: float) -> void:
 	player.rotation.y = pface
 	if p_anim == null or p_anim.model != player:
 		p_anim = HunterAnim.new(player)
-	p_anim.update(d, {"vel": Vector3(hv.x, pvy if py > 0.0 else 0.0, hv.y), "face": pface, "grounded": py <= 0.0, "fired": 99.0})
+	p_anim.update(d, {"vel": Vector3(hv.x, pvy if air else 0.0, hv.y), "face": pface, "grounded": not air, "fired": 99.0})
 	if p_anim.stepped:
 		Sfx.step(null, -20.0)
 
@@ -873,8 +991,10 @@ func _move_kin(d: float) -> void:
 		var wish := Vector2.ZERO
 		var goal: Vector3 = k["goal"]
 		if goal != Vector3.INF:
-			var to := Vector2(goal.x - pos.x, goal.z - pos.z)
-			if to.length() > 0.4:
+			# round fences, buildings and ponds on the tile grid when the way isn't clear (HomeBuild.steer)
+			var aim: Vector3 = hb.steer(k, pos, goal) if hb else goal
+			var to := Vector2(aim.x - pos.x, aim.z - pos.z)
+			if Vector2(goal.x - pos.x, goal.z - pos.z).length() > 0.4 and to.length() > 0.01:
 				wish = to.normalized() * (4.4 if (k.has("fetch") or k.has("called_t")) else (3.6 if k.has("chase") else 2.4)) * _care_speed(rec) * float(pers.get("speed", 1.0))
 		var hv := Vector2(k["vel"].x, k["vel"].z)
 		hv += (wish - hv) * (1.0 - exp(-8.0 * d))
@@ -913,6 +1033,45 @@ func _move_kin(d: float) -> void:
 			var lbl: Label3D = k["emote"]
 			lbl.visible = k["emote_t"] > 0.0
 			lbl.position.y = 1.15 + (1.6 - k["emote_t"]) * 0.2
+
+## Jumping at a ledge a little above you pops you up onto it (and from below, an island's rim).
+func _mantle(x: float, z: float, top: float, air: bool) -> bool:
+	if not air or top <= 0.0 or world.is_block(x, z):
+		return false
+	var g := _ground_h(x, z)
+	if g <= World.VOID + 1.0:
+		return false
+	var reach := MANTLE_ABYSS if py < -0.2 else MANTLE
+	if g - py > reach:
+		return false
+	py = g
+	pvy = 0.0
+	gliding = false
+	Sfx.play("land", null, -10.0)
+	return true
+
+## Dropped into the sky: the wind carries you back to where you last stood. No harm done.
+func _respawn_safe() -> void:
+	ppos = safe_at
+	py = _ground_h(ppos.x, ppos.z)
+	if py <= World.VOID + 1.0: py = 0.0
+	pvy = 0.0; pvel = Vector3.ZERO; gliding = false; dash_t = 0.0
+	player.position = ppos + Vector3(0, py, 0)
+	cam.snap(ppos)
+	if fx: fx.burst(ppos + Vector3(0, 0.8, 0), Color("cfe8ff"), 16, 3.0, 0.5)
+	Sfx.play("whoosh", null, -4.0, 0.1, 0.7)
+	_toast("The wind caught you")
+
+## The glider over your head while you glide (your equipped skin).
+func _glider_look() -> void:
+	if glider_node == null or not is_instance_valid(glider_node):
+		glider_node = MeshInstance3D.new()
+		glider_node.mesh = Gliders.mesh(Gliders.equipped(), Data.TEAM_COLORS[0], UI.ACCENT)
+		glider_node.material_override = Models.vtoon_outlined()
+		glider_node.position = Vector3(0, 2.0, 0.05); glider_node.scale = Vector3.ONE * 0.8
+		glider_node.visible = false
+		player.add_child(glider_node)
+	glider_node.visible = gliding
 
 # ---- the glider rack: skins for your glider, each with its own trail and sounds
 func _glider_rack() -> Node3D:
@@ -1269,11 +1428,13 @@ func _find_interact() -> void:
 		best = {"kind": "egg"} if is_instance_valid(nest) else {"kind": "nook"}
 	if p2.distance_to(Vector2(YARD_AT.x, YARD_AT.z)) < 1.6 and best.is_empty():
 		best = {"kind": "yard"}
+	if training and visit.is_empty() and training.near_rack(ppos):
+		best = {"kind": "tryon"}
 	if hecon:
 		var hb: Dictionary = hecon.find(p2, bd if not best.is_empty() else 9.0)
 		if not hb.is_empty(): best = hb
 	interact = best
-	if panel_open != "" or best.is_empty() or building_now or chat_open or not train.is_empty():
+	if panel_open != "" or best.is_empty() or building_now or chat_open or not train.is_empty() or (hb and hb.active):
 		prompt_box.visible = false
 		return
 	prompt_box.visible = true
@@ -1326,7 +1487,7 @@ func _update_hover() -> void:
 	var vp := get_viewport()
 	var mp := vp.get_mouse_position()
 	var best: Dictionary = {}; var bd := 52.0
-	if panel_open == "" and not chat_open and not building_now and not Overlay.is_open():
+	if panel_open == "" and not chat_open and not building_now and not Overlay.is_open() and not (hb and hb.active):
 		for k in kins:
 			if k.has("indoors"): continue
 			var np: Vector3 = (k["node"] as Node3D).global_position + Vector3(0, 0.45, 0)
@@ -1394,6 +1555,7 @@ func _label_for(it: Dictionary) -> String:
 			return "Spend time with %s" % rec["name"]
 		"egg": return ("Help the %s hatch!" if _egg_ready() else "Warm the %s") % _egg_label()
 		"yard": return "Train your partner"
+		"tryon": return "Try on a class, weapon, glove or kin"
 		"nook": return "Pair two kin for an egg"
 		"feeder", "grave", "graveyard", "place": return hecon.label(it)
 	return ""
@@ -1424,9 +1586,21 @@ func _use(it: Dictionary) -> void:
 			var ak := Save.active_kin()
 			if not ak.is_empty(): _open_train(ak)
 		"nook": _open_nook()
+		"tryon": training.open_tryon()
 		"feeder", "grave", "graveyard", "place": hecon.use(it)
 
 func _unhandled_input(event: InputEvent) -> void:
+	if hb and hb.active and panel_open == "" and not Overlay.is_open():
+		if hb.input(event):
+			get_viewport().set_input_as_handled()
+			return
+	elif hb and event.is_action_pressed("build") and hb.can_build():
+		hb.toggle()
+		get_viewport().set_input_as_handled()
+		return
+	elif training and training.in_zone and panel_open == "" and not chat_open and train.is_empty() and not Overlay.is_open() and training.input(event):
+		get_viewport().set_input_as_handled()
+		return
 	if not train.is_empty():
 		if event.is_action_pressed("interact") or event.is_action_pressed("jump") or (event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT):
 			_train_hit()
@@ -1503,12 +1677,13 @@ func _build_ui() -> void:
 	# bottom centre: the few keys you need to get about
 	var hint_box := UI.glass(6, 12)
 	hint_box.modulate.a = 0.85
-	var keys := UI.key_hints([["W A S D", "walk"], ["Space", "jump"], [Settings.key_cap("interact"), "use"], [Settings.key_cap("whistle"), "whistle"], ["Esc", "menu"]], 12, Color(1, 1, 1, 0.78))
+	var keys := UI.key_hints([["W A S D", "walk"], ["Space", "jump"], [Settings.key_cap("interact"), "use"], [Settings.key_cap("whistle"), "whistle"], [Settings.key_cap("build"), "build"], ["Esc", "menu"]], 12, Color(1, 1, 1, 0.78))
 	hint_box.add_child(keys)
 	hint = UI.label("", 14, UI.INK)     # kept for code that still sets hint text; the key row replaces it
 	hint.visible = false
 	keys.add_child(hint)
 	root_ui.add_child(hint_box)
+	hint_box.name = "Hints"
 	hint_box.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 12)
 	hint_box.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	hint_box.grow_vertical = Control.GROW_DIRECTION_BEGIN
@@ -1604,6 +1779,21 @@ func _hub_key(event: InputEvent) -> bool:
 		return false
 	_hub_go(items[i][3], String(items[i][0]))
 	return true
+
+var build_btn: Button = null
+## Build mode hides the walking hints and the Build button while its own bar is up.
+func set_build_ui(on: bool) -> void:
+	var hb_box := root_ui.get_node_or_null("Hints")
+	if hb_box: hb_box.visible = not on
+	if is_instance_valid(build_btn): build_btn.visible = not on
+	var hub_bar = get("hub")         # the menus branch's bottom-left hub bar, when it's merged
+	if hub_bar is CanvasItem: (hub_bar as CanvasItem).visible = not on
+	if training and is_instance_valid(training.hud): training.hud.visible = not on
+
+## Opens build mode (for a Build entry in the home's hub bar).
+func open_build() -> void:
+	if hb and not hb.active:
+		hb.toggle()
 
 func _refresh_top() -> void:
 	if not visit.is_empty():
@@ -3096,10 +3286,9 @@ func _construct(b: String) -> void:
 	building_now = true
 	var l: Dictionary = lots[b]
 	var holder: Node3D = l["node"]
-	var rc: Array = Data.BUILDINGS[b]["rect"]
-	world.set_block_rect(rc[0], rc[1], rc[2], rc[3])
-	# step the player and any kin out of the footprint (and away from its walls)
-	unstick()
+	l["built"] = true
+	hb.apply(false)      # its footprint blocks now; steps you and any kin out of it
+	l["built"] = false
 	for c in holder.get_children():
 		var tw0 := create_tween()
 		tw0.tween_property(c, "scale", Vector3(1, 0.01, 1), 0.25)
@@ -4276,6 +4465,57 @@ func _quirk(k: Dictionary, n: Node3D, moving: bool, d: float) -> void:
 		"wiggle": body.rotation.z = sin(t * TAU * 3.0) * 0.18 * e
 	if q <= 0.0:
 		body.rotation = Vector3.ZERO; body.scale = Vector3.ONE
+
+# ------------------------------------------------------------------ build mode screenshots
+## --build-demo: build mode open with a bench's ghost by the farm; --decor-demo: an island decorated
+## through the layout; --training-demo: you on the Training Grounds, firing at the dummies.
+func _build_demo(which: String) -> void:
+	Save.no_write = true
+	Save.d["gems"] = maxi(int(Save.d["gems"]), 9999); Save.d["scrap"] = 99
+	var lay := HomeLayout.of(Save.d)
+	if which == "--decor-demo" or which == "--build-demo":
+		var add := func(id: String, x: int, z: int, r := 0, c := ""):
+			var e := {"u": HomeLayout._next_uid(lay), "id": id, "x": x, "z": z, "r": r}
+			if c != "": e["c"] = c
+			lay["deco"].append(e)
+		for x in range(50, 61): add.call("picket", x, 40)
+		for z in range(41, 46):
+			add.call("picket", 50, z); add.call("picket", 60, z)
+		for x in range(52, 59): lay["paths"][HomeLayout.key(x, 43)] = "path_stone"
+		for k in [[53, 41], [57, 41], [53, 44]]: add.call("flowers", k[0], k[1])
+		add.call("fountain", 54, 41)
+		add.call("bench", 56, 44, 0)
+		add.call("lantern", 51, 42); add.call("lantern", 59, 42)
+		add.call("banner", 51, 44, 0, "5ab0f0"); add.call("banner", 59, 44, 0, "e0607e")
+		for k in [[55, 33], [56, 34], [57, 33], [54, 33], [55, 34], [56, 33]]: lay["water"][HomeLayout.key(k[0], k[1])] = 1
+		add.call("blossom_tree", 52, 31); add.call("pine", 60, 31); add.call("tree", 58, 36); add.call("bush", 53, 36)
+		add.call("rug", 47, 41, 0, "f2c84a"); add.call("kin_bed", 52, 38, 0, "8fd16a")
+		add.call("kin_statue", 61, 36)
+		for z in range(30, 36): add.call("hedge", 63, z)
+		if which == "--decor-demo": lay["theme"] = "blossom"
+		hb.apply(true)
+	if which == "--build-demo":
+		get_tree().create_timer(0.4).timeout.connect(func():
+			ppos = Vector3(52.0, 0, 37.0); player.position = ppos; cam.snap(ppos)
+			hb.toggle()
+			hb.cat = "Furniture"
+			hb.take("bench")
+			hb.debug_m = Vector2(54.5, 37.6)
+			hb._build_bar())
+	if which == "--overview-demo" or which == "--decor-demo":
+		get_tree().create_timer(0.2).timeout.connect(func():
+			ppos = Vector3(46.0, 0, 37.0) if which == "--overview-demo" else Vector3(55.0, 0, 39.0)
+			player.position = ppos
+			cam.zoom_to = 3.3 if which == "--overview-demo" else 1.5; cam.zoom = cam.zoom_to; cam.snap(ppos))
+	if which == "--training-demo":
+		get_tree().create_timer(0.3).timeout.connect(func():
+			ppos = Vector3(39.5, 0, 57.5); player.position = ppos; cam.snap(ppos)
+			for i in 6:
+				get_tree().create_timer(0.4 + i * 0.25).timeout.connect(func():
+					if training.in_zone:
+						training.cds["fire"] = 0.0
+						training.cast("fire")
+						training.hit(training.dummies[i % 3], 6.0 + i)))
 
 # ------------------------------------------------------------------ test hooks for the economy
 ## --armory-test, --feeder-test, --grave-test, --shrine-test: set up a save and open the thing,
