@@ -12,7 +12,7 @@ static func make(cls: String, team_col: Color, wid: String, look: Dictionary) ->
 	vp.size = Vector2i(SIZE, SIZE)
 	vp.own_world_3d = true
 	vp.transparent_bg = true
-	vp.msaa_3d = Viewport.MSAA_2X
+	vp.msaa_3d = Viewport.MSAA_4X
 	vp.render_target_update_mode = SubViewport.UPDATE_ONCE
 	var env := WorldEnvironment.new()
 	var e := Environment.new()

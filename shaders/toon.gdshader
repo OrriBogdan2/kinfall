@@ -23,6 +23,14 @@ uniform float sheen = 0.06;     // a soft broad highlight on every surface facin
 // Imported low-poly models carry each corner's averaged (smooth) normal in TANGENT (Assets.mesh).
 // Blending toward it rounds off their facets in the shading while the silhouette stays crisp.
 uniform float soften = 0.0;
+// Hand-painted value structure (characters): each part is lighter at its top and darker at its foot,
+// darkest right where it tucks into the next part (UV2 holds the part's height range, set when
+// the model is built); edges turned away from the eye darken like a painted form shadow; and a
+// surface "material" adds its own brushwork: 1 cloth, 2 leather, 3 metal, 4 skin, 5 hair, 6 gem.
+uniform float part_grad = 0.0;
+uniform float crease = 0.0;
+uniform float edge_dark = 0.0;
+uniform int surface = 0;
 // Imported (CC0 pack) models: their colours come from a shared palette texture. One band of hues in
 // it (say the green of the leaves) can be repainted, keeping the texture's shading, so the same tree
 // takes each biome's foliage colour. With use_vertex_color the per-instance colour is the repaint
@@ -42,10 +50,12 @@ uniform float color_tint = 0.0;       // with use_vertex_color: how much the ins
 #include "res://shaders/vis.gdshaderinc"
 varying vec3 lpos;
 varying vec3 wnorm;
+varying vec2 part_y;
 
 void vertex() {
 	if (soften > 0.0) { NORMAL = normalize(mix(NORMAL, TANGENT, soften)); }
 	lpos = VERTEX;
+	part_y = UV2;
 	wnorm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
 
@@ -77,6 +87,38 @@ void fragment() {
 	c *= 1.0 + (n - 0.5) * 2.0 * paint;
 	// sky light from above, a little bounce from below: shapes read as solid from the high camera
 	c *= mix(1.0 - sky_ao, 1.0 + sky_ao * 0.3, wnorm.y * 0.5 + 0.5);
+	// painted value structure: light at the top of each part, dark at its foot and in the crease
+	if (part_y.y - part_y.x > 0.0001 && (part_grad > 0.0 || crease > 0.0)) {
+		float g = clamp((lpos.y - part_y.x) / (part_y.y - part_y.x), 0.0, 1.0);
+		c *= mix(1.0 - part_grad, 1.0 + part_grad * 0.45, g);
+		c *= 1.0 - (1.0 - smoothstep(0.0, 0.3, g)) * crease;
+	}
+	float nv = clamp(dot(NORMAL, VIEW), 0.0, 1.0);
+	c *= 1.0 - smoothstep(0.45, 0.95, 1.0 - nv) * edge_dark;
+	// brushwork per material, faded out where it would shimmer at a distance
+	if (surface > 0) {
+		float fw = fwidth(lpos.y) * 60.0;
+		float near_k = 1.0 - smoothstep(0.35, 1.2, fw);
+		if (surface == 1) {          // cloth: soft vertical strokes and a faint weave
+			float st = vnoise(vec2((lpos.x + lpos.z) * 38.0, lpos.y * 7.0));
+			c *= 1.0 + (st - 0.5) * 0.16 * near_k;
+		} else if (surface == 2) {   // leather: mottled, darker in patches
+			float st = vnoise(lpos.xz * 46.0 + lpos.y * 31.0) * 0.6 + vnoise(lpos.xy * 90.0) * 0.4;
+			c *= 1.0 + (st - 0.55) * 0.22 * near_k;
+		} else if (surface == 3) {   // metal: a painted sky-and-ground reflection and brushed streaks
+			vec3 r = (INV_VIEW_MATRIX * vec4(reflect(-VIEW, NORMAL), 0.0)).xyz;
+			float env = smoothstep(-0.35, 0.55, r.y);
+			c *= mix(0.55, 1.35, env);
+			float st = vnoise(vec2(lpos.x * 6.0, (lpos.y + lpos.z) * 70.0));
+			c *= 1.0 + (st - 0.5) * 0.14 * near_k;
+		} else if (surface == 5) {   // hair and fur: strands
+			float st = vnoise(vec2((lpos.x - lpos.z) * 70.0, lpos.y * 9.0));
+			c *= 1.0 + (st - 0.5) * 0.2 * near_k;
+		} else if (surface == 6) {   // gems: a bright inner facet glow
+			vec3 r = (INV_VIEW_MATRIX * vec4(reflect(-VIEW, NORMAL), 0.0)).xyz;
+			c *= 0.8 + 0.6 * smoothstep(0.1, 0.8, r.y);
+		}
+	}
 	float fog = no_fog ? 0.0 : vis_fog((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz);
 	c = vis_apply(c, fog);
 	ALBEDO = mix(c, flash_color.rgb, flash);
@@ -107,8 +149,8 @@ void light() {
 		DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR / PI * tone;
 		// a crisp rim on the edge that faces this light (key light rims gold, the fill rims cool)
 		float fres = 1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0);
-		float rim_l = smoothstep(0.6, 0.74, fres) * smoothstep(-0.25, 0.45, ndl);
-		DIFFUSE_LIGHT += rim_color.rgb * LIGHT_COLOR * rim_l * rim_amount * 0.16 * mix(0.45, 1.0, ATTENUATION);
+		float rim_l = smoothstep(0.7, 0.8, fres) * smoothstep(-0.25, 0.45, ndl);
+		DIFFUSE_LIGHT += rim_color.rgb * LIGHT_COLOR * rim_l * rim_amount * 0.24 * mix(0.45, 1.0, ATTENUATION);
 		vec3 hv = normalize(LIGHT + VIEW);
 		float nh = max(dot(NORMAL, hv), 0.0);
 		SPECULAR_LIGHT += LIGHT_COLOR * pow(nh, 16.0) * sheen * band;

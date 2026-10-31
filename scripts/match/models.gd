@@ -59,7 +59,7 @@ static var _spheres := {}
 static func sphere(r: float, seg := 16) -> SphereMesh:
 	var sg := seg + (8 if r > 0.12 else 4)
 	if seg > 8 or r >= 0.1:
-		sg = maxi(sg, int(clampf(r * 100.0, 14.0, 28.0)))
+		sg = maxi(sg, int(clampf(r * 170.0, 16.0, 48.0)))
 	sg += sg % 2
 	var key := "%.4f|%d" % [r, sg]
 	if _spheres.has(key):
@@ -74,7 +74,7 @@ static func capsule(r: float, h: float) -> CapsuleMesh:
 	if _spheres.has(key):
 		return _spheres[key]
 	var c := CapsuleMesh.new()
-	c.radius = r; c.height = h; c.radial_segments = int(clampf(r * 220.0, 14.0, 32.0)); c.rings = 10
+	c.radius = r; c.height = h; c.radial_segments = int(clampf(r * 380.0, 20.0, 48.0)); c.rings = 16
 	_spheres[key] = c
 	return c
 
@@ -92,7 +92,7 @@ static func box(x: float, y: float, z: float) -> Mesh:
 	var key := "%.4f|%.4f|%.4f" % [x, y, z]
 	if _rbox.has(key):
 		return _rbox[key]
-	var am := rounded_box(Vector3(x, y, z), r, 3 if mn > 0.12 else 2)
+	var am := rounded_box(Vector3(x, y, z), r, 4 if mn > 0.1 else (3 if mn > 0.03 else 2))
 	_rbox[key] = am
 	return am
 
@@ -260,7 +260,7 @@ static func plain_cyl(top: float, bottom: float, h: float, seg := 14) -> Cylinde
 ## outlines as one clean shape. Hair-thin ones stay plain. Cached by size.
 static func cyl(top: float, bottom: float, h: float, seg := 14) -> Mesh:
 	var mr := maxf(top, bottom)
-	var radial := maxi(seg + 6, int(clampf(mr * 100.0, 12.0, 40.0)))
+	var radial := maxi(seg + 10, int(clampf(mr * 170.0, 16.0, 56.0)))
 	if mr < 0.014 or h < 0.012:
 		var c := CylinderMesh.new()
 		c.top_radius = top; c.bottom_radius = bottom; c.height = h; c.radial_segments = maxi(seg + 2, 8); c.rings = 1
@@ -275,7 +275,7 @@ static func cyl(top: float, bottom: float, h: float, seg := 14) -> Mesh:
 	if top > 0.0005: poly.append(Vector2(-top, hh))
 	if bottom > 0.0005: poly.append(Vector2(-bottom, -hh))
 	var bev := clampf(minf(h, 2.0 * mr) * 0.16, 0.0, 0.045)
-	var loop := _fillet(poly, bev, 3)
+	var loop := _fillet(poly, bev, 5)
 	var prof := _right_half(loop)
 	var am := lathe(prof, radial)
 	_cyls[key] = am
@@ -329,9 +329,9 @@ static func limb(r0: float, r1: float, h: float, bulge := 0.08) -> ArrayMesh:
 	for k in 5:
 		var a := PI * 0.5 * float(k) / 4.0
 		pts.append(Vector2(cos(a) * r0, hh - r0 + sin(a) * r0))
-	var prof := smooth_curve(pts, 2)
+	var prof := smooth_curve(pts, 3)
 	prof[0] = Vector2(0, -hh); prof[prof.size() - 1] = Vector2(0, hh)
-	var am := lathe(prof, int(clampf(maxf(r0, r1) * 220.0, 14.0, 24.0)))
+	var am := lathe(prof, int(clampf(maxf(r0, r1) * 380.0, 24.0, 40.0)))
 	_lathes[key] = am
 	return am
 
@@ -345,7 +345,7 @@ static func eye_mesh(r: float, iris: Color, dark := Color("1a1620")) -> ArrayMes
 	if _eyes.has(key):
 		return _eyes[key]
 	var sm := SphereMesh.new()
-	sm.radius = r; sm.height = r * 2.0; sm.radial_segments = 28; sm.rings = 18
+	sm.radius = r; sm.height = r * 2.0; sm.radial_segments = 40; sm.rings = 24
 	var arrs := sm.get_mesh_arrays()
 	var verts: PackedVector3Array = arrs[Mesh.ARRAY_VERTEX]
 	var cols := PackedColorArray()
@@ -367,6 +367,53 @@ static func eye_mesh(r: float, iris: Color, dark := Color("1a1620")) -> ArrayMes
 	var am := ArrayMesh.new()
 	am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrs)
 	_eyes[key] = am
+	return am
+
+## A coat skirt or tunic: flares from r_top down to r_bot over h, with soft cloth folds that deepen
+## toward the hem (their normals follow the folds, so they catch the light like painted drapery).
+static func skirt(r_top: float, r_bot: float, h: float, folds := 9, amp := 0.07) -> ArrayMesh:
+	var key := "skirt|%.4f|%.4f|%.4f|%d|%.3f" % [r_top, r_bot, h, folds, amp]
+	if _lathes.has(key):
+		return _lathes[key]
+	var seg := 72
+	var rows := 12
+	var hh := h * 0.5
+	var surf := func(a: float, t: float) -> Vector3:
+		var rr := lerpf(r_bot, r_top, pow(t, 0.85))
+		rr *= 1.0 + amp * pow(1.0 - t, 1.4) * sin(float(folds) * a + 0.35 * sin(a * 3.0))
+		return Vector3(cos(a) * rr, lerpf(-hh, hh, t), sin(a) * rr)
+	var verts := PackedVector3Array(); var norms := PackedVector3Array(); var uvs := PackedVector2Array(); var idx: Array = []
+	for i in rows + 1:
+		var t := float(i) / rows
+		for j in seg + 1:
+			var a := TAU * float(j) / seg
+			var p: Vector3 = surf.call(a, t)
+			var da: Vector3 = (surf.call(a + 0.01, t) as Vector3) - (surf.call(a - 0.01, t) as Vector3)
+			var dt: Vector3 = (surf.call(a, minf(t + 0.01, 1.0)) as Vector3) - (surf.call(a, maxf(t - 0.01, 0.0)) as Vector3)
+			var nrm := da.cross(dt).normalized()
+			if nrm.dot(Vector3(p.x, 0.0, p.z)) < 0.0: nrm = -nrm
+			verts.append(p); norms.append(nrm); uvs.append(Vector2(float(j) / seg, t))
+	for i in rows:
+		for j in seg:
+			var a0 := i * (seg + 1) + j
+			var b0 := (i + 1) * (seg + 1) + j
+			_quad(verts, norms, idx, a0, a0 + 1, b0 + 1, b0)
+	# the hem: a short lip turned in underneath, and a cap
+	var base := verts.size()
+	for j in seg + 1:
+		var a := TAU * float(j) / seg
+		var p: Vector3 = surf.call(a, 0.0)
+		verts.append(p * Vector3(0.9, 1.0, 0.9) + Vector3(0, 0.004, 0)); norms.append(Vector3.DOWN); uvs.append(Vector2(float(j) / seg, 0.0))
+	var c := verts.size()
+	verts.append(Vector3(0, -hh + 0.004, 0)); norms.append(Vector3.DOWN); uvs.append(Vector2(0.5, 0.0))
+	for j in seg:
+		_quad(verts, norms, idx, j, j + 1, base + j + 1, base + j)
+		var tri := [c, base + j, base + j + 1]
+		var fn := (verts[tri[1]] - verts[tri[0]]).cross(verts[tri[2]] - verts[tri[0]])
+		if fn.dot(Vector3.DOWN) > 0.0: idx.append_array([tri[0], tri[2], tri[1]])
+		else: idx.append_array(tri)
+	var am := _commit(verts, norms, uvs, idx)
+	_lathes[key] = am
 	return am
 
 static var _crystals := {}
@@ -514,9 +561,9 @@ static func clean_look(lk: Dictionary) -> Dictionary:
 ## visual): overall size on top of the class scale (about 0.88 / 1.0 / 1.18 in all), build, boots,
 ## weapon size, and the class emblem on the pack (light: a chevron, medium: a diamond, heavy: a shield).
 const CLASS_LOOK := {
-	"light": {"size": 0.95, "build": 0.88, "boots": 0.9, "weapon": 0.86},
-	"medium": {"size": 1.0, "build": 1.0, "boots": 1.0, "weapon": 1.05},
-	"heavy": {"size": 1.035, "build": 1.12, "boots": 1.28, "weapon": 1.32},
+	"light": {"size": 0.95, "build": 0.88, "boots": 0.95, "weapon": 0.98},
+	"medium": {"size": 1.0, "build": 1.0, "boots": 1.06, "weapon": 1.15},
+	"heavy": {"size": 1.035, "build": 1.12, "boots": 1.32, "weapon": 1.42},
 }
 
 ## The class's own marks: its emblem on top of the pack in the class colour (seen from above), a
@@ -557,7 +604,7 @@ static func torso_mesh() -> ArrayMesh:
 		return _lathes[key]
 	var pts := PackedVector2Array([Vector2(0.0, -0.31), Vector2(0.13, -0.305), Vector2(0.2, -0.27), Vector2(0.218, -0.17), Vector2(0.205, -0.05),
 		Vector2(0.212, 0.05), Vector2(0.236, 0.14), Vector2(0.248, 0.205), Vector2(0.236, 0.255), Vector2(0.19, 0.293), Vector2(0.11, 0.312), Vector2(0.0, 0.318)])
-	var am := lathe(smooth_curve(pts, 3), 36)
+	var am := lathe(smooth_curve(pts, 4), 56)
 	_lathes[key] = am
 	return am
 
@@ -594,6 +641,12 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 	m_skin.set_shader_parameter("sss", 0.4)
 	m_hair.set_shader_parameter("gloss", 0.3)
 	m_leather.set_shader_parameter("gloss", 0.15)
+	for mm in [m_body, m_shirt, m_pants, m_acc, m_hero, m_trim]:
+		painted(mm, 1)
+	painted(m_leather, 2); painted(m_dark, 2, 0.18, 0.2, 0.2)
+	painted(m_skin, 4, 0.16, 0.3, 0.18)
+	painted(m_hair, 5, 0.26, 0.22, 0.22)
+	painted(m_gun, 3, 0.12, 0.1, 0.1); painted(m_gold, 3, 0.1, 0.0, 0.0)
 	var rig := Node3D.new(); rig.name = "Rig"; root.add_child(rig)
 	var legs := Node3D.new(); legs.name = "Legs"; rig.add_child(legs)
 	var bw: float = [0.88, 1.0, 1.15][clampi(int(lk["body"]), 0, 2)]
@@ -628,17 +681,17 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 	# the long field coat, heavy ones plate armour over a padded skirt
 	match cls:
 		"light":
-			part(torso, cyl(0.215 * bw, 0.235 * bw, 0.16, 16), m_body, Vector3(0, 0.0, 0.01))
+			part(torso, skirt(0.215 * bw, 0.24 * bw, 0.16, 8, 0.045), m_body, Vector3(0, 0.0, 0.01))
 			part(torso, box(0.42 * bw, 0.5, 0.03), m_acc, Vector3(0, 0.3, 0.27 * bw), Vector3.ONE, Vector3(0.18, 0, 0))   # cape
 			part(torso, cyl(0.19, 0.24, 0.12, 14), m_acc, Vector3(0, 0.6, 0.02))   # cowl
 		"heavy":
-			part(torso, cyl(0.245 * bw, 0.33 * bw, 0.26, 10), m_pants, Vector3(0, -0.05, 0.01))
+			part(torso, skirt(0.245 * bw, 0.33 * bw, 0.26, 7, 0.06), m_pants, Vector3(0, -0.05, 0.01))
 			for k in 6:
 				var a := TAU * k / 6.0 + PI / 6.0
 				part(torso, box(0.17 * bw, 0.22, 0.04), m_trim, Vector3(sin(a) * 0.29 * bw, -0.07, cos(a) * 0.29 * bw), Vector3.ONE, Vector3(-0.22 * cos(a), a, 0.22 * sin(a)))   # tassets
 			part(torso, box(0.36 * bw, 0.3, 0.08), m_trim, Vector3(0, 0.36, -0.24 * bw), Vector3.ONE, Vector3(0.08, 0, 0))   # breastplate
 		_:
-			part(torso, cyl((0.225 if fem else 0.235) * bw, (0.34 if fem else 0.29) * bw, 0.24, 16), m_body, Vector3(0, -0.04, 0.01))
+			part(torso, skirt((0.225 if fem else 0.235) * bw, (0.35 if fem else 0.3) * bw, 0.26, 9, 0.075), m_body, Vector3(0, -0.05, 0.01))
 	# chest: a sculpted torso (waist, ribcage, broad shoulders) under the open jacket
 	part(torso, torso_mesh(), m_body, Vector3(0, 0.33, 0), Vector3(chest_w, 1.0, bw * 0.9))
 	if fem:
@@ -760,13 +813,14 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 	var aim := Node3D.new(); aim.name = "Aim"; aim.position = Vector3(0, 0.5, 0.0); torso.add_child(aim)
 	var gun := Node3D.new(); gun.name = "Gun"; gun.position = Vector3(0.22, -0.18, -0.18); aim.add_child(gun)
 	# arms: sleeve, a cuff in the trim colour and a glove
-	var arm_r := part(aim, limb(0.08, 0.063, 0.42, 0.07), m_body, Vector3(0.25, -0.02, -0.08), Vector3.ONE, Vector3(1.2, 0, 0.15), "ArmR")
-	var arm_l := part(aim, limb(0.08, 0.063, 0.46, 0.07), m_body, Vector3(-0.11, -0.04, -0.16), Vector3.ONE, Vector3(1.25, 0, -0.7), "ArmL")
+	var arm_r := part(aim, limb(0.082, 0.064, 0.42, 0.12), m_body, Vector3(0.25, -0.02, -0.08), Vector3.ONE, Vector3(1.2, 0, 0.15), "ArmR")
+	var arm_l := part(aim, limb(0.082, 0.064, 0.46, 0.12), m_body, Vector3(-0.11, -0.04, -0.16), Vector3.ONE, Vector3(1.25, 0, -0.7), "ArmL")
 	for arm in [arm_r, arm_l]:
 		part(arm, cyl(0.074, 0.08, 0.06, 12), m_trim, Vector3(0, -0.15, 0))
 		# a gloved hand: a rounded palm and a thumb
-		part(arm, sphere(0.07, 16), m_leather, Vector3(0, -0.235, 0), Vector3(0.95, 1.3, 0.85))
-		part(arm, sphere(0.032, 12), m_leather, Vector3(0.0, -0.2, -0.055), Vector3(1.0, 1.4, 1.0))
+		part(arm, sphere(0.084, 16), m_leather, Vector3(0, -0.245, 0), Vector3(0.95, 1.3, 0.88))
+		part(arm, sphere(0.038, 12), m_leather, Vector3(0.0, -0.205, -0.065), Vector3(1.0, 1.4, 1.0))
+		part(arm, cyl(0.07, 0.082, 0.05, 16), m_leather, Vector3(0, -0.175, 0))      # a glove cuff
 	gun_parts(gun, weapon, m_gun, m_dark, m_acc)
 	gun.scale = Vector3.ONE * float(CLASS_LOOK.get(cls, {}).get("weapon", 1.0))     # heavies carry big guns
 	# a magazine that comes out and goes back in on a reload
@@ -815,7 +869,7 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 		merge_static(legs.get_node(nm))
 		merge_static(legs.get_node(nm + "/Knee"))
 	# the race's proportions: head size, how broad the body is, overall height
-	var hk := float(race["head"])
+	var hk := float(race["head"]) * 1.06     # a touch big-headed, for a chunkier stylized read
 	var bk := float(race["bulk"])
 	head.scale = Vector3.ONE * hk
 	head.position.y += (hk - 1.0) * 0.08
@@ -826,6 +880,7 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 		aim.scale = Vector3(lerpf(1.0, bk, 0.75), 1.0, 1.0)
 		shoulder.position.x *= bk
 		legs.scale = Vector3(bk, 1.0, bk)
+	bake_part_y(root)
 	root.set_meta("mats", collect_mats(root))
 	for mm in root.get_meta("mats"):
 		(mm as ShaderMaterial).set_shader_parameter("paint", 0.012)    # clean, sleek surfaces: barely any blotching
@@ -858,7 +913,7 @@ static var _blade_m: SphereMesh
 static func _blade_mesh() -> SphereMesh:
 	if _blade_m == null:
 		_blade_m = SphereMesh.new()
-		_blade_m.radius = 0.5; _blade_m.height = 1.0; _blade_m.radial_segments = 16; _blade_m.rings = 10
+		_blade_m.radius = 0.5; _blade_m.height = 1.0; _blade_m.radial_segments = 24; _blade_m.rings = 14
 	return _blade_m
 
 ## A point on the head (centre 0, 0.86, 0, radius about 0.235) in the direction (x, y, z).
@@ -1168,8 +1223,9 @@ static func merge_static(node: Node3D) -> void:
 			groups[key] = {"mat": mat, "st": SurfaceTool.new(), "n": 0}
 			(groups[key]["st"] as SurfaceTool).begin(Mesh.PRIMITIVE_TRIANGLES)
 		var st: SurfaceTool = groups[key]["st"]
-		for si in mi.mesh.get_surface_count():
-			st.append_from(mi.mesh, si, mi.transform)
+		var pm := _with_part_y(mi.mesh, mi.transform)
+		for si in pm.get_surface_count():
+			st.append_from(pm, si, mi.transform)
 		groups[key]["n"] = int(groups[key]["n"]) + 1
 		drop.append(mi)
 	for key in groups:
@@ -1181,6 +1237,45 @@ static func merge_static(node: Node3D) -> void:
 	for d in drop:
 		node.remove_child(d)
 		d.free()
+
+## A copy of a mesh whose UV2 holds the height range (bottom, top) the part spans once placed with
+## xf, which the toon shader turns into the part's painted light-to-dark gradient and crease.
+static func _with_part_y(mesh: Mesh, xf := Transform3D.IDENTITY) -> ArrayMesh:
+	var ab := xf * mesh.get_aabb()
+	var am := ArrayMesh.new()
+	for si in mesh.get_surface_count():
+		var arrs := mesh.surface_get_arrays(si)
+		var n: int = (arrs[Mesh.ARRAY_VERTEX] as PackedVector3Array).size()
+		var uv2 := PackedVector2Array(); uv2.resize(n); uv2.fill(Vector2(ab.position.y, ab.end.y))
+		arrs[Mesh.ARRAY_TEX_UV2] = uv2
+		am.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrs)
+	return am
+
+static var _part_y_cache := {}
+## Gives every toon-shaded part under `n` that isn't merged its own part range (in its own space).
+static func bake_part_y(n: Node) -> void:
+	var stack: Array = [n]
+	while not stack.is_empty():
+		var c: Node = stack.pop_back()
+		if c is MeshInstance3D:
+			var mi := c as MeshInstance3D
+			if mi.mesh and mi.mesh.get_surface_count() > 0 and mi.material_override is ShaderMaterial \
+					and (mi.material_override as ShaderMaterial).shader == TOON \
+					and not (mi.mesh is ArrayMesh and ((mi.mesh as ArrayMesh).surface_get_format(0) & Mesh.ARRAY_FORMAT_TEX_UV2)):
+				var id := mi.mesh.get_instance_id()
+				if not _part_y_cache.has(id):
+					_part_y_cache[id] = _with_part_y(mi.mesh)
+				mi.mesh = _part_y_cache[id]
+		for ch in c.get_children(): stack.append(ch)
+
+## Sets a toon material's painted structure: its brushwork (see toon.gdshader's `surface`), the
+## part gradient, the crease darkening and the form-shadow on edges.
+static func painted(m: ShaderMaterial, surface := 0, grad := 0.22, crease_k := 0.26, edge := 0.24) -> ShaderMaterial:
+	m.set_shader_parameter("surface", surface)
+	m.set_shader_parameter("part_grad", grad)
+	m.set_shader_parameter("crease", crease_k)
+	m.set_shader_parameter("edge_dark", edge)
+	return m
 
 static func _mat_key(m: Material) -> String:
 	if m is ShaderMaterial:
@@ -1774,6 +1869,10 @@ static func kin(species: String, rec := {}) -> Node3D:
 	root.set_meta("mats", mats)
 	for mm in collect_mats(body_root):
 		(mm as ShaderMaterial).set_shader_parameter("paint", 0.015)
+		if (mm as ShaderMaterial).get_shader_parameter("glow") == 0.0 and not (mm as ShaderMaterial).get_shader_parameter("use_vertex_color"):
+			painted(mm, 0, 0.24, 0.26, 0.22)
+	painted(m_dark, 2, 0.2, 0.2, 0.2)
+	bake_part_y(body_root)
 	Evo.dress(root, rec)
 	if shimmer:
 		# a shimmer sparkles a little, all the time

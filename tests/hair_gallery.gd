@@ -76,6 +76,9 @@ func _class_lineup() -> void:
 			ci += 1
 	var cam := Camera3D.new()
 	cam.position = Vector3(0, 9.0, 7.5); cam.rotation = Vector3(-0.85, 0, 0); cam.fov = 50
+	if "--lineup-close" in OS.get_cmdline_user_args():
+		# close up on the front row
+		cam.position = Vector3(0, 1.75, 5.6); cam.rotation = Vector3(-0.16, 0, 0); cam.fov = 44
 	add_child(cam)
 	cam.make_current()
 
