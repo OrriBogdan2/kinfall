@@ -288,6 +288,9 @@ static func material(pack: String, cfg := {}) -> ShaderMaterial:
 		m.set_shader_parameter("recolor", 1.0)
 		m.set_shader_parameter("recolor_to", cfg["paint"])
 	var ol = cfg.get("outline", true)
+	if not (ol is String and ol == "normal"):
+		# static pack models: round off the facets in the shading (their smooth normals are in TANGENT)
+		m.set_shader_parameter("soften", float(cfg.get("soften", 0.45)))
 	if ol is String and ol == "normal":
 		# rigged characters keep the importer's tangents, so their shell grows along the normals
 		m.next_pass = Models.toon(Color.WHITE).next_pass

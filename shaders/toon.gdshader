@@ -20,6 +20,9 @@ uniform float gloss = 0.0;      // 0 matte .. 1 shiny (a crisp highlight band)
 uniform float sss = 0.18;       // warm glow along the terminator (skin, fur, soft things)
 uniform vec4 sss_color : source_color = vec4(1.0, 0.45, 0.32, 1.0);
 uniform float sheen = 0.06;     // a soft broad highlight on every surface facing the light
+// Imported low-poly models carry each corner's averaged (smooth) normal in TANGENT (Assets.mesh).
+// Blending toward it rounds off their facets in the shading while the silhouette stays crisp.
+uniform float soften = 0.0;
 // Imported (CC0 pack) models: their colours come from a shared palette texture. One band of hues in
 // it (say the green of the leaves) can be repainted, keeping the texture's shading, so the same tree
 // takes each biome's foliage colour. With use_vertex_color the per-instance colour is the repaint
@@ -41,6 +44,7 @@ varying vec3 lpos;
 varying vec3 wnorm;
 
 void vertex() {
+	if (soften > 0.0) { NORMAL = normalize(mix(NORMAL, TANGENT, soften)); }
 	lpos = VERTEX;
 	wnorm = normalize((MODEL_MATRIX * vec4(NORMAL, 0.0)).xyz);
 }
