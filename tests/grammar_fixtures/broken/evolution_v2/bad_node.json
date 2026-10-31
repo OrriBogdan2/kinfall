@@ -1,0 +1,40 @@
+{
+	"grammar": 1,
+	"id": "bad_node",
+	"name": "Raw Power",
+	"affinity": "greedy",
+	"requires": {
+		"level": 4
+	},
+	"grants": [
+		{
+			"kind": "add_stat",
+			"stat": "kin_damage",
+			"amount": 10
+		},
+		{
+			"kind": "stat_shift",
+			"from": "kin_hp",
+			"to": "kin_mana",
+			"points": 1
+		},
+		{
+			"kind": "sidegrade",
+			"slot": "active",
+			"up": {
+				"param": "delivery.range",
+				"scale": 2.0
+			},
+			"down": {
+				"param": "range",
+				"scale": 0.9
+			}
+		}
+	],
+	"cosmetic": {
+		"parts": [
+			"laser_eyes"
+		],
+		"tint": "red"
+	}
+}

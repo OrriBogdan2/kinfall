@@ -1,0 +1,62 @@
+{
+	"grammar": 1,
+	"id": "stormcoat",
+	"name": "Resonance",
+	"flavor": "Echolop hums over you for 6s: 30% faster, every dash back, and each shot echoes to a second foe.",
+	"theme": "echo",
+	"duration": 6,
+	"grow_duration": 1.0,
+	"grow_strength": 0.1,
+	"passives": [
+		{
+			"stat": "move_speed",
+			"amount": 0.3
+		},
+		{
+			"stat": "damage",
+			"amount": 0.15
+		},
+		{
+			"stat": "dodge_regen",
+			"amount": 1.0
+		}
+	],
+	"on_shot": {
+		"chain": 1
+	},
+	"on_start": [
+		{
+			"delivery": {
+				"type": "beam",
+				"origin": "owner",
+				"range": 8,
+				"seek": true
+			},
+			"effects": [
+				{
+					"type": "damage",
+					"amount": 12
+				},
+				{
+					"type": "stun",
+					"duration": 0.6
+				}
+			],
+			"modifiers": [
+				{
+					"type": "chain",
+					"count": 3,
+					"range": 5
+				}
+			]
+		}
+	],
+	"merged": {
+		"active": {
+			"stage": 0,
+			"scale": {
+				"range": 1.2
+			}
+		}
+	}
+}

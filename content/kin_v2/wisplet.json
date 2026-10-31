@@ -1,0 +1,120 @@
+{
+	"grammar": 1,
+	"id": "wisplet",
+	"name": "Lunowl",
+	"animals": [
+		"Owl",
+		"Luna moth"
+	],
+	"theme": "lunar",
+	"flavor": "A moonlit owl with soft moth wings. It flits on moondust and dazzles foes with silver light.",
+	"colors": {
+		"body": "#d9d4f2",
+		"belly": "#fff8e6",
+		"glow": "#fff0a0",
+		"wing": "#9fe6b4"
+	},
+	"look": {
+		"ears": "none",
+		"body": "lunowl",
+		"tail": "none",
+		"feet": "none",
+		"aura": "moondust"
+	},
+	"body": {
+		"size": "small",
+		"reach": 1.3,
+		"mass": 0.8,
+		"gait": {
+			"hop_rate": 4.5,
+			"hop_height": 0.2,
+			"pace": 0.95
+		}
+	},
+	"stats": {
+		"kin_hp": 2,
+		"kin_damage": 1,
+		"kin_speed": 15,
+		"owner_move_speed": 2
+	},
+	"personality": {
+		"bravery": 0.35,
+		"loyalty": 0.55,
+		"temper": 0.5,
+		"curiosity": 0.7
+	},
+	"ai": {
+		"aggression": 0.4,
+		"loyalty": 0.6,
+		"caution": 0.7,
+		"role": "trickster"
+	},
+	"carry": {
+		"style": "perch",
+		"name": "Moonstep",
+		"passives": [
+			{
+				"stat": "dodge_charges",
+				"amount": 1
+			}
+		]
+	},
+	"throw": {
+		"effects": [
+			{
+				"type": "push",
+				"strength": 8
+			}
+		]
+	},
+	"dodge_rider": {
+		"name": "Moon Blink",
+		"as": "blink"
+	},
+	"active": "moon_swap",
+	"auto": "updraft",
+	"merge": "tempest",
+	"evolution": {
+		"root": "Wisp",
+		"paths": [
+			{
+				"affinity": "fierce",
+				"nodes": [
+					"fierce_form"
+				]
+			},
+			{
+				"affinity": "steadfast",
+				"nodes": [
+					"steadfast_form"
+				]
+			},
+			{
+				"affinity": "curious",
+				"nodes": [
+					"curious_form"
+				]
+			},
+			{
+				"affinity": "swift",
+				"nodes": [
+					"swift_form",
+					"wisplet_long_throw"
+				]
+			}
+		]
+	},
+	"voice": {
+		"line": "airy, teasing, dramatic",
+		"syllables": [
+			"Wisp",
+			"let"
+		]
+	},
+	"egg": {
+		"name": "Moon Egg",
+		"temper": "Airy",
+		"desc": "Pale and faintly glowing. At night it floats a hair above the nest. Something airy is in here.",
+		"play": "Quick and slippery. Gusts foes away and flits out of reach."
+	}
+}

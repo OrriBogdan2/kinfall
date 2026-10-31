@@ -1,0 +1,43 @@
+{
+	"grammar": 1,
+	"id": "thorn_patch",
+	"name": "Spore Patch",
+	"short": "Spores",
+	"flavor": "On its own, when foes bunch up, Mycroll puffs a 4s spore cloud on them: slowed and taking damage while inside.",
+	"theme": "spore",
+	"tier": 1,
+	"from": "kin",
+	"range": 7,
+	"cooldown": 11,
+	"charges": 1,
+	"trigger": {
+		"type": "auto"
+	},
+	"cue": {
+		"type": "foes_clumped",
+		"count": 2,
+		"radius": 3,
+		"range": 7
+	},
+	"stages": [
+		{
+			"delivery": {
+				"type": "zone",
+				"origin": "aim",
+				"radius": 2.6,
+				"duration": 4,
+				"every": 0.5
+			},
+			"effects": [
+				{
+					"type": "damage",
+					"amount": 4
+				},
+				{
+					"type": "slow",
+					"duration": 0.8
+				}
+			]
+		}
+	]
+}

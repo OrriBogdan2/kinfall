@@ -1,0 +1,135 @@
+{
+	"grammar": 1,
+	"id": "puddlet",
+	"name": "Prismander",
+	"animals": [
+		"Axolotl"
+	],
+	"theme": "prism",
+	"flavor": "An axolotl whose frills grew into living crystal. It bends light into shields and dazzling beams.",
+	"colors": {
+		"body": "#f0a6d6",
+		"belly": "#ffe2f1",
+		"glow": "#7ff3ff"
+	},
+	"look": {
+		"ears": "none",
+		"body": "prismander",
+		"tail": "none",
+		"feet": "none",
+		"aura": "prism"
+	},
+	"body": {
+		"size": "small",
+		"reach": 1.3,
+		"mass": 0.8,
+		"gait": {
+			"hop_rate": 11.0,
+			"hop_height": 0.09,
+			"pace": 1.12
+		}
+	},
+	"stats": {
+		"kin_hp": 7,
+		"kin_damage": 1,
+		"kin_speed": 5,
+		"owner_shield": 4,
+		"owner_regen": 3
+	},
+	"personality": {
+		"bravery": 0.45,
+		"loyalty": 0.85,
+		"temper": 0.2,
+		"curiosity": 0.6
+	},
+	"ai": {
+		"aggression": 0.3,
+		"loyalty": 0.9,
+		"caution": 0.6,
+		"role": "support"
+	},
+	"carry": {
+		"style": "shoulder",
+		"name": "Glimmer",
+		"passives": [
+			{
+				"stat": "regen",
+				"amount": 3
+			}
+		]
+	},
+	"throw": {
+		"effects": [
+			{
+				"type": "slow",
+				"duration": 1.5
+			}
+		]
+	},
+	"dodge_rider": {
+		"name": "Prism Decoy",
+		"on_start": [
+			{
+				"delivery": {
+					"type": "burst",
+					"origin": "owner",
+					"radius": 0
+				},
+				"effects": [
+					{
+						"type": "signature",
+						"id": "decoy",
+						"target": "owner",
+						"duration": 1.8
+					}
+				]
+			}
+		]
+	},
+	"active": "prism_wall",
+	"auto": "refraction",
+	"merge": "tidal_shell",
+	"evolution": {
+		"root": "Pud",
+		"paths": [
+			{
+				"affinity": "fierce",
+				"nodes": [
+					"fierce_form"
+				]
+			},
+			{
+				"affinity": "steadfast",
+				"nodes": [
+					"steadfast_form",
+					"puddlet_wide_prism"
+				]
+			},
+			{
+				"affinity": "curious",
+				"nodes": [
+					"curious_form"
+				]
+			},
+			{
+				"affinity": "swift",
+				"nodes": [
+					"swift_form"
+				]
+			}
+		]
+	},
+	"voice": {
+		"line": "gentle, worried about you, a little formal",
+		"syllables": [
+			"Pud",
+			"let"
+		]
+	},
+	"egg": {
+		"name": "Prism Egg",
+		"temper": "Gentle",
+		"desc": "Pink and glassy. It throws little rainbows when it rocks. Something gentle is in here.",
+		"play": "Shields you and dazzles foes with bent light. Loyal, a bit of a worrier."
+	}
+}

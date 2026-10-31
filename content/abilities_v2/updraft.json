@@ -1,0 +1,40 @@
+{
+	"grammar": 1,
+	"id": "updraft",
+	"name": "Moonlift",
+	"short": "Lift",
+	"flavor": "On its own, when you fall into the abyss, Lunowl throws up a column of moonlight that lifts you high and cools your glider.",
+	"theme": "lunar",
+	"tier": 1,
+	"from": "owner",
+	"cooldown": 14,
+	"charges": 1,
+	"trigger": {
+		"type": "auto"
+	},
+	"cue": {
+		"type": "owner_falling"
+	},
+	"stages": [
+		{
+			"delivery": {
+				"type": "burst",
+				"origin": "owner",
+				"radius": 0
+			},
+			"effects": [
+				{
+					"type": "lift",
+					"target": "owner",
+					"strength": 14,
+					"forward": 3
+				},
+				{
+					"type": "buff",
+					"target": "owner",
+					"stat": "glider_cool"
+				}
+			]
+		}
+	]
+}

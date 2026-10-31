@@ -1,0 +1,33 @@
+{
+	"grammar": 1,
+	"id": "burrlet_spore_drift",
+	"name": "Spore Drift",
+	"flavor": "Its spore cloud spreads wider and thins out faster.",
+	"affinity": "curious",
+	"requires": {
+		"level": 8,
+		"after": [
+			"curious_form"
+		]
+	},
+	"grants": [
+		{
+			"kind": "sidegrade",
+			"slot": "auto",
+			"stage": 0,
+			"up": {
+				"param": "delivery.radius",
+				"scale": 1.2
+			},
+			"down": {
+				"param": "delivery.duration",
+				"scale": 0.75
+			}
+		}
+	],
+	"cosmetic": {
+		"parts": [
+			"spots"
+		]
+	}
+}

@@ -1,0 +1,45 @@
+# Line endings: the repo is worked on from Windows and Mac. Text is stored and checked out as LF
+# everywhere (Godot writes LF on every platform, so this keeps diffs clean); binaries are never touched.
+* text=auto eol=lf
+
+# Godot and code
+*.gd text eol=lf
+*.gdshader text eol=lf
+*.gdshaderinc text eol=lf
+*.tscn text eol=lf
+*.tres text eol=lf
+*.godot text eol=lf
+*.import text eol=lf
+*.uid text eol=lf
+*.cfg text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+*.html text eol=lf
+*.svg text eol=lf
+*.gltf text eol=lf
+
+# Binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.exr binary
+*.hdr binary
+*.wav binary
+*.ogg binary
+*.mp3 binary
+*.glb binary
+*.blend binary
+*.fbx binary
+*.ttf binary
+*.otf binary
+*.woff binary
+*.woff2 binary
+*.res binary
+*.scn binary
+*.bin binary
+*.zip binary
+*.pck binary

@@ -229,6 +229,21 @@ lairs = [
     dict(id="eyrie", name="Stormcrown Eyrie", boss="serpent", island="shrine", at=[162, 84], half=7, gate="s", entry=["dial", "runes"]),
     dict(id="hive", name="The Thornhive", boss="brood", island="nest", at=[128, 162], half=7, gate="w", entry=["dial", "wards"]),
 ]
+# Randomised spawns (see scripts/match/spawn_plan.gd): the map never changes, but each match rolls which
+# of these candidate points are live. "pick" is [min, max] live per match; points are [x, z, place name].
+# Vaults (and, later, boss lairs) are shown live to everyone from the start; rare kin and item caches
+# show as "?" on the map until a squad scouts them. Boss lairs: add points under "boss" (the boss system
+# registers its spawner with SpawnPlan.set_spawner("boss", ...)).
+spawn_points = {
+    "rare_kin": dict(pick=[3, 3], points=[[48, 36, "Lantern Hollow"], [166, 36, "Gullcrest"], [50, 180, "Mossmere"], [180, 166, "Stillwater"],
+                                          [86, 170, "Petal Hollow"], [136, 56, "Icewing Roost"], [62, 102, "Cinder Steps"], [168, 138, "Rainbreak"]]),
+    "vault": dict(pick=[2, 2], points=[[128, 50, "Frostkeep"], [94, 168, "Bloomwild"], [56, 132, "Ember Quarry"], [168, 104, "Stormreach"], [178, 40, "Gullcrest"]]),
+    "cache": dict(pick=[4, 4], points=[[104, 20, "Skyport"], [112, 197, "Dawnrest"], [18, 104, "Ironfall"], [198, 112, "Fernway"], [54, 50, "Lantern Hollow"],
+                                       [162, 50, "Gullcrest"], [38, 166, "Mossmere"], [166, 178, "Stillwater"], [152, 92, "Static Field"], [58, 114, "Ember Quarry"]]),
+    # boss lairs: each point is a lair's centre (they're all built into the map; the roll decides which are
+    # live this match, the others stay dormant ruins with their gate rusted shut)
+    "boss": dict(pick=[2, 3], points=[[54, 86, "The Sunken Forge"], [162, 84, "Stormcrown Eyrie"], [128, 162, "The Thornhive"]]),
+}
 chokepoints = ["North Span", "Frost Steps", "Bramble Bridge", "Thorn Walk", "Quarry Causeway", "Storm Causeway", "Wind Gap"]
 
 # sanity: islands must not touch (keep at least a 3-tile gap between outlines)
@@ -269,7 +284,7 @@ if __name__ == "__main__":
                       "tools/make_skyreach.py."),
                islands=islands, bridges=[{k: v for k, v in b.items() if k != "span"} for b in bridges],
                winds=winds, pads=pads, updrafts=updrafts, train=train, docks=docks, outposts=outposts, hatches=hatches, lairs=lairs,
-               chokepoints=chokepoints, glides=glides)
+               chokepoints=chokepoints, glides=glides, spawn_points=spawn_points)
     path = os.path.join(os.path.dirname(__file__), "..", "content", "maps", "skyreach.json")
     with open(path, "w") as f:
         json.dump(out, f, indent=1)

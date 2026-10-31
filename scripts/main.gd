@@ -88,6 +88,12 @@ func _ready() -> void:
 		if a == "--truce-demo": opts["truce_demo"] = true; opts["no_drop"] = true
 		if a.begins_with("--lair-demo="): opts["lair_demo"] = a.substr(12); opts["no_drop"] = true
 		if a.begins_with("--lair-boss="): opts["demo_boss"] = a.substr(12)
+		if a == "--no-plan": opts["no_plan"] = true
+		if a.begins_with("--plan-t="): opts["plan_t"] = float(a.substr(9))
+		if a == "--map-demo": opts["map_demo"] = "plan"          # the planning map, with pings
+		if a == "--map-mid-demo": opts["map_demo"] = "mid"; opts["no_drop"] = true    # the map mid-match, some spawns scouted
+		if a == "--drop-demo": opts["drop_demo"] = "lead"; opts["plan_t"] = 0.6        # the squad gliding in formation behind you
+		if a == "--drop-follow-demo": opts["drop_demo"] = "follow"; opts["plan_t"] = 0.6   # ... behind a squadmate
 	if "--check" in args:
 		var CheckT = load("res://tools/check.gd")
 		var bad := 0
@@ -96,6 +102,19 @@ func _ready() -> void:
 			if sc == null or not sc.can_instantiate():
 				print("FAIL ", f); bad += 1
 		print("CHECK DONE, failures: ", bad)
+		get_tree().quit()
+		return
+	if Array(args).any(func(a): return String(a).begins_with("--grammar-check")):
+		# tooling: parse every kin grammar file (docs/KIN_GRAMMAR.md) and print structural errors;
+		# --grammar-check=<root> checks another folder (e.g. res://tests/grammar_fixtures/broken)
+		var groot := "res://content"
+		for a in args:
+			if a.begins_with("--grammar-check="): groot = a.substr(16)
+		var gbad := KinGrammar.check(groot)
+		get_tree().quit(1 if gbad > 0 else 0)
+		return
+	if "--grammar-vocab" in args:
+		print(KinGrammar.vocab_markdown())
 		get_tree().quit()
 		return
 	if "--meshtime" in args:
@@ -277,6 +296,8 @@ func _ready() -> void:
 		return
 	if "--boss-check" in args:
 		_boss_check()
+	if "--drop-check" in args:
+		_drop_check()
 		return
 	if OS.has_feature("web"):
 		_expose_test_hooks()
@@ -1753,6 +1774,12 @@ func _boss_check() -> void:
 	var LS: Array = m.lairs.list
 	ok.call(LS.size() == 3 and LS.map(func(L): return L["boss"]).has("colossus") and LS.map(func(L): return L["boss"]).has("serpent") and LS.map(func(L): return L["boss"]).has("brood"),
 		"Skyreach has 3 lairs: %s" % str(LS.map(func(L): return "%s (%s)" % [L["name"], L["boss"]])))
+	# SpawnPlan rolls which lairs are live (the rest lie dormant, rusted shut); the full map announces them
+	var live: int = LS.filter(func(L): return L["active"]).size()
+	var marks: int = m.spawn_plan.active_of("boss").size() if m.spawn_plan else -1
+	ok.call(live >= 2 and live <= 3 and marks == live and LS.filter(func(L): return not L["active"]).all(func(L): return L["state"] == "dormant" and L["boss_mob"] == null),
+		"Skyreach rolled %d of 3 lairs live (%d boss markers on the full map), the rest dormant" % [live, marks])
+	for L in LS: m.lairs.activate(L)
 	var by_boss := {}
 	for L in LS: by_boss[L["boss"]] = L
 	var sealed_ok := true
@@ -1840,6 +1867,8 @@ func _boss_check() -> void:
 		run.call(Match.DT * 2)
 		var tr := m.time
 		while not rn["lit"] and m.time - tr < 4.0:
+			# (the guards each rune calls are fought for real in a match; here they'd only shove the test hunter off)
+			for g in E["guards"]: if is_instance_valid(g): g.dead = true
 			P.inp["interact"] = true
 			run.call(Match.DT)
 	P.inp["interact"] = false
@@ -1945,16 +1974,188 @@ func _boss_check() -> void:
 	for h in m2.hunters:
 		if h != B: h.ctrl = "idle"; h.teleport(m2.world.spawns[0])
 	var L2: Dictionary = m2.lairs.list[0]
+	m2.lairs.activate(L2)
 	for g in L2["guards"]: g.dead = true
 	B.ai["skill"] = 0.9
 	B.ai["boss_hunt"] = true
 	B.teleport(L2["dial"] + Vector3(L2["out"].x, 0, L2["out"].y) * 4.0)
 	var tb := m2.time
-	while L2["state"] == "sealed" and m2.time - tb < 90.0:
+	while L2["state"] == "sealed" and m2.time - tb < 150.0:
 		B.hp = B.max_hp
+		for g in L2["guards"]: if is_instance_valid(g): g.dead = true
 		m2.step(Match.DT)
 	ok.call(L2["state"] != "sealed", "a bot walked up and opened %s in %.0fs (%d misses)" % [L2["name"], m2.time - tb, int(L2["fails"])])
+	m2.queue_free()
+	# 11. a generated map rolls at least one live lair too
+	var m3 := Match.new()
+	add_child(m3)
+	m3.start({"teams": 2, "squad": 1, "tier": 1, "length": 1e9, "seed": 8, "no_drop": true, "procedural": true, "autoplay": true})
+	m3.set_process(false)
+	var live3: int = m3.lairs.list.filter(func(L): return L["active"]).size()
+	ok.call(m3.lairs.list.size() >= 1 and live3 >= 1, "a generated map: %d lair(s), %d live (%s)" % [m3.lairs.list.size(), live3, str(m3.lairs.list.map(func(L): return L["boss"]))])
 	print("BOSSCHECK done, failures: %d" % bad[0])
+## The drop: the planning phase, map pings, the squad following its leader in formation, passing the
+## lead, separating, and the randomised spawns (different between seeds, rare kin only where rolled).
+func _drop_check() -> void:
+	var ok := true
+	var m := Match.new()
+	add_child(m)
+	m.start({"teams": 3, "squad": 3, "tier": 0, "seed": 4101})
+	m.set_process(false)
+	var P: Hunter = m.player
+	var D: DropSquad = m.skydrop
+	var mates: Array = m.hunters.filter(func(x): return x.team == P.team and x != P)
+	print("DCHECK planning=%s plan_t=%.1f riding=%s leader=%s map open=%s" % [D.planning, D.plan_t, P.riding, D.leader(P.team).pname, m.hud.map_open()])
+	if not D.planning or absf(D.plan_t - DropSquad.PLAN_T) > 0.01 or not P.riding or D.leader(P.team) != P or not m.hud.map_open():
+		ok = false; print("DCHECK FAIL planning phase did not start right")
+	# a ping placed on the map (the same path a click takes)
+	var target: Vector3 = m.world.spawns[0]
+	var sp: SpawnPlan = m.spawn_plan
+	if sp and not sp.active_of("vault").is_empty(): target = sp.active_of("vault")[0]["pos"]
+	m.hud.full_map.ping_at(target)
+	var mine := m.my_ping()
+	print("DCHECK map ping at %s -> %s (squad pings %d)" % [str(target.snapped(Vector3(0.1, 0.1, 0.1))), str(mine.get("pos", Vector3.INF)), m.pings.filter(func(q): return q.has("by")).size()])
+	if mine.is_empty() or Vector2(mine["pos"].x - target.x, mine["pos"].z - target.z).length() > 0.6: ok = false; print("DCHECK FAIL map ping")
+	var steps := 0
+	var t0 := m.time
+	while D.planning and steps < 2000:
+		m.step(Match.DT); steps += 1
+	var bot_pings := m.pings.filter(func(q): return q.has("by") and (q["by"] as Hunter).ctrl == "bot").size()
+	var acks := m.truce.shown.filter(func(e): return e["id"] == "omw").size() if m.truce else 0
+	print("DCHECK planning lasted %.2fs, match clock %.2f -> %.2f, bot pings %d, bot replies %d, events %s" % [steps * Match.DT, t0, m.time, bot_pings, acks, str(D.events)])
+	if absf(steps * Match.DT - DropSquad.PLAN_T) > 0.1 or m.time != t0: ok = false; print("DCHECK FAIL planning length / clock")
+	if bot_pings < 1: ok = false; print("DCHECK FAIL bots never pinged")
+	# a follower can't jump by themselves while the leader is aboard
+	var f0: Hunter = mates[0]
+	m.ship_jump(f0)
+	if not f0.riding: ok = false; print("DCHECK FAIL a follower jumped without the leader")
+	# ride to the middle of the map, then the leader jumps
+	var mid := Vector3(m.world.w * 0.5, 0, m.world.h * 0.5)
+	while Vector2(m.ship_pos().x - mid.x, m.ship_pos().z - mid.z).length() > 26.0 and m.time < 60.0 and P.riding:
+		m.step(Match.DT)
+	m.ship_jump(P)
+	var fol := mates.filter(func(x): return x.drop_follow == P)
+	print("DCHECK leader jumped at t=%.1f: %d of %d squadmates jumped with them (%s)" % [m.time, fol.size(), mates.size(), str(mates.map(func(x): return [x.pname, x.riding, x.dropping]))])
+	if fol.size() != mates.size(): ok = false; print("DCHECK FAIL the squad didn't jump together")
+	var sep_plan: Array = fol.map(func(x): return snappedf(float(x.ai.get("sep_h", -1.0)), 0.1))
+	for f in fol: f.ai["sep_h"] = -1.0       # (bots that break off low down: checked below, not here)
+	# the leader steers; the squad follows in its slots
+	var worst := 0.0; var t := 0.0
+	while t < 1.3 and P.dropping:
+		P.inp["move"] = Vector2(1, 0.3).normalized() if t < 0.7 else Vector2(-0.2, 1).normalized()
+		m.step(Match.DT); t += Match.DT
+		if t > 0.5:
+			for f in fol:
+				if f.drop_follow == P:
+					worst = maxf(worst, D.target_of(f).distance_to(Vector2(f.pos.x, f.pos.z)))
+	var spread: Array = fol.map(func(x): return snappedf(Vector2(x.pos.x - P.pos.x, x.pos.z - P.pos.z).length(), 0.1))
+	var dy: Array = fol.map(func(x): return snappedf(x.pos.y - P.pos.y, 0.1))
+	print("DCHECK formation: worst slot error %.2fm, distance to leader %s, height difference %s (bots planning to break off at %s m)" % [worst, str(spread), str(dy), str(sep_plan)])
+	if worst > 1.6 or fol.any(func(x): return x.drop_follow != P): ok = false; print("DCHECK FAIL formation")
+	# pass the lead: the next squadmate leads, you follow them
+	var passed := D.pass_lead(P)
+	var L2: Hunter = D.leader(P.team)
+	t = 0.0
+	while t < 0.8 and P.dropping:
+		m.step(Match.DT); t += Match.DT
+	var err2 := D.target_of(P).distance_to(Vector2(P.pos.x, P.pos.z)) if P.drop_follow else 99.0
+	print("DCHECK pass lead=%s: leader now %s, you follow %s (slot error %.2fm), others follow %s" % [passed, L2.pname, P.drop_follow.pname if P.drop_follow else "nobody", err2, str(fol.map(func(x): return x.drop_follow.pname if x.drop_follow else "-"))])
+	if not passed or L2 == P or P.drop_follow != L2 or err2 > 2.5 or fol.any(func(x): return x != L2 and x.drop_follow != L2): ok = false; print("DCHECK FAIL pass lead")
+	# separate: you steer yourself again
+	var sep := D.separate(P)
+	var v0 := Vector2(P.vel.x, P.vel.z)
+	var want := -Vector2(L2.vel.x, L2.vel.z).normalized() if Vector2(L2.vel.x, L2.vel.z).length() > 0.5 else Vector2(-1, 0)
+	var alt0 := m.player_altitude()
+	t = 0.0
+	while t < 0.7 and P.dropping:
+		P.inp["move"] = want
+		m.step(Match.DT); t += Match.DT
+	var v1 := Vector2(P.vel.x, P.vel.z)
+	print("DCHECK separate=%s at %.1fm up: solo=%s follow=%s, velocity %s -> %s (steering %s)" % [sep, alt0, P.drop_solo, P.drop_follow, str(v0.snapped(Vector2(0.1, 0.1))), str(v1.snapped(Vector2(0.1, 0.1))), str(want.snapped(Vector2(0.01, 0.01)))])
+	if not sep or P.drop_follow != null or not P.drop_solo or v1.normalized().dot(want) < 0.7: ok = false; print("DCHECK FAIL separate")
+	# everyone lands
+	t = 0.0
+	while t < 20.0 and m.hunters.any(func(x): return x.dropping or x.riding):
+		m.step(Match.DT); t += Match.DT
+	print("DCHECK landed after %.1fs more; squad on ground %s" % [t, str(m.hunters.filter(func(x): return x.team == P.team).map(func(x): return [x.pname, x.grounded, x.pos.snapped(Vector3(1, 1, 1))]))])
+	if m.hunters.any(func(x): return x.dropping or x.riding): ok = false; print("DCHECK FAIL someone never landed")
+	# on the ground: a ping from you sends your squad's bots there, and one answers
+	var bot: Hunter = mates[1] if mates.size() > 1 else mates[0]
+	for mb in m.mobs: mb.queue_free()
+	m.mobs.clear()
+	for o in m.hunters:
+		if o.team != P.team:
+			o.ctrl = "idle"; o.teleport(m.world.spawns[-1] + Vector3(0, 0, 0))     # (no fights in the way)
+	var ev0 := D.events.size()
+	var spot := bot.pos
+	for k in 40:
+		var q := m.world.free_spot_near(bot.pos + Vector3(randf_range(-10, 10), 0, randf_range(-10, 10)), [], 1.0, 0.5, 6.0)
+		if m.world.island_of(q.x, q.z) == m.world.island_of(bot.pos.x, bot.pos.z) and bot.flat_dist(q) > 6.0 and m.world.los(bot.pos, q, bot.pos.y + 1.0):
+			spot = q; break
+	spot.y = m.world.ground_at(spot.x, spot.z)
+	m.squad_ping(P, spot)
+	var d0 := bot.flat_dist(spot)
+	var went := false
+	var closest := d0
+	t = 0.0
+	while t < 6.0:
+		m.step(Match.DT); t += Match.DT
+		if String(bot.ai.get("goal_kind", "")) == "ping": went = true
+		closest = minf(closest, bot.flat_dist(spot))
+	var replies: Array = D.events.slice(ev0).filter(func(e): return String(e).begins_with("reply"))
+	print("DCHECK ground ping: %s headed there=%s, %.1fm -> got within %.1fm; replies %s" % [bot.pname, went, d0, closest, str(replies)])
+	if not went or closest > 4.0 or not replies.any(func(r): return String(r).ends_with("omw")): ok = false; print("DCHECK FAIL squad bots ignore pings")
+	m.unping(P)
+	if not m.my_ping().is_empty() or bot.ai.has("ping_goal"): ok = false; print("DCHECK FAIL right click didn't take the ping down")
+	# the spawns: the same candidates every match, a different live subset per seed
+	var layout := World.load_layout("skyreach")
+	var subsets := {}
+	for sd in [4101, 4102, 4103]:
+		var plan := SpawnPlan.new(m)
+		plan.build(layout)
+		plan.roll(sd)
+		subsets[sd] = plan.active_ids()
+	print("DCHECK candidates %s; live by seed: %s" % [str(sp.shown_cats().map(func(cc): return "%s %d/%d" % [cc, sp.active_of(cc).size(), sp.of(cc).size()])), str(subsets)])
+	if subsets[4101] != sp.active_ids(): ok = false; print("DCHECK FAIL the same seed rolled differently")
+	if subsets[4101] == subsets[4102] and subsets[4102] == subsets[4103]: ok = false; print("DCHECK FAIL seeds roll the same spawns")
+	# a generated map (no authored list): candidates come from its islands, the same for the same map
+	var gm := Match.new()
+	gm.world = World.new()
+	gm.world.generate(9, World.BIG_SIZE, World.BIG_ISLANDS)
+	var g1 := SpawnPlan.new(gm); g1.build({})
+	var g2 := SpawnPlan.new(gm); g2.build({})
+	var gpos: Array = g1.cands.map(func(cc): return cc["pos"])
+	var counts: Array = g1.shown_cats().map(func(cc): return "%s %d" % [cc, g1.count_of(cc)])
+	print("DCHECK generated map candidates: %s (same both times=%s)" % [str(counts), gpos == g2.cands.map(func(cc): return cc["pos"])])
+	if g1.count_of("rare_kin") < 3 or g1.count_of("vault") < 2 or g1.count_of("cache") < 4 or gpos != g2.cands.map(func(cc): return cc["pos"]): ok = false; print("DCHECK FAIL generated map candidates")
+	gm.world.free(); gm.free()
+	# rare kin only at the live rare-kin points, one at each
+	var rare: Array = m.kins.filter(func(k): return k.has_meta("rare"))
+	var live: Array = sp.active_of("rare_kin")
+	var stray := 0
+	for k in rare:
+		var near := false
+		for cnd in live:
+			if Vector2(k.home.x - cnd["pos"].x, k.home.z - cnd["pos"].z).length() < 3.0: near = true
+		if not near: stray += 1
+	var at_dead := 0
+	for cnd in sp.of("rare_kin"):
+		if cnd["active"]: continue
+		for k in rare:
+			if Vector2(k.home.x - cnd["pos"].x, k.home.z - cnd["pos"].z).length() < 3.0: at_dead += 1
+	print("DCHECK rare kin: %d spawned for %d live points (%d strays, %d at points not rolled)" % [rare.size(), live.size(), stray, at_dead])
+	if rare.size() != live.size() or stray > 0 or at_dead > 0: ok = false; print("DCHECK FAIL rare kin spawns")
+	# scouting: walk the player to an unrolled candidate and its state turns from "?" to empty
+	var hidden: Array = sp.cands.filter(func(cc): return not sp.cats[cc["cat"]].get("announce", false) and not cc["active"])
+	if not hidden.is_empty():
+		var hc: Dictionary = hidden[0]
+		var before := sp.state_for(hc, P.team)
+		P.teleport(hc["pos"] + Vector3(1.5, 0, 0))
+		for i in 30: m.step(Match.DT)
+		print("DCHECK scouting %s: %s -> %s" % [hc["id"], before, sp.state_for(hc, P.team)])
+		if before != "unknown" or sp.state_for(hc, P.team) != "empty": ok = false; print("DCHECK FAIL scouting")
+	m.over = true
+	print("DCHECK ", "PASS" if ok else "FAIL")
 	get_tree().quit()
 
 func _simtest(opts: Dictionary) -> void:

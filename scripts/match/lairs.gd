@@ -66,8 +66,8 @@ func _add(D: Dictionary) -> void:
 	var dial := c + Vector3(out.x, 0, out.y) * (hf + 2.6)
 	dial = Vector3(dial.x, w.ground_at(dial.x, dial.z), dial.z) if not w.is_void(dial.x, dial.z) else gate_c + Vector3(out.x, 0, out.y) * 1.6
 	var L := {"i": list.size(), "id": D["id"], "name": D["name"], "boss": String(D["boss"]), "c": c, "half": hf, "out": out,
-		"gate_tiles": D["gate_tiles"], "gate_c": gate_c, "dial": dial, "entry": D.get("entry", ["dial"]), "state": "sealed",
-		"locks": int(LOCKS.get(String(D["boss"]), 3)), "lock": 0, "targets": [], "needle": randf() * TAU, "dir": 1.0,
+		"gate_tiles": D["gate_tiles"], "gate_c": gate_c, "dial": dial, "entry": D.get("entry", ["dial"]), "state": "dormant",
+		"locks": int(LOCKS.get(String(D["boss"]), 3)), "lock": 0, "targets": [], "needle": randf() * TAU, "dir": 1.0, "active": false,
 		"user": null, "jam": 0.0, "grace": 0.0, "fails": 0, "boss_mob": null, "adds": [], "guards": [], "runes": [], "wards": [],
 		"gate_k": 0.0, "opened_by": "", "woke_at": -1.0, "bot_ti": -1, "bot_roll": false, "bot_wait": 0.0, "egg_wp": null, "egg_told": false}
 	list.append(L)
@@ -89,11 +89,72 @@ func _add(D: Dictionary) -> void:
 	lbl.font = UI.big; lbl.font_size = 40; lbl.pixel_size = 0.01; lbl.outline_size = 12
 	lbl.modulate = col.lightened(0.3); lbl.billboard = BaseMaterial3D.BILLBOARD_ENABLED; lbl.no_depth_test = true
 	lbl.position = gate.position + Vector3(0, 4.6, 0)
-	lbl.text = "%s\nSealed" % L["name"]
+	lbl.text = "%s\nDormant  ·  its gate rusted shut" % L["name"]
+	lbl.modulate = Color(0.7, 0.7, 0.75)
 	m.add_child(lbl)
 	L["nodes"] = {"gate": gate, "dome": dome, "dial": dn, "label": lbl}
+	L["col"] = col
+	# lairs stay dormant (empty, sealed for good) until SpawnPlan rolls them live: see plug_into
+	_tint_dormant(L, true)
+
+## A dormant lair: its seal greyed out, its dial dark. A live one glows its boss's colour.
+func _tint_dormant(L: Dictionary, dormant: bool) -> void:
+	var dome: Node3D = L["nodes"]["dome"]
+	var sh: MeshInstance3D = dome.get_node("Shell")
+	var col: Color = L["col"] if not dormant else Color(0.6, 0.62, 0.68)
+	(sh.material_override as StandardMaterial3D).albedo_color = Color(col, 0.10 if not dormant else 0.05)
+	(dome.get_node("Rim") as MeshInstance3D).visible = not dormant
+	(L["nodes"]["dial"] as Node3D).get_node("Ring").visible = not dormant
+
+## SpawnPlan decides which lairs are live this match: every lair is a "boss" candidate; the rolled ones
+## get their boss, guards and wards (see activate), the others stay dormant. Skyreach rolls 2 or 3 of its
+## 3 lairs (the layout's spawn_points.boss), generated maps 1 or 2 of theirs.
+func plug_into(plan: SpawnPlan) -> void:
+	if list.is_empty() or plan == null:
+		return
+	if plan.of("boss").is_empty():
+		for L in list:
+			plan.add_candidate("boss", L["c"], String(L["name"]))
+		plan.register("boss", {"pick": [1, list.size()]})
+	plan.set_spawner("boss", func(_p, cand): return activate_near(cand["pos"]),
+		func(cand): return String(_near(cand["pos"]).get("state", "")) == "cleared")
+	plugged = true
+
+var plugged := false
+
+func _near(p: Vector3) -> Dictionary:
+	var best := {}; var bd := 1e9
+	for L in list:
+		var d := Vector2(p.x - float(L["c"].x), p.z - float(L["c"].z)).length()
+		if d < bd: bd = d; best = L
+	return best if bd < 6.0 else {}
+
+func activate_near(p: Vector3) -> Dictionary:
+	var L := _near(p)
+	if not L.is_empty(): activate(L)
+	return L
+
+## Without a spawn plan (tests, odd modes) every lair is live.
+func ensure_live() -> void:
+	if not plugged:
+		for L in list: activate(L)
+
+## Wakes a lair up for this match: its boss asleep in the middle, guards at the gate, and its other way in.
+func activate(L: Dictionary) -> void:
+	if L["active"]:
+		return
+	L["active"] = true
+	L["state"] = "sealed"
+	_tint_dormant(L, false)
+	var lbl: Label3D = L["nodes"]["label"]
+	lbl.text = "%s\nSealed" % L["name"]
+	lbl.modulate = (L["col"] as Color).lightened(0.3)
 	if m.net_on and not m.is_host:
 		return
+	var w := m.world
+	var c: Vector3 = L["c"]; var hf := int(L["half"]); var out: Vector2 = L["out"]; var dial: Vector3 = L["dial"]
+	var col: Color = L["col"]
+	var D := {"boss": L["boss"], "entry": L["entry"]}
 	# the boss, asleep in the middle
 	var b := Boss.new()
 	b.init_boss(m, m.next_id("b"), String(D["boss"]), c, float(m.T.get("mob", 1.0)) if not m.T.is_empty() else 1.0, L)
@@ -614,7 +675,7 @@ func tick(dt: float) -> void:
 
 ## While a lair is sealed, its ward keeps everything out: walking, gliding or being thrown in bounces.
 func _tick_seal(L: Dictionary, dt: float) -> void:
-	if L["state"] != "sealed":
+	if not L["state"] in ["sealed", "dormant"]:
 		return
 	var bodies: Array = []
 	for h in m.hunters:
@@ -644,11 +705,11 @@ func _tick_seal(L: Dictionary, dt: float) -> void:
 		m.fx.burst(e.pos + Vector3(0, 1.0, 0), color_of(L), 12, 3.0, 0.4, -2.0)
 		if e == m.player and m.hud and m.time - float(_told.get("seal", -9.0)) > 3.0:
 			_told["seal"] = m.time
-			m.hud.toast("%s is sealed. Open its gate first" % L["name"], color_of(L))
+			m.hud.toast(("%s is sealed. Open its gate first" if L["state"] == "sealed" else "%s lies dormant this time. Its gate is rusted shut") % L["name"], color_of(L))
 			m.sfx("shield", e.pos, -4.0, 1.4)
 
 func _tick_gate(L: Dictionary, dt: float) -> void:
-	if L["state"] == "sealed" or float(L["gate_k"]) >= 1.0:
+	if L["state"] in ["sealed", "dormant"] or float(L["gate_k"]) >= 1.0:
 		return
 	L["gate_k"] = minf(1.0, float(L["gate_k"]) + dt / 1.6)
 	var k := float(L["gate_k"])
@@ -710,7 +771,7 @@ func bot_goal(h: Hunter, leaving: bool) -> Array:
 		return []
 	var best := {}; var bd := 110.0
 	for L in list:
-		if L["state"] == "cleared": continue
+		if L["state"] in ["cleared", "dormant"]: continue
 		var d := h.flat_dist(L["c"])
 		if d < bd: bd = d; best = L
 	if best.is_empty():
@@ -756,6 +817,7 @@ func demo(mode: String) -> void:
 	var L: Dictionary = list[0]
 	for x in list:
 		if String(x["boss"]) == pick: L = x
+	activate(L)
 	if m.has_meta("lair_demo_done"):
 		if mode == "puzzle" and is_same(L["user"], P):
 			# keep the needle sweeping and a lock half done for the shot

@@ -31,8 +31,33 @@ func setup(match_node: Match) -> void:
 	add_child(c)
 	c.draw.connect(_draw_all)
 	_build_minimap()
+	full_map = FullMap.new(self, m)
+
+# ------------------------------------------------------------------ the full map (M)
+var full_map: FullMap
+
+func map_open() -> bool:
+	return full_map != null and full_map.is_open
+
+## Expeditions only: the tutorial, training and the duel room keep their own screens.
+func map_allowed() -> bool:
+	return not (m.opts.get("tutorial", false) or m.opts.get("training", false) or m.opts.get("duel", false))
+
+func open_map(by_plan := false) -> void:
+	if map_allowed() and full_map:
+		full_map.open(by_plan)
+
+func close_map() -> void:
+	if full_map:
+		full_map.close()
+
+func _unhandled_input(event: InputEvent) -> void:
+	if full_map and full_map.input(event):
+		get_viewport().set_input_as_handled()
 
 func _process(delta: float) -> void:
+	if full_map and full_map.is_open and full_map.auto and not (m.skydrop and m.skydrop.planning):
+		full_map.close()      # the ship's off: the planning map steps aside
 	_tick_wheel()
 	hit_t = maxf(0.0, hit_t - delta)
 	_hud_tick(delta)
@@ -201,13 +226,17 @@ func _draw_all() -> void:
 			_draw_perk_offer(sz)
 		if not p.riding:
 			_draw_kit(sz, p)
-		else:
+		elif not map_open():
 			_draw_ship_prompt(sz)
+		if p.dropping and not map_open():
+			_draw_drop_prompt(sz, p)
+		if not p.riding and not map_open():
+			_draw_squad_pings(p)
 		if not p.riding:
 			_draw_prompt(sz, p)
-			if m.lairs and not p.out:
+			if m.lairs and not p.out and not map_open():
 				_draw_lair_dial(sz, p)
-			_draw_crosshair(p)
+			if not map_open(): _draw_crosshair(p)
 		if p.downed:
 			_draw_downed(sz, p)
 		elif p.out and not p.gone and not m.result.get("ending", false):
@@ -223,10 +252,15 @@ func _draw_all() -> void:
 		_draw_scores(sz)
 	if wheel_open:
 		_draw_wheel()
-	if p and not p.out and not p.extracted:
+	if p and not p.out and not p.extracted and not map_open():
 		_draw_hover_tip(sz, p)
 		if hover_id == "" and m.perk_offer.is_empty():
 			_draw_world_hover(sz, p)
+	if map_open():
+		full_map.draw(sz)
+	elif m.skydrop and m.skydrop.planning and p:
+		# the planning map was closed: a reminder of the countdown, and how to get it back
+		_ctext(Vector2(sz.x * 0.5, 40), "The ship sets off in %ds  ·  %s opens the map" % [int(ceil(m.skydrop.plan_t)), Settings.key_cap("map")], 18, GOLD, big)
 
 func _draw_world_labels() -> void:
 	var cam := m.cam
@@ -394,6 +428,8 @@ func _draw_bubbles() -> void:
 func _draw_pings(sz: Vector2) -> void:
 	var cam := m.cam
 	for p in m.pings:
+		if p.has("by"):
+			continue        # squad pings get a waypoint instead (see _draw_squad_pings)
 		var a := clampf(4.0 - p["t"], 0.0, 1.0)
 		var col := Color(p["col"], a)
 		var at: Vector3 = p["pos"] + Vector3(0, 1.0, 0)
@@ -592,6 +628,15 @@ func _draw_minimap(sz: Vector2) -> void:
 			_draw_exit_icon(pv, x, 1.0 if not riding else 0.8)
 	if m.lairs:
 		_draw_map_lairs(inner, to_map, on_map, riding)
+	if m.spawn_plan and full_map and m.player:
+		# this match's spawns your squad knows are there (vaults from the start; the rest once scouted)
+		for cnd in m.spawn_plan.cands:
+			if m.spawn_plan.state_for(cnd, m.player.team) != "active":
+				continue
+			var cpv: Vector2 = to_map.call(cnd["pos"])
+			if on_map.call(cpv, 5.0):
+				var cdef: Dictionary = m.spawn_plan.cats.get(cnd["cat"], {})
+				full_map.marker(c, String(cdef.get("shape", "star")), cpv, 4.5 if riding else 4.0, cdef.get("col", Color.WHITE), "active")
 	if not m.ship.is_empty() and not m.ship.get("gone", false):
 		var sa: Vector2 = to_map.call(m.ship["a"]); var sb: Vector2 = to_map.call(m.ship["b"])
 		c.draw_line(sa, sb, Color(1, 1, 1, 0.35), 2.0, true)
@@ -601,8 +646,17 @@ func _draw_minimap(sz: Vector2) -> void:
 		if on_map.call(tv, 4.0): c.draw_arc(tv, 6.0, 0, TAU, 16, Color("8fe3c8"), 2.5, true)
 		else: _edge_arrow(inner, inner.get_center(), tv, Color("8fe3c8"))
 	for pg in m.pings:
+		if pg.has("team") and m.player and int(pg["team"]) != m.player.team:
+			continue        # another squad's ping
 		var pv: Vector2 = to_map.call(pg["pos"])
-		if on_map.call(pv): c.draw_circle(pv, 4.0, pg["col"])
+		if on_map.call(pv):
+			if pg.has("by"):
+				# a squad ping: a little pin in the pinger's colour
+				c.draw_colored_polygon(PackedVector2Array([pv, pv + Vector2(-4, -7), pv + Vector2(4, -7)]), pg["col"])
+				c.draw_circle(pv + Vector2(0, -9), 5.0, Color(0, 0, 0, 0.6))
+				c.draw_circle(pv + Vector2(0, -9), 4.0, pg["col"])
+			else:
+				c.draw_circle(pv, 4.0, pg["col"])
 		else: _edge_arrow(inner, inner.get_center(), pv, pg["col"])
 	# sound pings: rings that ripple out where you heard gunfire or a blast you can't see
 	for sp in m.sound_pings:
@@ -1415,6 +1469,11 @@ func _draw_squad(sz: Vector2, p: Hunter) -> void:
 		var tx := pr.end.x + 8.0
 		var tw := r.end.x - 8.0 - tx
 		_text(Vector2(tx, r.position.y + 19), h.pname.substr(0, 13), 14, INK if lbl == "ALIVE" else Color(INK, 0.7), big)
+		if m.skydrop and (h.riding or h.dropping):
+			# on the way in: who leads the drop, who follows, who's gone solo
+			var tag := "LEAD" if m.skydrop.is_lead(h) else ("SOLO" if h.drop_solo else "")
+			if tag != "":
+				_text(Vector2(tx + big.get_string_size(h.pname.substr(0, 13), HORIZONTAL_ALIGNMENT_LEFT, -1, 14).x + 6, r.position.y + 18), tag, 10, GOLD if tag == "LEAD" else Color("8fd8ff"), big)
 		# how far, on the right of the name row
 		var at: Vector3 = st[2]
 		if at != Vector3.INF and lbl != "DEAD":
@@ -1702,11 +1761,77 @@ func _draw_ship_prompt(sz: Vector2) -> void:
 		var pul := 1.0 + sin(m.time * 5.0) * 0.08
 		c.draw_arc(gp, 22.0 * pul, 0, TAU, 40, GOLD, 3.0, true)
 		c.draw_arc(gp, 8.0, 0, TAU, 20, Color(GOLD, 0.6), 2.0, true)
-	var rr := Rect2(Vector2(sz.x * 0.5 - w * 0.5, 92), Vector2(w, 92))
+	var p: Hunter = m.player
+	var dr: DropSquad = m.skydrop
+	var lead: Hunter = dr.leader(p.team) if dr else null
+	var i_lead := lead == p
+	var waits: bool = dr != null and dr.waits(p)
+	var squad := m.hunters.filter(func(x): return x.team == p.team).size() > 1
+	var rr := Rect2(Vector2(sz.x * 0.5 - w * 0.5, 92), Vector2(w, 122 if squad else 92))
 	_panel(rr, Color(0.06, 0.07, 0.1, 0.88), 14)
-	_ctext(Vector2(sz.x * 0.5, rr.position.y + 36), "Press %s to jump" % Settings.key_cap("jump"), 26, GOLD, big)
-	_ctext(Vector2(sz.x * 0.5, rr.position.y + 62), "Pick your spot on the map. Everyone left aboard drops in %ds" % int(ceil(left)), 14, INK)
+	if dr and dr.planning:
+		_ctext(Vector2(sz.x * 0.5, rr.position.y + 36), "Plan your drop", 26, GOLD, big)
+	elif waits:
+		_ctext(Vector2(sz.x * 0.5, rr.position.y + 36), "%s leads the drop" % lead.pname, 26, GOLD, big)
+	else:
+		_ctext(Vector2(sz.x * 0.5, rr.position.y + 36), "Press %s to jump" % Settings.key_cap("jump"), 26, GOLD, big)
+	var sub := "Pick your spot on the map. Everyone left aboard drops in %ds" % int(ceil(left))
+	if dr and dr.planning: sub = "The ship sets off in %ds  ·  %s opens the map to ping a spot" % [int(ceil(dr.plan_t)), Settings.key_cap("map")]
+	elif waits: sub = "You'll jump together and glide in behind them. %ds left aboard" % int(ceil(left))
+	elif i_lead and squad: sub = "Your squad jumps with you. %ds left aboard" % int(ceil(left))
+	_ctext(Vector2(sz.x * 0.5, rr.position.y + 62), sub, 14, INK)
 	_bar(Rect2(Vector2(rr.position.x + 20, rr.position.y + 76), Vector2(w - 40, 4)), clampf(m.time / maxf(1.0, float(m.ship.get("ride", 1.0))), 0.0, 1.0), GOLD)
+	if squad:
+		# the keys for the drop, as keycaps
+		var keys: Array = []
+		if i_lead: keys = [["jump", "Jump"], ["pass_lead", "Pass lead"], ["map", "Map"]]
+		elif waits: keys = [["separate", "Separate"], ["map", "Map"]]
+		else: keys = [["jump", "Jump"], ["map", "Map"]]
+		_key_row(Vector2(sz.x * 0.5, rr.position.y + 104), keys)
+
+## A centred row of keycap prompts: [[action, label], ...].
+func _key_row(center: Vector2, keys: Array) -> void:
+	var parts: Array = []
+	var tot := 0.0
+	for kk in keys:
+		var cap := Settings.key_cap(String(kk[0]))
+		var cw := maxf(26.0, big.get_string_size(cap, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x + 14.0)
+		var lw := body.get_string_size(String(kk[1]), HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+		parts.append([cap, cw, String(kk[1]), lw])
+		tot += cw + 6.0 + lw + 22.0
+	var x := center.x - (tot - 22.0) * 0.5
+	for pt in parts:
+		var kr := Rect2(Vector2(x, center.y - 12), Vector2(pt[1], 24))
+		_rounded(kr, Color(1, 1, 1, 0.12), 5, Color(1, 1, 1, 0.35), 1)
+		_ctext(kr.get_center() + Vector2(0, 5), pt[0], 13, INK, big)
+		_text(Vector2(kr.end.x + 6, center.y + 5), pt[2], 13, INK)
+		x = kr.end.x + 6 + float(pt[3]) + 22.0
+
+## On the way down: who leads, and what you can do about it.
+func _draw_drop_prompt(sz: Vector2, p: Hunter) -> void:
+	var dr: DropSquad = m.skydrop
+	if dr == null or m.hunters.filter(func(x): return x.team == p.team).size() < 2:
+		return
+	var y := 96.0
+	if dr.is_lead(p):
+		var n := m.hunters.filter(func(x): return x.drop_follow == p).size()
+		_ctext(Vector2(sz.x * 0.5, y), "Leading the drop" + ("  ·  %d following" % n if n > 0 else ""), 18, GOLD, big)
+		if n > 0: _key_row(Vector2(sz.x * 0.5, y + 24), [["pass_lead", "Pass lead"]])
+	elif p.drop_follow != null:
+		_ctext(Vector2(sz.x * 0.5, y), "Following %s" % p.drop_follow.pname, 18, GOLD, big)
+		_key_row(Vector2(sz.x * 0.5, y + 24), [["separate", "Separate"]])
+	elif p.drop_solo:
+		_ctext(Vector2(sz.x * 0.5, y), "Dropping solo", 16, Color("8fd8ff"), big)
+
+## Squad pings out in the world: a marker over each with how far it is.
+func _draw_squad_pings(p: Hunter) -> void:
+	for pg in m.pings:
+		if not pg.has("by") or int(pg.get("team", -1)) != p.team:
+			continue
+		var by: Hunter = pg["by"]
+		var a := clampf(float(pg.get("life", 4.0)) - float(pg["t"]), 0.0, 1.0)
+		var lbl: String = "Your ping" if by == p else (by.pname if is_instance_valid(by) else "Ping")
+		_draw_waypoint(pg["pos"], lbl, Color(pg["col"], a))
 
 ## For the first seconds of every match: what each of your buttons does.
 func _draw_kit(sz: Vector2, p: Hunter) -> void:
@@ -2348,7 +2473,7 @@ func loot_is(b: Dictionary) -> bool:
 	return loot_open != null and is_same(loot_open, b)
 
 func mouse_on_ui() -> bool:
-	if wheel_open:
+	if wheel_open or map_open():
 		return true
 	for pn in [loot_panel, swap_panel, pack_panel]:
 		if pn != null and is_instance_valid(pn) and pn.visible and pn.get_global_rect().grow(6.0).has_point(pn.get_global_mouse_position()):
@@ -2904,6 +3029,9 @@ func _lair_icon(pv: Vector2, L: Dictionary, k := 1.0) -> void:
 	var col: Color = Lairs.color_of(L)
 	var dark := Color(0, 0, 0, 0.75)
 	match String(L["state"]):
+		"dormant":
+			c.draw_circle(pv, 4.5 * k, dark)
+			c.draw_circle(pv, 3.2 * k, Color(0.5, 0.52, 0.58, 0.8))
 		"sealed":
 			c.draw_rect(Rect2(pv - Vector2(6, 3) * k, Vector2(12, 10) * k).grow(1.5), dark)
 			c.draw_rect(Rect2(pv - Vector2(6, 3) * k, Vector2(12, 10) * k), col)

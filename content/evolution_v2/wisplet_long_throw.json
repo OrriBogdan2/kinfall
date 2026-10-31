@@ -1,0 +1,33 @@
+{
+	"grammar": 1,
+	"id": "wisplet_long_throw",
+	"name": "Long Throw",
+	"flavor": "It throws its moon mark further, but slower.",
+	"affinity": "swift",
+	"requires": {
+		"level": 8,
+		"after": [
+			"swift_form"
+		]
+	},
+	"grants": [
+		{
+			"kind": "sidegrade",
+			"slot": "active",
+			"stage": 0,
+			"up": {
+				"param": "delivery.range",
+				"scale": 1.2
+			},
+			"down": {
+				"param": "delivery.speed",
+				"scale": 0.85
+			}
+		}
+	],
+	"cosmetic": {
+		"parts": [
+			"tail_long"
+		]
+	}
+}

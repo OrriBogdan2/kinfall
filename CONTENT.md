@@ -3,6 +3,9 @@
 Everything here is plain JSON under `content/`. The game reads it when it starts; no code changes.
 Colours are hex strings, times are seconds, distances are tiles.
 
+Kin are moving to a compositional ability grammar (`content/*_v2/`, see `docs/KIN_GRAMMAR.md`).
+Those files are checked with `--grammar-check` but not used by the game yet; the formats below are still live.
+
 ## A new kin: `content/kin/<id>.json`
 
 ```json
