@@ -86,6 +86,8 @@ func _ready() -> void:
 		if a == "--perk-demo": opts["perk_demo"] = true
 		if a.begins_with("--exit-demo="): opts["exit_demo"] = a.substr(12); opts["no_drop"] = true
 		if a == "--truce-demo": opts["truce_demo"] = true; opts["no_drop"] = true
+		if a.begins_with("--lair-demo="): opts["lair_demo"] = a.substr(12); opts["no_drop"] = true
+		if a.begins_with("--lair-boss="): opts["demo_boss"] = a.substr(12)
 	if "--check" in args:
 		var CheckT = load("res://tools/check.gd")
 		var bad := 0
@@ -272,6 +274,9 @@ func _ready() -> void:
 		return
 	if "--truce-check" in args:
 		_truce_check()
+		return
+	if "--boss-check" in args:
+		_boss_check()
 		return
 	if OS.has_feature("web"):
 		_expose_test_hooks()
@@ -1702,6 +1707,246 @@ func _truce_check() -> void:
 	if not T.allied(0, 1) and not T.events.has("fake 1"): ok = false; print("TCHECK FAIL beaten squad refused")
 	m.over = true
 	print("TCHECK ", "PASS" if ok else "FAIL")
+	get_tree().quit()
+
+## Headless check for boss lairs: every map has them; the dial opens a gate when every arc is hit and
+## a miss resets the lock, chimes and calls guards; runes and ward stones open theirs; the ward keeps
+## people out until then; each boss wakes, changes phase at 66% and 33%, enrages, and drops a Rare Egg;
+## the egg takes a backpack slot (a full pack asks to swap), stays in your deathbox, comes home on
+## extract into the hatchery, settles in the nest and hatches a rare kin. Bots can work a dial too.
+func _boss_check() -> void:
+	Save.no_write = true
+	Save.d = Save.fresh()
+	Econ.ensure()
+	var bad := [0]
+	var ok := func(cond: bool, what: String) -> void:
+		print("BOSS %s %s" % ["ok  " if cond else "FAIL", what])
+		if not cond: bad[0] += 1
+	# 0. every map has lairs: the authored one, and generated maps of each size an expedition can use
+	for sd in [3, 8, 13]:
+		var gw := World.new()
+		gw.generate(sd, World.BIG_SIZE, World.BIG_ISLANDS)
+		ok.call(gw.lair_defs.size() >= 1, "generated big map seed %d has %d lair(s): %s" % [sd, gw.lair_defs.size(), str(gw.lair_defs.map(func(D): return D["boss"]))])
+		gw.free()
+	var gw2 := World.new()
+	gw2.generate(5, 128, 16)
+	ok.call(gw2.lair_defs.size() >= 1, "generated mid map has %d lair(s)" % gw2.lair_defs.size())
+	gw2.free()
+	var m := Match.new()
+	add_child(m)
+	m.start({"teams": 2, "squad": 2, "tier": 0, "length": 1e9, "seed": 21, "no_drop": true})
+	m.set_process(false)
+	var P: Hunter = m.player
+	var C: Hunter = m.hunters.filter(func(x): return x.team == P.team and x != P)[0]
+	var Q: Hunter = m.hunters.filter(func(x): return x.team != P.team)[0]
+	for h in m.hunters:
+		h.ctrl = "idle" if h != P else "local"
+		h.inp["move"] = Vector2.ZERO
+	var LS: Array = m.lairs.list
+	ok.call(LS.size() == 3 and LS.map(func(L): return L["boss"]).has("colossus") and LS.map(func(L): return L["boss"]).has("serpent") and LS.map(func(L): return L["boss"]).has("brood"),
+		"Skyreach has 3 lairs: %s" % str(LS.map(func(L): return "%s (%s)" % [L["name"], L["boss"]])))
+	var by_boss := {}
+	for L in LS: by_boss[L["boss"]] = L
+	var sealed_ok := true
+	for L in LS:
+		for q in L["gate_tiles"]:
+			if m.world.kind[m.world.idx(q.x, q.y)] != World.T_BLOCK: sealed_ok = false
+		if L["boss_mob"] == null or not (L["boss_mob"] as Boss).dormant or L["state"] != "sealed": sealed_ok = false
+	ok.call(sealed_ok, "every gate starts sealed, each boss asleep inside")
+	var god := func():
+		for h in [P, C]:
+			h.hp = h.max_hp; h.armor = h.max_armor
+			if h.downed: m.revive_hunter(h, h)
+	var run := func(sec: float, each := Callable()):
+		var t := 0.0
+		while t < sec:
+			if each.is_valid(): each.call()
+			god.call()
+			m.step(Match.DT); t += Match.DT
+	var spot := func(h: Hunter, at: Vector3): h.teleport(Vector3(at.x, m.world.ground_at(at.x, at.z), at.z)); h.vel = Vector3.ZERO
+	var park := func(h: Hunter): spot.call(h, m.world.spawns[0] if not m.world.spawns.is_empty() else m.world.random_ground())
+	# 1. the ward keeps you out while it's sealed
+	var F: Dictionary = by_boss["colossus"]
+	spot.call(P, F["c"] + Vector3(2, 0, 2))
+	run.call(0.1)
+	ok.call(not m.lairs.inside(F, P.pos, 0.0), "the seal throws you out of a sealed lair (now %.1fm from its middle)" % P.flat_dist(F["c"]))
+	# 2. the dial: press on every lit arc, through all four locks
+	spot.call(P, F["dial"])
+	for g in F["guards"]: if is_instance_valid(g): g.dead = true
+	var prev := [false]
+	var press_right := func():
+		var fire := false
+		if not m.lairs.puzzle_of(P).is_empty() and float(F["jam"]) <= 0.0 and float(F["grace"]) <= 0.0:
+			var nxt := float(F["needle"]) + float(F["dir"]) * m.lairs.speed_of(F) * Match.DT
+			for t in F["targets"]:
+				if not t["hit"] and absf(wrapf(nxt - float(t["a"]), -PI, PI)) <= float(t["w"]) * 0.5 - 0.03: fire = true
+		elif m.lairs.puzzle_of(P).is_empty():
+			fire = true      # the first press starts the dial
+		P.inp["interact"] = fire and not prev[0]
+		prev[0] = P.inp["interact"]
+	var t0 := m.time
+	while F["state"] == "sealed" and m.time - t0 < 60.0:
+		press_right.call()
+		god.call()
+		m.step(Match.DT)
+	P.inp["interact"] = false
+	ok.call(F["state"] == "open" and int(F["fails"]) == 0 and int(F["lock"]) == 4, "dial: %d locks opened in %.1fs with no misses, gate %s" % [int(F["lock"]), m.time - t0, F["state"]])
+	var gate_open := true
+	for q in F["gate_tiles"]:
+		if m.world.kind[m.world.idx(q.x, q.y)] != World.T_GROUND: gate_open = false
+	ok.call(gate_open, "the gate's tiles are open ground now")
+	# 3. a miss: hit one arc, then press off the arcs. The lock resets, the chime pings, guards come.
+	var E: Dictionary = by_boss["serpent"]
+	Q.ctrl = "local"
+	spot.call(Q, E["dial"])
+	spot.call(P, E["dial"] + Vector3(E["out"].x, 0, E["out"].y) * 6.0)
+	Q.inp["interact"] = true; run.call(Match.DT); Q.inp["interact"] = false; run.call(0.4)
+	var hit_one := false
+	var tq := m.time
+	while not hit_one and m.time - tq < 8.0:
+		var nxt := float(E["needle"]) + float(E["dir"]) * m.lairs.speed_of(E) * Match.DT
+		var on := false
+		for t in E["targets"]:
+			if absf(wrapf(nxt - float(t["a"]), -PI, PI)) <= float(t["w"]) * 0.5 - 0.03: on = true
+		Q.inp["interact"] = on and not Q.inp["interact"]
+		run.call(Match.DT)
+		hit_one = (E["targets"] as Array).any(func(t): return t["hit"])
+	Q.inp["interact"] = false; run.call(Match.DT)
+	var guards0: int = m.lairs._guards_alive(E)
+	var pings0 := m.pings.size()
+	var feed0 := m.feed_all.size()
+	while m.lairs.target_under(E) >= 0:
+		run.call(Match.DT)
+	Q.inp["interact"] = true; run.call(Match.DT); Q.inp["interact"] = false
+	var any_hit: bool = (E["targets"] as Array).any(func(t): return t["hit"])
+	ok.call(hit_one and int(E["fails"]) == 1 and not any_hit and int(E["lock"]) == 0 and float(E["jam"]) > 0.0, "miss: the lock resets (fails %d, arcs lit again, jammed %.1fs)" % [int(E["fails"]), float(E["jam"])])
+	ok.call(m.lairs._guards_alive(E) > guards0 and m.pings.size() > pings0 and m.feed_all.slice(feed0).any(func(f): return String(f).contains("chime")) and Q.reveal_t > 2.0,
+		"miss: chime pings nearby players, reveals the presser, guards %d -> %d" % [guards0, m.lairs._guards_alive(E)])
+	Q.ctrl = "idle"
+	park.call(Q)
+	run.call(0.5)
+	# 4. runes open the Eyrie, wards open the Thornhive
+	for rn in E["runes"]:
+		spot.call(P, rn["pos"] + Vector3(0.6, 0, 0))
+		P.inp["interact"] = true
+		run.call(Match.DT * 2)
+		var tr := m.time
+		while not rn["lit"] and m.time - tr < 4.0:
+			P.inp["interact"] = true
+			run.call(Match.DT)
+	P.inp["interact"] = false
+	ok.call(E["runes"].size() == 3 and E["state"] == "open", "runes: %d pylons lit, the Eyrie is %s" % [E["runes"].filter(func(r): return r["lit"]).size(), E["state"]])
+	var H: Dictionary = by_boss["brood"]
+	var wards: Array = H["wards"]
+	for wd in wards:
+		spot.call(P, wd.pos + Vector3(1.2, 0, 0))
+		wd.hurt(30.0, P, {"src": "shot"})
+		run.call(0.2)
+		wd.hurt(9999.0, P, {"src": "shot"})
+		run.call(0.1)
+	ok.call(wards.size() == 3 and H["state"] == "open" and m.lairs._guards_alive(H) > 0, "wards: %d broken (guards came out: %d), the Thornhive is %s" % [wards.filter(func(x): return x.dead).size(), m.lairs._guards_alive(H), H["state"]])
+	# 5. each boss: wakes when you walk in, phases at 66% and 33%, attacks, enrages, drops its egg
+	var egg_items: Array = []
+	for L in [F, E, H]:
+		for g in L["guards"]: if is_instance_valid(g) and not g.dead: g.dead = true; g.visible = false
+		var b: Boss = L["boss_mob"]
+		spot.call(P, L["c"] + Vector3(L["out"].x, 0, L["out"].y) * 3.0)
+		spot.call(C, L["c"] + Vector3(-L["out"].y, 0, L["out"].x) * 3.0)
+		run.call(0.3)
+		ok.call(L["state"] == "awake" and not b.dormant, "%s wakes when you walk in" % b.md["name"])
+		var atks := {}
+		var track := func(): if b.atk != "": atks[b.atk] = true
+		run.call(6.0, track)
+		b.hurt(b.max_hp * 0.36, P, {"src": "shot"})
+		run.call(0.1, track)
+		var p1 := b.phase
+		var hp_a := b.hp
+		b.hurt(100.0, P, {"src": "shot"})
+		var invul_ok := hp_a - b.hp < 30.0
+		run.call(8.0, track)
+		b.hurt(b.max_hp * 0.4, P, {"src": "shot"})
+		run.call(0.1, track)
+		var p2 := b.phase
+		run.call(8.0, track)
+		b.awake_t = float(b.md["enrage"]) - 0.05
+		run.call(0.2, track)
+		var enr := b.enraged
+		ok.call(p1 == 1 and p2 == 2 and invul_ok and enr, "%s: phase 2 at 66%%, phase 3 at 33%% (shrugs off hits while it roars), enraged after %ds" % [b.md["name"], int(b.md["enrage"])])
+		ok.call(atks.size() >= 3, "%s used %d attacks: %s" % [b.md["name"], atks.size(), str(atks.keys())])
+		var w0 := m.wpicks.size()
+		P.lvl = 1; P.xp = 0.0
+		var xp0 := P.xp
+		b.hp = 1.0
+		b.hurt(5.0, P, {"src": "shot"})
+		run.call(0.2)
+		var ew = L.get("egg_wp")
+		var egg_ok: bool = ew != null and m.wpicks.has(ew) and Loot.is_rare_egg(Pack.ground_item(ew)) and Data.is_rare(String(Pack.ground_item(ew)["sp"]))
+		var strong: bool = m.wpicks.slice(w0).any(func(wp): return not wp.has("val") and not wp.has("gear") and int(wp["rar"]) >= 3)
+		ok.call(L["state"] == "cleared" and egg_ok and strong and P.xp > xp0 + 100.0 and m.lairs.egg_pings.size() > 0,
+			"%s falls: a Rare %s on the ground (on everyone's map), an Epic+ weapon, +%d XP" % [b.md["name"], Data.egg_name(String(Pack.ground_item(ew)["sp"])) if ew != null else "?", int(P.xp - xp0)])
+		if ew != null: egg_items.append(ew)
+	# 6. the egg takes a pack slot: a full pack asks what to leave
+	var ew0: Dictionary = egg_items[0]
+	spot.call(P, ew0["pos"])
+	P.pack_cap = 2
+	P.pack = [Loot.valuable("old_coin"), Loot.valuable("sky_pearl")]
+	Pack.take_ground(m, P, ew0)
+	ok.call(m.hud.swap_open() and m.wpicks.has(ew0), "full pack: the egg opens the swap window")
+	Pack.swap(m, P, 0, ew0)
+	m.hud.close_swap()
+	var egg_it: Dictionary = P.pack.filter(func(it): return Loot.is_rare_egg(it))[0] if P.pack.any(func(it): return Loot.is_rare_egg(it)) else {}
+	ok.call(not egg_it.is_empty() and P.pack.size() == 2, "the Rare Egg is in the pack (%s)" % str(P.pack.map(func(it): return Loot.name_of(it))))
+	run.call(0.2)
+	ok.call(m.lairs.egg_pings.any(func(e): return e.get("follow") == P), "picking it up shows the carrier to everyone for a few seconds")
+	# 7. die with it: it's in your deathbox; a teammate smart-loots it
+	P.lives = 1
+	m.eliminate(P, Q, "knocked out")
+	var bx := Life.box_of(m, P)
+	var in_box: bool = not bx.is_empty() and (bx.get("pack", []) as Array).any(func(it): return Loot.is_rare_egg(it))
+	ok.call(in_box, "dead: the egg is in your deathbox")
+	spot.call(C, bx["pos"])
+	C.pack = [Loot.valuable("old_coin"), Loot.valuable("kin_idol"), Loot.valuable("sky_pearl")]
+	C.pack_cap = 3
+	Life.smart_loot(m, C, bx)
+	ok.call(C.pack.any(func(it): return Loot.is_rare_egg(it)), "smart loot takes the egg first, even from a full pack")
+	# 8. extract: the egg goes to the hatchery, the nest takes it, it hatches a rare kin
+	Save.d["roster"] = [Save.new_kin("cindle", "Pip")]
+	Save.d["active"] = Save.d["roster"][0]["uid"]
+	var out := Game.apply_result({"extracted": true, "haul": Pack.haul(C), "tier": 0, "gems": 0, "kin_runs": []})
+	var q: Array = Save.d.get("rare_eggs", [])
+	ok.call(q.size() == 1 and Data.is_rare(String(q[0]["sp"])) and (out.get("haul", []) as Array).any(func(it): return Loot.is_rare_egg(it)),
+		"extract: a %s waits in the hatchery %s" % [Data.egg_name(String(q[0]["sp"])) if not q.is_empty() else "?", str(q)])
+	ok.call(Care.settle_rare_egg() and Save.d["egg"].get("rare", false) and Save.d.get("rare_eggs", []).is_empty(), "home: it settles into the empty nest as a rare egg")
+	var rr := RandomNumberGenerator.new(); rr.seed = 3
+	var baby := Care.hatch_rare(Save.d["egg"], rr)
+	ok.call(Data.is_rare(String(baby["species"])) and baby.get("rare", false) and String(baby["species"]) == String(Data.MOBS[String(Save.d["egg"]["boss"])]["egg"]),
+		"hatch: a rare %s (%s)" % [Data.KIN[baby["species"]]["name"], baby["species"]])
+	# 9. rare kin never turn up wild, on rivals or as a starter
+	var any_rare := false
+	for i in 60:
+		if Data.is_rare(String(m.bot_kin_record()["species"])): any_rare = true
+	ok.call(not any_rare and Data.common_kin().size() == 6 and Data.KIN.keys().filter(func(k): return Data.is_rare(k)).size() >= 2,
+		"rare species (%s) only come from eggs" % str(Data.KIN.keys().filter(func(k): return Data.is_rare(k))))
+	m.queue_free()
+	# 10. a bot can work a dial
+	var m2 := Match.new()
+	add_child(m2)
+	m2.start({"teams": 2, "squad": 1, "tier": 0, "length": 1e9, "seed": 4, "no_drop": true, "autoplay": true})
+	m2.set_process(false)
+	var B: Hunter = m2.hunters[1]
+	for h in m2.hunters:
+		if h != B: h.ctrl = "idle"; h.teleport(m2.world.spawns[0])
+	var L2: Dictionary = m2.lairs.list[0]
+	for g in L2["guards"]: g.dead = true
+	B.ai["skill"] = 0.9
+	B.ai["boss_hunt"] = true
+	B.teleport(L2["dial"] + Vector3(L2["out"].x, 0, L2["out"].y) * 4.0)
+	var tb := m2.time
+	while L2["state"] == "sealed" and m2.time - tb < 90.0:
+		B.hp = B.max_hp
+		m2.step(Match.DT)
+	ok.call(L2["state"] != "sealed", "a bot walked up and opened %s in %.0fs (%d misses)" % [L2["name"], m2.time - tb, int(L2["fails"])])
+	print("BOSSCHECK done, failures: %d" % bad[0])
 	get_tree().quit()
 
 func _simtest(opts: Dictionary) -> void:
