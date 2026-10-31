@@ -333,6 +333,34 @@ static func breed(a: Dictionary, b: Dictionary, rng: RandomNumberGenerator, sp :
 	ensure(baby)
 	return baby
 
+## Rare Eggs brought home from boss lairs wait in the hatchery (Save.d["rare_eggs"]) and settle into the
+## nest one at a time, whenever it's empty. Returns true if one just settled.
+static func settle_rare_egg() -> bool:
+	if not Save.d.get("egg", {}).is_empty():
+		return false
+	var q: Array = Save.d.get("rare_eggs", [])
+	if q.is_empty():
+		return false
+	var e: Dictionary = q.pop_front()
+	Save.d["egg"] = {"sp": String(e.get("sp", "")), "rare": true, "boss": String(e.get("boss", "")), "m": int(Save.d.get("matches", 0)), "t": 0.0}
+	return true
+
+## What hatches from a Rare Egg: a kin of the rare species its boss guarded, a little grown already,
+## glad to see you, now and then shimmering too.
+static func hatch_rare(egg: Dictionary, rng: RandomNumberGenerator) -> Dictionary:
+	var sp := String(egg.get("sp", ""))
+	if not Data.KIN.has(sp):
+		sp = String(Data.common_kin()[0])
+	var baby := Save.new_kin(sp)
+	baby["rare"] = true
+	baby["level"] = 3
+	baby["trust"] = 50.0
+	baby["shimmer"] = rng.randf() < 0.1
+	baby["from_boss"] = String(egg.get("boss", ""))
+	Evo.ensure(baby)
+	ensure(baby)
+	return baby
+
 ## A shimmer's colours: the species palette turned partway round the colour wheel.
 static func shimmer_col(c: Color) -> Color:
 	var h := fposmod(c.h + 0.45, 1.0)

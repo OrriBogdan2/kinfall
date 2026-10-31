@@ -302,7 +302,7 @@ func _ready() -> void:
 			# test: go down on an expedition with two kin; one is left unclaimed, a rival takes the other,
 			# and a rival wants back a kin you took from them
 			while Save.d["roster"].size() < 4:
-				Save.d["roster"].append(Save.new_kin(Data.KIN.keys()[Save.d["roster"].size() % Data.KIN.size()]))
+				Save.d["roster"].append(Save.new_kin(Data.common_kin()[Save.d["roster"].size() % Data.common_kin().size()]))
 			var ka: Dictionary = Save.d["roster"][1]
 			var kb: Dictionary = Save.d["roster"][2]
 			var kc: Dictionary = Save.d["roster"][3]
@@ -346,7 +346,7 @@ func _ready() -> void:
 		hecon.build()
 	if "--kin-lineup" in dbg:
 		var lr := RandomNumberGenerator.new(); lr.seed = 11
-		var sps: Array = Data.KIN.keys()
+		var sps: Array = Data.common_kin()
 		for i in 12:
 			var rr := Save.new_kin(sps[i % sps.size()])
 			rr["level"] = [1, 4, 8, 12, 16, 22][i / 2]
@@ -3246,11 +3246,24 @@ func _refresh_nest() -> void:
 	if is_instance_valid(nest):
 		nest.queue_free()
 	nest = null
+	if visit.is_empty() and Care.settle_rare_egg():
+		Save.save_game()
+		_toast("A Rare Egg settles into the nest. It's ready to hatch")
 	var egg: Dictionary = Save.d.get("egg", {})
 	if egg.is_empty() or not visit.is_empty():
 		return
 	var col: Color = Data.KIN[_egg_species()]["color"] if _egg_species() != "" else Color("f2e6cf")
-	nest = Models.nest_egg(col, Color("fff6c0"))
+	if egg.get("rare", false):
+		# a boss's egg: gold, glowing, with the rare kin's colour in its spots
+		nest = Models.nest_egg(Color("ffd36a"), Data.KIN[_egg_species()].get("glow", col) if _egg_species() != "" else col)
+		var sp2 := CPUParticles3D.new()
+		sp2.amount = 16; sp2.lifetime = 1.6; sp2.emission_shape = CPUParticles3D.EMISSION_SHAPE_SPHERE; sp2.emission_sphere_radius = 0.35
+		sp2.direction = Vector3.UP; sp2.spread = 25.0; sp2.initial_velocity_min = 0.3; sp2.initial_velocity_max = 0.8; sp2.gravity = Vector3.ZERO
+		sp2.scale_amount_min = 0.04; sp2.scale_amount_max = 0.08; sp2.mesh = Models.sphere(0.5, 4)
+		sp2.material_override = Models.glow_mat(Color(1.0, 0.88, 0.45, 0.9)); sp2.position.y = 0.4
+		nest.add_child(sp2)
+	else:
+		nest = Models.nest_egg(col, Color("fff6c0"))
 	nest.position = NEST_AT
 	add_child(nest)
 
@@ -3267,7 +3280,8 @@ func _egg_species() -> String:
 
 func _egg_label() -> String:
 	var sp := _egg_species()
-	return Data.egg_name(sp) if sp != "" else "egg"
+	var rare: bool = Save.d.get("egg", {}).get("rare", false)
+	return ("Rare " if rare else "") + (Data.egg_name(sp) if sp != "" else "egg")
 
 func _egg_ready() -> bool:
 	var egg: Dictionary = Save.d.get("egg", {})
@@ -3813,18 +3827,23 @@ func _open_pair(rec: Dictionary) -> void:
 
 func _hatch_nest_egg() -> void:
 	var egg: Dictionary = Save.d.get("egg", {})
+	var rare: bool = egg.get("rare", false)
 	var a := Save.kin(String(egg.get("a", "")))
 	var b := Save.kin(String(egg.get("b", "")))
-	if a.is_empty() or b.is_empty():
+	if not rare and (a.is_empty() or b.is_empty()):
 		Save.d["egg"] = {}
 		_refresh_nest()
 		return
 	var rng := RandomNumberGenerator.new(); rng.randomize()
-	var baby := Care.breed(a, b, rng, _egg_species())
+	var baby := Care.hatch_rare(egg, rng) if rare else Care.breed(a, b, rng, _egg_species())
 	Save.d["egg"] = {}
 	# it's yours from the moment it hatches; the naming card only renames it
 	baby["name"] = Data.KIN_NAMES.pick_random()
-	Save.remember(baby, "born", "hatched in the nest on your farm", 0.0)
+	if rare:
+		Save.remember(baby, "born", "hatched from a Rare Egg you carried home from %s" % String(Data.MOBS.get(String(egg.get("boss", "")), {}).get("name", "a boss's lair")), 2.0)
+		Progress.add("rare_hatched")
+	else:
+		Save.remember(baby, "born", "hatched in the nest on your farm", 0.0)
 	Progress.add("hatched")
 	Save.d["roster"].append(baby)
 	Care.dex_mark(baby["species"], "caught")
@@ -3832,7 +3851,7 @@ func _hatch_nest_egg() -> void:
 	Save.save_game()
 	building_now = true
 	# the egg hatches in stages: wiggles, cracks, a peek, then the kin pops out
-	var shell_c: Color = Color(Data.KIN[baby["species"]]["color"]).lightened(0.15)
+	var shell_c: Color = Color("ffd36a") if rare else Color(Data.KIN[baby["species"]]["color"]).lightened(0.15)
 	if is_instance_valid(nest):
 		nest.get_node("Shell").visible = false
 	var eh := EggHatch.new(baby["species"], fx, 0.26, 0.36, 1.0, baby)
@@ -3869,7 +3888,10 @@ func _name_baby(baby: Dictionary) -> void:
 	var sp: Dictionary = Data.KIN[baby["species"]]
 	var v := _new_panel("It hatched!", 520)
 	v.add_child(UI.label("\"%s\"" % KinSpeak.babble(baby["species"], "happy"), 24, Care.shimmer_col(sp["color"]) if baby.get("shimmer", false) else sp["color"]))
-	v.add_child(UI.label("A %s%s, child of %s and %s. %s nature." % ["shimmering " if baby.get("shimmer", false) else "", sp["name"], baby["parents"][0], baby["parents"][1], Care.nature(baby)], 15))
+	if baby.get("rare", false) or not baby.has("parents"):
+		v.add_child(UI.label("A rare %s%s, hatched from the egg %s guarded. %s nature." % ["shimmering " if baby.get("shimmer", false) else "", sp["name"], String(Data.MOBS.get(String(baby.get("from_boss", "")), {}).get("name", "a boss")), Care.nature(baby)], 15, UI.GOLD))
+	else:
+		v.add_child(UI.label("A %s%s, child of %s and %s. %s nature." % ["shimmering " if baby.get("shimmer", false) else "", sp["name"], baby["parents"][0], baby["parents"][1], Care.nature(baby)], 15))
 	var row := UI.hbox(8)
 	var ne := LineEdit.new(); ne.text = Data.KIN_NAMES.pick_random(); ne.max_length = 14; ne.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(ne)
@@ -4133,7 +4155,7 @@ func _econ_tests(dbg) -> void:
 		Save.d["roster"] = [Save.new_kin("zapple", "Pip")]
 		Save.d["active"] = Save.d["roster"][0]["uid"]
 		while Save.d["roster"].size() < 6:
-			Save.d["roster"].append(Save.new_kin(Data.KIN.keys()[Save.d["roster"].size() % Data.KIN.size()]))
+			Save.d["roster"].append(Save.new_kin(Data.common_kin()[Save.d["roster"].size() % Data.common_kin().size()]))
 		Save.d["items"]["kibble"] = 12
 		Save.d["crops"]["tidebloom"] = 4
 		Save.d["feeders"] = [{"id": "f1", "kind": "trough", "x": Econ.FEEDER_START.x, "z": Econ.FEEDER_START.z, "food": ["kibble", "kibble", "tidebloom", "kibble", "kibble", "kibble"], "auto": true}]
@@ -4174,10 +4196,10 @@ func _econ_tests(dbg) -> void:
 					print("FEEDER t=%.0f kin=%d eating=%d waiting=%d fed=%d fill=%d min_gap=%.2f" % [step, kins.size(), eating, waiting, fed, Econ.fill(Econ.feeders()[0]), md]))
 	if "--grave-test" in dbg or "--shrine-test" in dbg:
 		while Save.d["roster"].size() < 3:
-			Save.d["roster"].append(Save.new_kin(Data.KIN.keys()[Save.d["roster"].size() % Data.KIN.size()]))
+			Save.d["roster"].append(Save.new_kin(Data.common_kin()[Save.d["roster"].size() % Data.common_kin().size()]))
 		Save.d["graves"] = []
 		for i in 4:
-			var rec := Save.new_kin(Data.KIN.keys()[(i + 2) % Data.KIN.size()], ["Biscuit", "Wren", "Clove", "Sorrel"][i])
+			var rec := Save.new_kin(Data.common_kin()[(i + 2) % Data.common_kin().size()], ["Biscuit", "Wren", "Clove", "Sorrel"][i])
 			rec["level"] = 3 + i * 2
 			Save.remember(rec, "caught", "was caught by you in the islands and brought home")
 			Save.remember(rec, "extracted", "made it out of the islands with you")

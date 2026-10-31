@@ -41,6 +41,8 @@ var auto_spin := true        # a slow spin until the player takes over
 var dragging := false
 var ready_to_name := false
 var sparks: Array = []       # {p: Vector2, v: Vector2, life: float, max: float, s: float, c: Color}
+var rare := false            # hatched from a boss's Rare Egg: everything goes gold
+const GOLD_RAY := Color("ffd36a")
 
 func _init(sp_id: String, kin_rec := {}) -> void:
 	species = sp_id if Data.KIN.has(sp_id) else String(Data.KIN.keys()[0])
@@ -51,6 +53,7 @@ func _ready() -> void:
 	sp = Data.KIN[species]
 	col = Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"]
 	glow = sp.get("glow", col)
+	rare = bool(rec.get("rare", false)) or Data.is_rare(species)
 	_build()
 	_play_intro()
 
@@ -180,6 +183,9 @@ func _info_card() -> PanelContainer:
 	var animals: Array = sp.get("animals", [])
 	if not animals.is_empty():
 		v.add_child(UI.label("Part %s" % " · part ".join(animals.map(func(a): return String(a).to_lower())), 15, UI.MUTED))
+	if rare:
+		var boss := String(Data.MOBS.get(String(sp.get("boss", rec.get("from_boss", ""))), {}).get("name", "a lair boss"))
+		v.add_child(UI.label("RARE KIN  ·  from the egg %s guarded" % boss, 15, UI.GOLD))
 	if rec.get("shimmer", false):
 		v.add_child(UI.label("Shimmering! Rare colours.", 15, UI.GOLD))
 	var desc := String(sp.get("desc", ""))
@@ -271,6 +277,15 @@ func _play_intro() -> void:
 	if rec.get("shimmer", false):
 		title_lbl.text = "A shimmering %s!" % sp["name"]
 	sub_lbl.text = "%s kin" % String(sp.get("type", "")).capitalize()
+	if rare:
+		# a boss's egg: a gold flash, gold rays, a shower of gold
+		title_lbl.text = "A RARE %s!" % String(sp["name"]).to_upper()
+		title_lbl.add_theme_color_override("font_color", GOLD_RAY.lightened(0.2))
+		title_lbl.add_theme_color_override("font_outline_color", Color("6a4a10"))
+		sub_lbl.text = "Rare %s kin  ·  hatched from a boss's egg" % String(sp.get("type", "")).capitalize()
+		sub_lbl.add_theme_color_override("font_color", GOLD_RAY)
+		flash.color = Color(1.0, 0.9, 0.55, 1.0)
+		_burst(90)
 	var tt := create_tween()
 	tt.tween_interval(0.35)
 	title_lbl.scale = Vector2(0.6, 0.6)
@@ -307,6 +322,7 @@ func _burst(n: int) -> void:
 		var s := randf_range(120.0, 520.0)
 		var life := randf_range(0.7, 1.6)
 		var pc: Color = [Color.WHITE, glow.lightened(0.4), col.lightened(0.5), Color("fff3b0")].pick_random()
+		if rare and randf() < 0.6: pc = [GOLD_RAY, Color("fff3b0"), Color("ffe08a")].pick_random()
 		sparks.append({"p": c, "v": Vector2(cos(a), sin(a)) * s, "life": life, "max": life, "s": randf_range(3.0, 7.0), "c": pc})
 
 func _centre() -> Vector2:
@@ -343,7 +359,7 @@ func _process(dt: float) -> void:
 	if randf() < dt * 14.0:
 		var c := _centre() + Vector2(randf_range(-110, 110), randf_range(-40, 90))
 		var life := randf_range(1.0, 2.0)
-		sparks.append({"p": c, "v": Vector2(randf_range(-15, 15), randf_range(-70, -30)), "life": life, "max": life, "s": randf_range(2.0, 4.5), "c": glow.lightened(0.5)})
+		sparks.append({"p": c, "v": Vector2(randf_range(-15, 15), randf_range(-70, -30)), "life": life, "max": life, "s": randf_range(2.0, 4.5), "c": GOLD_RAY.lightened(0.3) if rare and randf() < 0.7 else glow.lightened(0.5)})
 	for s in sparks:
 		s["life"] -= dt
 		s["p"] += s["v"] * dt
@@ -384,7 +400,7 @@ func _draw_rays() -> void:
 			var n := 14 if ring == 0 else 9
 			var w := 0.09 if ring == 0 else 0.05
 			var rot := t * (0.25 if ring == 0 else -0.4)
-			var rc := Color(Color.WHITE.lerp(glow, 0.4 + 0.3 * ring), (0.13 if ring == 0 else 0.09) * ray_k)
+			var rc := Color(Color.WHITE.lerp(GOLD_RAY if rare else glow, 0.4 + 0.3 * ring), (0.18 if rare else (0.13 if ring == 0 else 0.09)) * ray_k)
 			for i in n:
 				var a := rot + TAU * i / n
 				var pts := PackedVector2Array([c,
@@ -392,6 +408,12 @@ func _draw_rays() -> void:
 					c + Vector2(cos(a + w), sin(a + w)) * reach])
 				rays.draw_colored_polygon(pts, rc)
 		rays.draw_circle(c, 70.0 + 6.0 * sin(t * 3.0), Color(1, 1, 1, 0.12 * ray_k))
+		if rare:
+			# a slow gold halo of shimmering motes
+			for i in 24:
+				var a2 := t * 0.6 + TAU * i / 24.0
+				var rr := 170.0 + 10.0 * sin(t * 2.0 + i)
+				rays.draw_circle(c + Vector2(cos(a2), sin(a2)) * rr, 3.0 + 2.0 * (0.5 + 0.5 * sin(t * 5.0 + i * 1.7)), Color(GOLD_RAY, 0.7 * ray_k))
 	# sparkles: little four-point stars
 	for s in sparks:
 		var k: float = clampf(s["life"] / s["max"], 0.0, 1.0)

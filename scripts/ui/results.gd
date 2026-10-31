@@ -79,6 +79,10 @@ func show_result(r: Dictionary) -> void:
 			chips.append(["seed", "%d %s seeds" % [s["seeds"][sd], Data.CROPS[sd]["name"]], Data.CROPS[sd]["color"]])
 		for k in s["caught"]:
 			chips.append(["egg", "%s the %s" % [k["name"], Data.KIN[k["species"]]["name"]], Data.KIN[k["species"]]["color"]])
+		# a boss's Rare Egg: the best thing you can carry home
+		for it in s.get("haul", []):
+			if Loot.is_rare_egg(it):
+				chips.push_front(["egg", "Brought home a Rare Egg  ·  %s" % Loot.name_of(it), Color("ffd36a")])
 		if not chips.is_empty():
 			v.add_child(UI.section("Brought home"))
 			var flow := HFlowContainer.new()
@@ -87,7 +91,10 @@ func show_result(r: Dictionary) -> void:
 				flow.add_child(_chip(chips[i][0], chips[i][1], chips[i][2], 0.75 + i * 0.14))
 			v.add_child(flow)
 	# weapons, gloves and treasure: into the armory, or left behind in your deathbox
-	var haul: Array = s.get("haul", [])
+	var haul: Array = s.get("haul", []).filter(func(it): return not Loot.is_rare_egg(it))
+	var eggs_home: int = s.get("haul", []).filter(func(it): return Loot.is_rare_egg(it)).size()
+	if won and eggs_home > 0:
+		v.add_child(_note("Brought home a Rare Egg! It's waiting in your nest to hatch into a rare kin." if eggs_home == 1 else "Brought home %d Rare Eggs! They'll hatch in your nest one at a time." % eggs_home, UI.GOLD))
 	if won and not haul.is_empty():
 		v.add_child(UI.section("Into your armory" if Save.has_building("armory") else "Into your armory (build it on the farm to use them)"))
 		var hf := HFlowContainer.new()
