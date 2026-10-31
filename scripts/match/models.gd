@@ -510,6 +510,40 @@ static func clean_look(lk: Dictionary) -> Dictionary:
 	out["hair"] = clampi(int(out["hair"]), 0, hair_styles(int(out["race"])).size() - 1)
 	return out
 
+## How each class reads at a glance from the match camera, whatever the race or outfit (purely
+## visual): overall size on top of the class scale (about 0.88 / 1.0 / 1.18 in all), build, boots,
+## weapon size, and the class emblem on the pack (light: a chevron, medium: a diamond, heavy: a shield).
+const CLASS_LOOK := {
+	"light": {"size": 0.98, "build": 0.9, "boots": 0.92, "weapon": 0.9},
+	"medium": {"size": 1.0, "build": 1.0, "boots": 1.0, "weapon": 1.05},
+	"heavy": {"size": 1.035, "build": 1.12, "boots": 1.28, "weapon": 1.32},
+}
+
+## The class's own marks: its emblem on top of the pack in the class colour (seen from above), a
+## trailing scarf for lights, a plated collar and back plate for heavies.
+static func _class_marks(torso: Node3D, cls: String, bw: float, m_acc: Material, m_trim: Material) -> void:
+	var cc: Color = Data.CLASSES.get(cls, {}).get("color", Color.WHITE)
+	cc = Color.from_hsv(cc.h, maxf(cc.s, 0.6), maxf(cc.v, 0.95))
+	var m_cls := toon(cc, true, 0.35)
+	m_cls.set_shader_parameter("gloss", 0.5)
+	var at := Vector3(0, 0.655, 0.27 * bw)
+	var tilt := Vector3(-1.05, 0, 0)          # lying back on the rolled wing, facing up and back
+	match cls:
+		"light":
+			for sx in [-1.0, 1.0]:
+				part(torso, box(0.035, 0.15, 0.025), m_cls, at + Vector3(0.045 * sx, 0.0, 0.0), Vector3.ONE, tilt + Vector3(0, 0, 0.6 * sx))
+			# a long scarf trailing from the collar
+			for sx in [-1.0, 1.0]:
+				_blade(torso, m_acc, Vector3(0.06 * sx, 0.6, 0.18 * bw), Vector3(0.12 * sx, -0.45, 1.0), 0.48 - (sx + 1.0) * 0.05, 0.1, PI * 0.5, 0.18)
+		"medium":
+			part(torso, box(0.12, 0.12, 0.025), m_cls, at, Vector3.ONE, tilt + Vector3(0, 0, PI * 0.25))
+		"heavy":
+			part(torso, box(0.2, 0.16, 0.03), m_cls, at + Vector3(0, 0.01, 0.0), Vector3.ONE, tilt)
+			part(torso, box(0.08, 0.06, 0.032), m_trim, at + Vector3(0, 0.012, 0.005), Vector3.ONE, tilt)
+			# a plated collar and a back plate
+			part(torso, cyl(0.25 * bw, 0.27 * bw, 0.09, 24), m_trim, Vector3(0, 0.6, 0.01))
+			part(torso, box(0.42 * bw, 0.36, 0.06), m_trim, Vector3(0, 0.36, 0.25 * bw), Vector3.ONE, Vector3(-0.08, 0, 0))
+
 ## The hunter's chest and back as one smooth sculpted shape: narrow at the waist, full through the
 ## ribs, broad at the shoulders and rounded over into the neck. About 0.62 tall, centred.
 static func torso_mesh() -> ArrayMesh:
@@ -558,6 +592,9 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 	var rig := Node3D.new(); rig.name = "Rig"; root.add_child(rig)
 	var legs := Node3D.new(); legs.name = "Legs"; rig.add_child(legs)
 	var bw: float = [0.88, 1.0, 1.15][clampi(int(lk["body"]), 0, 2)]
+	# the class shows in the build, whatever the race: lights lean, heavies broad with big boots
+	bw *= float(CLASS_LOOK.get(cls, {}).get("build", 1.0))
+	var boot_k := float(CLASS_LOOK.get(cls, {}).get("boots", 1.0))
 	var gender := int(lk["gender"])
 	# legs swing from the hip: thigh, knee pad, a tall boot with a cuff and a toe
 	for sx in [-1.0, 1.0]:
@@ -571,9 +608,11 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 		leg.add_child(knee)
 		part(knee, limb(0.074, 0.066, 0.24, 0.06), m_leather, Vector3(0, -0.11, 0))
 		part(knee, cyl(0.092, 0.092, 0.05, 12), m_trim, Vector3(0, -0.01, 0))
-		part(knee, sphere(0.085, 16), m_leather, Vector3(0, -0.205, -0.055), Vector3(0.95, 0.6, 1.5))
-		part(knee, sphere(0.07, 14), m_leather, Vector3(0, -0.19, 0.0), Vector3(1.0, 0.75, 1.0))   # heel
-		part(knee, box(0.135, 0.034, 0.24), m_dark, Vector3(0, -0.24, -0.05))
+		part(knee, sphere(0.085, 16), m_leather, Vector3(0, -0.205, -0.055), Vector3(0.95, 0.6, 1.5) * boot_k)
+		part(knee, sphere(0.07, 14), m_leather, Vector3(0, -0.19, 0.0), Vector3(1.0, 0.75, 1.0) * boot_k)   # heel
+		part(knee, box(0.135 * boot_k, 0.034, 0.24 * boot_k), m_dark, Vector3(0, -0.24, -0.05 * boot_k))
+		if cls == "heavy":
+			part(knee, cyl(0.098, 0.09, 0.12, 16), m_trim, Vector3(0, -0.13, 0))     # plated greaves
 	var torso := Node3D.new(); torso.name = "Torso"; torso.position = Vector3(0, 0.42, 0); rig.add_child(torso)
 	var fem := gender == 0
 	# women: narrower shoulders and waist, wider hips, a bust; men: broader through the chest
@@ -619,6 +658,7 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 		var hm := SphereMesh.new(); hm.radius = 0.13 * pad_k; hm.height = 0.13 * pad_k; hm.is_hemisphere = true; hm.radial_segments = 30; hm.rings = 10
 		part(torso, hm, m_acc, Vector3((0.24 + (pad_k - 1.0) * 0.06) * sx * chest_w, 0.52 + (pad_k - 1.0) * 0.04, 0.0), Vector3(1.0, 0.9, 1.1), Vector3(0, 0, -0.45 * sx))
 		part(torso, cyl(0.135, 0.135, 0.025, 14), m_trim, Vector3(0.245 * sx * chest_w, 0.5, 0.0), Vector3.ONE, Vector3(0, 0, -0.45 * sx))
+	_class_marks(torso, cls, bw, m_acc, m_trim)
 	# the glider pack: a rolled wing on a back plate
 	part(torso, box(0.3, 0.34, 0.1), m_leather, Vector3(0, 0.36, 0.24 * bw))
 	part(torso, cyl(0.075, 0.075, 0.44, 12), toon(Color("f3eee2")), Vector3(0, 0.56, 0.27 * bw), Vector3.ONE, Vector3(0, 0, PI / 2))
@@ -719,6 +759,7 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 		part(arm, sphere(0.07, 16), m_leather, Vector3(0, -0.235, 0), Vector3(0.95, 1.3, 0.85))
 		part(arm, sphere(0.032, 12), m_leather, Vector3(0.0, -0.2, -0.055), Vector3(1.0, 1.4, 1.0))
 	gun_parts(gun, weapon, m_gun, m_dark, m_acc)
+	gun.scale = Vector3.ONE * float(CLASS_LOOK.get(cls, {}).get("weapon", 1.0))     # heavies carry big guns
 	# a magazine that comes out and goes back in on a reload
 	part(gun, box(0.06, 0.15, 0.09), m_acc, Vector3(0, -0.13, -0.24), Vector3.ONE, Vector3(0.15, 0, 0), "Mag")
 	# the support arm swings from the shoulder, so it can reach for a fresh magazine
@@ -779,8 +820,9 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 	root.set_meta("mats", collect_mats(root))
 	root.set_meta("race", rid)
 	var rs := float(race["scale"])
-	root.scale = Vector3.ONE * float(Data.CLASSES[cls]["scale"]) * rs
-	ring.scale = Vector3.ONE / rs       # the ring under your feet shows the real hitbox, whatever your size
+	var ck := float(CLASS_LOOK.get(cls, {}).get("size", 1.0))
+	root.scale = Vector3.ONE * float(Data.CLASSES[cls]["scale"]) * rs * ck
+	ring.scale = Vector3.ONE / (rs * ck)       # the ring under your feet shows the real hitbox, whatever your size
 	return root
 
 ## A cone of radius r and length h growing from `at` along `dir` (spikes, fur tufts, horns).
@@ -1180,7 +1222,7 @@ static func _face(torso: Node3D, face: int, gender: int, m_dark: Material, m_ski
 				part(torso, sphere(0.022, 8), m_dark, Vector3(ex + 0.016, y - 0.014, -0.224), Vector3(1.0, 0.8, 0.4))
 				part(torso, box(0.08 * es, 0.016, 0.02), m_dark, Vector3(ex, y + 0.008, -0.226))
 			3:   # cheerful: eyes that smile
-				var t := TorusMesh.new(); t.inner_radius = 0.024 * es; t.outer_radius = 0.036 * es; t.rings = 12; t.ring_segments = 6
+				var t := TorusMesh.new(); t.inner_radius = 0.024 * es; t.outer_radius = 0.036 * es; t.rings = 28; t.ring_segments = 10
 				part(torso, t, m_dark, Vector3(ex, y - 0.01, -0.215), Vector3(1.0, 1.0, 0.5), Vector3(PI / 2, 0, 0))
 				part(torso, box(0.08, 0.032, 0.03), m_skin, Vector3(ex, y - 0.032, -0.22))
 		# brows: thin and arched for her, thick and straight for him; angled in when fierce
@@ -1207,7 +1249,7 @@ static func _face(torso: Node3D, face: int, gender: int, m_dark: Material, m_ski
 	if face == 8:
 		part(torso, box(0.05, 0.012, 0.012), lip_m, Vector3(0.012, 0.79, mz), Vector3.ONE, Vector3(0, 0, 0.3))    # smirk
 	elif smile:
-		var sm := TorusMesh.new(); sm.inner_radius = 0.022; sm.outer_radius = 0.032 if fem else 0.03; sm.rings = 12; sm.ring_segments = 6
+		var sm := TorusMesh.new(); sm.inner_radius = 0.022; sm.outer_radius = 0.032 if fem else 0.03; sm.rings = 28; sm.ring_segments = 10
 		part(torso, sm, lip_m, Vector3(0, 0.79, mz + 0.004), Vector3(1.0, 1.0, 0.4), Vector3(PI / 2, 0, PI))
 	elif fem:
 		part(torso, sphere(0.022, 8), lip_m, Vector3(0, 0.788, mz), Vector3(1.3, 0.55, 0.4))

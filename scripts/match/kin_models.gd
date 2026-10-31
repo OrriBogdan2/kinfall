@@ -132,7 +132,7 @@ static func _prismander(f: Node3D, c: Dictionary, mats: Array) -> Dictionary:
 	# a wide, flat head with a long smile
 	var hp := Vector3(0, 0.3, -0.27)
 	Models.part(f, Models.sphere(0.2), body, hp, Vector3(1.25, 0.8, 1.0))
-	var smile := TorusMesh.new(); smile.inner_radius = 0.13; smile.outer_radius = 0.145; smile.rings = 16; smile.ring_segments = 4
+	var smile := TorusMesh.new(); smile.inner_radius = 0.13; smile.outer_radius = 0.145; smile.rings = 40; smile.ring_segments = 10
 	var sm := Models.part(f, smile, dark, hp + Vector3(0, -0.06, -0.06), Vector3(1.0, 1.0, 0.5))
 	sm.visible = true
 	eyes(f, hp, Vector3(0.25, 0.16, 0.2), 0.9, 0.35, 0.04, c["eye"], c["white"])
@@ -227,7 +227,7 @@ static func _echolop(f: Node3D, c: Dictionary, mats: Array) -> Dictionary:
 		Models.part(e, Models.sphere(0.055), belly, Vector3(0, 0.2, -0.018), Vector3(0.8, 2.6, 0.2))
 		for k in 3:
 			Models.part(e, Models.box(0.008, 0.11, 0.008), dark, Vector3(0, 0.12 + k * 0.08, -0.03), Vector3.ONE, Vector3(0, 0, (k - 1) * 0.25))
-		var rim := TorusMesh.new(); rim.inner_radius = 0.05; rim.outer_radius = 0.06; rim.rings = 12; rim.ring_segments = 4
+		var rim := TorusMesh.new(); rim.inner_radius = 0.05; rim.outer_radius = 0.06; rim.rings = 32; rim.ring_segments = 10
 		Models.part(e, rim, glow, Vector3(0, 0.4, 0), Vector3(1, 1, 1), Vector3(PI / 2, 0, 0))
 	ears.position = hp + Vector3(0, 0.12, 0.02)
 	# folded bat wings on its sides
@@ -261,7 +261,7 @@ static func _gravadillo(f: Node3D, c: Dictionary, mats: Array) -> Dictionary:
 		var r := 0.34 - absf(i - 2) * 0.03
 		var band := Models.part(f, Models.sphere(r), body, Vector3(0, 0.28, z), Vector3(1.0, 0.92, 0.36))
 		band.rotation.x = (i - 2) * 0.12
-		var seam := TorusMesh.new(); seam.inner_radius = r * 0.88; seam.outer_radius = r * 0.93; seam.rings = 20; seam.ring_segments = 4
+		var seam := TorusMesh.new(); seam.inner_radius = r * 0.86; seam.outer_radius = r * 0.95; seam.rings = 48; seam.ring_segments = 10
 		if i < 4:
 			Models.part(f, seam, glow, Vector3(0, 0.28, z + 0.055), Vector3(1.0, 1.0, 0.92), Vector3(PI / 2, 0, 0))
 	# a blunt armored head and a beetle horn curving up from the snout
@@ -304,7 +304,7 @@ static func _lunowl(f: Node3D, c: Dictionary, mats: Array) -> Dictionary:
 	Models.part(f, Models.sphere(0.18), belly, Vector3(0, 0.37, -0.1), Vector3(1.0, 1.15, 0.7))
 	# chest markings: little crescent moons
 	for i in 3:
-		var cres := TorusMesh.new(); cres.inner_radius = 0.025; cres.outer_radius = 0.035; cres.rings = 10; cres.ring_segments = 4
+		var cres := TorusMesh.new(); cres.inner_radius = 0.025; cres.outer_radius = 0.035; cres.rings = 24; cres.ring_segments = 10
 		Models.part(f, cres, glow, Vector3((i - 1) * 0.07, 0.3 + (i % 2) * 0.05, -0.22), Vector3(1, 1, 0.5), Vector3(PI / 2, 0, 0.6))
 	# an owl face: a heart-shaped facial disc, huge round eyes and a little hooked beak
 	var hp := Vector3(0, 0.6, -0.1)
