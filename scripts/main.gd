@@ -2276,6 +2276,14 @@ func _home_build_check() -> void:
 	for k in tr.cds: tr.cds[k] = 5.0
 	mv.ppos = HomeTraining.PAD; tr.pad_t = 0.0; tr.tick(0.05)
 	ok.call(tr.cds.values().all(func(v): return float(v) <= 0.05), "the pad resets cooldowns")
+	mv.ppos = HomeTraining.RACK + Vector3(0, 0, 1.0); tr.tick(0.05)
+	tr.try = {"cls": "heavy", "weapon": "greatsword"}
+	tr.apply_try()
+	tr.open_tryon()
+	ok.call(String(tr.kit["fire"]["name"]) == Content.weapon("greatsword").display_name and mv.panel_open == "Try-on rack", "the Try-on rack puts a heavy's greatsword in your hands (%s)" % tr.kit["fire"]["name"])
+	tr.set_my_class()
+	ok.call(String(Save.d["cls"]) == "heavy" and String(Save.d["weapon"]) == "greatsword", "Set as my class makes it your expedition class")
+	mv._close_panel()
 	home4.queue_free()
 	await get_tree().process_frame
 	# procedural homes: two seeds, two different islands, both usable; the first look round

@@ -292,7 +292,9 @@ func _ready() -> void:
 			var dstat := a.substr(8)
 			get_tree().create_timer(0.4).timeout.connect(func(): _start_drill(Save.active_kin(), dstat))
 		if a in ["--build-demo", "--decor-demo", "--training-demo", "--overview-demo"]:
-			_build_demo(a)
+			Save.no_write = true
+			var which: String = a
+			get_tree().create_timer(0.05).timeout.connect(func(): _build_demo(which))
 		if a == "--home-night": day_t = 0.97
 		if a == "--home-noon": day_t = 0.5
 		if a == "--home-rain":
@@ -725,7 +727,7 @@ const MANTLE_ABYSS := 12.0     # falling past an island's cliff, you can still c
 const FALL_RESPAWN := -14.0
 
 func _dodge() -> Dictionary:
-	var dd := Content.class_dodge(Data.class_of_save())
+	var dd := Content.class_dodge(training._cls() if training and training.in_zone else Data.class_of_save())
 	var out := {"charges": 2, "cd": Hunter.DASH_REGEN, "speed": Hunter.DASH_SPEED, "time": Hunter.DASH_TIME}
 	if dd:
 		out["charges"] = dd.charges; out["cd"] = dd.cooldown
@@ -1414,6 +1416,8 @@ func _find_interact() -> void:
 		best = {"kind": "egg"} if is_instance_valid(nest) else {"kind": "nook"}
 	if p2.distance_to(Vector2(YARD_AT.x, YARD_AT.z)) < 1.6 and best.is_empty():
 		best = {"kind": "yard"}
+	if training and visit.is_empty() and training.near_rack(ppos):
+		best = {"kind": "tryon"}
 	if hecon:
 		var hb: Dictionary = hecon.find(p2, bd if not best.is_empty() else 9.0)
 		if not hb.is_empty(): best = hb
@@ -1539,6 +1543,7 @@ func _label_for(it: Dictionary) -> String:
 			return "Spend time with %s" % rec["name"]
 		"egg": return ("Help the %s hatch!" if _egg_ready() else "Warm the %s") % _egg_label()
 		"yard": return "Train your partner"
+		"tryon": return "Try on a class, weapon, glove or kin"
 		"nook": return "Pair two kin for an egg"
 		"feeder", "grave", "graveyard", "place": return hecon.label(it)
 	return ""
@@ -1569,6 +1574,7 @@ func _use(it: Dictionary) -> void:
 			var ak := Save.active_kin()
 			if not ak.is_empty(): _open_train(ak)
 		"nook": _open_nook()
+		"tryon": training.open_tryon()
 		"feeder", "grave", "graveyard", "place": hecon.use(it)
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -1672,6 +1678,14 @@ func set_build_ui(on: bool) -> void:
 	var hb_box := root_ui.get_node_or_null("Hints")
 	if hb_box: hb_box.visible = not on
 	if is_instance_valid(build_btn): build_btn.visible = not on
+	var hub_bar = get("hub")         # the menus branch's bottom-left hub bar, when it's merged
+	if hub_bar is CanvasItem: (hub_bar as CanvasItem).visible = not on
+	if training and is_instance_valid(training.hud): training.hud.visible = not on
+
+## Opens build mode (for a Build entry in the home's hub bar).
+func open_build() -> void:
+	if hb and not hb.active:
+		hb.toggle()
 
 func _refresh_top() -> void:
 	if not visit.is_empty():

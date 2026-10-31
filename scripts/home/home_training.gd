@@ -21,6 +21,8 @@ const PAD := Vector3(42.5, 0, 58.5)
 const STILL := Vector3(36.5, 0, 54.5)
 const MOVER := Vector3(40.5, 0, 55.0)
 const SHOOTER := Vector3(44.5, 0, 54.0)
+const RACK := Vector3(38.5, 0, 58.8)    # the Try-on rack: any class, weapon, glove and kin, here only
+const TAGS := {"light": "skirmisher · mobile · fragile", "medium": "all-rounder · mid range", "heavy": "frontline · tank · close range"}
 const TARGETS := [Vector3(46.5, 0, 57.5), Vector3(46.5, 0, 59.0), Vector3(45.0, 0, 60.0)]
 
 var h
@@ -35,6 +37,8 @@ var orb_t := 2.0
 var kit := {}                  # slot -> {name, cd, color, effects, kind}
 var pad_t := 0.0
 var now := 0.0
+var try := {}                  # what you're trying on here: {cls, weapon, glove, kin}
+var loaner: Node3D = null      # a kin of the species you're trying, when it isn't one of yours
 
 func _init(home) -> void:
 	h = home
@@ -91,6 +95,16 @@ func build() -> void:
 		var post := Models.part(h, Models.cyl(0.07, 0.09, 1.6, 8), Models.toon(Color("6a7a8a")), Vector3(40.0 + sx * 1.15, 0.8, 51.6))
 		Models.part(h, Models.sphere(0.12, 8), Models.toon(Color("9ff0e0"), false, 1.2), Vector3(40.0 + sx * 1.15, 1.7, 51.6))
 		post.name = "ZonePost"
+	var rk := Node3D.new(); rk.position = RACK; h.add_child(rk)
+	var wd := Models.toon(Color("7a5236"))
+	for sx in [-0.9, 0.9]:
+		Models.part(rk, Models.box(0.12, 1.6, 0.12), wd, Vector3(sx, 0.8, 0))
+	Models.part(rk, Models.box(2.0, 0.1, 0.16), wd, Vector3(0, 1.5, 0))
+	for k in 3:
+		var cc: Color = Data.CLASSES[["light", "medium", "heavy"][k]]["color"]
+		Models.part(rk, Models.box(0.36, 0.5 + k * 0.15, 0.08), Models.toon(cc), Vector3(-0.55 + k * 0.55, 1.1 - k * 0.05, 0.08))
+	_label(rk, "Try-on rack", Vector3(0, 2.2, 0), UI.GOLD, 34)
+	h.world.set_block_rect(int(RACK.x), int(RACK.z), int(RACK.x), int(RACK.z))
 	_dummy(STILL, "still")
 	_dummy(MOVER, "move")
 	_dummy(SHOOTER, "shoot")
@@ -99,8 +113,8 @@ func build() -> void:
 	Models.part(pad, Models.cyl(0.75, 0.8, 0.12, 20), Models.toon(Color("4a5368")), Vector3(0, 0.06, 0))
 	Models.part(pad, Models.cyl(0.55, 0.55, 0.03, 20), Models.glow_mat(Color(0.55, 1.0, 0.85, 0.7)), Vector3(0, 0.13, 0))
 	_label(pad, "Reset cooldowns", Vector3(0, 1.0, 0), Color("9ff0e0"), 34)
-	var wl := Node3D.new(); wl.position = Vector3(34.5, 0, 58.6); h.add_child(wl)
-	_label(wl, "Climb: jump at the wall", Vector3(0, 2.4, 0), UI.INK, 30)
+	var wl := Node3D.new(); wl.position = Vector3(34.5, 0, 56.6); h.add_child(wl)
+	_label(wl, "Climb: jump at the wall", Vector3(0, 2.9, 0), UI.INK, 30)
 	var gl := Node3D.new(); gl.position = Vector3(48.6, 0, 56.5); h.add_child(gl)
 	_label(gl, "Glide the gap: jump, hold Space", Vector3(0, 1.6, 0), UI.INK, 30)
 
@@ -133,7 +147,7 @@ func _dummy(at: Vector3, kind: String) -> void:
 # ------------------------------------------------------------------ your kit, from the match content
 func load_kit() -> void:
 	kit.clear()
-	var wid: String = h._weapon()
+	var wid: String = String(try.get("weapon", h._weapon()))
 	var wd: WeaponDef = Content.weapon(wid) if wid != "" else null
 	var pr: Dictionary = wd.primary if wd else Data.WEAPONS.get("rifle", {})
 	kit["fire"] = {"name": String(pr.get("name", "Weapon")), "cd": float(pr.get("rate", 0.2)) * float(pr.get("burst", 1)), "color": pr.get("color", Color("d9ff66")),
@@ -142,11 +156,12 @@ func load_kit() -> void:
 	if wd and wd.utility != "":
 		var ad := Content.ability(wd.utility)
 		if ad: kit["secondary"] = _from_ability(ad)
-	var glove := _glove()
+	var glove := String(try.get("glove", _glove()))
 	if glove != "":
 		kit["gear1"] = {"name": String(Gear.ALL.get(glove, {}).get("name", glove.capitalize())), "cd": Gear.cd_of(glove, 1), "color": Color("ffd36a"), "effects": Gear.effects_of(glove, 1)}
 	var ak: Dictionary = Save.active_kin()
-	var kd: KinDef = Content.kin(String(ak.get("species", ""))) if not ak.is_empty() else null
+	var ksp := String(try.get("kin", ak.get("species", "")))
+	var kd: KinDef = Content.kin(ksp) if ksp != "" else null
 	if kd and not kd.abilities.is_empty():
 		var sd := Content.ability(String(kd.abilities[0]))
 		if sd:
@@ -182,6 +197,11 @@ func tick(d: float) -> void:
 			_build_hud()
 		else:
 			h._toast("Leaving the Training Grounds: abilities off")
+			if not try.is_empty():
+				try = {}
+				h._refresh_player_model()
+			if is_instance_valid(loaner): loaner.queue_free()
+			loaner = null
 			if is_instance_valid(hud): hud.queue_free()
 			hud = null
 	for k in cds: cds[k] = maxf(0.0, float(cds[k]) - d)
@@ -198,6 +218,8 @@ func tick(d: float) -> void:
 		(dm["label"] as Label3D).text = String(dm["name"]) if hs.is_empty() else "%s\n%d dmg · %.0f dps" % [dm["name"], int(round(tot)), tot / 4.0]
 		var b: Node3D = (dm["node"] as Node3D).get_node("Body")
 		b.rotation.z = lerpf(b.rotation.z, 0.0, minf(1.0, d * 6.0))
+	if is_instance_valid(loaner) and Vector2(loaner.position.x - h.ppos.x, loaner.position.z - h.ppos.z).length() > 1.6:
+		loaner.position = loaner.position.lerp(h.ppos + Vector3(1.1, 0, 0.6), minf(1.0, d * 3.0))
 	if in_zone:
 		orb_t -= d
 		if orb_t <= 0.0:
@@ -309,7 +331,11 @@ func cast(slot: String) -> bool:
 	if k.get("kin", false):
 		# your kin does it: it bounds over to the spot first
 		var ke: Dictionary = h._kin_entry(Save.active_kin())
-		if not ke.is_empty():
+		if is_instance_valid(loaner):
+			src = loaner.position
+			var tw := loaner.create_tween()
+			tw.tween_property(loaner, "position", aim, 0.35).set_trans(Tween.TRANS_SINE)
+		elif not ke.is_empty():
 			src = ke["pos"]
 			h._start_leap(ke, aim)
 	var hitany := false
@@ -354,10 +380,10 @@ func input(event: InputEvent) -> bool:
 
 # ------------------------------------------------------------------ the kit bar
 func _build_hud() -> void:
-	if is_instance_valid(hud): hud.queue_free()
+	if is_instance_valid(hud): hud.free()
 	slot_lbls.clear()
 	var card := UI.card(Color(0.06, 0.07, 0.11, 0.86), 8, 12)
-	card.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var row := UI.hbox(14); card.add_child(row)
 	row.add_child(UI.label("Training", 15, Color("9ff0e0"), UI.big))
 	for pr in [["fire", "LMB"], ["secondary", "RMB"], ["gear1", Settings.key_cap("gear1")], ["signature", Settings.key_cap("signature")], ["ultimate", Settings.key_cap("ultimate")]]:
@@ -369,9 +395,9 @@ func _build_hud() -> void:
 		slot_lbls[pr[0]] = [l, String(kit[pr[0]]["name"])]
 		row.add_child(one)
 	h.root_ui.add_child(card)
-	card.reset_size()
-	card.offset_left = -card.size.x * 0.5; card.offset_right = card.size.x * 0.5
-	card.offset_top = -112; card.offset_bottom = -112 + card.size.y
+	card.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM, Control.PRESET_MODE_MINSIZE, 62)
+	card.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	card.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	hud = card
 
 func _update_hud() -> void:
@@ -382,3 +408,121 @@ func _update_hud() -> void:
 		if l.text != t:
 			l.text = t
 			l.add_theme_color_override("font_color", UI.INK if cd <= 0.05 or s == "fire" else UI.MUTED)
+
+# ------------------------------------------------------------------ the Try-on rack
+func near_rack(p: Vector3) -> bool:
+	return Vector2(p.x - RACK.x, p.z - (RACK.z + 1.0)).length() < 1.8
+
+func _cls() -> String:
+	return String(try.get("cls", Data.class_of_save()))
+
+## Puts on what's picked: your hunter's build and weapon change on the spot, and the kit with them.
+func apply_try() -> void:
+	var cls := _cls()
+	var w := String(try.get("weapon", ""))
+	if w == "" or not (Data.CLASSES[cls]["weapons"] as Array).has(w):
+		w = String(Data.CLASSES[cls]["weapon"]); try["weapon"] = w
+	var at: Vector3 = h.player.position; var rot: Vector3 = h.player.rotation
+	h.player.queue_free()
+	h.player = Models.hunter(cls, Data.TEAM_COLORS[0], w, "", Save.d.get("look", {}))
+	h.player.position = at; h.player.rotation = rot
+	h.add_child(h.player)
+	h.glider_node = null
+	var sp := String(try.get("kin", ""))
+	var mine: bool = Save.d["roster"].any(func(r): return String(r["species"]) == sp)
+	if is_instance_valid(loaner): loaner.queue_free()
+	loaner = null
+	if sp != "" and not mine and Data.KIN.has(sp):
+		loaner = Models.kin(sp, {})
+		loaner.position = h.ppos + Vector3(1.1, 0, 0.6)
+		h.add_child(loaner)
+	load_kit()
+	_build_hud()
+
+func _line(v: VBoxContainer, key: String, nm: String, desc: String) -> void:
+	var r := UI.hbox(8)
+	r.add_child(UI.keycap(key, 12))
+	var l := UI.label("%s: %s" % [nm, desc] if desc != "" else nm, 13, UI.INK)
+	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	l.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	r.add_child(l)
+	v.add_child(r)
+
+func open_tryon() -> void:
+	var cls := _cls()
+	var v: VBoxContainer = h._new_panel("Try-on rack", 680, true)
+	v.add_child(UI.label("Feel out any build here. It only applies on the Training Grounds.", 14, UI.MUTED))
+	var cr := UI.hbox(8)
+	for c in ["light", "medium", "heavy"]:
+		var cc: String = c
+		cr.add_child(UI.choice(String(Data.CLASSES[c]["name"]), c == cls, func(): try["cls"] = cc; try.erase("weapon"); apply_try(); open_tryon(), 120))
+	v.add_child(cr)
+	var cd: Dictionary = Data.CLASSES[cls]
+	var card := UI.card(UI.CARD, 10, 10); var cv := UI.vbox(4); card.add_child(cv)
+	cv.add_child(UI.label("%s  ·  %s" % [cd["name"], TAGS.get(cls, "")], 17, cd["color"], UI.big))
+	cv.add_child(UI.label("%s  %d health, %d dash%s." % [cd["desc"], int(cd["hp"]), int(cd["dashes"]), "es" if int(cd["dashes"]) > 1 else ""], 13, UI.MUTED))
+	load_kit()
+	var wd: WeaponDef = Content.weapon(String(try.get("weapon", h._weapon())))
+	if wd: _line(cv, "LMB", wd.display_name, String(wd.primary.get("desc", "")))
+	if wd and wd.utility != "":
+		var ud := Content.ability(wd.utility)
+		if ud: _line(cv, "RMB", ud.display_name, ud.desc)
+	var dd := Content.class_dodge(cls)
+	if dd: _line(cv, "Shift", dd.display_name, dd.desc)
+	var gl := String(try.get("glove", _glove()))
+	if gl != "": _line(cv, Settings.key_cap("gear1"), String(Gear.ALL.get(gl, {}).get("name", gl)), Gear.desc_of(gl, 1))
+	if kit.has("signature"):
+		var ksp := String(try.get("kin", Save.active_kin().get("species", "")))
+		var kd := Content.kin(ksp)
+		if kd and not kd.abilities.is_empty():
+			var sd := Content.ability(String(kd.abilities[0]))
+			if sd: _line(cv, Settings.key_cap("signature"), "%s (%s)" % [sd.display_name, kd.display_name], sd.desc)
+	if kit.has("ultimate"): _line(cv, Settings.key_cap("ultimate"), String(kit["ultimate"]["name"]), "the bond ultimate (on a 20s timer here)")
+	v.add_child(card)
+	v.add_child(UI.section("Weapon"))
+	var wr := UI.hbox(8)
+	for w in cd["weapons"]:
+		var ww: String = w
+		var wdd: WeaponDef = Content.weapon(w)
+		var b := UI.choice(wdd.display_name if wdd else String(w).capitalize(), String(try.get("weapon", h._weapon())) == w, func(): try["cls"] = cls; try["weapon"] = ww; apply_try(); open_tryon(), 150)
+		if wdd: b.tooltip_text = String(wdd.primary.get("desc", ""))
+		wr.add_child(b)
+	v.add_child(wr)
+	v.add_child(UI.section("Glove"))
+	var gf := HFlowContainer.new(); gf.add_theme_constant_override("h_separation", 6); gf.add_theme_constant_override("v_separation", 6)
+	for g in Gear.ALL:
+		if not Gear.active(g): continue
+		var gg: String = g
+		var b := UI.choice(String(Gear.ALL[g].get("name", g)), gl == g, func(): try["cls"] = cls; try["glove"] = gg; apply_try(); open_tryon(), 130)
+		b.tooltip_text = Gear.desc_of(g, 1)
+		gf.add_child(b)
+	v.add_child(gf)
+	v.add_child(UI.section("Kin (yours, or a loaner of any kind you've met)"))
+	var kf := HFlowContainer.new(); kf.add_theme_constant_override("h_separation", 6); kf.add_theme_constant_override("v_separation", 6)
+	var sps: Array = []
+	for r in Save.d["roster"]:
+		if not sps.has(String(r["species"])): sps.append(String(r["species"]))
+	for sp in Save.d.get("dex", {}):
+		if Data.KIN.has(sp) and not sps.has(String(sp)): sps.append(String(sp))
+	var cur := String(try.get("kin", Save.active_kin().get("species", "")))
+	for sp in sps:
+		var ss: String = sp
+		var kd := Content.kin(sp)
+		var tag := String(kd.type).capitalize() if kd else ""
+		var b := UI.choice("%s  ·  %s" % [Data.KIN[sp]["name"], tag], cur == sp, func(): try["cls"] = cls; try["kin"] = ss; apply_try(); open_tryon(), 170)
+		if kd: b.tooltip_text = kd.desc
+		kf.add_child(b)
+	v.add_child(kf)
+	var bot := UI.hbox(10)
+	bot.add_child(UI.primary("Set as my class", func(): set_my_class(), 200))
+	bot.add_child(UI.button("Take it all off", func(): try = {}; h._refresh_player_model(); load_kit(); _build_hud(); open_tryon(), 170))
+	v.add_child(bot)
+
+## The class (and weapon) you're trying becomes the one you take on expeditions.
+func set_my_class() -> void:
+	var cls := _cls()
+	Save.d["cls"] = cls
+	if try.has("weapon"): Save.d["weapon"] = String(try["weapon"])
+	Save.save_game()
+	h._toast("You're a %s now, with the %s" % [Data.CLASSES[cls]["name"], Content.weapon(String(Save.d.get("weapon", ""))).display_name if Content.weapon(String(Save.d.get("weapon", ""))) else "class weapon"])
+	h._refresh_top()
