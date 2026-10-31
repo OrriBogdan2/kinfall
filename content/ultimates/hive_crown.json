@@ -1,0 +1,27 @@
+{
+	"id": "hive_crown",
+	"name": "Hive Crown",
+	"form": "armor",
+	"time": 7,
+	"color": "#ffd23f",
+	"desc": "Hivara crowns you with its hive for 7s: 30% more damage, and every shot stings, poisons and slows.",
+	"owner": {
+		"dmg": 1.3
+	},
+	"shots": {
+		"burn": 5,
+		"slow": 0.8
+	},
+	"on_start": [
+		{
+			"type": "area",
+			"at": "owner",
+			"radius": 3.6,
+			"dmg": 16,
+			"kb": 7,
+			"burn": 5,
+			"slow": 1.5,
+			"color": "#ffd23f"
+		}
+	]
+}

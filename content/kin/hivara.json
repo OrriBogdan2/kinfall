@@ -1,0 +1,57 @@
+{
+	"id": "hivara",
+	"name": "Hivara",
+	"type": "swarm",
+	"rare": true,
+	"boss": "brood",
+	"color": "#d9a42a",
+	"belly": "#3b2a1c",
+	"glow": "#ffe680",
+	"wing": "#f4efd2",
+	"stats": {
+		"hp": 95,
+		"dmg": 11,
+		"speed": 7.2,
+		"range": 1.4
+	},
+	"look": {
+		"ears": "none",
+		"body": "hivara",
+		"tail": "none",
+		"feet": "none",
+		"aura": "spores"
+	},
+	"traits": {
+		"bravery": 0.7,
+		"loyalty": 0.75,
+		"temper": 0.55,
+		"curiosity": 0.6
+	},
+	"voice": "busy and bossy, always organising, hums when it's happy",
+	"shoulder": "kindle",
+	"abilities": [
+		"hive_swarm",
+		"thorn_patch"
+	],
+	"ultimate": "hive_crown",
+	"ai": {
+		"aggression": 0.65,
+		"loyalty": 0.7,
+		"caution": 0.3,
+		"style": "brawler"
+	},
+	"throw_hit": {
+		"slow": 1.2
+	},
+	"animals": [
+		"Honeybee",
+		"Praying mantis"
+	],
+	"desc": "A honeybee with a praying mantis's folded blades, wearing a crown of wax. A swarm of tiny bees follows it everywhere. Hatched from the Brood Mother's egg.",
+	"egg": {
+		"name": "Hive Egg",
+		"temper": "Busy",
+		"desc": "Waxy and golden, and it hums. Something inside is drumming to get out. The Brood Mother guarded it.",
+		"play": "Stings in swarms. Poisons, slows and never stops buzzing."
+	}
+}

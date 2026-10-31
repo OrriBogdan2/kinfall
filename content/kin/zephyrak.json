@@ -1,0 +1,57 @@
+{
+	"id": "zephyrak",
+	"name": "Zephyrak",
+	"type": "tempest",
+	"rare": true,
+	"boss": "serpent",
+	"color": "#2f6f9a",
+	"belly": "#d6f4ff",
+	"glow": "#9ff4ff",
+	"wing": "#bfe8ff",
+	"stats": {
+		"hp": 85,
+		"dmg": 11,
+		"speed": 8.6,
+		"range": 1.4
+	},
+	"look": {
+		"ears": "none",
+		"body": "zephyrak",
+		"tail": "none",
+		"feet": "none",
+		"aura": "rings"
+	},
+	"traits": {
+		"bravery": 0.8,
+		"loyalty": 0.45,
+		"temper": 0.65,
+		"curiosity": 0.85
+	},
+	"voice": "wild and quick, crackles with excitement, loves heights and speed",
+	"shoulder": "charge",
+	"abilities": [
+		"gale_lance",
+		"chain_spark"
+	],
+	"ultimate": "stormwing",
+	"ai": {
+		"aggression": 0.75,
+		"loyalty": 0.4,
+		"caution": 0.3,
+		"style": "skirmisher"
+	},
+	"throw_hit": {
+		"stun": 0.8
+	},
+	"animals": [
+		"Moray eel",
+		"Swift"
+	],
+	"desc": "A little sky serpent: a moray eel's long body with a swift's swept wings, crackling with static. Hatched from Stormcoil's egg.",
+	"egg": {
+		"name": "Storm Egg",
+		"temper": "Wild",
+		"desc": "Light as a cloud and buzzing with static. Little sparks jump to your fingers. The Sky Serpent guarded it.",
+		"play": "Fast and electric. Spears through foes and arcs lightning."
+	}
+}
