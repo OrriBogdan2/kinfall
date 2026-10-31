@@ -7,6 +7,7 @@ extends Node3D
 var views: Array = []
 var out := ""
 var wide := false
+var close := false
 var cam: Camera3D
 var w: World
 var frame := 0
@@ -19,6 +20,7 @@ func _ready() -> void:
 		if a.begins_with("--art-tier="): tier = int(a.substr(11))
 		if a.begins_with("--art-out="): out = a.substr(10)
 		if a == "--art-wide": wide = true
+		if a == "--art-close": close = true
 	var T: Dictionary = Data.TIERS[tier]
 	var env := WorldEnvironment.new()
 	var sky: Color = T["sky"]; var amb: Color = T["ambient"]; var cl: Array = T["clouds"]
@@ -96,8 +98,8 @@ func _next() -> void:
 		if out != "": get_tree().quit()
 		return
 	var focus := _focus(String(views[cur]))
-	var pitch := deg_to_rad(55.0 if wide else 65.0)
-	var dist := 46.0 if wide else 25.0
+	var pitch := deg_to_rad(55.0 if wide else (42.0 if close else 65.0))
+	var dist := 46.0 if wide else (11.0 if close else 25.0)
 	cam.position = focus + Vector3(0, sin(pitch) * dist, cos(pitch) * dist)
 	cam.rotation = Vector3(-pitch, 0, 0)
 

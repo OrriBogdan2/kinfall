@@ -1018,11 +1018,11 @@ func _biome_textures() -> Array:
 	return [ImageTexture.create_from_image(bi), ImageTexture.create_from_image(pi)]
 
 ## Scatter batches split into 16x16-tile chunks, so the camera only draws the ones it can see.
-func _chunked(parent: Node3D, items: Array, mesh: Mesh, mat: Material, label: String, shadows := false) -> void:
+func _chunked(parent: Node3D, items: Array, mesh: Mesh, mat: Material, label: String, shadows := false, chunk := 16) -> void:
 	var by := {}
 	for it in items:
 		var o: Vector3 = (it[0] as Transform3D).origin
-		var key := Vector2i(int(o.x) / 16, int(o.z) / 16)
+		var key := Vector2i(int(o.x) / chunk, int(o.z) / chunk)
 		if not by.has(key): by[key] = []
 		by[key].append(it)
 	for key in by:
@@ -1229,11 +1229,13 @@ func _decorate() -> void:
 				n = Models.rock(drng, drng.randf_range(0.9, 1.25))
 			n.position = Vector3(x + 0.5, y, z + 0.5)
 			deco.add_child(n)
+	if Flora.on():
+		_patches(packed, drng)
 	if Assets.on() or Flora.on():
 		_cliff_rocks(packed, drng)
 	for key in packed:
 		var g: Dictionary = packed[key]
-		_chunked(deco, g["items"], g["mesh"], g["mat"], String(g["label"]), bool(g["shadows"]))
+		_chunked(deco, g["items"], g["mesh"], g["mat"], String(g["label"]), bool(g["shadows"]), int(g.get("chunk", 16)))
 	# stone walls: coursed ruin masonry following each run (see ruin_walls.gd)
 	if not walls.is_empty():
 		wall_mat = ShaderMaterial.new()
@@ -1301,7 +1303,7 @@ func _decorate() -> void:
 				peb.clear(); break
 		for key in peb:
 			var g: Dictionary = peb[key]
-			_chunked(deco, g["items"], g["mesh"], g["mat"], "Pebbles")
+			_chunked(deco, g["items"], g["mesh"], g["mat"], "Pebbles", false, int(g.get("chunk", 16)))
 		pebbled = not peb.is_empty()
 	if pb.size() > 0 and not pebbled:
 		var pm2 := MultiMesh.new(); pm2.transform_format = MultiMesh.TRANSFORM_3D; pm2.use_colors = true
@@ -1363,9 +1365,32 @@ func _decorate() -> void:
 			r.position = at
 			deco.add_child(r)
 
+## Patches of flowers, ferns and toadstools gathered in drifts across open ground (where a slow
+## noise runs high), rather than sprinkled evenly: the ground reads as tended in places and wild in
+## others. Knee-high at most and never on paths, stairs, bridges or rims. Purely visual.
+func _patches(groups: Dictionary, r: RandomNumberGenerator) -> void:
+	var fn := FastNoiseLite.new(); fn.seed = rng.seed + 41; fn.frequency = 0.07
+	for z in h:
+		for x in w:
+			var i := idx(x, z)
+			if kind[i] != T_GROUND or bush.has(i) or paint.has(i) or stairs.has(i) or bridge.has(i) or no_deco.has(i):
+				continue
+			var nv := fn.get_noise_2d(x, z)
+			if nv < 0.3 or r.randf() > (nv - 0.3) * 0.9 or edge_dist(x, z, 2) < 2:
+				continue
+			var st := Flora.style_ok(style_at(i))
+			var pick := "flower"
+			match st:
+				"frost": pick = ["pebble", "crystal", "pebble"][r.randi_range(0, 2)]
+				"ember": pick = ["pebble", "mushroom", "pebble"][r.randi_range(0, 2)]
+				"gloom": pick = ["mushroom", "crystal", "mushroom"][r.randi_range(0, 2)]
+				"storm": pick = ["fern", "reed", "flower"][r.randi_range(0, 2)]
+				_: pick = ["flower", "flower", "fern", "mushroom"][r.randi_range(0, 3)]
+			_flora_prop(groups, "under", i, Vector3(x + r.randf_range(0.2, 0.8), level[i] * LEVEL, z + r.randf_range(0.2, 0.8)), r, pick)
+
 ## A few knee-high things on open ground beside a tree or boulder (purely visual).
 func _undergrowth(groups: Dictionary, x: int, z: int, r: RandomNumberGenerator) -> void:
-	for _k in r.randi_range(0, 2):
+	for _k in r.randi_range(1 if Flora.on() else 0, 3 if Flora.on() else 2):
 		var a := r.randf() * TAU
 		var d := r.randf_range(0.75, 1.35)
 		var p := Vector2(x + 0.5 + cos(a) * d, z + 0.5 + sin(a) * d)
@@ -1446,7 +1471,7 @@ func _pack_prop(groups: Dictionary, what: String, i: int, p: Vector3, r: RandomN
 const FLORA_UNDER := {
 	"meadow": [["bush", 4], ["fern", 2], ["flower", 3], ["mushroom", 1], ["pebble", 1]],
 	"bloom": [["bush", 4], ["flower", 4], ["fern", 2], ["mushroom", 1]],
-	"frost": [["bush", 3], ["pebble", 3], ["crystal", 1], ["fern", 1]],
+	"frost": [["bush", 3], ["pebble", 3], ["crystal", 1]],
 	"ember": [["bush", 3], ["pebble", 3], ["crystal", 1], ["mushroom", 1]],
 	"storm": [["bush", 3], ["fern", 2], ["reed", 2], ["pebble", 2], ["mushroom", 1]],
 	"gloom": [["crystal", 3], ["mushroom", 3], ["bush", 2], ["pebble", 1]],
@@ -1492,7 +1517,9 @@ func _flora_prop(groups: Dictionary, what: String, i: int, p: Vector3, r: Random
 			s = r.randf_range(0.95, 1.08)
 	if force_kind != "":
 		kind = force_kind
-	var v := r.randi_range(0, Flora.VARIANTS - 1)
+	var small := not kind in ["tree", "rock", "pillar"]
+	# small things come in two shapes and batch over bigger chunks: far fewer draw calls
+	var v := r.randi_range(0, 1 if small else Flora.VARIANTS - 1)
 	var am := Flora.mesh(kind, style, v)
 	b = b * Basis.from_scale(Vector3(s, s * sy, s))
 	var tr := Transform3D(b, pos)
@@ -1505,7 +1532,7 @@ func _flora_prop(groups: Dictionary, what: String, i: int, p: Vector3, r: Random
 	if not groups.has(key):
 		var big := kind in ["tree", "rock", "pillar"] and what != "cliff"
 		groups[key] = {"mesh": am, "mat": Flora.material(kind, kind in ["rock", "pillar", "crystal"] and what != "cliff"), "items": [], "label": "%s_%s_%d" % [kind, style, v],
-			"shadows": big}
+			"shadows": big, "chunk": 32 if small else 16}
 	_last_item = [tr, col]
 	_last_top = (tr.basis * Vector3(0, am.get_aabb().end.y, 0)).y
 	groups[key]["items"].append(_last_item)

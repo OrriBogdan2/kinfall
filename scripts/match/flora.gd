@@ -70,6 +70,7 @@ static func mesh(kind: String, style: String, variant: int) -> ArrayMesh:
 		"reed": _reeds(b, style, r)
 		"crystal": _crystal_cluster(b, style, r, 0.55)
 		"pillar": _pillar(b, style, variant, r)
+		"pine": _pine(b, style, variant, r)
 		_: _rock(b, style, r, Vector3(0.6, 0.5, 0.5), 0.5, true)
 	var m := b.commit()
 	_cache[key] = m
@@ -103,7 +104,7 @@ static func node(kind: String, style: String, variant: int, scale := 1.0) -> Nod
 	var root := Node3D.new()
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh(kind, style, variant)
-	mi.material_override = material(kind, kind in ["tree", "rock", "crystal"])
+	mi.material_override = material("tree" if kind == "pine" else kind, kind in ["rock", "crystal", "pillar"])
 	mi.scale = Vector3.ONE * scale
 	root.add_child(mi)
 	root.set_meta("mats", [mi.material_override])
@@ -586,6 +587,8 @@ static func _bush(b: MB, style: String, variant: int, r: RandomNumberGenerator) 
 	var P: Dictionary = PAL[style]
 	var pal: Array = P["bush"]
 	var pal4 := [pal[0], pal[1], pal[2], (pal[2] as Color).lightened(0.25)]
+	if style == "frost":
+		pal4 = [pal[0], pal[1], Color("d8e6f2"), Color("ffffff")]     # dusted with snow
 	var blobs: Array = []
 	var n := 4 + variant
 	var w := 0.5 + variant * 0.06
@@ -789,7 +792,8 @@ static func paint_set_piece(n: Node3D, grad := 0.24, crease := 0.3, edge := 0.2)
 	Models.bake_part_y(n)
 	for m in Models.collect_mats(n):
 		var sm := m as ShaderMaterial
-		if float(sm.get_shader_parameter("glow")) > 0.3:
+		var gl = sm.get_shader_parameter("glow")
+		if gl != null and float(gl) > 0.3:
 			continue
 		Models.painted(sm, 0, grad, crease, edge)
 		sm.set_shader_parameter("rim_amount", 0.42)

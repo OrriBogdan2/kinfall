@@ -27,8 +27,9 @@ func build(parent: Node3D, deep: Color, light: Color, rng: RandomNumberGenerator
 		var m := ShaderMaterial.new(); m.shader = sh
 		# the higher layer is the lighter one, catching more sun
 		var up := 1.0 - float(k) / LAYERS.size()
-		m.set_shader_parameter("lit", light.lightened(0.35 + 0.2 * up).lerp(Color("ffe2c8"), 0.12))
-		m.set_shader_parameter("shade", deep.lerp(light, 0.45 + 0.2 * up))
+		# moonlit lavender-blue tops, deep indigo bellies, a warm rim where the sun catches an edge
+		m.set_shader_parameter("lit", light.lightened(0.38 + 0.2 * up).lerp(Color("aab6ff"), 0.28))
+		m.set_shader_parameter("shade", deep.lerp(light, 0.4 + 0.2 * up).lerp(Color("2c3470"), 0.3))
 		m.set_shader_parameter("rim", Color("ffd2a8"))
 		m.set_shader_parameter("haze", deep.lerp(light, 0.5))
 		m.set_shader_parameter("scale", L["scale"])
@@ -93,8 +94,9 @@ func _far_rocks(parent: Node3D, rng: RandomNumberGenerator) -> void:
 	var mats := {}
 	for k in n:
 		var a := TAU * k / n + rng.randf_range(-0.2, 0.2)
-		var d := rad * rng.randf_range(1.12, 1.6)
-		var at := Vector3(ctr.x + cos(a) * d, rng.randf_range(-16.0, 2.0), ctr.y + sin(a) * d)
+		var d := rad * rng.randf_range(1.22, 1.7)
+		# always well below the islands' ground, so nothing looms over the play space
+		var at := Vector3(ctr.x + cos(a) * d, rng.randf_range(-18.0, -6.0), ctr.y + sin(a) * d)
 		var style: String = Flora.STYLES[rng.randi_range(0, Flora.STYLES.size() - 1)]
 		if rng.randf() < 0.45:
 			var r := rng.randf_range(2.5, 6.0)

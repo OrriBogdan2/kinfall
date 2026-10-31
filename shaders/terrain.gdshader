@@ -90,7 +90,8 @@ vec3 ground_rich(vec3 c, float n_in, out vec3 emit) {
 		// meadow: clover dabs and the odd tiny flower
 		float cl = smoothstep(0.62, 0.8, vnoise(wpos.xz * 2.6 + 3.0)) * smoothstep(0.4, 0.7, n_in);
 		c = mix(c, c * vec3(0.82, 1.05, 0.78), cl * 0.5);
-		float d = cell_dot(wpos.xz, 2.2, 0.12, 1.0, pick) * step(0.86, pick) * (1.0 - path);
+		float green = smoothstep(0.0, 0.08, c.g - max(c.r, c.b));
+		float d = cell_dot(wpos.xz, 2.2, 0.12, 1.0, pick) * step(0.86, pick) * (1.0 - path) * green;
 		c = mix(c, mix(vec3(1.0, 0.95, 0.6), vec3(1.0), step(0.93, pick)), d * near_k * 0.85);
 	} else if (b == 1) {
 		// bloom: drifts of fallen petals, small and pink, thick in some places and absent in others
@@ -237,7 +238,7 @@ void fragment() {
 	c = vis_apply(c, fog);
 	ALBEDO = c;
 	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-	EMISSION = rim_color.rgb * rim * rim_amount * (1.0 - fog) + gemit * 0.9 * (1.0 - fog * 0.7);
+	EMISSION = rim_color.rgb * rim * rim_amount * (1.0 - fog) + gemit * 0.9 * (1.0 - fog * 0.85);
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }
