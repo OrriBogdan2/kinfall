@@ -49,8 +49,8 @@ func _init(sp_id: String, kin_rec := {}) -> void:
 
 func _ready() -> void:
 	sp = Data.KIN[species]
-	col = Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"]
-	glow = sp.get("glow", col)
+	col = Shiny.col(species, rec, "color")
+	glow = Shiny.col(species, rec, "glow") if sp.has("glow") or rec.get("shimmer", false) else col
 	_build()
 	_play_intro()
 
@@ -181,7 +181,7 @@ func _info_card() -> PanelContainer:
 	if not animals.is_empty():
 		v.add_child(UI.label("Part %s" % " · part ".join(animals.map(func(a): return String(a).to_lower())), 15, UI.MUTED))
 	if rec.get("shimmer", false):
-		v.add_child(UI.label("Shimmering! Rare colours.", 15, UI.GOLD))
+		v.add_child(UI.label("Shimmering! Its own rare colours (about %s)." % Shiny.odds_text(Shiny.WILD), 15, UI.GOLD))
 	for mid in Mutations.of(rec):
 		var mr := UI.hbox(8)
 		mr.add_child(Mutations.Badge.new(mid, 20.0))
@@ -267,6 +267,12 @@ func _play_intro() -> void:
 	bt.tween_property(bg, "color", Color(col.darkened(0.82), 0.93), 0.4)
 	create_tween().tween_property(self, "ray_k", 1.0, 0.5).set_trans(Tween.TRANS_SINE)
 	_burst(70)
+	if rec.get("shimmer", false):
+		# a shimmer: a second shower of gold stars and its chime as it lands
+		get_tree().create_timer(0.45).timeout.connect(func():
+			if not is_inside_tree(): return
+			_shiny_burst()
+			_play(Shiny.chime()))
 	# the kin pops in with a bounce
 	var kt := create_tween()
 	kt.tween_interval(0.12)
@@ -318,6 +324,18 @@ func _burst(n: int) -> void:
 		var life := randf_range(0.7, 1.6)
 		var pc: Color = [Color.WHITE, glow.lightened(0.4), col.lightened(0.5), Color("fff3b0")].pick_random()
 		sparks.append({"p": c, "v": Vector2(cos(a), sin(a)) * s, "life": life, "max": life, "s": randf_range(3.0, 7.0), "c": pc})
+
+## Big gold and white four-point stars thrown out in a ring (a shimmer's entrance).
+func _shiny_burst() -> void:
+	var c := _centre() + Vector2(0, -20)
+	for i in 46:
+		var a := TAU * i / 46.0 + randf() * 0.08
+		var s := randf_range(260.0, 640.0) if i % 2 == 0 else randf_range(90.0, 220.0)
+		var life := randf_range(1.0, 1.9)
+		var pc: Color = [Color("fff3b0"), Color.WHITE, Color("ffd36a"), glow.lightened(0.5)][i % 4]
+		sparks.append({"p": c, "v": Vector2(cos(a), sin(a)) * s, "life": life, "max": life, "s": randf_range(6.0, 11.0), "c": pc})
+	flash.color = Color(1.0, 0.95, 0.75, 0.55)
+	create_tween().tween_property(flash, "color:a", 0.0, 0.5)
 
 func _centre() -> Vector2:
 	var sz := root.size if root and root.size.x > 1.0 else Vector2(1280, 720)

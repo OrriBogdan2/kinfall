@@ -93,10 +93,10 @@ func show_result(r: Dictionary) -> void:
 				var ch := _chip(chips[i][0], chips[i][1], chips[i][2], 0.75 + i * 0.14)
 				if chips[i].size() > 3:
 					# a caught kin: its rare badges, and where it went
-					var kr: Dictionary = chips[i][3]
+					var ck: Dictionary = chips[i][3]
 					var hb: HBoxContainer = ch.get_child(0)
-					if Mutations.special(kr): hb.add_child(Mutations.badges(kr, 16.0))
-					hb.add_child(UI.label("·  " + ("Kin Burrow" if KinBox.is_boxed(kr) else "farm"), 13, Color("bfa6ff") if KinBox.is_boxed(kr) else UI.GOOD))
+					if Mutations.special(ck): hb.add_child(Mutations.badges(ck, 16.0))
+					hb.add_child(UI.label("·  " + ("Kin Burrow" if KinBox.is_boxed(ck) else "farm"), 13, Color("bfa6ff") if KinBox.is_boxed(ck) else UI.GOOD))
 				flow.add_child(ch)
 			v.add_child(flow)
 			var to_box: Array = (s["caught"] as Array).filter(func(k): return KinBox.is_boxed(k))

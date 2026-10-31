@@ -89,10 +89,11 @@ class Disc extends Control:
 	var belly := Color.WHITE
 	var glow := Color.WHITE
 	func _init(rec: Dictionary, px: float) -> void:
-		var sp: Dictionary = Data.KIN.get(String(rec.get("species", "")), {})
+		var spid := String(rec.get("species", ""))
+		var sp: Dictionary = Data.KIN.get(spid, {})
 		body = sp.get("color", Color.WHITE); belly = sp.get("belly", body); glow = sp.get("glow", body)
-		if rec.get("shimmer", false):
-			body = Care.shimmer_col(body); belly = Care.shimmer_col(belly)
+		if rec.get("shimmer", false) and not sp.is_empty():
+			body = Shiny.col(spid, rec, "color"); belly = Shiny.col(spid, rec, "belly"); glow = Shiny.col(spid, rec, "glow")
 		for id in Mutations.of(rec):
 			var pal: Dictionary = (Mutations.info(id).get("visual", {}) as Dictionary).get("palette", {})
 			if pal.has("body"): body = Mutations._op(body, pal["body"])

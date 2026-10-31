@@ -1524,7 +1524,7 @@ func _update_hover() -> void:
 		return
 	var rec: Dictionary = best["rec"]
 	var sp: Dictionary = Data.KIN[rec["species"]]
-	var col: Color = Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"]
+	var col: Color = Shiny.body(rec)
 	var needs: Dictionary = rec.get("needs", {})
 	var nl: Array = []
 	for n in Care.NEEDS:
@@ -2508,7 +2508,7 @@ func _open_kin(rec: Dictionary) -> void:
 	var sp: Dictionary = Data.KIN[rec["species"]]
 	Evo.ensure(rec)
 	Care.ensure(rec)
-	var col: Color = Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"]
+	var col: Color = Shiny.body(rec)
 	var partner: bool = rec["uid"] == Save.d.get("active", "")
 	var rare_pre := Mutations.prefix(rec)
 	var v := _new_panel("%s the %s%s%s" % [rec["name"], "shimmering " if rec.get("shimmer", false) else "", (rare_pre + " ") if rare_pre != "" else "", Evo.form_name(rec)], 820)
@@ -4325,7 +4325,7 @@ func _hatch_nest_egg() -> void:
 func _name_baby(baby: Dictionary) -> void:
 	var sp: Dictionary = Data.KIN[baby["species"]]
 	var v := _new_panel("It hatched!", 520)
-	v.add_child(UI.label("\"%s\"" % KinSpeak.babble(baby["species"], "happy"), 24, Care.shimmer_col(sp["color"]) if baby.get("shimmer", false) else sp["color"]))
+	v.add_child(UI.label("\"%s\"" % KinSpeak.babble(baby["species"], "happy"), 24, Shiny.body(baby)))
 	var rare_pre := Mutations.prefix(baby)
 	v.add_child(UI.label("A %s%s%s, child of %s and %s. %s nature." % ["shimmering " if baby.get("shimmer", false) else "", (rare_pre + " ") if rare_pre != "" else "", sp["name"], baby["parents"][0], baby["parents"][1], Care.nature(baby)], 15))
 	for mid in Mutations.of(baby):

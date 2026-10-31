@@ -50,5 +50,15 @@
 		"temper": "Steady",
 		"desc": "Far heavier than it looks. Loose pebbles roll toward it. Something steady is in here.",
 		"play": "Slow and tough. Pulls foes in and slams them down."
+	},
+	"work": {
+		"stone": 3,
+		"timber": 2,
+		"haul": 2
+	},
+	"shiny": {
+		"color": "#b8862e",
+		"belly": "#f2d9a0",
+		"glow": "#ff6a4a"
 	}
 }

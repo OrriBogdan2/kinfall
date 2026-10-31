@@ -961,18 +961,19 @@ static func kin_shell(c: Color) -> Node3D:
 static func kin(species: String, rec := {}) -> Node3D:
 	var sp: Dictionary = Data.KIN[species]
 	var look: Dictionary = sp.get("look", {})
-	var glow_c: Color = sp.get("glow", sp["color"])
-	var root := Node3D.new()
-	var mats: Array = []
 	var shimmer: bool = rec.get("shimmer", false)
 	var ghost: bool = rec.get("ghost", false)       # brought back by the Soul Shrine: pale and glowing
-	if ghost: glow_c = Color("9ff0e0")
-	var m_body := toon(Care.ghost_col(sp["color"]) if ghost else (Care.shimmer_col(sp["color"]) if shimmer else sp["color"])); mats.append(m_body)
+	# a shimmer wears its species' own alternate palette (Shiny.palette, hand-picked in content/kin)
+	var glow_c: Color = Shiny.col(species, rec, "glow") if (shimmer or ghost) else sp.get("glow", sp["color"])
+	var body_c: Color = Shiny.col(species, rec, "color")
+	var root := Node3D.new()
+	var mats: Array = []
+	var m_body := toon(body_c); mats.append(m_body)
 	m_body.set_shader_parameter("rim_color", glow_c)
 	m_body.set_shader_parameter("rim_amount", 2.2 if ghost else 1.4)
-	var m_belly := toon(Care.ghost_col(sp["belly"]) if ghost else (Care.shimmer_col(sp["belly"]) if shimmer else sp["belly"])); mats.append(m_belly)
+	var m_belly := toon(Shiny.col(species, rec, "belly")); mats.append(m_belly)
 	m_belly.set_shader_parameter("rim_color", glow_c)
-	var m_dark := toon((sp["color"] as Color).darkened(0.3)); mats.append(m_dark)
+	var m_dark := toon(((Shiny.palette(species)["color"] if shimmer else sp["color"]) as Color).darkened(0.3)); mats.append(m_dark)
 	var m_glow := toon(glow_c, false, 0.7); mats.append(m_glow)
 	var m_eye := toon(Color("1a1620"), false); mats.append(m_eye)
 	var m_white := toon(Color.WHITE, false, 0.6)
@@ -981,7 +982,7 @@ static func kin(species: String, rec := {}) -> Node3D:
 	var body_root := Node3D.new(); body_root.name = "Body"; root.add_child(body_root)
 	var body := Node3D.new(); body.name = "Flex"; body_root.add_child(body)
 	var built := KinModels.build(species, body, {"body": m_body, "belly": m_belly, "dark": m_dark, "glow": m_glow, "eye": m_eye, "white": m_white,
-		"wing_col": sp.get("wing", (sp["belly"] as Color).lerp(glow_c, 0.3))}, mats)
+		"wing_col": Shiny.palette(species).get("wing", (Shiny.col(species, rec, "belly") as Color).lerp(glow_c, 0.3)) if shimmer else sp.get("wing", (sp["belly"] as Color).lerp(glow_c, 0.3))}, mats)
 	if built.is_empty():
 		var shape := String(look.get("body", "round"))
 		var head_y := 0.44      # where the eyes sit

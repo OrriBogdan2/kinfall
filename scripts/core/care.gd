@@ -324,7 +324,8 @@ static func feed(rec: Dictionary, f: String) -> Dictionary:
 	return out
 
 ## Kin from an egg: mostly one parent's species, a blend of both personalities, a head start
-## along a parent's way of growing, and a small chance to shimmer.
+## along a parent's way of growing, and a very small chance to shimmer (Shiny.egg_chance: 1 in
+## 1024, 1 in 256 with a shimmering parent, 1 in 128 with two).
 static func breed(a: Dictionary, b: Dictionary, rng: RandomNumberGenerator, sp := "") -> Dictionary:
 	if sp == "" or not Data.KIN.has(sp):
 		sp = a["species"] if rng.randf() < 0.5 else b["species"]
@@ -344,7 +345,8 @@ static func breed(a: Dictionary, b: Dictionary, rng: RandomNumberGenerator, sp :
 	ensure(baby)
 	return baby
 
-## A shimmer's colours: the species palette turned partway round the colour wheel.
+## The old shimmer colours, a turn round the colour wheel: only a fallback now, for a species with
+## no hand-picked palette (Shiny.palette). Use Shiny.col(species, rec, slot) for a kin's colours.
 static func shimmer_col(c: Color) -> Color:
 	var h := fposmod(c.h + 0.45, 1.0)
 	return Color.from_hsv(h, clampf(c.s * 0.85 + 0.1, 0.0, 1.0), clampf(c.v * 1.05 + 0.05, 0.0, 1.0), c.a)

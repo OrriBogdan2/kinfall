@@ -176,7 +176,7 @@ static func grave(g: Dictionary, i: int) -> Node3D:
 	var root := Node3D.new()
 	var sp: Dictionary = Data.KIN.get(String(g.get("species", "")), {})
 	var col: Color = sp.get("color", Color("c8c0d8"))
-	if g.get("shimmer", false): col = Care.shimmer_col(col)
+	if g.get("shimmer", false) and not sp.is_empty(): col = Shiny.palette(String(g["species"]))["color"]
 	var ids := ["halloween/gravestone", "halloween/grave_A", "halloween/gravemarker_A"]
 	var st := _prop(ids[i % ids.size()], 0.85)
 	if st == null:

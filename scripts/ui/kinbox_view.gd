@@ -409,7 +409,7 @@ func _build_detail() -> void:
 			detail.add_child(l)
 		return
 	var sp: Dictionary = Data.KIN[rec["species"]]
-	var col: Color = Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"]
+	var col: Color = Shiny.body(rec)
 	var top := UI.hbox(10)
 	top.add_child(KinPortrait.view(rec, _tree(), 76.0))
 	var tv := UI.vbox(1)
