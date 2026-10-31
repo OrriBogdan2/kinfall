@@ -100,6 +100,7 @@ func _ready() -> void:
 	hecon = HomeEcon.new(self)
 	if visit.is_empty():
 		Econ.ensure()
+		KinBox.ensure()        # the Kin Burrow; an old crowded farm gets its overflow boxed once
 		_econ_tests(dbg)
 	if "--home-all" in dbg:
 		Save.d["bridges"] = Data.ISLES.keys()
@@ -142,6 +143,7 @@ func _ready() -> void:
 	for b in Data.BUILDINGS:
 		var rc: Array = HomeLayout.rect_of(b, _d())
 		keep_clear.append([rc[0] - 1, rc[1] - 1, rc[2] + 1, rc[3] + 2])
+	keep_clear.append([BURROW_RECT[0] - 1, BURROW_RECT[1] - 1, BURROW_RECT[2] + 1, BURROW_RECT[3] + 2])
 	for k in Data.ISLES:
 		var rc: Array = Data.ISLES[k]["bridge"]
 		keep_clear.append([rc[0] - 2, rc[1] - 2, rc[2] + 2, rc[3] + 2])
@@ -160,6 +162,8 @@ func _ready() -> void:
 		HomeLayout.rescue_feeders(world)
 	# the layout's buildings, decorations, paths, ponds and colour theme
 	hb.prepare_world()
+	if visit.is_empty():
+		world.set_block_rect(BURROW_RECT[0], BURROW_RECT[1], BURROW_RECT[2], BURROW_RECT[3])
 	if "--print-home" in OS.get_cmdline_user_args():
 		for z in range(0, world.h):
 			var line := "%2d " % z
@@ -193,12 +197,14 @@ func _ready() -> void:
 	spots["ferry"] = Vector3(42.2, 0, 40.6)
 	var fpost := Models.ferry_post(); fpost.position = spots["ferry"]; fpost.rotation.y = -0.4; add_child(fpost)
 	var sign_post := Models.signpost(["Expeditions"]); sign_post.position = Vector3(39.8, 0, 38.2); sign_post.rotation.y = -0.3; add_child(sign_post)
-	var roster: Array = _d()["roster"]
+	var roster: Array = _farm_kin()
 	for i in mini(roster.size(), 6):
 		var bed := Models.kin_bed(Data.KIN[roster[i]["species"]]["color"])
 		bed.position = Vector3(33.4 + (i % 3) * 1.1, 0, 27.6 + (i / 3) * 1.1)
 		add_child(bed)
 	_build_lots()
+	if visit.is_empty():
+		_build_burrow()
 	_build_bridges()
 	_build_plots()
 	player = Models.hunter(Data.class_of_save(), Data.TEAM_COLORS[0], _weapon(), "", Save.d.get("look", {}))
@@ -330,6 +336,7 @@ func _ready() -> void:
 				if which == "loadout": _open_loadout()
 				elif which == "expedition": _open_expedition()
 				elif which == "kin": _open_kin(Save.active_kin())
+				elif which == "burrow" or which == "kinbox": _open_burrow()
 				elif which == "shop": _open_shop()
 				elif which == "challenges": _open_challenges()
 				elif which.begins_with("ransom"):
@@ -347,6 +354,11 @@ func _ready() -> void:
 				elif which == "fetch":
 					var ke := _kin_entry(Save.active_kin())
 					if not ke.is_empty(): ppos = ke["pos"] + Vector3(1.5, 0, 1.0); cam.snap(ppos); _play_with_kin(ke))
+		if a.begins_with("--kinbox-demo"):
+			# test: a full farm and three pages in the Kin Burrow, then the box, a mutation lineup or a details card
+			KinBoxView.demo_roster()
+			var kw := a.substr(14) if a.length() > 14 else "box"
+			get_tree().create_timer(0.4).timeout.connect(func(): KinBoxView.demo_show(self, kw))
 		if a.begins_with("--home-at="):
 			var xy := a.substr(10).split(",")
 			ppos = Vector3(float(xy[0]), 0, float(xy[1])); player.position = ppos; cam.snap(ppos)
@@ -372,6 +384,13 @@ func _ready() -> void:
 	_build_ui()
 	_refresh_top()
 	_refresh_day1()
+	if visit.is_empty() and int(Save.d.get("box_notice", 0)) > 0:
+		# an old save, first time home since the Kin Burrow: say where everyone went
+		var nb := int(Save.d["box_notice"])
+		Save.d.erase("box_notice")
+		Save.save_game()
+		_show_when_free(["The farm has room for %d kin out at once now. Your partner, your first kin and your closest ones stayed out; the other %d curled up in the new Kin Burrow, south of the market stall by the pond." % [KinBox.farm_cap(), nb],
+			"Kin in the burrow sleep: they don't get hungry and don't need looking after. Swap them out whenever you like, or expand the cottages for more room."])
 	if visit.is_empty():
 		hecon.show_away()
 	if not visit.is_empty():
@@ -608,7 +627,8 @@ func _spawn_kin() -> void:
 		if i > 0 and _isle_open(world.islands[i]["id"]):
 			open_isles.append(i)
 	var ri := 0
-	for rec in _d()["roster"]:
+	var farm_kin := _farm_kin()          # kin asleep in the Kin Burrow stay there
+	for rec in farm_kin:
 		var n := Models.kin(rec["species"], rec)
 		add_child(n)
 		var isl: int = 0 if rec["uid"] == _d().get("active", "") else open_isles[ri % open_isles.size()]
@@ -624,7 +644,7 @@ func _spawn_kin() -> void:
 		lbl.position.y = 1.25; lbl.visible = false
 		n.add_child(lbl)
 		var kd := {"rec": rec, "node": n, "pos": at, "vel": Vector3.ZERO, "goal": Vector3.INF, "t": randf() * 3.0, "emote": lbl, "emote_t": 0.0, "hop": randf() * 6.0, "pers": _personality(rec)}
-		var ri2: int = _d()["roster"].find(rec)
+		var ri2: int = farm_kin.find(rec)
 		if isl == 0 and ri2 >= 0 and ri2 < 6:
 			kd["bed"] = Vector3(32.9 + (ri2 % 3) * 1.6, 0, 27.2 + (ri2 / 3) * 1.6)
 		kins.append(kd)
@@ -1424,6 +1444,10 @@ func _find_interact() -> void:
 		if k.has("indoors"): continue
 		var d := p2.distance_to(Vector2(k["pos"].x, k["pos"].z))
 		if d < bd: bd = d; best = {"kind": "kin", "k": k}
+	if visit.is_empty() and is_instance_valid(burrow_node):
+		var bdoor := BURROW_AT + Vector3(0, 0, 1.55)
+		var bdd := p2.distance_to(Vector2(bdoor.x, bdoor.z))
+		if bdd < 1.7 and bdd < bd + 0.4: bd = bdd; best = {"kind": "burrow"}
 	if p2.distance_to(Vector2(NEST_AT.x, NEST_AT.z)) < 1.8 and visit.is_empty():
 		best = {"kind": "egg"} if is_instance_valid(nest) else {"kind": "nook"}
 	if p2.distance_to(Vector2(YARD_AT.x, YARD_AT.z)) < 1.6 and best.is_empty():
@@ -1509,6 +1533,8 @@ func _update_hover() -> void:
 	var b: Array = Care.bond(rec)
 	var t := "[b][color=#%s]%s[/color][/b]\n" % [col.to_html(false), rec["name"]]
 	t += "[color=#9aa3b8]Lv %d %s  ·  %s  ·  %s bond[/color]\n" % [int(rec["level"]), Evo.form_name(rec), String(sp["type"]).capitalize(), b[1]]
+	if Mutations.special(rec):
+		t += "[color=#fff0a0]%s[/color]\n" % ", ".join(Mutations.tags(rec))
 	t += "  ·  ".join(nl) + "\n"
 	if visit.is_empty():
 		t += "[color=#ffd36a]Click[/color] details    [color=#ffd36a]%s[/color] pet    [color=#ffd36a]%s[/color] fetch    [color=#ffd36a]%s[/color] talk" % [Settings.key_cap("interact"), Settings.key_cap("play"), Settings.key_cap("talk")]
@@ -1557,6 +1583,7 @@ func _label_for(it: Dictionary) -> String:
 		"yard": return "Train your partner"
 		"tryon": return "Try on a class, weapon, glove or kin"
 		"nook": return "Pair two kin for an egg"
+		"burrow": return "Open the Kin Burrow (%d asleep inside)" % KinBox.boxed().size()
 		"feeder", "grave", "graveyard", "place": return hecon.label(it)
 	return ""
 
@@ -1587,6 +1614,7 @@ func _use(it: Dictionary) -> void:
 			if not ak.is_empty(): _open_train(ak)
 		"nook": _open_nook()
 		"tryon": training.open_tryon()
+		"burrow": _open_burrow()
 		"feeder", "grave", "graveyard", "place": hecon.use(it)
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -1853,6 +1881,7 @@ func _close_panel() -> void:
 	if panel_dim and not was.is_empty(): UI.show_backdrop(panel_dim, false)
 	if hub: hub.visible = true
 	_refresh_top()
+	_refresh_burrow()
 	if was.ends_with(" evolved") or was.ends_with(" is changing") or was == "Welcome home":
 		_play_evolutions.call_deferred()
 
@@ -2481,12 +2510,18 @@ func _open_kin(rec: Dictionary) -> void:
 	Care.ensure(rec)
 	var col: Color = Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"]
 	var partner: bool = rec["uid"] == Save.d.get("active", "")
-	var v := _new_panel("%s the %s%s" % [rec["name"], "shimmering " if rec.get("shimmer", false) else "", Evo.form_name(rec)], 820)
+	var rare_pre := Mutations.prefix(rec)
+	var v := _new_panel("%s the %s%s%s" % [rec["name"], "shimmering " if rec.get("shimmer", false) else "", (rare_pre + " ") if rare_pre != "" else "", Evo.form_name(rec)], 820)
 	UI.subtitle(v, "Level %d  ·  %s kin  ·  %s  ·  %s nature" % [int(rec["level"]), String(sp["type"]).capitalize(), Care.stage_name(rec), Care.nature(rec)])
 	var hx := UI.head_extra(v)
 	if partner: hx.add_child(UI.tag("Partner", UI.ACCENT))
 	elif rec["uid"] == Save.d.get("active2", ""): hx.add_child(UI.tag("Second", UI.TEAL))
 	if rec.get("farmhand", false): hx.add_child(UI.tag("Farmhand", UI.GOOD))
+	if KinBox.is_boxed(rec): hx.add_child(UI.tag("In the Kin Burrow", Color("cdb8ff")))
+	for mid in Mutations.of(rec):
+		var mt := UI.tag(Mutations.name_of(mid), Mutations.col_of(mid))
+		mt.tooltip_text = Mutations.perk_text(mid)
+		hx.add_child(mt)
 	UI.shell_tabs(v, ["Care", "Training", "Growth"], kin_tab, func(t): kin_tab = t; _open_kin(rec))
 	var row := func(parent: Control, label_txt: String, frac: float, c: Color, right := "", lw := 92.0) -> void:
 		var r := UI.hbox(10)
@@ -2604,9 +2639,12 @@ func _open_kin(rec: Dictionary) -> void:
 	# roles: quiet links on the left
 	if not partner:
 		fl.add_child(UI.ghost("Make partner", func():
+			var swapped := KinBox.bring_out(rec)      # partners live on the farm
 			if Save.d.get("active2", "") == rec["uid"]: Save.d["active2"] = Save.d.get("active", "")
 			Save.d["active"] = rec["uid"]
 			Save.save_game()
+			if not swapped.is_empty(): _toast("%s went to the Kin Burrow to make room" % swapped["name"])
+			_spawn_kin(); _refresh_burrow()
 			_open_kin(rec)))
 		if rec["uid"] != Save.d.get("active2", ""):
 			fl.add_child(UI.ghost("Bring as second", func():
@@ -2614,12 +2652,28 @@ func _open_kin(rec: Dictionary) -> void:
 				Save.save_game()
 				_toast("%s will come along on your next expedition (%s swaps it in)" % [rec["name"], Settings.key_cap("swap_kin")])
 				_open_kin(rec)))
+	# the Kin Burrow: put it to sleep there, or wake it and bring it out
+	if KinBox.is_boxed(rec):
+		fl.add_child(UI.ghost("Send to farm", func():
+			var bwhy := KinBox.to_farm(rec)
+			if bwhy != "": _toast(bwhy); return
+			Save.save_game(); _spawn_kin(); _refresh_burrow()
+			_toast("%s is out on the farm" % rec["name"])
+			_open_kin(rec)))
+	elif KinBox.pinned(rec) == "":
+		fl.add_child(UI.ghost("Put in Kin Burrow", func():
+			var bwhy := KinBox.to_box(rec)
+			if bwhy != "": _toast(bwhy); return
+			Save.save_game(); _spawn_kin(); _refresh_burrow()
+			_toast("%s curled up in the Kin Burrow (%s)" % [rec["name"], KinBox.page_name(KinBox.page_of(rec))])
+			_open_kin(rec)))
+	fl.add_child(UI.ghost("Kin Burrow", func(): KinBoxView.sel = String(rec["uid"]); KinBoxView.page = KinBox.page_of(rec) if KinBox.is_boxed(rec) else KinBoxView.page; _open_burrow()))
 	if rec.get("farmhand", false):
 		fl.add_child(UI.ghost("Stop farming", func():
 			rec.erase("farmhand")
 			Save.save_game()
 			_open_kin(rec)))
-	else:
+	elif not KinBox.is_boxed(rec):
 		fl.add_child(UI.ghost("Make farmhand", func():
 			for r2 in Save.d["roster"]: r2.erase("farmhand")
 			rec["farmhand"] = true
@@ -2939,7 +2993,7 @@ func _kin_pick_row(label_t: String, rec: Dictionary, key: String) -> Control:
 		nl.autowrap_mode = TextServer.AUTOWRAP_OFF
 		nl.clip_text = true
 		info.add_child(nl)
-		var sl := UI.label("%s  ·  level %d  ·  trust %d" % [label_t, int(rec.get("level", 1)), int(rec["trust"])], 12, UI.MUTED)
+		var sl := UI.label("%s  ·  level %d  ·  trust %d%s" % [label_t, int(rec.get("level", 1)), int(rec["trust"]), "  ·  asleep in the Kin Burrow: comes out to go with you" if KinBox.is_boxed(rec) else ""], 12, Color("cdb8ff") if KinBox.is_boxed(rec) else UI.MUTED)
 		sl.autowrap_mode = TextServer.AUTOWRAP_OFF
 		info.add_child(sl)
 		var names: Array = []
@@ -3127,6 +3181,9 @@ func _confirm_start() -> void:
 	v.add_child(row)
 
 func _start_match() -> void:
+	# kin picked from the Kin Burrow come out to go with you
+	for kk in [Save.active_kin(), Save.second_kin() if Match.TWO_KIN else {}]:
+		if not (kk as Dictionary).is_empty() and KinBox.is_boxed(kk): KinBox.bring_out(kk)
 	Save.d["cls"] = Data.class_of_save()
 	Save.save_game()
 	# about 20 hunters a match, whatever the squad size (your squadmates are bots)
@@ -3577,6 +3634,38 @@ func _open_settings() -> void:
 const YARD_AT := Vector3(40.9, 0, 32.7)
 const YARD_KIN := Vector3(40.6, 0, 32.9)
 const NEST_AT := Vector3(34.4, 0, 33.7)    # the Nesting Nook, between the market stall and the pond
+## The Kin Burrow, where the kin who aren't out on the farm sleep (KinBox, KinBoxView)
+const BURROW_AT := Vector3(30.6, 0, 38.8)    # south of the market stall, between the cottage lot and the pond
+const BURROW_RECT := [29, 38, 31, 39]
+var burrow_node: Node3D = null
+var kinbox_view: KinBoxView = null
+
+## The kin out on the island being shown (yours: not the ones asleep in the Kin Burrow).
+func _farm_kin() -> Array:
+	return (_d()["roster"] as Array) if not visit.is_empty() else KinBox.farm()
+
+func _build_burrow() -> void:
+	burrow_node = KinBurrow.model(KinBox.boxed().size())
+	burrow_node.position = BURROW_AT
+	burrow_node.scale = Vector3.ONE * 0.8
+	add_child(burrow_node)
+	var bl := Label3D.new()
+	bl.text = "Kin Burrow"; bl.font = UI.big; bl.font_size = 40; bl.pixel_size = 0.008; bl.outline_size = 10
+	bl.modulate = Color("d9c8ff"); bl.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	bl.position = BURROW_AT + Vector3(0, 1.85, 0.3)
+	add_child(bl)
+
+func _refresh_burrow() -> void:
+	KinBurrow.set_sleepers(burrow_node, KinBox.boxed().size())
+
+## The Kin Box (Kin Burrow) screen, for menus and shortcuts (the hub bar's Kin button).
+func open_kin_box() -> void:
+	if visit.is_empty(): _open_burrow()
+
+## The Kin Burrow screen: the farm, the box pages and the kin you picked.
+func _open_burrow() -> void:
+	kinbox_view = KinBoxView.open(self)
+	_refresh_burrow()
 const POND_EDGE := Vector3(35.7, 0, 37.4)
 var care_acc := 0.0
 var care_save := 0.0
@@ -4108,7 +4197,7 @@ func _can_pair(rec: Dictionary) -> String:
 	if int(rec["level"]) < 5: return "Needs to be level 5"
 	if float(rec["trust"]) < 50.0: return "Needs a Close bond (trust 50)"
 	if int(rec.get("bred_m", -99)) > int(Save.d["matches"]) - 3: return "Needs a few more expeditions' rest"
-	if Save.d["roster"].size() >= 12: return "Your farm is full (12 kin)"
+	if KinBox.full(): return "Your farm and the Kin Burrow are full"
 	if not Save.d.get("egg", {}).is_empty(): return "There's already an egg in the nest"
 	return ""
 
@@ -4195,8 +4284,8 @@ func _hatch_nest_egg() -> void:
 	Save.remember(baby, "born", "hatched in the nest on your farm", 0.0)
 	Progress.add("hatched")
 	Save.d["roster"].append(baby)
-	Care.dex_mark(baby["species"], "caught")
-	if baby.get("shimmer", false): Care.dex_mark(baby["species"], "shimmer")
+	KinBox.route_new(baby)        # a repeat of a kind already on the farm goes to the Kin Burrow (unless it's rare)
+	Care.dex_got(baby)
 	Save.save_game()
 	building_now = true
 	# the egg hatches in stages: wiggles, cracks, a peek, then the kin pops out
@@ -4237,7 +4326,19 @@ func _name_baby(baby: Dictionary) -> void:
 	var sp: Dictionary = Data.KIN[baby["species"]]
 	var v := _new_panel("It hatched!", 520)
 	v.add_child(UI.label("\"%s\"" % KinSpeak.babble(baby["species"], "happy"), 24, Care.shimmer_col(sp["color"]) if baby.get("shimmer", false) else sp["color"]))
-	v.add_child(UI.label("A %s%s, child of %s and %s. %s nature." % ["shimmering " if baby.get("shimmer", false) else "", sp["name"], baby["parents"][0], baby["parents"][1], Care.nature(baby)], 15))
+	var rare_pre := Mutations.prefix(baby)
+	v.add_child(UI.label("A %s%s%s, child of %s and %s. %s nature." % ["shimmering " if baby.get("shimmer", false) else "", (rare_pre + " ") if rare_pre != "" else "", sp["name"], baby["parents"][0], baby["parents"][1], Care.nature(baby)], 15))
+	for mid in Mutations.of(baby):
+		var mr := UI.hbox(8)
+		mr.add_child(Mutations.Badge.new(mid, 20.0))
+		var mtl := UI.label("%s: %s" % [Mutations.name_of(mid), Mutations.perk_text(mid)], 14, Mutations.col_of(mid))
+		mtl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		mr.add_child(mtl)
+		v.add_child(mr)
+	if KinBox.is_boxed(baby):
+		var bl := UI.label("Sent to the Kin Burrow (%s): you already have a %s out on the farm. Swap it out any time." % [KinBox.page_name(KinBox.page_of(baby)), sp["name"]] if KinBox.dup_on_farm(baby) else "Sent to the Kin Burrow (%s): the farm is full." % KinBox.page_name(KinBox.page_of(baby)), 14, Color("cdb8ff"))
+		bl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		v.add_child(bl)
 	var row := UI.hbox(8)
 	var ne := LineEdit.new(); ne.text = Data.KIN_NAMES.pick_random(); ne.max_length = 14; ne.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(ne)

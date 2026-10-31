@@ -83,14 +83,26 @@ func show_result(r: Dictionary) -> void:
 		for sd in s["seeds"]:
 			chips.append(["seed", "%d %s seeds" % [s["seeds"][sd], Data.CROPS[sd]["name"]], Data.CROPS[sd]["color"]])
 		for k in s["caught"]:
-			chips.append(["egg", "%s the %s" % [k["name"], Data.KIN[k["species"]]["name"]], Data.KIN[k["species"]]["color"]])
+			var rare := " ".join(Mutations.tags(k))
+			chips.append(["egg", "%s the %s%s" % [k["name"], (rare + " ") if rare != "" else "", Data.KIN[k["species"]]["name"]], Data.KIN[k["species"]]["color"], k])
 		if not chips.is_empty():
 			v.add_child(UI.section("Brought home"))
 			var flow := HFlowContainer.new()
 			flow.add_theme_constant_override("h_separation", 8); flow.add_theme_constant_override("v_separation", 8)
 			for i in chips.size():
-				flow.add_child(_chip(chips[i][0], chips[i][1], chips[i][2], 0.75 + i * 0.14))
+				var ch := _chip(chips[i][0], chips[i][1], chips[i][2], 0.75 + i * 0.14)
+				if chips[i].size() > 3:
+					# a caught kin: its rare badges, and where it went
+					var kr: Dictionary = chips[i][3]
+					var hb: HBoxContainer = ch.get_child(0)
+					if Mutations.special(kr): hb.add_child(Mutations.badges(kr, 16.0))
+					hb.add_child(UI.label("·  " + ("Kin Burrow" if KinBox.is_boxed(kr) else "farm"), 13, Color("bfa6ff") if KinBox.is_boxed(kr) else UI.GOOD))
+				flow.add_child(ch)
 			v.add_child(flow)
+			var to_box: Array = (s["caught"] as Array).filter(func(k): return KinBox.is_boxed(k))
+			if not to_box.is_empty():
+				v.add_child(_note("Sent to the Kin Burrow: %s. %s" % [", ".join(to_box.map(func(k): return String(k["name"]))),
+					"You already have that kind out on the farm." if to_box.all(func(k): return KinBox.dup_on_farm(k)) else "The farm is full (%d/%d)." % [KinBox.farm().size(), KinBox.farm_cap()]], Color("cdb8ff")))
 	# weapons, gloves and treasure: into the armory, or left behind in your deathbox
 	var haul: Array = s.get("haul", [])
 	if won and not haul.is_empty():

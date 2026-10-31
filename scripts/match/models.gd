@@ -1164,6 +1164,7 @@ static func kin(species: String, rec := {}) -> Node3D:
 		# hatchlings are small
 		root.set_meta("evo_scale", 0.82)
 		root.scale = Vector3.ONE * 0.82
+	Mutations.dress(root, rec)       # rare mutations: size, palette, extra parts
 	return root
 
 ## Moves a group's pivot to `at` without moving what's in it.

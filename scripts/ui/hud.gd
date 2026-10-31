@@ -2357,6 +2357,8 @@ func _draw_world_hover(sz: Vector2, p: Hunter) -> void:
 				lines.append(["Knock its health down to daze it, then hold %s to catch it." % Settings.key_cap("interact"), INK])
 			if k.rec.get("shimmer", false):
 				lines.append(["A shimmering one. Rare.", Color("ffd6ff")])
+			for mid in Mutations.of(k.rec):
+				lines.append(["%s: %s (%s)" % [Mutations.name_of(mid), String(Mutations.info(mid).get("desc", "")), Mutations.perk_text(mid)], Mutations.col_of(mid)])
 			if k.lost_from != "":
 				lines.append(["Left behind by %s. Whoever collects it keeps it." % ("you" if k.lost_from == "you" else k.lost_from), GOLD if k.lost_from == "you" else MUTED])
 		elif k.owner_h == p:

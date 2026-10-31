@@ -2133,6 +2133,8 @@ func gear_stat(k: String) -> float:
 			t += float(Gear.ALL[g["id"]]["stats"].get(k, 0.0)) * Gear.mult(int(g["rar"]))
 	for pk in perks:
 		t += float((Data.PERKS.get(pk, {}).get("stats", {}) as Dictionary).get(k, 0.0))
+	if kin != null and is_instance_valid(kin) and (k == "armor" or k == "sight"):
+		t += Mutations.owner_stat((kin as Kin).rec, k)      # a Crystal or Glowing kin helps its hunter
 	return t
 
 ## How many stacks of a perk you've picked up this run.

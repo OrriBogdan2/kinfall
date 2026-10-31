@@ -24,6 +24,7 @@ static func value(rec: Dictionary) -> int:
 	var v := 40.0 + float(rec.get("level", 1)) * 18.0
 	v += (rec.get("forms", []) as Array).size() * 30.0 + (rec.get("muts", []) as Array).size() * 15.0
 	if rec.get("shimmer", false): v += 120.0
+	v += 60.0 * Mutations.of(rec).size()
 	v += float(rec.get("trust", 35.0)) * 0.4
 	return int(round(v))
 
@@ -86,6 +87,7 @@ static func restore(L: Dictionary, how: String) -> Dictionary:
 	Save.d["roster"].append(k)
 	if Save.d.get("active", "") == "" or Save.kin(str(Save.d.get("active", ""))).is_empty():
 		Save.d["active"] = k["uid"]
+	KinBox.route_back(k)
 	note_log("%s came home (%s)." % [k.get("name", "Your kin"), how])
 	return k
 

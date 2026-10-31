@@ -458,7 +458,7 @@ func open_inventory() -> void:
 			for rec in Save.d["roster"]:
 				empty = false
 				var sp: Dictionary = Data.KIN[rec["species"]]
-				cell.call(String(rec["name"]), "Lv %d" % int(rec["level"]), "%s%s · %s bond · %s%s" % ["Shimmering " if rec.get("shimmer", false) else "", Evo.form_name(rec), Care.bond(rec)[1], Care.condition_name(rec).to_lower(), "  · partner" if rec["uid"] == Save.d.get("active", "") else ""], Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"])
+				cell.call(String(rec["name"]), "Lv %d" % int(rec["level"]), "%s%s%s · %s bond · %s%s" % ["in the Kin Burrow · " if KinBox.is_boxed(rec) else "", (" ".join(Mutations.tags(rec)) + " ") if Mutations.special(rec) else "", Evo.form_name(rec), Care.bond(rec)[1], Care.condition_name(rec).to_lower(), "  · partner" if rec["uid"] == Save.d.get("active", "") else ""], Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"])
 		"Kindex":
 			empty = false
 			Care.dex_sync()
@@ -473,6 +473,8 @@ func open_inventory() -> void:
 				var desc := "%s type. %s." % [String(sp["type"]).capitalize(), "Caught" if e.get("caught", false) else "Seen, not caught"]
 				if forms.size() > 0: desc += " Forms: " + ", ".join(forms.slice(0, 3)) + ("..." if forms.size() > 3 else "")
 				if e.get("shimmer", false): desc += " Shimmer found!"
+				var dm: Array = e.get("mutations", [])
+				if not dm.is_empty(): desc += " Rare: " + ", ".join(dm.map(func(x): return Mutations.name_of(String(x)))) + "."
 				cell.call(String(sp["name"]), "★" if e.get("shimmer", false) else ("✓" if e.get("caught", false) else ""), desc, sp["color"])
 	if empty:
 		var es: Array = {"Seeds": ["No seeds", "Find them on expeditions or buy them at the stall."], "Crops": ["No crops yet", "Harvest your plots."],
@@ -633,12 +635,22 @@ func open_admin() -> void:
 	v.add_child(stat)
 	_admin_refresh()
 
+var admin_mut := ""            # admin spawn: the rare mutation the next kin comes with
+var admin_shimmer := false
 ## Admin: pick any species to add to your farm.
 func open_spawn_kin() -> void:
 	if page != "spawn" and page != "":
 		stack.append(page)
 	var v := _page("spawn", "Spawn a kin", 640)
-	v.add_child(UI.label("Adds a level 8 kin with a Close bond to your farm.", 13, UI.MUTED))
+	v.add_child(UI.label("Adds a level 8 kin with a Close bond to your farm (or the Kin Burrow, if it's a repeat or the farm is full).", 13, UI.MUTED))
+	var mrow := HFlowContainer.new()
+	mrow.add_theme_constant_override("h_separation", 6); mrow.add_theme_constant_override("v_separation", 6)
+	mrow.add_child(UI.label("Mutation:", 13, UI.MUTED))
+	for mid in [""] + Mutations.ids():
+		var mk: String = mid
+		mrow.add_child(UI.choice("none" if mk == "" else Mutations.name_of(mk), admin_mut == mk, func(): admin_mut = mk; open_spawn_kin()))
+	mrow.add_child(UI.choice("Shimmer", admin_shimmer, func(): admin_shimmer = not admin_shimmer; open_spawn_kin()))
+	v.add_child(mrow)
 	var grid := GridContainer.new(); grid.columns = 3
 	grid.add_theme_constant_override("h_separation", 8); grid.add_theme_constant_override("v_separation", 8)
 	v.add_child(grid)
@@ -649,8 +661,11 @@ func open_spawn_kin() -> void:
 			rec["level"] = 8
 			rec["trust"] = 60.0
 			Evo.simulate(rec, RandomNumberGenerator.new())
+			if admin_mut != "": rec["mutations"] = [admin_mut]
+			if admin_shimmer: rec["shimmer"] = true
 			Save.d["roster"].append(rec)
-			Care.dex_mark(sid, "caught")
+			KinBox.route_new(rec)
+			Care.dex_got(rec)
 			Save.save_game()
 			Sfx.play("unlock")
 			var s = Game.main.screen_node() if Game.main else null

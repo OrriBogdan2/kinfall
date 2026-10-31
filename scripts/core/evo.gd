@@ -122,6 +122,9 @@ static func mods(rec: Dictionary) -> Dictionary:
 	for m in rec["muts"]:
 		var s: String = AFF[m["aff"]]["stat"]
 		out[s] = _apply(out[s], s, float(AFF[m["aff"]]["amt"]) * int(m["lv"]))
+	# rare mutations (Giant, Crystal...) add their small perks
+	var rm := Mutations.mods(rec)
+	for k in out: out[k] = float(out[k]) * float(rm[k])
 	return out
 
 static func _apply(v: float, s: String, amt: float) -> float:
