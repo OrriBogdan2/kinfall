@@ -285,6 +285,7 @@ func _build_cars() -> void:
 					Models.part(n, Models.box(0.07, 0.42, 0.07), brass, Vector3(xx, 0.21, zz))
 			# a coupling bar to the car in front
 			Models.part(n, Models.box(0.2, 0.12, CAR_GAP - CAR_LEN + 0.3), dark, Vector3(0, -0.3, -CAR_GAP * 0.5))
+		Flora.paint_set_piece(n)
 
 ## One crate per flat car: early-game loot, the last car's a little better.
 func _attach_crates() -> void:

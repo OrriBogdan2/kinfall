@@ -5,8 +5,10 @@ uniform float sway = 0.1;
 uniform float shade = 0.55;
 uniform vec4 tip_tint : source_color = vec4(1.08, 1.1, 0.86, 1.0);
 #include "res://shaders/vis.gdshaderinc"
+#include "res://shaders/noise.gdshaderinc"
 varying vec3 wpos;
 varying float tipk;
+varying vec3 org;
 void vertex() {
 	vec3 origin = (MODEL_MATRIX * vec4(0.0, 0.0, 0.0, 1.0)).xyz;
 	float k = UV.y;
@@ -17,9 +19,13 @@ void vertex() {
 	NORMAL = normalize(mix(NORMAL, vec3(0.0, 1.0, 0.0), 0.75));
 	wpos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 	tipk = k;
+	org = origin;
 }
 void fragment() {
-	vec3 c = COLOR.rgb * mix(vec3(0.5, 0.55, 0.6), tip_tint.rgb, tipk);
+	// broad swathes of yellower and bluer grass across the ground, then dark roots and sunlit tips
+	vec3 base = COLOR.rgb * mix(vec3(0.92, 0.98, 1.05), vec3(1.07, 1.04, 0.88), vnoise(org.xz * 0.11));
+	vec3 c = base * mix(vec3(0.5, 0.55, 0.6), tip_tint.rgb, tipk);
+	c += base * smoothstep(0.7, 1.0, tipk) * 0.1;
 	c = vis_apply(c, vis_fog(wpos));
 	ALBEDO = c;
 	ROUGHNESS = 1.0;

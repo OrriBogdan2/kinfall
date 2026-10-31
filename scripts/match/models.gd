@@ -2261,26 +2261,28 @@ static func grass_mesh(tall: bool) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var r := RandomNumberGenerator.new(); r.seed = 77 if tall else 33
-	var blades := 7 if tall else 5
+	var blades := 11 if tall else 8
 	for b in blades:
 		var a := r.randf() * TAU
-		var dist := r.randf_range(0.0, 0.32 if tall else 0.12)
+		var dist := r.randf_range(0.0, 0.34 if tall else 0.17)
 		var base := Vector3(cos(a) * dist, 0, sin(a) * dist)
-		var hgt := r.randf_range(0.7, 1.05) if tall else r.randf_range(0.16, 0.3)
-		var wid := r.randf_range(0.07, 0.1) if tall else r.randf_range(0.035, 0.05)
-		var face := r.randf() * TAU
+		var hgt := r.randf_range(0.65, 1.05) if tall else r.randf_range(0.13, 0.3)
+		var wid := r.randf_range(0.06, 0.09) if tall else r.randf_range(0.03, 0.045)
+		# blades lean out from the middle of the tuft, so a tuft reads as a fan, not a post
+		var face := a + PI * 0.5 + r.randf_range(-0.5, 0.5)
 		var side := Vector3(cos(face), 0, sin(face))
-		var bend := Vector3(-sin(face), 0, cos(face)) * hgt * r.randf_range(0.15, 0.4)
-		var segs := 2 if tall else 1
+		var bend := Vector3(cos(a), 0, sin(a)) * hgt * r.randf_range(0.2, 0.45)
+		var out_n := Vector3(cos(a), 1.6, sin(a)).normalized()
+		var segs := 3 if tall else 2
 		for k in segs:
 			var t0 := float(k) / segs; var t1 := float(k + 1) / segs
-			var w0 := wid * (1.0 - t0); var w1 := wid * (1.0 - t1)
+			var w0 := wid * (1.0 - t0 * 0.92); var w1 := wid * (1.0 - t1 * 0.92)
 			var p0 := base + Vector3(0, hgt * t0, 0) + bend * t0 * t0
 			var p1 := base + Vector3(0, hgt * t1, 0) + bend * t1 * t1
 			var v := [p0 - side * w0, p0 + side * w0, p1 + side * w1, p1 - side * w1]
 			var uv := [Vector2(0, t0), Vector2(1, t0), Vector2(1, t1), Vector2(0, t1)]
 			for idx in [0, 1, 2, 0, 2, 3]:
-				st.set_normal(Vector3.UP)
+				st.set_normal(out_n)
 				st.set_uv(uv[idx])
 				st.add_vertex(v[idx])
 	var m := st.commit()
@@ -2467,6 +2469,7 @@ static func shrine() -> Node3D:
 	var base := MeshInstance3D.new(); base.name = "Ring"; base.mesh = flat_quad(3.0)
 	base.material_override = ring_mat(glow, 0.06); base.position.y = 0.04
 	root.add_child(base)
+	Flora.paint_set_piece(root)
 	return root
 
 static func nest() -> Node3D:

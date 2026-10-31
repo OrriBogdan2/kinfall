@@ -21,8 +21,9 @@ func _ready() -> void:
 	particle_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	particle_mat.vertex_color_use_as_albedo = true
 	particle_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	var pm := SphereMesh.new(); pm.radius = 0.06; pm.height = 0.12; pm.radial_segments = 6; pm.rings = 3
-	pm.material = particle_mat
+	# soft painted dots with a bright core, always facing the camera (shaders/fx_dot.gdshader)
+	var pm := QuadMesh.new(); pm.size = Vector2(0.17, 0.17)
+	var dot_mat := ShaderMaterial.new(); dot_mat.shader = load("res://shaders/fx_dot.gdshader")
 	var ramp := Gradient.new()
 	ramp.set_color(0, Color(1, 1, 1, 1)); ramp.set_color(1, Color(1, 1, 1, 0))
 	for i in 28:
@@ -31,6 +32,7 @@ func _ready() -> void:
 		p.emitting = false
 		p.explosiveness = 0.95
 		p.mesh = pm
+		p.material_override = dot_mat
 		p.lifetime = 0.55
 		p.amount = 16
 		p.direction = Vector3.UP
@@ -175,34 +177,44 @@ func slash(at: Vector3, a0: float, arc: float, reach: float, col: Color, heavy :
 		var o0 := Vector3(cos(u0), 0, sin(u0)); var o1 := Vector3(cos(u1), 0, sin(u1))
 		var a := o0 * reach; var b := o1 * reach
 		var c := o1 * lerpf(reach, r0, w1); var d := o0 * lerpf(reach, r0, w0)
-		st.add_vertex(a); st.add_vertex(b); st.add_vertex(c)
-		st.add_vertex(a); st.add_vertex(c); st.add_vertex(d)
+		var ua := float(i) / n; var ub := float(i + 1) / n
+		# UV.x along the sweep, UV.y from the blade's tip (0) to the inner edge (1)
+		st.set_uv(Vector2(ua, 0)); st.add_vertex(a); st.set_uv(Vector2(ub, 0)); st.add_vertex(b); st.set_uv(Vector2(ub, 1)); st.add_vertex(c)
+		st.set_uv(Vector2(ua, 0)); st.add_vertex(a); st.set_uv(Vector2(ub, 1)); st.add_vertex(c); st.set_uv(Vector2(ua, 1)); st.add_vertex(d)
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
-	var m := StandardMaterial3D.new()
-	m.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	m.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	m.blend_mode = BaseMaterial3D.BLEND_MODE_ADD
-	m.cull_mode = BaseMaterial3D.CULL_DISABLED
-	m.albedo_color = Color(col.lightened(0.3), 0.9)
+	var m := ShaderMaterial.new()
+	m.shader = load("res://shaders/swoosh.gdshader")
+	m.set_shader_parameter("color", col.lightened(0.15))
 	mi.material_override = m
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
 	mi.global_position = at
-	mi.scale = Vector3.ONE * (0.75 if not heavy else 0.85)
+	mi.scale = Vector3.ONE * (0.8 if not heavy else 0.9)
 	var tw := mi.create_tween().set_parallel()
 	tw.tween_property(mi, "scale", Vector3.ONE * (1.05 if not heavy else 1.15), 0.14).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_OUT)
-	tw.tween_property(m, "albedo_color:a", 0.0, 0.16)
+	tw.tween_method(func(v: float) -> void: m.set_shader_parameter("progress", v), 0.0, 1.0, 0.2 if not heavy else 0.26)
 	tw.chain().tween_callback(mi.queue_free)
 
+static var _impact_quad: QuadMesh
 func flash(at: Vector3, col: Color, size := 0.35, dur := 0.06) -> void:
 	var mi := MeshInstance3D.new()
-	mi.mesh = Models.sphere(size, 8)
-	mi.material_override = Models.glow_mat(col)
+	# a star of rays round a white-hot core (shaders/impact.gdshader), lasting a little longer than
+	# the old ball so the shape registers
+	if _impact_quad == null:
+		_impact_quad = QuadMesh.new(); _impact_quad.size = Vector2(2, 2)
+	mi.mesh = _impact_quad
+	var m := ShaderMaterial.new(); m.shader = load("res://shaders/impact.gdshader")
+	m.set_shader_parameter("color", col)
+	m.set_shader_parameter("seed", rng.randf() * TAU)
+	m.set_shader_parameter("rays", float([4, 5, 6][rng.randi_range(0, 2)]))
+	mi.material_override = m
+	mi.scale = Vector3.ONE * size * 1.6
+	dur = maxf(dur, 0.1)
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(mi)
 	mi.global_position = at
-	flashes.append({"node": mi, "t": 0.0, "dur": dur})
+	flashes.append({"node": mi, "t": 0.0, "dur": dur, "s0": size * 1.6})
 
 func bolt(a: Vector3, b: Vector3, col: Color) -> void:
 	var pts := [a]
@@ -288,7 +300,9 @@ func _process(delta: float) -> void:
 	for f in flashes.duplicate():
 		f["t"] += delta
 		var mi: MeshInstance3D = f["node"]
-		mi.scale = Vector3.ONE * (1.0 + f["t"] / f["dur"])
+		var fk: float = f["t"] / f["dur"]
+		mi.scale = Vector3.ONE * float(f.get("s0", 1.0)) * (1.0 + fk * 0.6)
+		(mi.material_override as ShaderMaterial).set_shader_parameter("life", clampf(fk, 0.0, 1.0))
 		if f["t"] >= f["dur"]:
 			mi.queue_free(); flashes.erase(f)
 	for g in ghosts.duplicate():

@@ -82,6 +82,8 @@ func _add(D: Dictionary) -> void:
 	dome.position = c + Vector3(0, 0.02, 0)
 	m.add_child(dome)
 	var dn := BossModels.dial_stone(col)
+	Flora.paint_set_piece(gate)
+	Flora.paint_set_piece(dn)
 	dn.position = dial
 	dn.rotation.y = atan2(out.x, out.y)
 	m.add_child(dn)

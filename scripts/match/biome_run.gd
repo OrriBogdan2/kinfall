@@ -584,9 +584,51 @@ func decorate() -> void:
 			_:
 				p.direction = Vector3.UP; p.gravity = Vector3(0, 0.05, 0); p.initial_velocity_min = 0.05; p.initial_velocity_max = 0.2; p.spread = 180.0
 				col = Color(col, 0.6)
-		p.material_override = Models.glow_mat(Color(col, minf(col.a, 0.8)))
+		if Flora.on():
+			_mote_look(p, String(B.get("particles", "")), col)
+		else:
+			p.material_override = Models.glow_mat(Color(col, minf(col.a, 0.8)))
 		m.add_child(p)
 		p.global_position = Vector3(c.x, 3.5, c.y)
+
+## Soft painted particles instead of plain dots: a camera-facing glow with a bright core that fades
+## in and out (embers flicker and rise, snow is crisp and white, sparks streak, bloom spores are
+## tumbling petals).
+static var _mote_mats := {}
+func _mote_look(p: CPUParticles3D, kind: String, col: Color) -> void:
+	var qm := QuadMesh.new(); qm.size = Vector2(0.16, 0.16)
+	var cfg := {"softness": 1.0, "core": 0.5, "stretch": 1.0, "petal": false, "intensity": 1.0}
+	var c := col
+	match kind:
+		"snow":
+			cfg = {"softness": 0.3, "core": 0.25, "stretch": 1.0, "petal": false, "intensity": 0.75}
+			c = Color(0.95, 0.97, 1.0); qm.size = Vector2(0.12, 0.12)
+		"embers":
+			cfg["core"] = 0.9; cfg["intensity"] = 1.5; c = Color("ff7a2a"); qm.size = Vector2(0.13, 0.13)
+		"sparks":
+			cfg["core"] = 1.0; cfg["stretch"] = 2.6; cfg["intensity"] = 1.4; c = Color("fff2a0"); qm.size = Vector2(0.07, 0.07)
+		"spores":
+			cfg = {"softness": 0.4, "core": 0.2, "stretch": 1.0, "petal": true, "intensity": 0.7}
+			c = Color("ffb6da"); qm.size = Vector2(0.16, 0.12); qm.orientation = PlaneMesh.FACE_Y
+			p.angular_velocity_min = -90.0; p.angular_velocity_max = 90.0
+			p.particle_flag_rotate_y = true
+		"motes":
+			cfg["core"] = 0.7; cfg["intensity"] = 1.2; c = Color("c8a0ff")
+		_:
+			cfg["intensity"] = 0.8; c = Color("fff0a0"); qm.size = Vector2(0.11, 0.11)
+	var key := str(cfg)
+	if not _mote_mats.has(key):
+		var m := ShaderMaterial.new(); m.shader = load("res://shaders/mote.gdshader")
+		for k in cfg: m.set_shader_parameter(k, cfg[k])
+		_mote_mats[key] = m
+	p.mesh = qm
+	p.material_override = _mote_mats[key]
+	p.color = c
+	var g := Gradient.new()
+	g.offsets = PackedFloat32Array([0.0, 0.2, 0.75, 1.0])
+	g.colors = PackedColorArray([Color(1, 1, 1, 0), Color(1, 1, 1, 1), Color(1, 1, 1, 0.85), Color(1, 1, 1, 0)])
+	p.color_ramp = g
+	p.scale_amount_min = 0.7; p.scale_amount_max = 1.4
 
 ## Says which region you've walked or glided into, and what it has in store.
 func _tick_region_banner() -> void:

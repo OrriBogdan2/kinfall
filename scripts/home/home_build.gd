@@ -319,6 +319,16 @@ func make_deco(e: Dictionary) -> Node3D:
 	var n: Node3D = null
 	if HomeLayout.CATALOG.get(id, {}).has("work"):
 		n = WorkModels.station(id, e, rng)       # a work station (scripts/home/work_models.gd)
+	if Flora.on() and id in ["bush", "tree", "pine", "blossom_tree"]:
+		# the same sculpted trees and bushes as the expedition islands (see Flora)
+		var v := rng.randi_range(0, Flora.VARIANTS - 1)
+		match id:
+			"bush": n = Flora.node("bush", "meadow", v, rng.randf_range(1.2, 1.45))
+			"tree": n = Flora.node("tree", "meadow", v, rng.randf_range(0.8, 0.92))
+			"pine": n = Flora.node("pine", "meadow", v, rng.randf_range(0.8, 0.9))
+			"blossom_tree": n = Flora.node("tree", "bloom", v, rng.randf_range(0.8, 0.9))
+		if n: n.get_child(0).rotation.y = rng.randf() * TAU
+		return n
 	match id:
 		"flowers": n = Models.flower_bed(rng)
 		"bush":
