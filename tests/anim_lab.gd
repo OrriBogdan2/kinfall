@@ -18,7 +18,32 @@ func _arg(k: String, def := "") -> String:
 		if a == k: return "1"
 	return def
 
+## --lab-bench: how long HunterAnim.update takes, over a crowd of hunters doing different things.
+func _bench() -> void:
+	var hs: Array = []
+	for i in 40:
+		var cls: String = CLS[i % 3]
+		var h := Models.hunter(cls, Data.TEAM_COLORS[i % 4], ["smg", "rifle", "minigun", "twin_blades", "longsword", "greatsword"][i % 6], "", LOOKS[i % LOOKS.size()])
+		add_child(h)
+		hs.append([h, HunterAnim.new(h)])
+	var t0 := Time.get_ticks_usec()
+	var n := 0
+	for f in 300:
+		for i in hs.size():
+			var a: HunterAnim = hs[i][1]
+			var k := i % 5
+			var s := {"face": 0.3 * f / 30.0, "fired": 0.05 if k == 3 else 99.0, "vel": Vector3(0, 0, -5.0) if k == 1 else Vector3.ZERO, "grounded": k != 2,
+				"swing_n": f / 12 if k == 4 else 0, "combo": (f / 12) % 3, "reload": fmod(f / 60.0, 1.0) if k == 0 else -1.0}
+			a.update(1.0 / 60.0, s)
+			n += 1
+	var us := float(Time.get_ticks_usec() - t0) / n
+	print("ANIM BENCH %.1f us per hunter update (%d updates)" % [us, n])
+	get_tree().quit()
+
 func _ready() -> void:
+	if _arg("--lab-bench") != "":
+		_bench()
+		return
 	lab = _arg("--lab", "idle")
 	var env := WorldEnvironment.new()
 	env.environment = Look.environment({"top": Color("2a4a8a"), "mid": Color("6a8ad0"), "horizon": Color("ffd2a8"), "stars": 0.0})
