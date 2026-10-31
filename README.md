@@ -148,3 +148,15 @@ godot --headless --path . -- --mapcheck              # 200 maps: every island re
 ## Web build
 
 `tools/build_web.sh` exports the Web preset (no threads) and wraps it for publishing. The engine is gzipped so every file stays under 15MB, and `tools/shell.html` inflates it in the browser.
+
+## Contributing
+
+Kinfall is open source and anyone can fork it. New kin, abilities and items are plain JSON (see [CONTENT.md](CONTENT.md)), so you don't need to write code to add content. Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request, and use the issue templates for bugs and kin ideas.
+
+## Community
+
+Join the Discord: DISCORD_INVITE_LINK
+
+## License
+
+Code and original assets: [GNU GPL v3](LICENSE). Forks are welcome and must stay open source. Vendored models in `art/vendor/` are CC0 and fonts in `fonts/` are OFL (see [docs/ASSET_CREDITS.md](docs/ASSET_CREDITS.md)). Kinfall is a fan-inspired original game and is not affiliated with Supervive or Theorycraft Games.
