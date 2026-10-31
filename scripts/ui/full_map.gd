@@ -128,7 +128,7 @@ func draw(sz: Vector2) -> void:
 	var v := view()
 	var kk := rect.size.x / v.size.x
 	var team: int = m.player.team if m.player else -9
-	c.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.01, 0.02, 0.05, 0.66))
+	c.draw_rect(Rect2(Vector2.ZERO, sz), Color(0.01, 0.02, 0.05, 0.76))
 	# the header: the planning countdown, or just the map
 	var planning: bool = m.skydrop != null and m.skydrop.planning
 	if planning:

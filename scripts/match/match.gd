@@ -2983,6 +2983,8 @@ func step(dt: float) -> void:
 		return
 	if skydrop and skydrop.planning:
 		# planning the drop: the ship waits at the edge of the map and the match clock waits with it
+		# (keys pressed meanwhile don't carry over: a Space now must not jump you off at the edge)
+		for k in pending_input: pending_input[k] = false
 		skydrop.tick_plan(dt)
 		if String(opts.get("map_demo", "")) == "plan" and player and skydrop.clock > 1.2 and not has_meta("map_demo_done"):
 			# test: your ping on a vault, beside the bots' picks
@@ -3187,13 +3189,19 @@ func step(dt: float) -> void:
 				squad_ping(x, world.free_spot_near(x.pos + Vector3(14, 0, -6), [], 1.0, 0.5, 12.0)); break
 		squad_ping(player, player.pos + Vector3(-20, 0, 12))
 		hud.open_map(false)
-	if opts.get("drop_demo", false) and player and not ship.is_empty():
+	if opts.has("drop_demo") and player and not ship.is_empty():
 		# test: skip ahead to the middle of the ride, the leader jumps and steers; the squad follows
+		var follow: bool = String(opts["drop_demo"]) == "follow"     # (a squadmate leads, you follow)
 		if not has_meta("drop_demo_t"):
 			set_meta("drop_demo_t", true)
 			time = float(ship["dur"]) * 0.5 - 2.0
+			if follow and skydrop: skydrop.pass_lead(player)
 		if player.riding and time > float(ship["dur"]) * 0.5 - 1.0:
-			ship_jump(player)
+			if follow:
+				var ld := skydrop.leader(player.team)
+				if ld and ld.riding: ship_jump(ld)
+			else:
+				ship_jump(player)
 		if player.dropping:
 			player.inp["move"] = Vector2(0.8, -0.6).normalized() if fmod(time, 6.0) < 3.0 else Vector2(0.3, 1.0).normalized()
 	if opts.get("truce_demo", false) and truce:

@@ -150,6 +150,7 @@ func _tick_acks() -> void:
 			var bh: Hunter = a["h"]
 			if is_instance_valid(bh) and not bh.out and m.truce:
 				m.truce.emote(bh, String(a["id"]))
+				events.append("reply %s %s" % [bh.pname, a["id"]])
 
 func _ping_of(h: Hunter) -> Vector3:
 	if h == null:

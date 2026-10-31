@@ -90,7 +90,8 @@ func _ready() -> void:
 		if a.begins_with("--plan-t="): opts["plan_t"] = float(a.substr(9))
 		if a == "--map-demo": opts["map_demo"] = "plan"          # the planning map, with pings
 		if a == "--map-mid-demo": opts["map_demo"] = "mid"; opts["no_drop"] = true    # the map mid-match, some spawns scouted
-		if a == "--drop-demo": opts["drop_demo"] = true; opts["plan_t"] = 0.6          # the squad gliding in formation
+		if a == "--drop-demo": opts["drop_demo"] = "lead"; opts["plan_t"] = 0.6        # the squad gliding in formation behind you
+		if a == "--drop-follow-demo": opts["drop_demo"] = "follow"; opts["plan_t"] = 0.6   # ... behind a squadmate
 	if "--check" in args:
 		var CheckT = load("res://tools/check.gd")
 		var bad := 0
@@ -1797,6 +1798,34 @@ func _drop_check() -> void:
 		m.step(Match.DT); t += Match.DT
 	print("DCHECK landed after %.1fs more; squad on ground %s" % [t, str(m.hunters.filter(func(x): return x.team == P.team).map(func(x): return [x.pname, x.grounded, x.pos.snapped(Vector3(1, 1, 1))]))])
 	if m.hunters.any(func(x): return x.dropping or x.riding): ok = false; print("DCHECK FAIL someone never landed")
+	# on the ground: a ping from you sends your squad's bots there, and one answers
+	var bot: Hunter = mates[1] if mates.size() > 1 else mates[0]
+	for mb in m.mobs: mb.queue_free()
+	m.mobs.clear()
+	for o in m.hunters:
+		if o.team != P.team:
+			o.ctrl = "idle"; o.teleport(m.world.spawns[-1] + Vector3(0, 0, 0))     # (no fights in the way)
+	var ev0 := D.events.size()
+	var spot := bot.pos
+	for k in 40:
+		var q := m.world.free_spot_near(bot.pos + Vector3(randf_range(-10, 10), 0, randf_range(-10, 10)), [], 1.0, 0.5, 6.0)
+		if m.world.island_of(q.x, q.z) == m.world.island_of(bot.pos.x, bot.pos.z) and bot.flat_dist(q) > 6.0 and m.world.los(bot.pos, q, bot.pos.y + 1.0):
+			spot = q; break
+	spot.y = m.world.ground_at(spot.x, spot.z)
+	m.squad_ping(P, spot)
+	var d0 := bot.flat_dist(spot)
+	var went := false
+	var closest := d0
+	t = 0.0
+	while t < 6.0:
+		m.step(Match.DT); t += Match.DT
+		if String(bot.ai.get("goal_kind", "")) == "ping": went = true
+		closest = minf(closest, bot.flat_dist(spot))
+	var replies: Array = D.events.slice(ev0).filter(func(e): return String(e).begins_with("reply"))
+	print("DCHECK ground ping: %s headed there=%s, %.1fm -> got within %.1fm; replies %s" % [bot.pname, went, d0, closest, str(replies)])
+	if not went or closest > 4.0 or not replies.any(func(r): return String(r).ends_with("omw")): ok = false; print("DCHECK FAIL squad bots ignore pings")
+	m.unping(P)
+	if not m.my_ping().is_empty() or bot.ai.has("ping_goal"): ok = false; print("DCHECK FAIL right click didn't take the ping down")
 	# the spawns: the same candidates every match, a different live subset per seed
 	var layout := World.load_layout("skyreach")
 	var subsets := {}
