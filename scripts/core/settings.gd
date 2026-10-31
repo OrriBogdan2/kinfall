@@ -28,6 +28,7 @@ const ACTIONS := [
 	["interact", "Use, catch, revive, pet"], ["tonic", "Heal (tonic, or armor kit when health is full)"], ["scores", "Scoreboard"], ["emote", "Emote wheel (hold, in a match)"],
 	["map", "Full map (click to ping)"], ["pass_lead", "Pass the drop lead"], ["separate", "Separate from the drop"],
 	["play", "Play fetch with a kin"], ["talk", "Talk to a kin"], ["details", "A kin's details"], ["inventory", "Inventory"],
+	["build", "Build mode at home / decorate indoors"], ["rotate", "Turn a piece (build mode)"],
 ]
 
 var v: Dictionary = {}

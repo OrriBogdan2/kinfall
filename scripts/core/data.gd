@@ -356,12 +356,16 @@ const TIERS := [
 
 ## Home islands beyond the first one. Build a bridge to reach them. Rects are in home grid tiles.
 const ISLES := {
-	"orchard": {"name": "Orchard Isle", "cost": 100, "need": 1, "c": Vector2(60, 38), "r": Vector2(6.8, 5.6),
-		"bridge": [46, 38, 56, 39], "sign": Vector2(49.5, 36.8), "desc": "A sunny isle with room for a greenhouse."},
-	"meadow": {"name": "Kin Meadow", "cost": 140, "need": 2, "c": Vector2(12, 30), "r": Vector2(7.2, 6.2),
+	"orchard": {"name": "Orchard Isle", "cost": 100, "need": 1, "c": Vector2(69, 11), "r": Vector2(8.5, 6.5),
+		"bridge": [62, 14, 63, 29], "sign": Vector2(60.6, 29.4), "desc": "A sunny isle with room for a greenhouse."},
+	"meadow": {"name": "Kin Meadow", "cost": 140, "need": 2, "c": Vector2(10.5, 30.5), "r": Vector2(8.4, 7.2),
 		"bridge": [17, 30, 26, 31], "sign": Vector2(25.2, 29.0), "desc": "Open fields where kin love to play. Room for a cottage and a training yard."},
-	"summit": {"name": "Lookout Peak", "cost": 220, "need": 4, "c": Vector2(45, 9), "r": Vector2(7.6, 5.6),
+	"summit": {"name": "Lookout Peak", "cost": 220, "need": 4, "c": Vector2(45, 9), "r": Vector2(9.0, 6.5),
 		"bridge": [44, 12, 45, 24], "sign": Vector2(46.8, 23.6), "desc": "A high rock for a vault and a trophy hall."},
+	"grove": {"name": "Blossom Grove", "cost": 180, "need": 3, "c": Vector2(12, 53), "r": Vector2(8.5, 6.8),
+		"bridge": [17, 47, 34, 48], "sign": Vector2(34.6, 45.0), "desc": "A quiet grove with open ground to plant, decorate and lay out however you like."},
+	"pines": {"name": "Pine Hollow", "cost": 160, "need": 2, "c": Vector2(25, 11), "r": Vector2(8.0, 6.0),
+		"bridge": [28, 14, 29, 25], "sign": Vector2(30.6, 25.4), "desc": "A sheltered hollow of open ground: room for gardens, ponds and kin beds."},
 }
 
 ## Buildings you can buy for your islands. "rect" is the tile footprint [x0, z0, x1, z1].
@@ -370,7 +374,7 @@ const BUILDINGS := {
 		"desc": "Tune your glider. You glide 50% longer on expeditions."},
 	"cottage": {"name": "Kin Cottage", "isle": "main", "cost": 110, "rect": [27, 35, 29, 36],
 		"desc": "Kin who stay home rest here and gain 2 trust after every expedition."},
-	"greenhouse": {"name": "Greenhouse", "isle": "orchard", "cost": 150, "rect": [58, 34, 61, 36],
+	"greenhouse": {"name": "Greenhouse", "isle": "orchard", "cost": 150, "rect": [67, 7, 70, 9],
 		"desc": "Four more plots. Crops planted here grow twice as fast."},
 	"cottage2": {"name": "Meadow Cottage", "isle": "meadow", "cost": 140, "rect": [8, 26, 10, 27],
 		"desc": "Kin who stay home gain 2 more trust after every expedition."},

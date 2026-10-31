@@ -89,6 +89,8 @@ func _setup_input() -> void:
 	_key("details", [KEY_C])                  # at home: a kin's details
 	_key("whistle", [KEY_H])                  # at home: whistle, and your kin come running
 	_key("inventory", [KEY_I])                # your things
+	_key("build", [KEY_B])                    # at home: build mode (lay out the island); indoors: decorate
+	_key("rotate", [KEY_R])                   # build mode: turn what you're holding
 	_key("emote", [KEY_T])                    # in a match: hold for the emote wheel (truce, deal, no...); T talks to kin at home
 	_key("map", [KEY_M])                      # in a match: the full map (ping it with the mouse)
 	_key("pass_lead", [KEY_P])                # riding in / dropping: pass the drop lead to a squadmate
