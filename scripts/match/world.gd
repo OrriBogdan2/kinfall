@@ -43,6 +43,10 @@ var authored_portals: Array = []   # Vector2 tile spots from an authored layout,
 ## The ways out an authored layout places (see Exits): {kind: "dock" | "hatch" | "outpost", pos: Vector3,
 ## out: Vector2 (a dock's way out over the abyss, optional), walled: bool}. Empty: Exits works them out.
 var exit_defs: Array = []
+## Boss lairs (see Lairs): walled arenas with one gate, each holding a boss and its Rare Egg.
+## {id, name, boss, c: Vector2 (centre), half (tiles from the centre to the wall), gate ("n"/"s"/"e"/"w"),
+##  gate_tiles: Array[Vector2i], out: Vector2 (out through the gate), island, y (floor height), entry: Array}
+var lair_defs: Array = []
 ## The sky train's track, when the layout has one: {pts: PackedVector3Array (x, deck height, z) every
 ## TRAIN_STEP tiles round the loop, len, stations: [arc length], names: [String], spec: the layout's train}
 var train_route: Dictionary = {}
@@ -335,6 +339,8 @@ func generate(seed_val: int, size := 64, n_islands := 7) -> void:
 	_place_pads()
 	_place_updrafts()
 	_place_spots()
+	lair_defs.clear()
+	_place_lairs()
 	if bigmap:
 		_place_compounds()
 	_place_stairs()
@@ -349,7 +355,7 @@ func _place_compounds() -> void:
 	for pd in pads: keep.append(pd["pos"])
 	for ii in islands.size():
 		var cells: Array = islands[ii]["cells"]
-		if cells.size() < 260:
+		if cells.size() < 260 or islands[ii].get("lair", false):
 			continue
 		var poi := _poi(ii)
 		if poi == Vector3.INF:
@@ -1719,6 +1725,11 @@ func generate_authored(L: Dictionary, seed_val: int) -> void:
 	if L.has("train"):
 		_build_train(L["train"], neck)
 	_authored_blockers(defs, neck)
+	lair_defs.clear()
+	for LD in L.get("lairs", []):
+		var li: int = ids.get(String(LD.get("island", "")), -1)
+		if li >= 0:
+			_stamp_lair(LD, li)
 	# which rims can be caught: bridges and the authored arcs are sheer, the rest have a stone lip
 	for ii in islands.size():
 		var arcs: Array = islands[ii].get("sheer_arcs", [])
@@ -1815,6 +1826,7 @@ func generate_authored(L: Dictionary, seed_val: int) -> void:
 			exit_defs.append({"kind": ek[1], "at": _v2(ap), "out": Vector2(float(ap[2]), float(ap[3])) if (ap as Array).size() >= 4 else Vector2.ZERO,
 				"walled": (ap as Array).size() >= 3 and ek[1] == "outpost" and bool(ap[2])})
 	_place_spots()
+	_clear_lair_spots()
 	for ed in exit_defs:
 		var ea: Vector2 = ed["at"]
 		ed["pos"] = Vector3(floor(ea.x) + 0.5, ground_at(ea.x, ea.y), floor(ea.y) + 0.5)
@@ -2058,3 +2070,127 @@ func _wall_tiles(Wd: Dictionary) -> Array:
 				if gs.has(side2) and absi(z - mz) <= gw2 / 2: continue
 				out.append(Vector2i(xx, z))
 	return out
+
+# ------------------------------------------------------------------ boss lairs
+## Is this spot inside a lair's walls (pad: tiles of slack round the inside)?
+func lair_at(x: float, z: float, pad := 0.0) -> int:
+	for li in lair_defs.size():
+		var D: Dictionary = lair_defs[li]
+		var c: Vector2 = D["c"]; var hf := float(D["half"]) - 0.5 + pad
+		if absf(x - c.x) <= hf and absf(z - c.y) <= hf:
+			return li
+	return -1
+
+## Stamps a lair onto an island: the floor inside is levelled and cleared, a square of stone walls
+## goes round it with a three-wide gap on the gate side (Lairs seals the gap with a gate at match start).
+## D: {id, name, boss, at: [x, z], half, gate, entry}
+func _stamp_lair(D: Dictionary, ii: int) -> void:
+	var at := _v2(D.get("at", [0, 0]))
+	var cx := int(floor(at.x)); var cz := int(floor(at.y))
+	var hf := int(D.get("half", 6))
+	if not inb(cx, cz) or kind[idx(cx, cz)] == T_VOID:
+		return
+	var lv := int(level[idx(cx, cz)])
+	var gate := String(D.get("gate", "s"))
+	var out: Vector2 = {"n": Vector2(0, -1), "s": Vector2(0, 1), "e": Vector2(1, 0), "w": Vector2(-1, 0)}[gate]
+	var gate_tiles: Array = []
+	for z in range(cz - hf, cz + hf + 1):
+		for x in range(cx - hf, cx + hf + 1):
+			if not inb(x, z):
+				continue
+			var i := idx(x, z)
+			if kind[i] == T_VOID:
+				continue
+			# the floor: one level, nothing growing or standing on it
+			level[i] = lv
+			kind[i] = T_GROUND
+			bush.erase(i); props.erase(i); walls.erase(i); paint.erase(i)
+			var rim := x == cx - hf or x == cx + hf or z == cz - hf or z == cz + hf
+			if not rim:
+				paint[i] = Color("8a8378") if (x + z) % 2 == 0 else Color("7f786e")    # worn flagstones
+				continue
+			var side := "n" if z == cz - hf else ("s" if z == cz + hf else ("w" if x == cx - hf else "e"))
+			var along := x - cx if side in ["n", "s"] else z - cz
+			if side == gate and absi(along) <= 1 and not ((x == cx - hf or x == cx + hf) and (z == cz - hf or z == cz + hf)):
+				gate_tiles.append(Vector2i(x, z))
+				paint[i] = Color("b8a77a")
+				continue
+			kind[i] = T_BLOCK
+			walls[i] = true
+	# the approach: no rocks in the way of the gate, and a stone path out to where the dial stands
+	for k in range(1, 5):
+		for s2 in range(-2, 3):
+			var q := Vector2i(cx, cz) + Vector2i(out * (hf + k)) + Vector2i(Vector2(-out.y, out.x) * s2)
+			if inb(q.x, q.y) and kind[idx(q.x, q.y)] == T_BLOCK and not walls.has(idx(q.x, q.y)):
+				kind[idx(q.x, q.y)] = T_GROUND
+			if inb(q.x, q.y) and kind[idx(q.x, q.y)] == T_GROUND and absi(s2) <= 1:
+				paint[idx(q.x, q.y)] = Color("b8a77a")
+				bush.erase(idx(q.x, q.y))
+	var c := Vector2(cx + 0.5, cz + 0.5)
+	islands[ii]["lair"] = true
+	lair_defs.append({"id": String(D.get("id", "lair%d" % lair_defs.size())), "name": String(D.get("name", "Boss Lair")),
+		"boss": String(D.get("boss", "colossus")), "c": c, "half": hf, "gate": gate, "gate_tiles": gate_tiles, "out": out,
+		"island": ii, "y": lv * LEVEL, "entry": D.get("entry", ["dial"])})
+	labels.append({"name": String(D.get("name", "Boss Lair")), "pos": Vector3(c.x, 0, c.y), "kind": "lair", "role": "lair", "height": lv * LEVEL})
+
+## Nothing else is placed inside a lair: no spawns, chests, camps, wild kin or loot lying about.
+func _clear_lair_spots() -> void:
+	if lair_defs.is_empty():
+		return
+	var outside := func(p: Vector3) -> bool: return lair_at(p.x, p.z, 1.5) < 0
+	spawns = spawns.filter(outside)
+	portal_spots = portal_spots.filter(outside)
+	wild_spots = wild_spots.filter(outside)
+	shrine_spots = shrine_spots.filter(outside)
+	weapon_spots = weapon_spots.filter(outside)
+	chest_spots = chest_spots.filter(func(c): return outside.call(c["pos"]))
+	camp_spots = camp_spots.filter(func(c): return outside.call(c["pos"]))
+	break_spots = break_spots.filter(func(c): return outside.call(c["pos"]))
+
+## Generated maps: one lair (two on the big map) on the largest outer islands, set where the island's
+## point of interest was, each a different boss.
+func _place_lairs() -> void:
+	var want := 2 if w >= 180 else (1 if w >= 96 else 0)
+	if want == 0:
+		return
+	var cand: Array = range(1, islands.size()).filter(func(ii): return String(islands[ii]["role"]) in ["camp", "nest", "grove", "shrine"])
+	cand.sort_custom(func(a, b): return islands[a]["cells"].size() > islands[b]["cells"].size())
+	var hf := 6 if w >= 180 else 5
+	var used: Array = []
+	var b0 := rng.randi_range(0, Data.BOSSES.size() - 1)
+	for ii in cand:
+		if lair_defs.size() >= want:
+			break
+		# the roomiest spot on the island: as far from its rim as it gets, near its middle
+		var best := Vector2i(-1, -1); var bs := -1e9
+		var cc: Vector2 = islands[ii]["c"]
+		for cell in islands[ii]["cells"]:
+			if kind[idx(cell.x, cell.y)] == T_VOID:
+				continue
+			var ed := edge_dist(cell.x, cell.y, 9)
+			if ed < hf + 1:
+				continue
+			var sc := float(ed) * 2.0 - Vector2(cell.x + 0.5, cell.y + 0.5).distance_to(cc)
+			if sc > bs: bs = sc; best = cell
+		if best.x < 0:
+			continue
+		# no pads, updrafts or spawns inside, and the gate faces the map's middle
+		var clash := false
+		for pd in pads:
+			if absf(pd["pos"].x - best.x - 0.5) <= hf + 2 and absf(pd["pos"].z - best.y - 0.5) <= hf + 2: clash = true
+		for u in updrafts:
+			if absf(u["pos"].x - best.x - 0.5) <= hf + 2 and absf(u["pos"].z - best.y - 0.5) <= hf + 2: clash = true
+		var ground_n := 0
+		for z in range(best.y - hf, best.y + hf + 1):
+			for x in range(best.x - hf, best.x + hf + 1):
+				if inb(x, z) and kind[idx(x, z)] != T_VOID and island[idx(x, z)] == ii: ground_n += 1
+		if clash or ground_n < int((2 * hf + 1) * (2 * hf + 1) * 0.86):
+			continue
+		var to_mid := Vector2(w / 2.0 - best.x, h / 2.0 - best.y)
+		var gate := ("e" if to_mid.x > 0 else "w") if absf(to_mid.x) > absf(to_mid.y) else ("s" if to_mid.y > 0 else "n")
+		var boss: String = Data.BOSSES[(b0 + lair_defs.size()) % Data.BOSSES.size()]
+		var nm: String = {"colossus": "The Sunken Forge", "serpent": "Stormcrown Eyrie", "brood": "The Thornhive"}.get(boss, "Boss Lair")
+		var entry: Array = {"colossus": ["dial"], "serpent": ["dial", "runes"], "brood": ["dial", "wards"]}.get(boss, ["dial"])
+		_stamp_lair({"id": "lair%d" % lair_defs.size(), "name": nm, "boss": boss, "at": [best.x, best.y], "half": hf, "gate": gate, "entry": entry}, ii)
+		used.append(ii)
+	_clear_lair_spots()
