@@ -321,7 +321,7 @@ func _build_shafts() -> void:
 		mi.mesh = q
 		var m := ShaderMaterial.new(); m.shader = sh
 		m.set_shader_parameter("seed", rng.randf() * 10.0)
-		m.set_shader_parameter("intensity", rng.randf_range(0.18, 0.32))
+		m.set_shader_parameter("intensity", rng.randf_range(0.45, 0.7))
 		m.set_shader_parameter("color", Color("ffd2a0").lerp(Color("ffb0c8"), rng.randf() * 0.5))
 		mi.material_override = m
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
