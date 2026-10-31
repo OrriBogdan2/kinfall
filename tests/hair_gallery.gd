@@ -4,36 +4,76 @@ extends Node3D
 ## headless --hair-check: every race x style must grow something visible on the head.
 
 func _ready() -> void:
+	var args := OS.get_cmdline_user_args()
+	if "--class-lineup" in args:
+		_class_lineup()
+		return
 	var env := WorldEnvironment.new()
 	env.environment = Look.environment({"top": Color("2a4a8a"), "mid": Color("6a8ad0"), "horizon": Color("ffd2a8"), "stars": 0.0})
 	add_child(env)
 	Look.lights(self, Color("fff1dc"), 1.0, Vector3(-35, -30, 0), 30.0)
-	var hc := 3
-	for a in OS.get_cmdline_user_args():
-		if a.begins_with("--hair-col="): hc = int(a.substr(11))
+	var back := "--hair-back" in args          # look at them from behind instead
 	var cols := 0
 	for r in Models.RACES.size():
 		var styles := Models.hair_styles(r)
 		cols = maxi(cols, styles.size())
 		for i in styles.size():
-			var lk := {"race": r, "hair": i, "hair_v": 2, "hair_col": (hc + r * 5) % Models.LOOK_HAIR.size(), "skin": int(Models.RACES[r]["skin"]) if r > 0 else 1,
+			var lk := {"race": r, "hair": i, "hair_v": 2, "hair_col": [0, 5, 3, 6, 10, 7, 12, 1, 13, 8, 2, 11, 14, 9][i % 14], "skin": int(Models.RACES[r]["skin"]) if r > 0 else 1,
 				"gender": (i + r) % 2, "face": 0, "body": 1, "outfit": 2}
 			var h := Models.hunter("medium", Data.TEAM_COLORS[0], "rifle", "bare", lk)
-			h.position = Vector3(i * 0.68, -r * 0.92, r * 1.2)
-			h.rotation.y = PI + 0.55
+			# heads only: everything below the neck is hidden so the rows can sit close together
+			var torso: Node3D = h.get_node("Rig/Torso")
+			for ch in torso.get_children():
+				if ch.name != "HeadPivot" and ch is Node3D: (ch as Node3D).visible = false
+			(h.get_node("Rig/Legs") as Node3D).visible = false
 			(h.get_node("TeamRing") as Node3D).visible = false
-			var gun := h.get_node_or_null("Rig/Torso/Aim/Gun")
-			if gun: (gun as Node3D).visible = false
+			h.scale = Vector3.ONE * 1.6
+			h.position = Vector3(i * 1.05, -r * 1.12 - 1.9, 0)
+			h.rotation.y = (0.6 if back else PI + 0.55)
 			add_child(h)
 			var l := Label3D.new()
 			l.text = "%s · %s" % [Models.LOOK_RACES[r], styles[i]]
-			l.font_size = 20; l.pixel_size = 0.0022; l.outline_size = 6
-			l.position = h.position + Vector3(0, 0.98, 0.5)
+			l.font_size = 20; l.pixel_size = 0.0028; l.outline_size = 6
+			l.position = Vector3(i * 1.05, -r * 1.12 - 0.12, 0.8)
 			add_child(l)
 	var cam := Camera3D.new()
 	cam.projection = Camera3D.PROJECTION_ORTHOGONAL
-	cam.size = 5.9
-	cam.position = Vector3((cols - 1) * 0.34, -1.05, 20.0)
+	cam.size = 7.0
+	cam.position = Vector3((cols - 1) * 0.525, -2.9, 20.0)
+	add_child(cam)
+	cam.make_current()
+
+## The three classes on two races, from the match camera: who is a heavy should be obvious.
+func _class_lineup() -> void:
+	var env := WorldEnvironment.new()
+	env.environment = Look.environment({"top": Color("2a4a8a"), "mid": Color("6a8ad0"), "horizon": Color("ffd2a8"), "stars": 0.0})
+	add_child(env)
+	Look.lights(self, Color("fff1dc"), 1.0, Vector3(-52, -35, 0), 40.0)
+	var ground := MeshInstance3D.new()
+	var pm := PlaneMesh.new(); pm.size = Vector2(40, 30)
+	ground.mesh = pm
+	ground.material_override = Models.toon(Color("6f9a4a"), false)
+	add_child(ground)
+	var rows := [[2, {"light": "smg", "medium": "rifle", "heavy": "shotgun"}], [1, {"light": "sniper", "medium": "longsword", "heavy": "minigun"}]]
+	for ri in rows.size():
+		var race: int = rows[ri][0]
+		var ws: Dictionary = rows[ri][1]
+		var ci := 0
+		for cls in ["light", "medium", "heavy"]:
+			var lk := {"race": race, "hair": 1, "hair_v": 2, "hair_col": 3 + ri * 4, "skin": int(Models.RACES[race]["skin"]), "gender": ci % 2, "outfit": 3 + ri}
+			var h := Models.hunter(cls, Data.TEAM_COLORS[ri], String(ws[cls]), "", lk)
+			h.position = Vector3((ci - 1) * 2.4, 0, (ri - 0.5) * 2.6)
+			h.rotation.y = PI * 0.82 + ci * 0.25
+			add_child(h)
+			var l := Label3D.new()
+			l.text = "%s · %s" % [cls.capitalize(), Models.LOOK_RACES[race]]
+			l.font_size = 40; l.pixel_size = 0.006; l.outline_size = 10
+			l.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+			l.position = h.position + Vector3(0, 0.05, 1.0)
+			add_child(l)
+			ci += 1
+	var cam := Camera3D.new()
+	cam.position = Vector3(0, 9.0, 7.5); cam.rotation = Vector3(-0.85, 0, 0); cam.fov = 50
 	add_child(cam)
 	cam.make_current()
 
