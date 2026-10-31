@@ -471,11 +471,6 @@ func _choose(m: Match, h: Hunter) -> void:
 			if h.flat_dist(fh) > 3.0: goal = fh.pos; gk = "follow"
 		else:
 			a.erase("follow")
-	# boss lairs: a dropped Rare Egg, or (bolder bots) a lair to open and its boss to fight
-	if goal == Vector3.INF and m.lairs and not m.lairs.list.is_empty():
-		var lg: Array = m.lairs.bot_goal(h, time_left < 170.0 or a.get("leave", false))
-		if not lg.is_empty():
-			goal = lg[0]; gk = String(lg[1])
 	# a squadmate pinged somewhere: go and have a look
 	if goal == Vector3.INF and a.has("ping_goal"):
 		var pg: Dictionary = a["ping_goal"]
@@ -484,6 +479,11 @@ func _choose(m: Match, h: Hunter) -> void:
 			goal = pp; gk = "ping"
 		else:
 			a.erase("ping_goal")
+	# boss lairs: a dropped Rare Egg, or (bolder bots) a lair to open and its boss to fight
+	if goal == Vector3.INF and m.lairs and not m.lairs.list.is_empty():
+		var lg: Array = m.lairs.bot_goal(h, time_left < 170.0 or a.get("leave", false))
+		if not lg.is_empty():
+			goal = lg[0]; gk = String(lg[1])
 	if goal == Vector3.INF and m.exits and not m.exits.list.is_empty():
 		# heading home: late in the match, with a good haul, or just because
 		if not a.get("leave", false) and randf() < 0.0015:

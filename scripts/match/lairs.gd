@@ -689,18 +689,28 @@ func _tick_seal(L: Dictionary, dt: float) -> void:
 	for e in bodies:
 		if not inside(L, e.pos, 0.25):
 			continue
+		# hunters still dropping in from the skyship, and anyone flying high over the walls, pass over;
+		# whoever comes down inside (or walks, glides or is thrown in low) is put back out
+		if e is Hunter and (e as Hunter).dropping:
+			continue
+		if not e.grounded and e.pos.y > float(L["c"].y) + 3.6:
+			continue
 		# out the nearest side, a little past the wall
 		var dx: float = e.pos.x - c.x; var dz: float = e.pos.z - c.z
 		var push := Vector2(signf(dx) if dx != 0.0 else 1.0, 0) if absf(dx) > absf(dz) else Vector2(0, signf(dz) if dz != 0.0 else 1.0)
 		var to: Vector3 = e.pos
 		if push.x != 0.0: to.x = c.x + push.x * (hf + 1.6)
 		else: to.z = c.z + push.y * (hf + 1.6)
-		if m.world.is_void(to.x, to.z) or m.world.is_block(to.x, to.z):
-			var g := Vector3(L["dial"].x, 0, L["dial"].z)
-			to = Vector3(g.x, to.y, g.z)
-		e.pos.x = to.x; e.pos.z = to.z; e.prev = e.pos
-		e.vel = Vector3(push.x * 4.0, maxf(e.vel.y, 3.0), push.y * 4.0)
-		e.grounded = false
+		to = m.world.free_spot_near(to, [], 0.6, e.r, 4.0)
+		if m.world.is_void(to.x, to.z) or m.world.is_block(to.x, to.z) or inside(L, to, 0.6):
+			to = L["dial"]
+		e.pos = Vector3(to.x, maxf(e.pos.y, m.world.ground_at(to.x, to.z)), to.z); e.prev = e.pos
+		# set down just outside, still: a shove here could carry someone off the island's edge
+		if e.grounded or e.pos.y <= m.world.ground_at(to.x, to.z) + 0.05:
+			e.vel = Vector3.ZERO
+			e.pos.y = m.world.ground_at(to.x, to.z); e.prev = e.pos
+		else:
+			e.vel = Vector3(push.x * 2.0, maxf(e.vel.y, 1.5), push.y * 2.0)
 		if e is Kin and (e as Kin).state == "flying": (e as Kin).state = "returning"
 		m.fx.burst(e.pos + Vector3(0, 1.0, 0), color_of(L), 12, 3.0, 0.4, -2.0)
 		if e == m.player and m.hud and m.time - float(_told.get("seal", -9.0)) > 3.0:
