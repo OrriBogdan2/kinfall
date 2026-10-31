@@ -2093,8 +2093,9 @@ func _draw_overhead(p: Hunter) -> void:
 	if cam.is_position_behind(at) or p.downed or p.riding:
 		return
 	var sp := cam.unproject_position(at)
-	if not sp.is_finite():
-		return      # a degenerate camera (headless, or mid-teleport) gives NaN and the pips can't triangulate
+	var vr: Rect2 = cam.get_viewport().get_visible_rect().grow(200.0)
+	if not sp.is_finite() or not vr.has_point(sp):
+		return      # off screen, or a degenerate camera (headless, mid-teleport): huge/NaN coords can't triangulate
 	var w := 84.0
 	var frac := clampf(p.hp / p.max_hp, 0.0, 1.0)
 	head_hp = maxf(frac, lerpf(head_hp, frac, 0.06))
