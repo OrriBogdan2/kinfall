@@ -185,7 +185,9 @@ func _info_card() -> PanelContainer:
 	for mid in Mutations.of(rec):
 		var mr := UI.hbox(8)
 		mr.add_child(Mutations.Badge.new(mid, 20.0))
-		mr.add_child(UI.label("%s! %s" % [Mutations.name_of(mid), Mutations.perk_text(mid)], 15, Mutations.col_of(mid)))
+		var mtl := UI.label("%s! %s" % [Mutations.name_of(mid), Mutations.perk_text(mid)], 15, Mutations.col_of(mid))
+		mtl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		mr.add_child(mtl)
 		v.add_child(mr)
 	var desc := String(sp.get("desc", ""))
 	if desc != "":

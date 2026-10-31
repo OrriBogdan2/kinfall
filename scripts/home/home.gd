@@ -2193,21 +2193,25 @@ func _open_kin(rec: Dictionary) -> void:
 	var col: Color = Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"]
 	var rare_pre := Mutations.prefix(rec)
 	var v := _new_panel("%s the %s%s%s" % [rec["name"], "shimmering " if rec.get("shimmer", false) else "", (rare_pre + " ") if rare_pre != "" else "", Evo.form_name(rec)], 920)
+	var rare_box: VBoxContainer = null
 	if Mutations.special(rec) or KinBox.is_boxed(rec):
-		# what's rare about it, and whether it's out or asleep in the Kin Burrow
-		var rr := UI.hbox(8)
-		if rec.get("shimmer", false):
-			rr.add_child(Mutations.Badge.new("shimmer", 20.0))
-			rr.add_child(UI.label("Shimmering", 14, Color("fff0a0"), UI.semi))
-		for mid in Mutations.of(rec):
-			rr.add_child(Mutations.Badge.new(mid, 20.0))
-			var ml := UI.label("%s  (%s)" % [Mutations.name_of(mid), Mutations.perk_text(mid)], 14, Mutations.col_of(mid), UI.semi)
-			ml.tooltip_text = String(Mutations.info(mid).get("desc", ""))
+		# what's rare about it, and whether it's out or asleep in the Kin Burrow (top of the third column)
+		rare_box = UI.vbox(3)
+		if Mutations.special(rec): rare_box.add_child(UI.section("Rare", Color("fff0a0")))
+		var rare_rows: Array = (["shimmer"] if rec.get("shimmer", false) else []) + Mutations.of(rec)
+		for mid in rare_rows:
+			var rr := UI.hbox(6)
+			rr.add_child(Mutations.Badge.new(mid, 18.0))
+			var ml := UI.label("Shimmering: rare colours" if mid == "shimmer" else "%s: %s" % [Mutations.name_of(mid), Mutations.perk_text(mid)], 13, Color("fff0a0") if mid == "shimmer" else Mutations.col_of(mid))
+			ml.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			ml.custom_minimum_size.x = 260
+			ml.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			ml.tooltip_text = "" if mid == "shimmer" else String(Mutations.info(mid).get("desc", ""))
 			ml.mouse_filter = Control.MOUSE_FILTER_PASS
 			rr.add_child(ml)
+			rare_box.add_child(rr)
 		if KinBox.is_boxed(rec):
-			rr.add_child(UI.label("Asleep in the Kin Burrow (%s)" % KinBox.page_name(KinBox.page_of(rec)), 14, Color("cdb8ff")))
-		v.add_child(rr)
+			rare_box.add_child(UI.label("Asleep in the Kin Burrow (%s)" % KinBox.page_name(KinBox.page_of(rec)), 13, Color("cdb8ff")))
 	var cols := UI.hbox(22)
 	v.add_child(cols)
 	var row := func(parent: Control, label_txt: String, frac: float, c: Color, right := "", lw := 64.0, bw := 130.0) -> void:
@@ -2256,6 +2260,7 @@ func _open_kin(rec: Dictionary) -> void:
 	cols.add_child(c2)
 	# how it's growing, and what you know about it
 	var c3 := UI.vbox(5); c3.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if rare_box: c3.add_child(rare_box)
 	var lead := Evo.leading(rec)
 	var lv := int(rec["level"])
 	var next_form := (lv / 4 + 1) * 4
@@ -3303,6 +3308,10 @@ func _build_burrow() -> void:
 func _refresh_burrow() -> void:
 	KinBurrow.set_sleepers(burrow_node, KinBox.boxed().size())
 
+## The Kin Box (Kin Burrow) screen, for menus and shortcuts (the hub bar's Kin button).
+func open_kin_box() -> void:
+	if visit.is_empty(): _open_burrow()
+
 ## The Kin Burrow screen: the farm, the box pages and the kin you picked.
 func _open_burrow() -> void:
 	kinbox_view = KinBoxView.open(self)
@@ -3972,7 +3981,9 @@ func _name_baby(baby: Dictionary) -> void:
 	for mid in Mutations.of(baby):
 		var mr := UI.hbox(8)
 		mr.add_child(Mutations.Badge.new(mid, 20.0))
-		mr.add_child(UI.label("%s: %s" % [Mutations.name_of(mid), Mutations.perk_text(mid)], 14, Mutations.col_of(mid)))
+		var mtl := UI.label("%s: %s" % [Mutations.name_of(mid), Mutations.perk_text(mid)], 14, Mutations.col_of(mid))
+		mtl.autowrap_mode = TextServer.AUTOWRAP_OFF
+		mr.add_child(mtl)
 		v.add_child(mr)
 	if KinBox.is_boxed(baby):
 		var bl := UI.label("Sent to the Kin Burrow (%s): you already have a %s out on the farm. Swap it out any time." % [KinBox.page_name(KinBox.page_of(baby)), sp["name"]] if KinBox.dup_on_farm(baby) else "Sent to the Kin Burrow (%s): the farm is full." % KinBox.page_name(KinBox.page_of(baby)), 14, Color("cdb8ff"))

@@ -8,7 +8,7 @@ extends RefCounted
 ## Built from the UI helpers inside the home screen's panel, so it takes the game's menu style.
 
 const COLS := 6
-const CELL := Vector2(76, 84)
+const CELL := Vector2(68, 76)
 const FARM_COLS := 2
 
 static var page := 0
@@ -42,95 +42,106 @@ func _tree() -> SceneTree:
 	return home.get_tree() if home and home.is_inside_tree() else null
 
 func _build() -> void:
-	v = home._new_panel("Kin Burrow", 1190, true)
-	v.add_theme_constant_override("separation", 10)
-	# the toolbar: how full things are, search, filter, sort
-	var top := UI.hbox(10)
-	summary = UI.label("", 14, UI.MUTED)
-	summary.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	summary.autowrap_mode = TextServer.AUTOWRAP_OFF
-	top.add_child(summary)
+	v = home._new_panel("Kin Burrow", 1090, true)
+	v.add_theme_constant_override("separation", 8)
+	var cols := UI.hbox(14)
+	v.add_child(cols)
+	# the farm: who's out, room left, and the cottage expansion
+	var fc := UI.card(Color(0.1, 0.13, 0.1, 0.85), 10, 12)
+	UI.set_card_border(fc, Color(UI.GOOD, 0.3), 1)
+	fc.custom_minimum_size.x = FARM_COLS * CELL.x + 30
+	fc.set_drag_forwarding(Callable(), _can_drop, func(_p, d): _drop_on(d, "farm", null))
+	farm_box = UI.vbox(6)
+	fc.add_child(farm_box)
+	cols.add_child(fc)
+	# the box pages: name, page tabs, the grid
+	var bc := UI.vbox(6)
+	cols.add_child(bc)
+	name_row = UI.hbox(6)
+	bc.add_child(name_row)
+	var ph := UI.hbox(4)
+	ph.add_child(UI.button("‹", func(): page = (page - 1 + KinBox.PAGES) % KinBox.PAGES; renaming = false; refresh(), 34))
+	tabs = UI.hbox(3)
+	tabs.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ph.add_child(tabs)
+	ph.add_child(UI.button("›", func(): page = (page + 1) % KinBox.PAGES; renaming = false; refresh(), 34))
+	bc.add_child(ph)
+	var gc := UI.card(Color(0.07, 0.07, 0.12, 0.9), 8, 12)
+	UI.set_card_border(gc, Color(Color("bfa6ff"), 0.25), 1)
+	grid = GridContainer.new()
+	grid.columns = COLS
+	grid.add_theme_constant_override("h_separation", 5); grid.add_theme_constant_override("v_separation", 5)
+	gc.add_child(grid)
+	bc.add_child(gc)
+	# the right side: find and sort, then the kin you picked
+	var rc := UI.vbox(6)
+	rc.custom_minimum_size.x = 320
+	rc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	cols.add_child(rc)
 	var search := LineEdit.new()
 	search.placeholder_text = "Search a name or kind"
 	search.text = query
-	search.custom_minimum_size = Vector2(210, 0)
 	search.clear_button_enabled = true
 	search.text_changed.connect(func(t: String): query = t; refresh())
-	top.add_child(search)
+	rc.add_child(search)
+	var fr := UI.hbox(6)
 	var fo := OptionButton.new()
-	var fopts: Array = [["all", "All kin"], ["special", "Shimmer or mutated"], ["shimmer", "Shimmering"], ["mutated", "Any mutation"]]
+	var fopts: Array = [["all", "All kin"], ["special", "Any rare"], ["shimmer", "Shimmering"], ["mutated", "Any mutation"]]
 	for mid in Mutations.ids(): fopts.append([mid, Mutations.name_of(mid)])
 	for spk in Data.KIN:
-		if not Data.KIN[spk].get("rare", false) or KinBox.boxed().any(func(r): return String(r["species"]) == spk) or KinBox.farm().any(func(r): return String(r["species"]) == spk):
+		if not Data.KIN[spk].get("rare", false) or (Save.d["roster"] as Array).any(func(r): return String(r["species"]) == spk):
 			fopts.append([spk, String(Data.KIN[spk]["name"])])
 	for i in fopts.size():
 		fo.add_item(String(fopts[i][1]), i)
 		fo.set_item_metadata(i, fopts[i][0])
 		if String(fopts[i][0]) == filter: fo.select(i)
 	fo.item_selected.connect(func(i: int): filter = String(fo.get_item_metadata(i)); refresh())
-	fo.tooltip_text = "Show only some kin (the rest dim)"
-	top.add_child(fo)
+	fo.tooltip_text = "Show only some kin (the rest dim; page tabs count the matches)"
+	fo.fit_to_longest_item = false
+	fo.clip_text = true
+	fo.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	fo.custom_minimum_size.x = 120
+	fr.add_child(fo)
 	var so := OptionButton.new()
 	for i in KinBox.SORTS.size():
 		if String(KinBox.SORTS[i][0]) == "slot": continue
-		so.add_item("Sort: " + String(KinBox.SORTS[i][1]))
+		so.add_item("By " + String(KinBox.SORTS[i][1]).to_lower())
 		so.set_item_metadata(so.item_count - 1, KinBox.SORTS[i][0])
 		if String(KinBox.SORTS[i][0]) == sort_key: so.select(so.item_count - 1)
 	so.item_selected.connect(func(i: int): sort_key = String(so.get_item_metadata(i)))
-	top.add_child(so)
+	so.tooltip_text = "The order Sort uses"
+	so.fit_to_longest_item = false
+	so.clip_text = true
+	so.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	so.custom_minimum_size.x = 120
+	fr.add_child(so)
+	rc.add_child(fr)
+	var sr := UI.hbox(6)
 	var sb := UI.button("Sort this box", func():
 		KinBox.sort_page(page, sort_key)
-		_done("Sorted %s by %s" % [KinBox.page_name(page), _sort_name()]), 130)
+		_done("Sorted %s by %s" % [KinBox.page_name(page), _sort_name()]))
 	sb.tooltip_text = "Lay out this page's kin in that order"
-	top.add_child(sb)
-	var sa := UI.button("Sort all", func():
+	sb.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sr.add_child(sb)
+	var sa := UI.button("Sort every box", func():
 		KinBox.sort_all(sort_key)
 		page = 0
-		_done("Every box sorted by %s, from the first page" % _sort_name()), 90)
+		_done("Every box sorted by %s, from the first page" % _sort_name()))
 	sa.tooltip_text = "Lay out every boxed kin in that order, filling pages from the first"
-	top.add_child(sa)
-	v.add_child(top)
-	# the three columns
-	var cols := UI.hbox(16)
-	v.add_child(cols)
-	# farm
-	var fc := UI.card(Color(0.1, 0.13, 0.1, 0.85), 10, 12)
-	UI.set_card_border(fc, Color(UI.GOOD, 0.3), 1)
-	fc.custom_minimum_size.x = FARM_COLS * CELL.x + 34
-	fc.set_drag_forwarding(Callable(), _can_drop, func(_p, d): _drop_on(d, "farm", null))
-	farm_box = UI.vbox(6)
-	fc.add_child(farm_box)
-	cols.add_child(fc)
-	# the box pages
-	var bc := UI.vbox(8)
-	cols.add_child(bc)
-	var ph := UI.hbox(8)
-	ph.add_child(UI.button("‹", func(): page = (page - 1 + KinBox.PAGES) % KinBox.PAGES; renaming = false; refresh(), 40))
-	name_row = UI.hbox(6)
-	name_row.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	name_row.alignment = BoxContainer.ALIGNMENT_CENTER
-	ph.add_child(name_row)
-	ph.add_child(UI.button("›", func(): page = (page + 1) % KinBox.PAGES; renaming = false; refresh(), 40))
-	bc.add_child(ph)
-	tabs = UI.hbox(4)
-	bc.add_child(tabs)
-	var gc := UI.card(Color(0.07, 0.07, 0.12, 0.9), 8, 12)
-	UI.set_card_border(gc, Color(Color("bfa6ff"), 0.25), 1)
-	grid = GridContainer.new()
-	grid.columns = COLS
-	grid.add_theme_constant_override("h_separation", 6); grid.add_theme_constant_override("v_separation", 6)
-	gc.add_child(grid)
-	bc.add_child(gc)
-	# the kin you picked
-	var dc := UI.card(UI.CARD, 14, 12)
-	dc.custom_minimum_size.x = 300
-	dc.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	detail = UI.vbox(7)
+	sa.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	sr.add_child(sa)
+	rc.add_child(sr)
+	msg = UI.label("", 13, UI.GOLD)
+	msg.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	msg.custom_minimum_size.x = 300
+	msg.visible = false
+	rc.add_child(msg)
+	var dc := UI.card(UI.CARD, 12, 12)
+	dc.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	detail = UI.vbox(6)
 	dc.add_child(detail)
-	cols.add_child(dc)
-	msg = UI.label("", 14, UI.GOLD)
-	msg.autowrap_mode = TextServer.AUTOWRAP_OFF
-	v.add_child(msg)
+	rc.add_child(dc)
+	summary = msg      # (the old summary line now lives in the farm and box headers)
 	refresh()
 
 func _sort_name() -> String:
@@ -141,13 +152,14 @@ func _sort_name() -> String:
 func _say(t: String, col := UI.GOLD) -> void:
 	if not is_instance_valid(msg): return
 	msg.text = t
+	msg.visible = t != ""
 	msg.add_theme_color_override("font_color", col)
 	_msg_t += 1
 	var mine := _msg_t
 	var tr := _tree()
 	if tr:
 		tr.create_timer(5.0).timeout.connect(func():
-			if mine == _msg_t and is_instance_valid(msg): msg.text = "")
+			if mine == _msg_t and is_instance_valid(msg): msg.text = ""; msg.visible = false)
 
 func _done(t: String) -> void:
 	Save.save_game()
@@ -167,7 +179,6 @@ func refresh() -> void:
 		return
 	var fk := KinBox.farm()
 	var bk := KinBox.boxed()
-	summary.text = "On the farm %d/%d   ·   In the burrow %d/%d   ·   kin in the burrow sleep: no food, no care" % [fk.size(), KinBox.farm_cap(), bk.size(), KinBox.capacity()]
 	if not sel.is_empty() and Save.kin(sel).is_empty(): sel = ""
 	_build_farm(fk)
 	_build_tabs(bk)
@@ -214,8 +225,10 @@ func _build_tabs(bk: Array) -> void:
 		if _searching():
 			hits = bk.filter(func(r): return KinBox.page_of(r) == p and KinBox.matches(r, query, filter)).size()
 		var pp: int = p
-		var t := "%d" % (p + 1) + ("  ·%d" % hits if hits > 0 else "")
-		var b := UI.choice(t, p == page, func(): page = pp; renaming = false; refresh(), 52 if hits == 0 else 64)
+		var t := "%d" % (p + 1) + ("·%d" % hits if hits > 0 else "")
+		var b := UI.choice(t, p == page, func(): page = pp; renaming = false; refresh())
+		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		b.custom_minimum_size.x = 0
 		b.tooltip_text = "%s: %d kin%s" % [KinBox.page_name(p), n, (", %d match" % hits) if hits > 0 else ""]
 		if hits > 0: b.add_theme_color_override("font_color", UI.GOLD)
 		elif n == 0: b.modulate = Color(1, 1, 1, 0.6)
@@ -233,6 +246,7 @@ func _build_name() -> void:
 		le.text = KinBox.page_name(page)
 		le.max_length = 22
 		le.custom_minimum_size = Vector2(240, 0)
+		le.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var commit := func(t: String):
 			KinBox.rename(page, t); renaming = false; Save.save_game(); refresh()
 		le.text_submitted.connect(commit)
@@ -242,10 +256,15 @@ func _build_name() -> void:
 		le.select_all.call_deferred()
 	else:
 		var t := UI.title(KinBox.page_name(page), 22, Color("e6dcff"))
+		t.clip_text = true
+		t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		name_row.add_child(t)
 		var n := KinBox.page_kin(page).size()
-		name_row.add_child(UI.label("%d/%d" % [n, KinBox.PAGE], 13, UI.MUTED))
-		var rb := UI.button("Rename", func(): renaming = true; refresh(), 80)
+		var cl := UI.label("%d/%d  ·  %d asleep" % [n, KinBox.PAGE, KinBox.boxed().size()], 12, UI.MUTED)
+		cl.tooltip_text = "Kin on this page, and in the whole burrow (room for %d)" % KinBox.capacity()
+		cl.mouse_filter = Control.MOUSE_FILTER_PASS
+		name_row.add_child(cl)
+		var rb := UI.button("Rename", func(): renaming = true; refresh(), 76)
 		name_row.add_child(rb)
 
 func _searching() -> bool:
@@ -285,29 +304,29 @@ func _cell(rec: Dictionary, where: String, slot: int) -> Control:
 	var stack := Control.new()
 	stack.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	c.add_child(stack)
-	var pic := KinPortrait.view(rec, _tree(), 58.0)
-	pic.position = Vector2(5, 2)
-	pic.size = Vector2(58, 58)
+	var pic := KinPortrait.view(rec, _tree(), 52.0)
+	pic.position = Vector2(4, 2)
+	pic.size = Vector2(52, 52)
 	stack.add_child(pic)
 	var lv := UI.label(str(int(rec.get("level", 1))), 11, UI.INK, UI.semi)
 	lv.position = Vector2(0, -2)
 	lv.add_theme_constant_override("outline_size", 4)
 	lv.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
 	stack.add_child(lv)
-	var bdg := Mutations.badges(rec, 14.0)
+	var bdg := Mutations.badges(rec, 13.0)
 	bdg.add_theme_constant_override("separation", 1)
-	bdg.position = Vector2(CELL.x - 8 - 15 * mini(3, bdg.get_child_count()), -1)
+	bdg.position = Vector2(CELL.x - 8 - 14 * mini(3, bdg.get_child_count()), -1)
 	while bdg.get_child_count() > 3: bdg.get_child(bdg.get_child_count() - 1).free()
 	stack.add_child(bdg)
 	if String(rec["uid"]) == str(Save.d.get("active", "")):
 		var pw := Icons.Glyph.new("paw", UI.GOLD, 14.0)
-		pw.position = Vector2(0, 44)
+		pw.position = Vector2(0, 38)
 		stack.add_child(pw)
 	var nm := UI.label(String(rec["name"]), 11, sp["color"].lerp(UI.INK, 0.55))
 	nm.autowrap_mode = TextServer.AUTOWRAP_OFF
 	nm.clip_text = true
 	nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	nm.position = Vector2(-2, 60)
+	nm.position = Vector2(-2, 53)
 	nm.size = Vector2(CELL.x - 4, 16)
 	stack.add_child(nm)
 	if _searching() and not KinBox.matches(rec, query, filter):
@@ -392,36 +411,34 @@ func _build_detail() -> void:
 	var sp: Dictionary = Data.KIN[rec["species"]]
 	var col: Color = Care.shimmer_col(sp["color"]) if rec.get("shimmer", false) else sp["color"]
 	var top := UI.hbox(10)
-	top.add_child(KinPortrait.view(rec, _tree(), 96.0))
-	var tv := UI.vbox(2)
+	top.add_child(KinPortrait.view(rec, _tree(), 76.0))
+	var tv := UI.vbox(1)
 	tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var nl := UI.title(String(rec["name"]), 24, col.lerp(UI.INK, 0.35))
+	var nl := UI.title(String(rec["name"]), 22, col.lerp(UI.INK, 0.35))
 	nl.clip_text = true
 	tv.add_child(nl)
-	tv.add_child(UI.label("Level %d %s" % [int(rec["level"]), Evo.form_name(rec)], 14, UI.INK))
-	tv.add_child(UI.label("%s type  ·  %s" % [String(sp["type"]).capitalize(), Care.nature(rec)], 12, UI.MUTED))
+	tv.add_child(UI.label("Level %d %s  ·  %s" % [int(rec["level"]), Evo.form_name(rec), String(sp["type"]).capitalize()], 13, UI.INK))
 	var where := KinBox.went_text(rec) if KinBox.is_boxed(rec) else "Out on the farm"
 	if String(rec["uid"]) == str(Save.d.get("active", "")): where = "Your partner, on the farm"
 	tv.add_child(UI.label(where, 12, Color("cdb8ff") if KinBox.is_boxed(rec) else UI.GOOD))
 	top.add_child(tv)
 	detail.add_child(top)
-	if Mutations.special(rec):
-		detail.add_child(UI.section("Rare"))
-		if rec.get("shimmer", false):
-			detail.add_child(_rare_row("shimmer", "Shimmering", "Rare colours, turned round the colour wheel.", Color("fff0a0")))
-		for mid in Mutations.of(rec):
-			detail.add_child(_rare_row(mid, Mutations.name_of(mid), Mutations.perk_text(mid), Mutations.col_of(mid)))
+	if rec.get("shimmer", false):
+		detail.add_child(_rare_row("shimmer", "Shimmering", "rare colours", Color("fff0a0")))
+	for mid in Mutations.of(rec):
+		detail.add_child(_rare_row(mid, Mutations.name_of(mid), Mutations.perk_text(mid), Mutations.col_of(mid)))
 	var bd: Array = Care.bond(rec)
-	detail.add_child(UI.label("Trust %d  ·  %s bond" % [int(rec.get("trust", 0)), bd[1]], 13, Color("ffb3c6")))
-	if KinBox.is_boxed(rec):
-		detail.add_child(UI.label("Asleep: needs stay where they were (%s)." % Care.condition_name(rec).to_lower(), 12, UI.MUTED))
-	else:
-		detail.add_child(UI.label(Care.condition_name(rec), 12, UI.MUTED))
-	if rec.has("parents"):
-		detail.add_child(UI.label("Child of %s and %s" % [rec["parents"][0], rec["parents"][1]], 12, UI.MUTED))
+	var joined := ""
 	if float(rec.get("got_t", 0.0)) > 0.0:
 		var dt := Time.get_datetime_dict_from_unix_time(int(rec["got_t"]))
-		detail.add_child(UI.label("Joined you %d-%02d-%02d" % [dt["year"], dt["month"], dt["day"]], 12, UI.MUTED))
+		joined = "  ·  joined %d-%02d-%02d" % [dt["year"], dt["month"], dt["day"]]
+	detail.add_child(UI.label("Trust %d  ·  %s bond%s" % [int(rec.get("trust", 0)), bd[1], joined], 12, Color("ffb3c6")))
+	var cond := ("Asleep, needs on hold (%s)" % Care.condition_name(rec).to_lower()) if KinBox.is_boxed(rec) else Care.condition_name(rec)
+	if rec.has("parents"): cond += "  ·  child of %s and %s" % [rec["parents"][0], rec["parents"][1]]
+	var cl := UI.label(cond, 12, UI.MUTED)
+	cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	cl.custom_minimum_size.x = 280
+	detail.add_child(cl)
 	var btns := HFlowContainer.new()
 	btns.add_theme_constant_override("h_separation", 6); btns.add_theme_constant_override("v_separation", 6)
 	var r: Dictionary = rec
@@ -449,10 +466,10 @@ func _build_detail() -> void:
 			_done("%s is your partner%s" % [r["name"], (" (%s went to the burrow to make room)" % swapped["name"]) if not swapped.is_empty() else ""]), 120))
 	if confirm == String(rec["uid"]):
 		var cr := UI.vbox(6)
-		var cl := UI.label("Let %s go for good? It goes back to the wild and won't come back." % rec["name"], 13, UI.BAD)
-		cl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		cl.custom_minimum_size.x = 260
-		cr.add_child(cl)
+		var rcl := UI.label("Let %s go for good? It goes back to the wild and won't come back." % rec["name"], 13, UI.BAD)
+		rcl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		rcl.custom_minimum_size.x = 260
+		cr.add_child(rcl)
 		var yr := UI.hbox(6)
 		yr.add_child(UI.button("Yes, release", func():
 			var nm := String(r["name"])
@@ -476,16 +493,19 @@ func _build_detail() -> void:
 	detail.add_child(btns)
 
 func _rare_row(id: String, nm: String, txt: String, col: Color) -> Control:
-	var h := UI.hbox(8)
-	h.add_child(Mutations.Badge.new(id, 20.0))
-	var tv := UI.vbox(0)
-	tv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	tv.add_child(UI.label(nm, 14, col, UI.semi))
-	var dl := UI.label(txt, 11, UI.MUTED)
-	dl.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	dl.custom_minimum_size.x = 220
-	tv.add_child(dl)
-	h.add_child(tv)
+	var h := UI.hbox(6)
+	h.add_child(Mutations.Badge.new(id, 18.0))
+	var l := UI.label(nm, 14, col, UI.semi)
+	l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	h.add_child(l)
+	var dl := UI.label(txt, 12, UI.MUTED)
+	dl.autowrap_mode = TextServer.AUTOWRAP_OFF
+	dl.clip_text = true
+	dl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	dl.custom_minimum_size.x = 60
+	h.add_child(dl)
+	h.tooltip_text = "%s: %s" % [nm, String(Mutations.info(id).get("desc", "Rare colours, turned round the colour wheel."))] + ("" if id == "shimmer" else " (%s)" % txt)
+	h.mouse_filter = Control.MOUSE_FILTER_PASS
 	return h
 
 # ------------------------------------------------------------------ tooling: --kinbox-demo[=box|lineup|card]
