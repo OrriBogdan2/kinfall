@@ -401,6 +401,17 @@ static func mob(kind: String, base: Color) -> Node3D:
 	var m_cloth := material(pal, {"band": cloth_band, "paint": base, "rim": 0.35, "cache": false, "outline": "normal"})
 	m_cloth.set_meta("pack_part", "cloth")
 	var m_eye := Models.toon(Color("ffe25a"), false, 1.4)
+	if Flora.on():
+		# painted form: edges turned away darken like a painted form shadow, a warm terminator, a
+		# brighter rim, and a little brushwork so the bone doesn't read as flat plastic
+		for mm in [m_bone, m_cloth]:
+			mm.set_shader_parameter("edge_dark", 0.26)
+			mm.set_shader_parameter("sss", 0.12)
+			mm.set_shader_parameter("paint", 0.08)
+			mm.set_shader_parameter("rim_amount", 0.5)
+			mm.set_shader_parameter("sheen", 0.1)
+		m_bone.set_shader_parameter("sky_ao", 0.3)
+		m_cloth.set_shader_parameter("surface", 1)
 	var mats: Array = [m_bone, m_cloth, m_eye]
 	var sk: Skeleton3D = null
 	for mi in _mesh_nodes(model):

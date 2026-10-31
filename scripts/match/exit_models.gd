@@ -71,6 +71,7 @@ static func dock(beacon_off: Vector3) -> Node3D:
 	ring.material_override = Models.ring_mat(Color(DOCK, 0.7), 0.08); ring.position.y = 0.32
 	b.add_child(ring)
 	root.add_child(_sparks(DOCK, 30, 1.8, 2.0, "Sparks"))
+	Flora.paint_set_piece(root)
 	return root
 
 ## The sky-skiff: a small hull with outrigger fins, a striped lift-bag and a stern propeller.
@@ -122,6 +123,7 @@ static func skiff() -> Node3D:
 	for sx in [-1.32, 1.32]:
 		Models.part(hull, Models.sphere(0.11, 8), Models.toon(DOCK, false, 1.4), Vector3(sx, 0.45, -2.1))
 	root.add_child(_sparks(DOCK, 24, 1.6, -3.0, "Wake"))
+	Flora.paint_set_piece(root)
 	return root
 
 ## A rift hatch: a heavy rune-ringed stone collar set into the ground with an iron lid and a key slot.
@@ -153,6 +155,7 @@ static func hatch() -> Node3D:
 	var hole := Models.part(lid, Models.box(0.14, 0.05, 0.26), Models.toon(HATCH, false, 0.9), Vector3(0, 0.35, 0))
 	hole.name = "Keyhole"
 	root.add_child(_sparks(HATCH, 26, 0.7, 3.0, "Sparks"))
+	Flora.paint_set_piece(root)
 	return root
 
 ## The outpost's uplink: a stone plinth with a brass console and a tall mast topped with a crystal.
@@ -199,6 +202,7 @@ static func uplink() -> Node3D:
 	var col := _beam(UPLINK, 34.0, 0.25, 0.4, 0.3); col.name = "Beam"; col.visible = false
 	root.add_child(col)
 	root.add_child(_sparks(UPLINK, 40, 1.5, 3.0, "Sparks"))
+	Flora.paint_set_piece(root)
 	return root
 
 ## Corner posts with pennants for an outpost on a map without authored walls.
@@ -209,6 +213,7 @@ static func palisade(half: float) -> Node3D:
 		for sz in [-1.0, 1.0]:
 			Models.part(root, Models.cyl(0.14, 0.18, 1.8, 8), wood, Vector3(sx * half, 0.9, sz * half))
 			Models.part(root, Models.box(0.04, 0.4, 0.6), Models.toon(UPLINK), Vector3(sx * half, 1.55, sz * half + 0.32))
+	Flora.paint_set_piece(root)
 	return root
 
 ## A Rift Key: a crystal bow on a short iron shaft.
