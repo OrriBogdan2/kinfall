@@ -533,7 +533,7 @@ func _build_ui() -> void:
 	root_ui = Control.new(); root_ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); root_ui.theme = UI.theme()
 	root_ui.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(root_ui)
-	var top := UI.card(Color(0.06, 0.07, 0.1, 0.8), 12, 12)
+	var top := UI.glass(8, 14)
 	top.position = Vector2(16, 14)
 	var th := UI.hbox(14); top.add_child(th)
 	th.add_child(UI.title(String(R["name"]) if visit.is_empty() else "%s's house" % String(visit.get("name", "Their")), 24, UI.ACCENT))
@@ -541,7 +541,7 @@ func _build_ui() -> void:
 	sub.name = "Gems"
 	th.add_child(sub)
 	root_ui.add_child(top)
-	prompt_box = UI.card(Color(0.06, 0.07, 0.1, 0.85), 12, 12)
+	prompt_box = UI.glass(10, 16)
 	prompt_lbl = UI.label("", 18, UI.GOLD, UI.big)
 	prompt_lbl.autowrap_mode = TextServer.AUTOWRAP_OFF
 	prompt_box.add_child(prompt_lbl)
@@ -553,6 +553,11 @@ func _build_ui() -> void:
 		root_ui.add_child(deco_btn)
 		deco_btn.reset_size()
 		deco_btn.offset_top = -64; deco_btn.offset_bottom = -16; deco_btn.offset_left = 16; deco_btn.offset_right = 216
+	panel_dim = UI.backdrop()
+	panel_dim.gui_input.connect(func(ev):
+		if ev is InputEventMouseButton and ev.pressed and ev.button_index == MOUSE_BUTTON_LEFT and panel_open != "":
+			_close_panel())
+	root_ui.add_child(panel_dim)
 	panel_host = CenterContainer.new()
 	panel_host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	panel_host.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -627,12 +632,16 @@ func _new_panel(title_txt: String, width := 560.0) -> VBoxContainer:
 	var pb := UI.scroll_panel(title_txt, width, _close_panel)
 	panel_host.add_child(pb[0])
 	panel_open = title_txt
+	UI.show_backdrop(panel_dim, true)
 	UI.pop_in(pb[0])
 	return pb[1]
+
+var panel_dim: ColorRect = null
 
 func _close_panel() -> void:
 	for ch in panel_host.get_children():
 		ch.queue_free()
+	if panel_open != "" and panel_dim: UI.show_backdrop(panel_dim, false)
 	panel_open = ""
 
 ## Every kin you have, and who comes along on expeditions.

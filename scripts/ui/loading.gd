@@ -161,7 +161,7 @@ func _draw() -> void:
 	c.draw_texture_rect(shade_tex, Rect2(0, sz.y * 0.42, sz.x, sz.y * 0.58), false, Color(1, 1, 1, a))
 	# text
 	var cx := sz.x * 0.5
-	var base := sz.y * 0.54
+	var base := sz.y * 0.47
 	var kick := "EXPEDITION" if mode_line != "" else "GETTING READY"
 	_text(Vector2(cx, base), kick, UI.caps, 15, Color(UI.GOLD, a), 3)
 	_text(Vector2(cx, base + 62), title, UI.big, 58, Color(UI.INK, a))
@@ -169,16 +169,25 @@ func _draw() -> void:
 	if mode_line != "":
 		_text(Vector2(cx, base + 176), mode_line, UI.semi, 15, Color(UI.TEAL, a))
 	# progress
-	var bw := minf(520.0, sz.x - 80.0)
-	var br := Rect2(cx - bw * 0.5, sz.y - 96, bw, 10)
-	c.draw_rect(br, Color(1, 1, 1, a * 0.12))
-	c.draw_rect(Rect2(br.position, Vector2(bw * prog, 10)), Color(UI.ACCENT, a))
-	c.draw_circle(br.position + Vector2(bw * prog, 5), 7.0, Color(UI.GOLD, a))
-	_text(Vector2(br.position.x, br.position.y - 10), _stage() + "…", UI.semi, 14, Color(UI.INK, a * 0.85), 0, HORIZONTAL_ALIGNMENT_LEFT)
-	_text(Vector2(br.end.x, br.position.y - 10), "%d%%" % int(prog * 100.0), UI.semi, 14, Color(UI.INK, a * 0.6), 0, HORIZONTAL_ALIGNMENT_RIGHT)
-	# the tip, under a small accent label
-	_text(Vector2(cx, sz.y - 58), "TIP", UI.caps, 12, Color(UI.ACCENT, a), 2)
-	_wrap(Vector2(cx, sz.y - 50), tip, 15, minf(640.0, sz.x - 60.0), Color(UI.INK, a * 0.8))
+	var tw_ := minf(660.0, sz.x - 60.0)
+	var lines := UI.body.get_multiline_string_size(tip, HORIZONTAL_ALIGNMENT_CENTER, tw_ - 40.0, 15, 3).y
+	var card := Rect2(cx - tw_ * 0.5, sz.y - 24.0 - (40.0 + lines), tw_, 40.0 + lines)
+	var bw := minf(480.0, sz.x - 80.0)
+	var br := Rect2(cx - bw * 0.5, card.position.y - 30.0, bw, 6)
+	var track := StyleBoxFlat.new(); track.bg_color = Color(1, 1, 1, a * 0.12); track.set_corner_radius_all(3)
+	c.draw_style_box(track, br)
+	if prog > 0.01:
+		var fill := StyleBoxFlat.new(); fill.bg_color = Color(UI.ACCENT, a); fill.set_corner_radius_all(3)
+		fill.shadow_color = Color(UI.ACCENT, a * 0.45); fill.shadow_size = 6
+		c.draw_style_box(fill, Rect2(br.position, Vector2(maxf(6.0, bw * prog), br.size.y)))
+	_text(Vector2(br.position.x, br.position.y - 10), _stage() + "…", UI.semi, 13, Color(UI.INK, a * 0.8), 0, HORIZONTAL_ALIGNMENT_LEFT)
+	_text(Vector2(br.end.x, br.position.y - 10), "%d%%" % int(prog * 100.0), UI.semi, 13, Color(UI.INK, a * 0.55), 0, HORIZONTAL_ALIGNMENT_RIGHT)
+	# the tip, on a glass card with a small accent tag
+	var glass := StyleBoxFlat.new(); glass.bg_color = Color(0.04, 0.045, 0.08, a * 0.72); glass.set_corner_radius_all(14)
+	glass.border_color = Color(1, 1, 1, a * 0.07); glass.set_border_width_all(1)
+	c.draw_style_box(glass, card)
+	_text(Vector2(cx, card.position.y + 22), "TIP", UI.caps, 11, Color(UI.ACCENT, a), 2)
+	_wrap(Vector2(cx, card.position.y + 26), tip, 15, tw_ - 40.0, Color(UI.INK, a * 0.85))
 
 func _island(p: Vector2, w: float, d: float, biome: Dictionary, a: float, sd: int) -> void:
 	var r := RandomNumberGenerator.new(); r.seed = sd

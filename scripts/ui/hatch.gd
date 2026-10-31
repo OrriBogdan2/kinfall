@@ -420,37 +420,43 @@ func _show_create() -> void:
 		var key: String = row[0]
 		var opts: Array = row[2]
 		var hr := UI.hbox(8)
-		var l := UI.label(row[1], 15, UI.MUTED); l.custom_minimum_size.x = 120
+		var l := UI.label(row[1], UI.T_BODY, UI.MUTED); l.custom_minimum_size.x = 120
+		l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		hr.add_child(l)
-		hr.add_child(UI.button("‹", func(): _step_look(key, -1, opts.size()), 44))
-		var val := UI.label("", 16, UI.INK); val.custom_minimum_size.x = 170
+		hr.add_child(UI.icon_button("back", func(): _step_look(key, -1, opts.size()), "Previous", 12.0))
+		var val := UI.label("", UI.T_BODY, UI.INK, UI.semi); val.custom_minimum_size.x = 170
+		val.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		var i := int(look[key])
 		if opts[0] is Color:
-			var sw := ColorRect.new(); sw.color = opts[i]; sw.custom_minimum_size = Vector2(170, 26)
+			var sw := Panel.new(); sw.custom_minimum_size = Vector2(170, 26)
+			var ssb := UI._box(opts[i], 13, Color(1, 1, 1, 0.25), 1)
+			sw.add_theme_stylebox_override("panel", ssb)
+			sw.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			hr.add_child(sw)
 		else:
 			val.text = String(opts[i])
 			hr.add_child(val)
-		hr.add_child(UI.button("›", func(): _step_look(key, 1, opts.size()), 44))
+		hr.add_child(UI.icon_button("next", func(): _step_look(key, 1, opts.size()), "Next", 12.0))
 		v.add_child(hr)
 		if key == "race":
-			var rd := UI.label(String(Models.RACES[int(look["race"])]["desc"]), 14, Color("ffd79a"))
+			var rd := UI.label(String(Models.RACES[int(look["race"])]["desc"]), UI.T_SMALL, UI.ACCENT_HI)
 			rd.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			rd.custom_minimum_size.x = 380
 			var rm := MarginContainer.new(); rm.add_theme_constant_override("margin_left", 128); rm.add_child(rd)
 			v.add_child(rm)
 	var nr := UI.hbox(8)
-	var nl := UI.label("Your name", 15, UI.MUTED); nl.custom_minimum_size.x = 120
+	var nl := UI.label("Your name", UI.T_BODY, UI.MUTED); nl.custom_minimum_size.x = 120
 	nr.add_child(nl)
 	var ne := LineEdit.new(); ne.text = Save.d.get("name", "Hunter"); ne.max_length = 16; ne.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	ne.text_changed.connect(func(t): Save.d["name"] = t.strip_edges() if t.strip_edges() != "" else "Hunter")
 	nr.add_child(ne)
 	v.add_child(nr)
 	var br := UI.hbox(10)
-	br.add_child(UI.button("Random", func():
+	br.alignment = BoxContainer.ALIGNMENT_END
+	br.add_child(UI.ghost("Random", func():
 		look = Models.random_look()
-		_show_create(), 140))
+		_show_create(), 120, "swap"))
 	br.add_child(UI.primary("Looks good", func():
 		Save.d["look"] = look.duplicate()
 		Save.save_game()

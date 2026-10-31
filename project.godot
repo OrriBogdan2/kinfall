@@ -35,6 +35,7 @@ window/vsync/vsync_mode=1
 
 [gui]
 theme/custom_font="res://fonts/Rubik.ttf"
+common/show_focus_state_on_pointer_event=false
 
 [shader_globals]
 
