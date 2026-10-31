@@ -365,6 +365,10 @@ const MOBS := {
 		"idle": "2H_Melee_Idle", "walk": "Walking_D_Skeletons", "run": "Running_A", "attack": "2H_Melee_Attack_Chop", "hit": 0.5},
 	"warden": {"m": "skeletons/Skeleton_Warrior", "h": 1.75, "wide": 1.3, "r": "Skeleton_Axe", "l": "Skeleton_Shield_Large_A",
 		"idle": "2H_Melee_Idle", "walk": "Walking_D_Skeletons", "run": "Running_A", "attack": "2H_Melee_Attack_Chop", "hit": 0.5},
+	# the Stone Colossus (BossModels turns it to stone): a giant warrior with a stone axe
+	"colossus": {"m": "skeletons/Skeleton_Warrior", "h": 4.3, "wide": 1.4, "r": "Skeleton_Axe",
+		"idle": "2H_Melee_Idle", "walk": "Walking_D_Skeletons", "run": "Walking_D_Skeletons", "attack": "2H_Melee_Attack_Chop", "hit": 0.5,
+		"throw": "Spellcast_Shoot", "throw_hit": 0.45, "roar": "Spawn_Ground_Skeletons"},
 }
 const CLOTH_PARTS := ["Cloak", "Hat", "Hood", "Cape", "Body"]
 

@@ -74,10 +74,12 @@ func hurt(d: float, by: Ent, opts := {}) -> float:
 		if stagger_t > 0.0:
 			d *= STAGGER_DMG
 		elif stag_open > 0.0 and opts.has("ab"):
-			d += max_hp * (0.08 if mkind == "warden" else 0.2)
+			d += max_hp * float(md.get("stag_k", 0.08 if mkind == "warden" else 0.2))
 			_stagger(by, opts)
 	var dealt := super.hurt(d, by, opts)
 	if dealt > 0.0: calm_t = 0.0
+	if dealt > 0.0 and md.get("ward", false) and m.lairs:
+		m.lairs.on_ward_hit(self, by)
 	if dealt > 0.0 and by and not dead:
 		var real: Ent = by
 		if by is Kin and by.state != "active" and by.owner_h:
@@ -89,7 +91,7 @@ func hurt(d: float, by: Ent, opts := {}) -> float:
 	return dealt
 
 func _stagger(by: Ent, opts: Dictionary) -> void:
-	stagger_t = 2.2 if mkind == "warden" else 3.0
+	stagger_t = 2.2 if mkind == "warden" or md.get("boss", false) else 3.0
 	stun_t = maxf(stun_t, stagger_t)
 	stag_open = 0.0
 	stag_next = randf_range(10.0, 14.0)
