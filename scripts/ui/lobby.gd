@@ -19,31 +19,35 @@ func _ready() -> void:
 	theme = UI.theme()
 	var bg := ColorRect.new(); bg.color = UI.BG; bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(bg)
 	var center := CenterContainer.new(); center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(center)
-	var panel := PanelContainer.new(); panel.custom_minimum_size = Vector2(620, 0); center.add_child(panel)
-	var v := UI.vbox(12); panel.add_child(v)
-	var head := UI.hbox(8)
-	var t := UI.title("Play online", 34); t.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	head.add_child(t)
-	head.add_child(UI.button("Back to the farm", func(): Game.goto("home")))
-	v.add_child(head)
-	status = UI.label("Connecting...", 15, UI.MUTED)
-	v.add_child(status)
+	var pb := UI.scroll_panel("Play online", 640, func(): Game.goto("home"), "Back")
+	var panel: PanelContainer = pb[0]
+	var v: VBoxContainer = pb[1]
+	center.add_child(panel)
+	UI.pop_in(panel)
+	status = panel.get_meta("sub")
+	UI.subtitle(v, "Connecting...")
+	v.add_child(UI.section("Hunters here"))
 	list_box = UI.vbox(6)
+	list_box.add_child(UI.para("Looking for hunters with the game open...", UI.T_SMALL, UI.FAINT))
 	v.add_child(list_box)
+	v.add_child(UI.spacer(2))
 	v.add_child(UI.section("Teams"))
-	var modes := UI.hbox(8)
+	var modes := UI.hbox(2)
+	var track := PanelContainer.new()
+	var tsb := UI._box(UI.WELL, 11, Color(1, 1, 1, 0.05), 1); UI._pad(tsb, 3, 3)
+	track.add_theme_stylebox_override("panel", tsb)
+	track.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+	track.add_child(modes)
 	for m in [["ffa", "Everyone for themselves"], ["duo", "Teams of 2"], ["trio", "Teams of 3"]]:
 		var key: String = m[0]
 		var b := UI.button(m[1], func(): mode = key; _refresh_modes())
 		mode_btns[key] = b
 		modes.add_child(b)
-	v.add_child(modes)
-	v.add_child(UI.label("Empty spots are filled with bots, up to 4 squads. Whoever presses Start hosts the match and runs the monsters, so keep that tab in front.", 13, UI.MUTED))
-	var row := UI.hbox(10)
-	ready_btn = UI.button("I'm ready", _toggle_ready, 160)
-	start_btn = UI.primary("Start the match", _start, 200)
-	row.add_child(ready_btn); row.add_child(start_btn)
-	v.add_child(row)
+	v.add_child(track)
+	v.add_child(UI.para("Empty spots are filled with bots, up to 4 squads. Whoever presses Start hosts the match and runs the monsters, so keep that tab in front."))
+	ready_btn = UI.button("I'm ready", _toggle_ready, 160, "check")
+	UI.footer(v).add_child(ready_btn)
+	start_btn = UI.footer_primary(v, "Start the match", _start, 220, "portal")
 	_refresh_modes()
 	Net.peers_changed.connect(_refresh)
 	Net.message.connect(_on_msg)
@@ -51,6 +55,12 @@ func _ready() -> void:
 	await get_tree().create_timer(1.8).timeout
 	_announce()
 	_refresh()
+
+## Esc goes back to the farm, like the X.
+func _unhandled_input(e: InputEvent) -> void:
+	if e.is_action_pressed("menu") and not Overlay.is_open():
+		get_viewport().set_input_as_handled()
+		Game.goto("home")
 
 func _exit_tree() -> void:
 	if Net.peers_changed.is_connected(_refresh):
@@ -60,7 +70,7 @@ func _exit_tree() -> void:
 
 func _refresh_modes() -> void:
 	for k in mode_btns:
-		mode_btns[k].theme_type_variation = "Chosen" if k == mode else ""
+		mode_btns[k].theme_type_variation = "SegOn" if k == mode else "Seg"
 
 func _announce() -> void:
 	var k := Save.active_kin()
@@ -69,7 +79,8 @@ func _announce() -> void:
 
 func _toggle_ready() -> void:
 	is_ready = not is_ready
-	ready_btn.text = "Ready ✓" if is_ready else "I'm ready"
+	ready_btn.text = "Ready" if is_ready else "I'm ready"
+	ready_btn.theme_type_variation = "Chosen" if is_ready else ""
 	_announce()
 
 func _refresh() -> void:
@@ -83,9 +94,10 @@ func _refresh() -> void:
 		var p: Dictionary = Net.peers[id]
 		if not p.has("lobby"):
 			continue
-		var row := UI.card(UI.CARD, 10, 10)
-		var h := UI.hbox(10); row.add_child(h)
-		var nm := UI.label("%s%s" % [p.get("name", "Hunter"), "  (you)" if id == Net.me else ""], 16, UI.GOLD if id == Net.me else UI.INK)
+		var row := UI.card(UI.CARD, 10, 12)
+		var h := UI.hbox(12); row.add_child(h)
+		h.add_child(UI.IconDot.new("paw", Data.KIN.get(p.get("kin", {}).get("species", "cindle"), Data.KIN["cindle"])["color"], 20.0))
+		var nm := UI.label("%s%s" % [p.get("name", "Hunter"), "  (you)" if id == Net.me else ""], UI.T_BODY, UI.ACCENT_HI if id == Net.me else UI.INK, UI.semi)
 		nm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		nm.autowrap_mode = TextServer.AUTOWRAP_OFF
 		h.add_child(nm)
@@ -93,9 +105,7 @@ func _refresh() -> void:
 		var info := UI.label("%s · %s" % [Data.CLASSES.get(p.get("cls", "medium"), Data.CLASSES["medium"])["name"], Data.KIN.get(kin.get("species", "cindle"), Data.KIN["cindle"])["name"]], 14, UI.MUTED)
 		info.autowrap_mode = TextServer.AUTOWRAP_OFF
 		h.add_child(info)
-		var rd := UI.label("Ready" if p.get("ready", false) else "Not ready", 14, UI.GOOD if p.get("ready", false) else UI.MUTED)
-		rd.autowrap_mode = TextServer.AUTOWRAP_OFF
-		h.add_child(rd)
+		h.add_child(UI.tag("Ready" if p.get("ready", false) else "Not ready", UI.GOOD if p.get("ready", false) else UI.MUTED))
 		list_box.add_child(row)
 
 func _start() -> void:

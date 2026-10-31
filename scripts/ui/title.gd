@@ -339,24 +339,24 @@ func _build_ui() -> void:
 	# the one big button: carry on where you left off, or start a new story
 	var b1 := _menu_main(("Continue" if has else "New game"), func(): Game.goto("home" if has else "prologue"))
 	col.add_child(b1)
-	var who := UI.label(_resume_line() if has else "A short story first, then your very first egg.", 15, Color(1, 0.93, 0.84, 0.8))
+	var who := UI.label(_resume_line() if has else "A short story first, then your very first egg.", 14, Color(1, 0.93, 0.84, 0.72))
 	who.autowrap_mode = TextServer.AUTOWRAP_OFF
 	who.add_theme_constant_override("outline_size", 5)
 	who.add_theme_color_override("font_outline_color", Color(0.06, 0.04, 0.12, 0.7))
 	var wm := MarginContainer.new(); wm.add_theme_constant_override("margin_left", 6); wm.add_child(who)
 	col.add_child(wm)
-	col.add_child(UI.spacer(14))
+	col.add_child(UI.spacer(18))
 	var items: Array = []
 	if has:
-		items.append(["The story so far", func(): Game.goto("prologue", {"then": "title"})])
+		items.append(["The story so far", func(): Game.goto("prologue", {"then": "title"}), "egg"])
 	if Bridge.net_available():
-		items.append(["Play with friends", func(): Game.goto("lobby", {})])
-	items.append(["Save files", func(): Overlay.ctx = "title"; Overlay.open_saves()])
-	items.append(["Settings", func(): Overlay.ctx = "title"; Overlay.open_settings()])
+		items.append(["Play with friends", func(): Game.goto("lobby", {}), "bond"])
+	items.append(["Save files", func(): Overlay.ctx = "title"; Overlay.open_saves(), "satchel"])
+	items.append(["Settings", func(): Overlay.ctx = "title"; Overlay.open_settings(), "gear"])
 	if not OS.has_feature("web"):
-		items.append(["Quit", func(): get_tree().quit()])
+		items.append(["Quit", func(): get_tree().quit(), "close"])
 	for it in items:
-		col.add_child(_menu_item(String(it[0]), it[1]))
+		col.add_child(_menu_item(String(it[0]), it[1], String(it[2])))
 	var i := 0
 	for ch in col.get_children():
 		UI.pop_in(ch, 0.25 + i * 0.06)
@@ -367,7 +367,7 @@ func _build_ui() -> void:
 	ver.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_LEFT)
 	ver.offset_left = 28; ver.offset_top = -40; ver.offset_bottom = -18
 	root.add_child(ver)
-	var keys := UI.key_hints([["W S", "choose"], ["Enter", "select"]], 13)
+	var keys := UI.key_hints([["W S", "choose"], ["Enter", "select"], ["Esc", "back"]], 13)
 	keys.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	keys.grow_horizontal = Control.GROW_DIRECTION_BEGIN
 	keys.offset_right = -28; keys.offset_top = -44; keys.offset_bottom = -16
@@ -415,10 +415,11 @@ func _menu_main(text: String, cb: Callable) -> Button:
 	b.mouse_entered.connect(func(): if not b.has_focus(): b.grab_focus())
 	return b
 
-func _menu_item(text: String, cb: Callable) -> Button:
+func _menu_item(text: String, cb: Callable, icon := "") -> Button:
 	var b := Button.new()
 	b.text = text
 	b.theme_type_variation = "MenuItem"
+	if icon != "": UI.set_icon(b, icon, 18)
 	b.alignment = HORIZONTAL_ALIGNMENT_LEFT
 	b.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	b.custom_minimum_size.x = 300
@@ -428,10 +429,12 @@ func _menu_item(text: String, cb: Callable) -> Button:
 	b.focus_entered.connect(func():
 		Sfx.play("hover", null, -12.0, 0.05)
 		b.add_theme_stylebox_override("normal", b.get_theme_stylebox("hover", "MenuItem"))
-		b.add_theme_color_override("font_color", Color.WHITE))
+		b.add_theme_color_override("font_color", Color.WHITE)
+		b.queue_redraw())
 	b.focus_exited.connect(func():
 		b.remove_theme_stylebox_override("normal")
-		b.remove_theme_color_override("font_color"))
+		b.remove_theme_color_override("font_color")
+		b.queue_redraw())
 	return b
 
 func _process(delta: float) -> void:

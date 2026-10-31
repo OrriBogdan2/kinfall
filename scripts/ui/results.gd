@@ -24,7 +24,7 @@ func show_result(r: Dictionary) -> void:
 	add_child(wash)
 	var center := CenterContainer.new(); center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(center)
 	center.offset_left = 340.0   # leave the left side for the island
-	var panel := PanelContainer.new(); panel.custom_minimum_size = Vector2(580, 0); center.add_child(panel)
+	var panel := UI.sheet(600); center.add_child(panel)
 	UI.pop_in(panel, 0.1)
 	var outer := UI.vbox(14)
 	panel.add_child(outer)
@@ -46,31 +46,36 @@ func show_result(r: Dictionary) -> void:
 	# header: a coloured kicker, the outcome, one line on what it means
 	var tier_name := String(Data.TIERS[clampi(Game.last_tier, 0, Data.TIERS.size() - 1)]["name"])
 	var kick := "FIRST EXPEDITION" if r.get("tutorial", false) else tier_name.to_upper()
-	var head := UI.vbox(2)
-	head.add_child(UI.section(kick + ("  ·  EXTRACTED" if won else "  ·  DIDN'T MAKE IT"), UI.TEAL if won else Color("ff9a8a")))
+	var head := UI.vbox(4)
+	var kr := UI.hbox(8)
+	kr.add_child(UI.tag("Extracted" if won else "Didn't make it", UI.TEAL if won else Color("ff9a8a")))
+	kr.add_child(UI.label(kick, UI.T_CAPS, UI.FAINT, UI.caps))
+	head.add_child(kr)
 	head.add_child(UI.title("You made it out" if won else _lost_title(r.get("why", "")), 46, UI.INK))
 	var how_line := String({"skiff": "Flew out on the skiff from %s. ", "hatch": "Slipped out through a rift hatch. ", "uplink": "Rode the lift out of %s. "}.get(String(r.get("how", "")), ""))
 	if how_line.contains("%s"): how_line = how_line % String(r.get("where", "the islands"))
-	head.add_child(UI.label((how_line + "Everything you carried is yours now.") if won else "Everything you carried stays out in the islands.", 16, UI.MUTED))
+	head.add_child(UI.para((how_line + "Everything you carried is yours now.") if won else "Everything you carried stays out in the islands.", UI.T_BODY, UI.MUTED))
 	v.add_child(head)
-	var rule := ColorRect.new(); rule.custom_minimum_size = Vector2(0, 3)
-	rule.color = Color(UI.TEAL if won else UI.BAD, 0.55)
-	v.add_child(rule)
-	# three stat tiles that count up
+	# the four numbers that matter, big and counting up, on one strip; the rest in a quiet line
 	var secs := int(r.get("time", 0))
-	var rows := [
-		[["knock", "Knocks", float(r.get("knocks", 0)), ""], ["burst", "Damage dealt", float(r.get("damage", 0)), ""],
-			["burst", "Damage taken", float(r.get("taken", 0)), ""], ["clock", "Time", float(secs), "time"]],
-		[["knock", "Kills", float(r.get("kills", 0)), ""], ["knock", "Times downed", float(r.get("downs", 0)), ""],
-			["heart", "Revives", float(r.get("revives", 0)), ""], ["gem", "Armor reached", float(r.get("armor_tier", 0)), "armor"]],
-	]
-	var n := 0
-	for row in rows:
-		var stats := UI.hbox(10)
-		for t in row:
-			stats.add_child(_stat_tile(t[0], t[1], t[2], t[3], 0.35 + n * 0.08))
-			n += 1
-		v.add_child(stats)
+	var strip := UI.card(Color(0, 0, 0, 0.2), 14, 14)
+	var sh := UI.hbox(0); strip.add_child(sh)
+	var big4 := [["knock", "Knocks", float(r.get("knocks", 0)), ""], ["burst", "Damage", float(r.get("damage", 0)), ""],
+		["clock", "Time", float(secs), "time"], ["gem", "Armor", float(r.get("armor_tier", 0)), "armor"]]
+	for i in big4.size():
+		var t: Array = big4[i]
+		if i > 0:
+			var sep := ColorRect.new(); sep.color = UI.LINE; sep.custom_minimum_size = Vector2(1, 0)
+			sh.add_child(sep)
+		sh.add_child(_stat_tile(t[0], t[1], t[2], t[3], 0.35 + i * 0.08))
+	v.add_child(strip)
+	var small := UI.hbox(18)
+	for t in [["Kills", int(r.get("kills", 0))], ["Damage taken", int(r.get("taken", 0))], ["Times downed", int(r.get("downs", 0))], ["Revives", int(r.get("revives", 0))]]:
+		var one := UI.hbox(6)
+		one.add_child(UI.label(String(t[0]), UI.T_SMALL, UI.MUTED))
+		one.add_child(UI.label(str(t[1]), UI.T_SMALL, UI.INK, UI.semi))
+		small.add_child(one)
+	v.add_child(small)
 	if won:
 		var chips: Array = []
 		if int(s["gems"]) > 0:
@@ -109,8 +114,7 @@ func show_result(r: Dictionary) -> void:
 	# kin left behind when you went down, and where they ended up
 	var lost_news: Array = s.get("lost_news", [])
 	if not lost_news.is_empty():
-		var lc := UI.card(Color(0.17, 0.07, 0.08, 0.92))
-		UI.set_card_border(lc, Color(UI.BAD, 0.45), 1)
+		var lc := UI.card(Color(0.2, 0.08, 0.09, 0.85))
 		var lv := UI.vbox(6); lc.add_child(lv)
 		lv.add_child(UI.section("Left behind", Color("ffb0a0")))
 		for ln in lost_news:
@@ -135,50 +139,48 @@ func show_result(r: Dictionary) -> void:
 		v.add_child(_note("%d crop%s ready to harvest on your farm." % [s["crops_ready"], "s" if s["crops_ready"] > 1 else ""], UI.GOOD))
 	# the way out stays on screen whatever page the details are on
 	var row := UI.hbox(14)
-	var go := UI.primary("Go home" if r.get("tutorial", false) else "Back to the farm", func(): Game.goto("home"), 240)
-	row.add_child(go)
 	if r.get("tutorial", false):
-		var tl := UI.label("That's the basics. Now come see your home.", 15, UI.GOLD)
+		var tl := UI.label("That's the basics. Now come see your home.", UI.T_BODY, UI.ACCENT_HI)
 		tl.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(tl)
-	var kh := UI.key_hints([["Enter", "continue"]], 12, Color(1, 1, 1, 0.5))
-	kh.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(kh)
+	row.add_child(UI.fill())
+	var go := UI.with_key(UI.primary("Go home" if r.get("tutorial", false) else "Back to the farm", func(): Game.goto("home"), 250, "home"), "Enter")
+	row.add_child(go)
 	outer.add_child(row)
 	go.grab_focus()
 	Sfx.play("bond" if won else "fall", null, -6.0, 0.0, 1.0 if won else 0.8)
 
-## A tile with an icon, a number that counts up from zero, and what it is.
+## One stat on the strip: a number that counts up from zero, with what it is under it.
 func _stat_tile(icon: String, what: String, value: float, fmt: String, delay: float) -> Control:
-	var c := UI.card(Color(1, 1, 1, 0.05), 12, 12)
-	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var h := UI.hbox(10); c.add_child(h)
-	h.add_child(Icons.Glyph.new(icon, Color(1, 0.86, 0.6, 0.9), 34.0))
-	var col := UI.vbox(0); h.add_child(col)
-	var num := UI.title("0" if fmt == "" else "0:00", 24)
+	var col := UI.vbox(2)
+	col.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	col.alignment = BoxContainer.ALIGNMENT_CENTER
+	var num := UI.title("0" if fmt == "" else "0:00", 30)
+	num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	col.add_child(num)
+	var lr := UI.hbox(5); lr.alignment = BoxContainer.ALIGNMENT_CENTER
+	lr.add_child(Icons.Glyph.new(icon, Color(1, 0.86, 0.6, 0.8), 13.0))
+	var lab := UI.label(what.to_upper(), 11, UI.MUTED, UI.caps); lab.autowrap_mode = TextServer.AUTOWRAP_OFF
+	lr.add_child(lab)
+	col.add_child(lr)
 	if fmt == "armor":
 		# the armor tier you finished on, in its own colour
 		var tier: Array = Hunter.ARMOR_TIERS[clampi(int(value), 0, Hunter.ARMOR_TIERS.size() - 1)]
 		num.text = String(tier[0]); num.add_theme_color_override("font_color", tier[1])
-		col.add_child(UI.label(what.to_upper(), 11, UI.MUTED, UI.caps))
-		return c
-	var lab := UI.label(what.to_upper(), 11, UI.MUTED, UI.caps); lab.autowrap_mode = TextServer.AUTOWRAP_OFF
-	col.add_child(lab)
+		return col
 	var show := func(x: float) -> void:
 		num.text = ("%d:%02d" % [int(x) / 60, int(x) % 60]) if fmt == "time" else str(int(round(x)))
 	var tw := create_tween()
 	tw.tween_interval(delay)
 	tw.tween_method(show, 0.0, value, clampf(0.4 + value * 0.01, 0.5, 1.1)).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
-	return c
+	return col
 
 ## One thing you brought home, as a little pill that pops in with a sound.
 func _chip(icon: String, txt: String, col: Color, delay: float) -> Control:
-	var c := UI.card(Color(col, 0.16), 8, 999)
-	UI.set_card_border(c, Color(col, 0.55), 1)
+	var c := UI.card(Color(col, 0.14), 8, 999)
 	var h := UI.hbox(7); c.add_child(h)
 	h.add_child(Icons.Glyph.new(icon, col.lightened(0.15), 18.0))
-	var l := UI.label(txt, 15, UI.INK); l.autowrap_mode = TextServer.AUTOWRAP_OFF
+	var l := UI.label(txt, UI.T_BODY, UI.INK, UI.semi); l.autowrap_mode = TextServer.AUTOWRAP_OFF
 	h.add_child(l)
 	c.modulate.a = 0.0
 	var tw := create_tween()
@@ -192,8 +194,7 @@ func _kin_card(s: Dictionary) -> Control:
 	var k: Dictionary = s["kin"]
 	var sp: Dictionary = Data.KIN.get(String(k.get("species", "")), {})
 	var kcol: Color = sp.get("color", UI.ACCENT)
-	var kc := UI.card(Color(0.12, 0.13, 0.19, 0.95), 14, 12)
-	UI.set_card_border(kc, Color(kcol, 0.4), 1)
+	var kc := UI.card(UI.CARD, 14, 14)
 	var kv := UI.vbox(7); kc.add_child(kv)
 	var top := UI.hbox(10); kv.add_child(top)
 	top.add_child(Icons.Glyph.new("paw", kcol, 22.0))
