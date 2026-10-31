@@ -243,6 +243,18 @@ func _ready() -> void:
 		print("BIOME sim ok, time %.0f, mobs left %d, fields %d" % [bm.time, bm.mobs.filter(func(x): return not x.dead).size(), bm.fields.list.size()])
 		get_tree().quit()
 		return
+	if "--hair-gallery" in args or "--class-lineup" in args:
+		add_child(load("res://tests/hair_gallery.gd").new())
+		return
+	if "--art-stats" in args:
+		load("res://tests/art_stats.gd").stats()
+		get_tree().quit()
+		return
+	if "--hair-check" in args:
+		var hb: int = load("res://tests/hair_gallery.gd").check()
+		print("HAIR CHECK DONE, failures: ", hb)
+		get_tree().quit()
+		return
 	if "--pack-gallery" in args:
 		add_child(load("res://tests/pack_gallery.gd").new())
 		return

@@ -50,8 +50,18 @@ static func col(spec: String, team: Color, hero: Color) -> Color:
 		"hero": return hero
 	return Color(spec)
 
-## The canopy mesh for a skin.
+## The canopy mesh for a skin: a smooth, billowing sheet (arched across the span, cambered front to
+## back like a real paraglider cell), two-sided, with normals from the curve so it shades softly.
+static var _meshes := {}
 static func mesh(id: String, team: Color, hero: Color) -> ArrayMesh:
+	var key := "%s|%s|%s" % [id, team.to_html(), hero.to_html()]
+	if _meshes.has(key):
+		return _meshes[key]
+	var am := _build(id, team, hero)
+	_meshes[key] = am
+	return am
+
+static func _build(id: String, team: Color, hero: Color) -> ArrayMesh:
 	var g := get_skin(id)
 	var cloth := col(g["cloth"], team, hero)
 	var stripe := col(g["stripe"], team, hero)
@@ -59,60 +69,84 @@ static func mesh(id: String, team: Color, hero: Color) -> ArrayMesh:
 	var shape := String(g["shape"])
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var segs := 18
-	var rows := 3        # front-to-back strips, so patterns can be spots and veins, not just stripes
+	var segs := 18       # pattern cells across the span
+	var rows := 3        # front-to-back pattern strips, so patterns can be spots and veins, not just stripes
+	var sub_x := 2       # geometry steps per cell, for a smooth curve
+	var sub_z := 3
 	var span := 1.05 if shape != "moth" else 1.12
+	var th := 0.012
 	for side in [1.0, -1.0]:
 		for k in segs:
-			var x0 := -span + 2.0 * span * k / segs
-			var x1 := -span + 2.0 * span * (k + 1) / segs
-			var um := absf((x0 + x1) * 0.5) / span
-			var outline := []      # per x: [y, lead, trail]
-			for x in [x0, x1]:
-				var u: float = absf(x) / span
-				var y: float = -0.32 * u * u
-				var lead := 0.0
-				var trail := 0.0
-				match shape:
-					"wing":
-						var ch := 0.42 * sqrt(maxf(0.0, 1.0 - pow(u, 3.0))) + 0.05
-						lead = ch * 0.55; trail = ch * 0.45
-					"leaf":
-						var ch2 := 0.62 * sqrt(maxf(0.0, 1.0 - u * u)) + 0.02
-						lead = ch2 * 0.5; trail = ch2 * 0.5
-						y = -0.22 * u * u
-					"bat":
-						lead = 0.24 * (1.0 - u * 0.5) + 0.04
-						# the trailing edge scallops between the finger bones
-						trail = 0.26 * (1.0 - u * 0.4) - 0.13 * absf(sin(u * PI * 3.0))
-					"kite":
-						lead = 0.5 * (1.0 - u) + 0.04
-						trail = 0.3 * (1.0 - u) + 0.02
-						y = -0.18 * u
-					"moth":
-						# two lobes a side: a big forewing and a smaller hindwing
-						var fore := 0.34 * sin(PI * clampf(u / 0.95, 0.0, 1.0)) + 0.06
-						var hind := 0.3 * sin(PI * clampf((u - 0.05) / 0.6, 0.0, 1.0))
-						lead = fore * 0.9 + 0.05; trail = maxf(0.1, hind) + 0.05
-						y = -0.2 * u * u
-				outline.append([y, lead, trail])
+			var um := absf(-span + 2.0 * span * (k + 0.5) / segs) / span
 			for j in rows:
 				var c := _pattern(shape, k, j, segs, um, cloth, stripe, edge)
-				var pts := []
-				for xi in 2:
-					var o: Array = outline[xi]
-					var x: float = [x0, x1][xi]
-					var za: float = lerpf(-float(o[1]), float(o[2]), float(j) / rows)
-					var zb: float = lerpf(-float(o[1]), float(o[2]), float(j + 1) / rows)
-					pts.append(Vector3(x, float(o[0]) + side * 0.012, za))
-					pts.append(Vector3(x, float(o[0]) + side * 0.012, zb))
-				var n: Vector3 = Vector3.UP * side
 				st.set_color(c)
-				var order := [0, 2, 3, 0, 3, 1] if side > 0.0 else [0, 3, 2, 0, 1, 3]
-				for i in order:
-					st.set_normal(n)
-					st.add_vertex(pts[i])
+				for sx in sub_x:
+					for sz in sub_z:
+						var x0 := -span + 2.0 * span * (k + float(sx) / sub_x) / segs
+						var x1 := -span + 2.0 * span * (k + float(sx + 1) / sub_x) / segs
+						var t0 := (j + float(sz) / sub_z) / rows
+						var t1 := (j + float(sz + 1) / sub_z) / rows
+						var q := [[x0, t0], [x0, t1], [x1, t0], [x1, t1]]
+						var pts := []
+						var nrm := []
+						for e in q:
+							pts.append(_surf(shape, span, e[0], e[1]) + Vector3(0, side * th, 0))
+							nrm.append(_surf_n(shape, span, e[0], e[1]) * side)
+						var order := [0, 2, 3, 0, 3, 1] if side > 0.0 else [0, 3, 2, 0, 1, 3]
+						for i in order:
+							st.set_normal(nrm[i])
+							st.add_vertex(pts[i])
+	st.index()
 	return st.commit()
+
+## The canopy's outline at x: [height, how far it reaches forward, how far back].
+static func _outline_at(shape: String, span: float, x: float) -> Array:
+	var u: float = minf(absf(x) / span, 1.0)
+	var y: float = -0.32 * u * u
+	var lead := 0.0
+	var trail := 0.0
+	match shape:
+		"wing":
+			var ch := 0.42 * sqrt(maxf(0.0, 1.0 - pow(u, 3.0))) + 0.05
+			lead = ch * 0.55; trail = ch * 0.45
+		"leaf":
+			var ch2 := 0.62 * sqrt(maxf(0.0, 1.0 - u * u)) + 0.02
+			lead = ch2 * 0.5; trail = ch2 * 0.5
+			y = -0.22 * u * u
+		"bat":
+			lead = 0.24 * (1.0 - u * 0.5) + 0.04
+			# the trailing edge scallops between the finger bones
+			trail = 0.26 * (1.0 - u * 0.4) - 0.13 * absf(sin(u * PI * 3.0))
+		"kite":
+			lead = 0.5 * (1.0 - u) + 0.04
+			trail = 0.3 * (1.0 - u) + 0.02
+			y = -0.18 * u
+		"moth":
+			# two lobes a side: a big forewing and a smaller hindwing
+			var fore := 0.34 * sin(PI * clampf(u / 0.95, 0.0, 1.0)) + 0.06
+			var hind := 0.3 * sin(PI * clampf((u - 0.05) / 0.6, 0.0, 1.0))
+			lead = fore * 0.9 + 0.05; trail = maxf(0.1, hind) + 0.05
+			y = -0.2 * u * u
+	return [y, lead, trail]
+
+## A point on the canopy: x across the span, t from the leading edge (0) to the trailing edge (1).
+## The cloth bellies up between the edges (an airfoil's camber), less toward the tips.
+static func _surf(shape: String, span: float, x: float, t: float) -> Vector3:
+	var o := _outline_at(shape, span, x)
+	var z := lerpf(-float(o[1]), float(o[2]), t)
+	var u := minf(absf(x) / span, 1.0)
+	var camber := (0.055 if shape in ["wing", "kite"] else 0.035) * sin(PI * clampf(t, 0.0, 1.0)) * (1.0 - u * u * 0.7)
+	camber *= 0.35 + 0.65 * smoothstep(0.0, 0.35, t)     # the nose is rounder than the tail
+	return Vector3(x, float(o[0]) + camber, z)
+
+static func _surf_n(shape: String, span: float, x: float, t: float) -> Vector3:
+	var e := 0.01
+	var dx := _surf(shape, span, x + e, t) - _surf(shape, span, x - e, t)
+	var dt := _surf(shape, span, x, minf(t + e, 1.0)) - _surf(shape, span, x, maxf(t - e, 0.0))
+	var n := dt.cross(dx).normalized()
+	if n.y < 0.0: n = -n
+	return n
 
 ## The colour of one patch of canopy: k across the span, j front (0) to back.
 static func _pattern(shape: String, k: int, j: int, segs: int, um: float, cloth: Color, stripe: Color, edge: Color) -> Color:

@@ -9,7 +9,7 @@ const DEFAULTS := {
 	# audio
 	"master": 0.8, "music": 0.7, "sfx": 1.0, "ambience": 0.8, "mute_unfocused": false,
 	# video
-	"fullscreen": false, "vsync": true, "max_fps": 0, "msaa": 2, "shadows": true, "ui_scale": 1.0, "show_fps": false,
+	"fullscreen": false, "vsync": true, "max_fps": 0, "msaa": 4, "video_v": 2, "shadows": true, "ui_scale": 1.0, "show_fps": false,
 	# gameplay
 	"shake": 1.0, "cam_lead": 1.0, "cam_style": "supervive", "cam_follow": "supervive", "dash_hold": false, "damage_numbers": true, "tips": true, "cast_on_press": true, "crouch_toggle": false, "mod_mode": false, "kin_auto": false, "bot_diff": "auto",
 	# accessibility
@@ -54,6 +54,10 @@ func _ready() -> void:
 	if int(v.get("keys_v", 1)) < KEYS_V or not cf.has_section_key("s", "keys_v"):
 		v["keys"] = {}          # the kit changed (Q/E gloves, C kin, G throw): start from the new defaults
 		v["keys_v"] = KEYS_V
+	if int(v.get("video_v", 1)) < 2 or not cf.has_section_key("s", "video_v"):
+		# crisper by default: 4x MSAA on desktop (the browser build stays on 2x)
+		if int(v.get("msaa", 2)) == 2 or not cf.has_section_key("s", "msaa"): v["msaa"] = 2 if OS.has_feature("web") else 4
+		v["video_v"] = 2
 	if not cf.has_section_key("s", "crouch_toggle") and OS.has_feature("web"):
 		v["crouch_toggle"] = true      # browsers close the tab on Ctrl+W, so don't make people hold Ctrl
 	get_tree().node_added.connect(_on_node_added)

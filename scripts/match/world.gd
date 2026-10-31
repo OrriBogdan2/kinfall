@@ -1152,7 +1152,7 @@ func _build_air() -> void:
 		var c: Vector3 = u["pos"]
 		var hgt: float = float(u["top"]) - c.y + 6.0
 		var col := MeshInstance3D.new()
-		var cm := Models.cyl(float(u["r"]), float(u["r"]) * 1.15, hgt, 18)
+		var cm := Models.plain_cyl(float(u["r"]), float(u["r"]) * 1.15, hgt, 18)
 		cm.cap_top = false; cm.cap_bottom = false
 		col.mesh = cm
 		var mat := ShaderMaterial.new(); mat.shader = load("res://shaders/updraft.gdshader")

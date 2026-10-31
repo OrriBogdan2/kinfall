@@ -174,7 +174,8 @@ func _build_set() -> void:
 		PropAnim.on(fr, 0.3, 0.25, 0.6 + k * 0.2)
 	crystal = Node3D.new(); crystal.position = arch_c + Vector3(0, 2.8, 0); add_child(crystal)
 	var cm := Models.toon(Color("8ae8ff"), true, 1.4)
-	var pm := PrismMesh.new(); pm.size = Vector3(1.1, 2.4, 1.1)
+	var pm := Models.crystal(0.6, 2.4, 7)
+	cm.set_shader_parameter("gloss", 0.8)
 	Models.part(crystal, pm, cm, Vector3(0, 0.6, 0))
 	Models.part(crystal, pm, cm, Vector3(0, -0.8, 0), Vector3(1.0, 0.6, 1.0), Vector3(PI, 0, 0))
 	for i in 5:
@@ -404,6 +405,7 @@ func _show_create() -> void:
 		for a in OS.get_cmdline_user_args():
 			if a.begins_with("--create-race="):   # test: open the creator on a race
 				look["race"] = int(a.substr(14)); look["skin"] = int(Models.RACES[int(look["race"])]["skin"])
+	look["hair"] = clampi(int(look.get("hair", 0)), 0, Models.hair_styles(int(look["race"])).size() - 1)
 	title.text = "Make your hunter"
 	_clear_bottom()
 	if create_box: create_box.queue_free()
@@ -419,6 +421,8 @@ func _show_create() -> void:
 	for row in LOOK_ROWS:
 		var key: String = row[0]
 		var opts: Array = row[2]
+		if key == "hair":
+			opts = Models.hair_styles(int(look["race"]))    # each race has its own styles
 		var hr := UI.hbox(8)
 		var l := UI.label(row[1], UI.T_BODY, UI.MUTED); l.custom_minimum_size.x = 120
 		l.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -485,6 +489,8 @@ func _step_look(key: String, d: int, n: int) -> void:
 	if key == "race":
 		# each race starts in its own colouring; you can still change the skin after
 		look["skin"] = int(Models.RACES[int(look["race"])]["skin"])
+		look["hair"] = 0      # ... and its own head styles: start on its first one, keep the colour
+		look["hair_v"] = 2
 	_show_create()
 
 var preview_yaw := PI

@@ -28,6 +28,28 @@ static func seg(parent: Node3D, a: Vector3, b: Vector3, r0: float, r1: float, ma
 		mi.basis = Basis(Quaternion(Vector3.UP, d))
 	return mi
 
+## A thin wing membrane through the outline points (first point = where it joins the body): the
+## outline is smoothed into soft curves and the sheet cups a little, so it reads as skin, not a polygon.
+static func membrane(pts: Array, sub := 5, cup := 0.025) -> ArrayMesh:
+	var n := pts.size()
+	var ring: Array = []
+	for i in n:
+		var p0: Vector3 = pts[(i - 1 + n) % n]; var p1: Vector3 = pts[i]; var p2: Vector3 = pts[(i + 1) % n]; var p3: Vector3 = pts[(i + 2) % n]
+		for k in sub:
+			var t := float(k) / sub
+			var t2 := t * t; var t3 := t2 * t
+			ring.append(0.5 * ((2.0 * p1) + (-p0 + p2) * t + (2.0 * p0 - 5.0 * p1 + 4.0 * p2 - p3) * t2 + (-p0 + 3.0 * p1 - 3.0 * p2 + p3) * t3))
+	var c := Vector3.ZERO
+	for p in ring: c += p
+	c /= ring.size()
+	var nrm := ((ring[0] as Vector3) - c).cross((ring[ring.size() / 4] as Vector3) - c).normalized()
+	c += nrm * cup
+	var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for i in ring.size():
+		st.add_vertex(c); st.add_vertex(ring[i]); st.add_vertex(ring[(i + 1) % ring.size()])
+	st.generate_normals()
+	return st.commit()
+
 ## A leg on its own hip pivot (so the puppet can swing it): thigh, shin and a paw.
 static func leg(legs: Node3D, nm: String, hip: Vector3, length: float, r: float, mat: Material, paw: Material, splay := 0.0) -> void:
 	var l := Node3D.new(); l.name = nm; l.position = hip; legs.add_child(l)
@@ -43,8 +65,11 @@ static func eyes(flex: Node3D, center: Vector3, radii: Vector3, spread: float, u
 		var sd := "L" if sx < 0.0 else "R"
 		var d := Vector3(sx * spread, up, -1.0).normalized()
 		var p := center + Vector3(d.x * radii.x, d.y * radii.y, d.z * radii.z) * 0.96
-		Models.part(flex, Models.sphere(size, 10), m_eye, p, Vector3(1, 1.15, 0.8), Vector3.ZERO, "Eye" + sd)
-		Models.part(flex, Models.sphere(size * 0.36, 6), m_white, p + Vector3(size * 0.35, size * 0.45, -size * 0.6), Vector3.ONE, Vector3.ZERO, "Shine" + sd)
+		var iris: Color = m_eye.get_meta("iris", Color("4a3a6a"))
+		var eye := Models.part(flex, Models.eye_mesh(size, iris), m_eye, p, Vector3(1, 1.15, 0.8), Vector3.ZERO, "Eye" + sd)
+		Models.part(flex, Models.sphere(size * 0.34, 10), m_white, p + Vector3(size * 0.35, size * 0.45, -size * 0.62), Vector3.ONE, Vector3.ZERO, "Shine" + sd)
+		# a second, smaller catch light low on the other side (squashes with the eye when it blinks)
+		Models.part(eye, Models.sphere(size * 0.15, 8), m_white, Vector3(-size * 0.3, -size * 0.32, -size * 0.92))
 
 static func build(species: String, flex: Node3D, c: Dictionary, mats: Array) -> Dictionary:
 	match species:
@@ -115,7 +140,7 @@ static func _prismander(f: Node3D, c: Dictionary, mats: Array) -> Dictionary:
 	# a wide, flat head with a long smile
 	var hp := Vector3(0, 0.3, -0.27)
 	Models.part(f, Models.sphere(0.2), body, hp, Vector3(1.25, 0.8, 1.0))
-	var smile := TorusMesh.new(); smile.inner_radius = 0.13; smile.outer_radius = 0.145; smile.rings = 16; smile.ring_segments = 4
+	var smile := TorusMesh.new(); smile.inner_radius = 0.13; smile.outer_radius = 0.145; smile.rings = 40; smile.ring_segments = 10
 	var sm := Models.part(f, smile, dark, hp + Vector3(0, -0.06, -0.06), Vector3(1.0, 1.0, 0.5))
 	sm.visible = true
 	eyes(f, hp, Vector3(0.25, 0.16, 0.2), 0.9, 0.35, 0.04, c["eye"], c["white"])
@@ -210,21 +235,15 @@ static func _echolop(f: Node3D, c: Dictionary, mats: Array) -> Dictionary:
 		Models.part(e, Models.sphere(0.055), belly, Vector3(0, 0.2, -0.018), Vector3(0.8, 2.6, 0.2))
 		for k in 3:
 			Models.part(e, Models.box(0.008, 0.11, 0.008), dark, Vector3(0, 0.12 + k * 0.08, -0.03), Vector3.ONE, Vector3(0, 0, (k - 1) * 0.25))
-		var rim := TorusMesh.new(); rim.inner_radius = 0.05; rim.outer_radius = 0.06; rim.rings = 12; rim.ring_segments = 4
+		var rim := TorusMesh.new(); rim.inner_radius = 0.05; rim.outer_radius = 0.06; rim.rings = 32; rim.ring_segments = 10
 		Models.part(e, rim, glow, Vector3(0, 0.4, 0), Vector3(1, 1, 1), Vector3(PI / 2, 0, 0))
 	ears.position = hp + Vector3(0, 0.12, 0.02)
 	# folded bat wings on its sides
 	var wings := Node3D.new(); wings.name = "Wings"; f.add_child(wings)
 	for sx in [-1.0, 1.0]:
 		var w := Node3D.new(); w.name = "Wing" + ("L" if sx < 0 else "R"); w.position = Vector3(0.2 * sx, 0.34, 0.06); wings.add_child(w)
-		var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
 		var pts := [Vector3.ZERO, Vector3(0.24 * sx, 0.1, 0.06), Vector3(0.3 * sx, -0.06, 0.12), Vector3(0.18 * sx, -0.12, 0.16), Vector3(0.08 * sx, -0.1, 0.12)]
-		for j in range(1, pts.size() - 1):
-			st.add_vertex(pts[0]); st.add_vertex(pts[j]); st.add_vertex(pts[j + 1])
-		st.generate_normals()
-		var memb := Models.toon(Color(c["wing_col"]), false)
-		(memb as ShaderMaterial).set_shader_parameter("rim_amount", 0.4)
-		var mi := MeshInstance3D.new(); mi.mesh = st.commit(); mi.material_override = memb; w.add_child(mi)
+		var mi := MeshInstance3D.new(); mi.mesh = membrane(pts); w.add_child(mi)
 		var mm := StandardMaterial3D.new(); mm.cull_mode = BaseMaterial3D.CULL_DISABLED; mm.albedo_color = Color(c["wing_col"]); mm.roughness = 1.0
 		mi.material_override = mm
 		seg(w, Vector3.ZERO, pts[1], 0.012, 0.008, dark)
@@ -250,7 +269,7 @@ static func _gravadillo(f: Node3D, c: Dictionary, mats: Array) -> Dictionary:
 		var r := 0.34 - absf(i - 2) * 0.03
 		var band := Models.part(f, Models.sphere(r), body, Vector3(0, 0.28, z), Vector3(1.0, 0.92, 0.36))
 		band.rotation.x = (i - 2) * 0.12
-		var seam := TorusMesh.new(); seam.inner_radius = r * 0.88; seam.outer_radius = r * 0.93; seam.rings = 20; seam.ring_segments = 4
+		var seam := TorusMesh.new(); seam.inner_radius = r * 0.86; seam.outer_radius = r * 0.95; seam.rings = 48; seam.ring_segments = 10
 		if i < 4:
 			Models.part(f, seam, glow, Vector3(0, 0.28, z + 0.055), Vector3(1.0, 1.0, 0.92), Vector3(PI / 2, 0, 0))
 	# a blunt armored head and a beetle horn curving up from the snout
@@ -293,7 +312,7 @@ static func _lunowl(f: Node3D, c: Dictionary, mats: Array) -> Dictionary:
 	Models.part(f, Models.sphere(0.18), belly, Vector3(0, 0.37, -0.1), Vector3(1.0, 1.15, 0.7))
 	# chest markings: little crescent moons
 	for i in 3:
-		var cres := TorusMesh.new(); cres.inner_radius = 0.025; cres.outer_radius = 0.035; cres.rings = 10; cres.ring_segments = 4
+		var cres := TorusMesh.new(); cres.inner_radius = 0.025; cres.outer_radius = 0.035; cres.rings = 24; cres.ring_segments = 10
 		Models.part(f, cres, glow, Vector3((i - 1) * 0.07, 0.3 + (i % 2) * 0.05, -0.22), Vector3(1, 1, 0.5), Vector3(PI / 2, 0, 0.6))
 	# an owl face: a heart-shaped facial disc, huge round eyes and a little hooked beak
 	var hp := Vector3(0, 0.6, -0.1)
@@ -316,16 +335,12 @@ static func _lunowl(f: Node3D, c: Dictionary, mats: Array) -> Dictionary:
 	var wings := Node3D.new(); wings.name = "Wings"; f.add_child(wings)
 	for sx in [-1.0, 1.0]:
 		var w := Node3D.new(); w.name = "Wing" + ("L" if sx < 0 else "R"); w.position = Vector3(0.14 * sx, 0.48, 0.14); wings.add_child(w)
-		var st := SurfaceTool.new(); st.begin(Mesh.PRIMITIVE_TRIANGLES)
 		var fore := [Vector3.ZERO, Vector3(0.22 * sx, 0.2, 0.02), Vector3(0.42 * sx, 0.18, 0.05), Vector3(0.4 * sx, 0.02, 0.08), Vector3(0.2 * sx, -0.06, 0.06)]
 		var hind := [Vector3(0, -0.04, 0.02), Vector3(0.22 * sx, -0.1, 0.08), Vector3(0.3 * sx, -0.3, 0.16), Vector3(0.24 * sx, -0.44, 0.2), Vector3(0.08 * sx, -0.18, 0.08)]
-		for poly in [fore, hind]:
-			for j in range(1, poly.size() - 1):
-				st.add_vertex(poly[0]); st.add_vertex(poly[j]); st.add_vertex(poly[j + 1])
-		st.generate_normals()
 		var mm := StandardMaterial3D.new(); mm.cull_mode = BaseMaterial3D.CULL_DISABLED; mm.albedo_color = Color(c["wing_col"]); mm.roughness = 1.0
 		mm.rim_enabled = true; mm.rim = 0.5
-		var mi := MeshInstance3D.new(); mi.mesh = st.commit(); mi.material_override = mm; w.add_child(mi)
+		for poly in [fore, hind]:
+			var mi := MeshInstance3D.new(); mi.mesh = membrane(poly); mi.material_override = mm; w.add_child(mi)
 		var spot := Models.part(w, Models.sphere(0.04, 8), glow, Vector3(0.28 * sx, 0.08, 0.06), Vector3(1, 1, 0.3))
 		spot.rotation.y = 0.3 * sx
 		Models.part(w, Models.sphere(0.018, 6), dark, Vector3(0.28 * sx, 0.08, 0.05), Vector3(1, 1, 0.3))
