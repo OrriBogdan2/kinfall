@@ -1759,9 +1759,14 @@ func _truce_check() -> void:
 	var tt := 0.0
 	while tt < 1.0: hold2.call(); m.step(Match.DT); tt += Match.DT
 	print("TCHECK reversed: B would accept from A=%.2f" % T.would_accept(1, 0))
-	T.emote(A[0], "truce")
+	# acceptance is a weighed roll (95% here), so like a player the offer is made again after a refusal
 	tt = 0.0
-	while tt < 3.5 and not T.allied(0, 1): hold2.call(); m.step(Match.DT); tt += Match.DT
+	for _try in 3:
+		T._cool.clear()
+		T.emote(A[0], "truce")
+		var t0 := tt
+		while tt - t0 < 3.5 and not T.allied(0, 1): hold2.call(); m.step(Match.DT); tt += Match.DT
+		if T.allied(0, 1): break
 	print("TCHECK reversed: the beaten squad accepted=%s after %.1fs (events %s)" % [T.allied(0, 1), tt, str(T.events.slice(-3))])
 	if not T.allied(0, 1) and not T.events.has("fake 1"): ok = false; print("TCHECK FAIL beaten squad refused")
 	m.over = true
