@@ -810,7 +810,7 @@ func _economy_check() -> void:
 	# 2. smart loot: hands first, then the pack, best first, never worse for better
 	var gid: String = Gear.ALL.keys()[0]
 	var b := {"owner": Q, "team": Q.team, "pos": P.pos, "gems": 10, "seeds": {"tidebloom": 2}, "caught": [], "tonics": 0, "kits": 0, "soul_until": 0.0,
-		"prog": {}, "node": null, "empty": false, "gear": [{"id": gid, "rar": 4}], "weapon": Loot.weapon("sniper", 4, "frost"),
+		"prog": {}, "node": null, "empty": false, "gear": [{"id": gid, "rar": 4}], "weapon": Loot.weapon(String(Data.CLASSES[P.cls]["weapons"][1]), 4, "frost"),
 		"pack": [Loot.valuable("old_coin"), Loot.valuable("crown_shard"), Loot.weapon("smg", 1), Loot.weapon("shotgun", 2, "venom"), Loot.valuable("sky_pearl")]}
 	P.pack = [Loot.valuable("kin_idol")]
 	P.pack_cap = 3
@@ -822,7 +822,7 @@ func _economy_check() -> void:
 	var minp: int = pv.min() if not pv.is_empty() else 0
 	var maxl: int = left.max() if not left.is_empty() else 0
 	print("ECON  smart loot took %d: hand=%s gloves=%s pack=%s values=%s left in box=%s" % [got, P.wpn["name"], str(P.gear), str(P.pack.map(func(it): return Loot.name_of(it))), str(pv), str(left)])
-	ok.call(P.wid == "sniper" and P.welem == "frost", "smart loot: the best weapon goes in your hands")
+	ok.call(P.wid == String(Data.CLASSES[P.cls]["weapons"][1]) and P.welem == "frost", "smart loot: the best weapon for your class goes in your hands")
 	ok.call(not (P.gear[Gear.slot_of(gid)] as Dictionary).is_empty(), "smart loot: the glove goes on")
 	ok.call(P.pack.size() == 3 and minp >= maxl, "smart loot: pack holds the most valuable (min %d >= best left %d)" % [minp, maxl])
 	ok.call(P.gems == g0 + 10 and int(P.seeds.get("tidebloom", 0)) >= 2, "smart loot: gems and seeds taken too")
