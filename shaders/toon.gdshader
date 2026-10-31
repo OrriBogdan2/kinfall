@@ -1,7 +1,8 @@
 shader_type spatial;
 // Stylized painted lighting: warm key light, cool coloured shadows, light from the sky above and a
-// darker underside, a little hand-painted variation across each surface, a soft rim and an
-// optional glossy highlight. Plus the hit flash.
+// darker underside, a whisper of hand-painted variation, a clean three-tone ramp with a soft
+// terminator and a band of warm "subsurface" glow where light turns to shadow, a crisp rim that
+// catches the key and fill lights, and an optional glossy highlight. Plus the hit flash.
 uniform vec4 albedo : source_color = vec4(1.0);
 uniform bool use_vertex_color = false;
 uniform float flash : hint_range(0.0, 1.0) = 0.0;
@@ -13,9 +14,12 @@ uniform float shade = 0.42;
 uniform bool no_fog = false;
 uniform vec4 shadow_tint : source_color = vec4(0.66, 0.62, 0.9, 1.0);   // shadows lean cool and violet
 uniform vec4 light_tint : source_color = vec4(1.05, 1.0, 0.93, 1.0);    // light leans warm
-uniform float paint = 0.07;     // how much the colour wanders across a surface
+uniform float paint = 0.035;    // how much the colour wanders across a surface
 uniform float sky_ao = 0.22;    // undersides darker, tops lit by the sky
 uniform float gloss = 0.0;      // 0 matte .. 1 shiny (a crisp highlight band)
+uniform float sss = 0.18;       // warm glow along the terminator (skin, fur, soft things)
+uniform vec4 sss_color : source_color = vec4(1.0, 0.45, 0.32, 1.0);
+uniform float sheen = 0.06;     // a soft broad highlight on every surface facing the light
 // Imported (CC0 pack) models: their colours come from a shared palette texture. One band of hues in
 // it (say the green of the leaves) can be repainted, keeping the texture's shading, so the same tree
 // takes each biome's foliage colour. With use_vertex_color the per-instance colour is the repaint
@@ -72,8 +76,10 @@ void fragment() {
 	float fog = no_fog ? 0.0 : vis_fog((INV_VIEW_MATRIX * vec4(VERTEX, 1.0)).xyz);
 	c = vis_apply(c, fog);
 	ALBEDO = mix(c, flash_color.rgb, flash);
+	// a faint rim everywhere (so silhouettes lift off dark ground even in shadow); the crisp,
+	// light-facing rim is added per light below
 	float rim = pow(1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0), 3.0);
-	EMISSION = flash_color.rgb * flash * 0.9 + c * glow + rim_color.rgb * rim * rim_amount * 0.35 * (1.0 - fog);
+	EMISSION = flash_color.rgb * flash * 0.9 + c * glow + rim_color.rgb * rim * rim_amount * 0.12 * (1.0 - fog);
 	ROUGHNESS = 1.0;
 	SPECULAR = 0.0;
 }
@@ -86,15 +92,25 @@ void light() {
 		DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR / PI * pl;
 	} else {
 		float ndl = dot(NORMAL, LIGHT);
-		float lit = smoothstep(0.0, 0.06, ndl) * ATTENUATION;
-		float band = smoothstep(0.35, 0.65, lit);
-		// shadows take on a cool tint instead of just going grey; lit sides warm up a touch
-		vec3 tone = mix(vec3(shade) * shadow_tint.rgb, light_tint.rgb, band);
+		// the main split: a soft but clean terminator, then a gentle lift on faces turned to the light
+		float lit = smoothstep(-0.03, 0.16, ndl) * ATTENUATION;
+		float band = smoothstep(0.2, 0.8, lit);
+		float face = smoothstep(0.42, 0.78, ndl) * ATTENUATION;
+		vec3 tone = mix(vec3(shade) * shadow_tint.rgb, light_tint.rgb, band) * mix(0.93, 1.06, face);
+		// warm light bleeding through just past the terminator, like skin or fur
+		float term = smoothstep(-0.34, 0.02, ndl) * (1.0 - smoothstep(0.02, 0.32, ndl)) * mix(0.35, 1.0, ATTENUATION);
+		tone += sss_color.rgb * term * sss;
 		DIFFUSE_LIGHT += ALBEDO * LIGHT_COLOR / PI * tone;
+		// a crisp rim on the edge that faces this light (key light rims gold, the fill rims cool)
+		float fres = 1.0 - clamp(dot(NORMAL, VIEW), 0.0, 1.0);
+		float rim_l = smoothstep(0.6, 0.74, fres) * smoothstep(-0.25, 0.45, ndl);
+		DIFFUSE_LIGHT += rim_color.rgb * LIGHT_COLOR * rim_l * rim_amount * 0.16 * mix(0.45, 1.0, ATTENUATION);
+		vec3 hv = normalize(LIGHT + VIEW);
+		float nh = max(dot(NORMAL, hv), 0.0);
+		SPECULAR_LIGHT += LIGHT_COLOR * pow(nh, 16.0) * sheen * band;
 		if (gloss > 0.0) {
-			vec3 hv = normalize(LIGHT + VIEW);
-			float sp = pow(max(dot(NORMAL, hv), 0.0), mix(12.0, 90.0, gloss));
-			SPECULAR_LIGHT += LIGHT_COLOR * smoothstep(0.45, 0.55, sp) * 0.35 * gloss * band * ATTENUATION;
+			float sp = pow(nh, mix(14.0, 110.0, gloss));
+			SPECULAR_LIGHT += LIGHT_COLOR * (smoothstep(0.42, 0.52, sp) * 0.55 + sp * 0.25) * gloss * band * ATTENUATION;
 		}
 	}
 }
