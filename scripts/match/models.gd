@@ -827,6 +827,8 @@ static func hunter(cls: String, team_col: Color, weapon: String, outfit := "", a
 		shoulder.position.x *= bk
 		legs.scale = Vector3(bk, 1.0, bk)
 	root.set_meta("mats", collect_mats(root))
+	for mm in root.get_meta("mats"):
+		(mm as ShaderMaterial).set_shader_parameter("paint", 0.012)    # clean, sleek surfaces: barely any blotching
 	root.set_meta("race", rid)
 	var rs := float(race["scale"])
 	var ck := float(CLASS_LOOK.get(cls, {}).get("size", 1.0))
@@ -1770,6 +1772,8 @@ static func kin(species: String, rec := {}) -> Node3D:
 	pt.emitting = false
 	root.add_child(pt)
 	root.set_meta("mats", mats)
+	for mm in collect_mats(body_root):
+		(mm as ShaderMaterial).set_shader_parameter("paint", 0.015)
 	Evo.dress(root, rec)
 	if shimmer:
 		# a shimmer sparkles a little, all the time
