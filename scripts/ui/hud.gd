@@ -3130,7 +3130,7 @@ func _dial_widget(ctr: Vector2, rad: float, L: Dictionary, big_one: bool) -> voi
 	var n := int(L["locks"])
 	var px0 := ctr.x - (n - 1) * (rad * 0.22) * 0.5
 	for i in n:
-		var pp := Vector2(px0 + i * rad * 0.22, ctr.y - rad - w * 2.6)
+		var pp := Vector2(px0 + i * rad * 0.22, ctr.y + rad + w * 2.4)
 		c.draw_circle(pp, rad * 0.07 + 1.0, Color(0, 0, 0, 0.8))
 		c.draw_circle(pp, rad * 0.07, col if i < int(L["lock"]) else (Color(INK, 0.9) if i == int(L["lock"]) else Color(1, 1, 1, 0.22)))
 
@@ -3147,9 +3147,9 @@ func _draw_lair_dial(sz: Vector2, p: Hunter) -> void:
 	var jam := float(L["jam"]) > 0.0
 	var key := Settings.key_cap("interact")
 	var hint := "JAMMED" if jam else "%s  ·  CLICK  ·  (A)   to stop on a lit arc" % key
-	_ctext(ctr + Vector2(0, rad + 34), hint, 14 if not jam else 18, BAD if jam else INK, big)
+	_ctext(ctr + Vector2(0, rad + 48), hint, 14 if not jam else 18, BAD if jam else INK, big)
 	var lit: int = (L["targets"] as Array).filter(func(t): return t["hit"]).size()
-	_ctext(ctr + Vector2(0, rad + 54), "%d of %d arcs  ·  a miss rings the chime" % [lit, (L["targets"] as Array).size()], 12, MUTED)
+	_ctext(ctr + Vector2(0, rad + 68), "%d of %d arcs  ·  a miss rings the chime" % [lit, (L["targets"] as Array).size()], 12, MUTED)
 
 ## At the top of the screen while you're in a lair with its boss awake: name, phase, health with
 ## marks at the phase lines, and the enrage clock.
