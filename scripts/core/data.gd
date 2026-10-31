@@ -219,6 +219,14 @@ func load_kin_content() -> void:
 		sp["voice"] = String(Content._load("kin", id).get("voice", base.get("voice", "friendly")))
 		KIN[id] = sp
 
+## Species anyone can meet in the wild, pick as a starter or see on a rival: everything but the rare
+## kin (content/kin/*.json "rare": true), which only ever hatch from a boss's Rare Egg.
+func common_kin() -> Array:
+	return KIN.keys().filter(func(k): return not KIN[k].get("rare", false))
+
+func is_rare(sp_id: String) -> bool:
+	return bool(KIN.get(sp_id, {}).get("rare", false))
+
 ## What a species' egg is called ("Venom Egg"), from content/kin/<id>.json "egg".
 func egg_name(sp_id: String) -> String:
 	var sp: Dictionary = KIN.get(sp_id, {})
@@ -267,7 +275,22 @@ const MOBS := {
 		"r": 0.45, "gems": 22, "color": Color("ffd25a"), "attack": "none", "flee": true, "stag": true},
 	"warden": {"name": "The Warden", "hp": 820.0, "speed": 3.3, "dmg": 30.0, "range": 2.8, "windup": 0.95, "cd": 2.1,
 		"r": 1.3, "gems": 30, "color": Color("5a4a7a"), "attack": "slam", "slam_r": 3.3, "stag": true},
+	# lair bosses (scripts/match/boss.gd runs them; Lairs wakes them): each drops a Rare Egg of its own kin
+	"colossus": {"name": "The Stone Colossus", "hp": 1500.0, "speed": 2.5, "dmg": 26.0, "range": 3.2, "windup": 1.1, "cd": 1.9,
+		"r": 1.6, "gems": 40, "color": Color("7d7468"), "attack": "boss", "slam_r": 3.8, "stag": true, "stag_k": 0.04, "boss": true,
+		"egg": "cairnback", "enrage": 150.0},
+	"serpent": {"name": "Stormcoil, the Sky Serpent", "hp": 1250.0, "speed": 5.2, "dmg": 22.0, "range": 10.0, "windup": 0.95, "cd": 1.5,
+		"r": 1.15, "gems": 40, "color": Color("3f86b8"), "attack": "boss", "stag": true, "stag_k": 0.04, "boss": true,
+		"egg": "zephyrak", "enrage": 150.0},
+	"brood": {"name": "The Brood Mother", "hp": 1350.0, "speed": 2.3, "dmg": 18.0, "range": 9.0, "windup": 1.0, "cd": 1.7,
+		"r": 1.55, "gems": 40, "color": Color("8a9a3a"), "attack": "boss", "stag": true, "stag_k": 0.04, "boss": true,
+		"egg": "hivara", "enrage": 150.0},
+	# a lair's ward stones: break all three (guards come out as you do) and its seal fails
+	"ward": {"name": "Ward Stone", "hp": 150.0, "speed": 0.0, "dmg": 0.0, "range": 0.0, "windup": 1.0, "cd": 999.0,
+		"r": 0.7, "gems": 3, "color": Color("8fd8ff"), "attack": "none", "ward": true},
 }
+## The lair bosses, in the order generated maps hand them out.
+const BOSSES := ["colossus", "serpent", "brood"]
 
 ## Crops grow on the farm while you play matches. Each becomes something for your next match.
 const CROPS := {

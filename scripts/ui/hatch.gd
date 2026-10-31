@@ -74,7 +74,7 @@ func _ready() -> void:
 	cam.look_at(Vector3(0, 0.6, 0))
 	_build_set()
 	egg_defs = starter_eggs()
-	var others: Array = Data.KIN.keys().filter(func(k): return not k in ["cindle", "puddlet", "burrlet"])
+	var others: Array = Data.common_kin().filter(func(k): return not k in ["cindle", "puddlet", "burrlet"])
 	for d in egg_defs:
 		if d["species"] == "mystery":
 			d["species"] = others[randi() % others.size()] if others.size() > 0 else "cindle"
