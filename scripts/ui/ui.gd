@@ -341,7 +341,7 @@ static func keycap(key: String, size := 13) -> PanelContainer:
 	sb.content_margin_top = 1; sb.content_margin_bottom = 0
 	sb.anti_aliasing = true
 	p.add_theme_stylebox_override("panel", sb)
-	p.custom_minimum_size = Vector2(size + 8, size + 7)
+	p.custom_minimum_size = Vector2(size + 10, size + 7)
 	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var l := Label.new()
@@ -563,9 +563,9 @@ static func with_key(b: Button, key: String) -> Button:
 	var place := func():
 		var sb := b.get_theme_stylebox("normal")
 		var r := (sb.content_margin_right - w - 10.0) if sb else 16.0
+		kc.size = kc.get_combined_minimum_size()
 		kc.position = Vector2(b.size.x - maxf(r, 10.0) - w, (b.size.y - kc.size.y) * 0.5)
 	b.resized.connect(place)
-	kc.resized.connect(place)
 	b.tree_entered.connect(func(): place.call_deferred())
 	return b
 

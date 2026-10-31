@@ -47,6 +47,13 @@ What made the menus feel blocky, samey and hard to get through:
   had an inline "Really delete?" swap or no confirmation at all, while harmless toggles rebuilt the
   whole panel.
 
+**Things didn't fit.**
+- The Esc menu at home had ten full-size buttons and split into "Page 1 of 2", so Save files and
+  Quit were on a second page behind Next.
+- The kin card and the market both paged their content, and the market then had its own page
+  arrows as well.
+- A shop page was a grid of six orange buttons, so "the main action" meant nothing.
+
 **Small things.**
 - Empty lists were a single grey sentence.
 - Arrows were "‹" and "›" characters in full-size buttons.
@@ -153,7 +160,9 @@ UI.footer_primary(v, "Buy", buy, 160, "gem")      # primary + Enter keycap; UI.p
 - At home use `_new_panel(title, width, scroll)` in `home.gd`: it builds this shell, blurs the farm,
   hides the hub, pops the panel in, and Esc / Enter / clicking outside work.
 - In overlay menus use `_page(name, title, width, scroll)` in `overlay.gd` (it keeps a back stack:
-  the X becomes a back arrow).
+  on a sub-page the X becomes a back arrow before the title).
+- Prefer `scroll = true` for panels whose content is mostly cards or previews (it only scrolls when
+  the window is too short); the paged body suits lists of rows.
 - `confirm(host, head, text, yes_text, on_yes, dangerous=true)` - a small modal over `host` with
   Cancel and a danger (or primary) button; Esc cancels it.
 - `backdrop()` + `show_backdrop(rect, on)` - the blurred, dimmed layer behind modals
